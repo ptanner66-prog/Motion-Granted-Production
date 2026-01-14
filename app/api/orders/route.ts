@@ -39,15 +39,18 @@ export async function POST(req: Request) {
 
     const body = await req.json()
 
-    // Create Stripe PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(body.total_price * 100),
-      currency: 'usd',
-      metadata: {
-        user_id: user.id,
-        motion_type: body.motion_type,
-      },
-    })
+    // Create Stripe PaymentIntent if Stripe is configured
+    let paymentIntent = null
+    if (stripe) {
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(body.total_price * 100),
+        currency: 'usd',
+        metadata: {
+          user_id: user.id,
+          motion_type: body.motion_type,
+        },
+      })
+    }
 
     // Calculate expected delivery date
     const filingDeadline = new Date(body.filing_deadline)
@@ -76,8 +79,8 @@ export async function POST(req: Request) {
         procedural_history: body.procedural_history,
         instructions: body.instructions,
         related_entities: body.related_entities || null,
-        stripe_payment_intent_id: paymentIntent.id,
-        stripe_payment_status: 'pending',
+        stripe_payment_intent_id: paymentIntent?.id || null,
+        stripe_payment_status: paymentIntent ? 'pending' : 'not_configured',
       })
       .select()
       .single()
@@ -104,7 +107,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       order,
-      clientSecret: paymentIntent.client_secret,
+      clientSecret: paymentIntent?.client_secret || null,
+      stripeConfigured: !!stripe,
     })
   } catch (error) {
     console.error('Error creating order:', error)
