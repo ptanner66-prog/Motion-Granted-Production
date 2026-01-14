@@ -1,12 +1,41 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+// Check if Supabase is configured
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+export const isSupabaseConfigured = !!(
+  supabaseUrl &&
+  supabaseAnonKey &&
+  !supabaseUrl.includes('your-project') &&
+  supabaseUrl.startsWith('https://')
+)
+
 export async function createClient() {
+  if (!isSupabaseConfigured) {
+    // Return a mock client that throws helpful errors
+    return {
+      auth: {
+        getUser: async () => ({ data: { user: null }, error: new Error('Supabase not configured') }),
+        signInWithPassword: async () => ({ data: { user: null, session: null }, error: new Error('Supabase not configured') }),
+        signUp: async () => ({ data: { user: null, session: null }, error: new Error('Supabase not configured') }),
+        signOut: async () => ({ error: null }),
+      },
+      from: () => ({
+        select: () => ({ data: null, error: new Error('Supabase not configured') }),
+        insert: () => ({ data: null, error: new Error('Supabase not configured') }),
+        update: () => ({ data: null, error: new Error('Supabase not configured') }),
+        delete: () => ({ data: null, error: new Error('Supabase not configured') }),
+      }),
+    } as any
+  }
+
   const cookieStore = await cookies()
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl!,
+    supabaseAnonKey!,
     {
       cookies: {
         getAll() {

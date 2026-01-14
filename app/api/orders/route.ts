@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
 
 export async function GET() {
+  // Return early if Supabase is not configured
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Database not configured', orders: [] }, { status: 503 })
+  }
+
   try {
     const supabase = await createClient()
 
@@ -29,6 +34,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  // Return early if Supabase is not configured
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
+  }
+
   try {
     const supabase = await createClient()
 
