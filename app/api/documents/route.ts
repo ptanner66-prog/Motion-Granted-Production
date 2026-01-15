@@ -34,42 +34,88 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'File size exceeds 50MB limit' }, { status: 400 })
     }
 
-    // Check file type
+    // Check file type - be more lenient
     const allowedTypes = [
       'application/pdf',
       'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'text/plain'
     ]
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: 'Invalid file type. Only PDF, DOC, and DOCX files are allowed.' }, { status: 400 })
+
+    // Also check by extension if MIME type detection fails
+    const fileName = file.name.toLowerCase()
+    const allowedExtensions = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.txt']
+    const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext))
+
+    if (!allowedTypes.includes(file.type) && !hasValidExtension) {
+      return NextResponse.json({
+        error: 'Invalid file type. Allowed: PDF, DOC, DOCX, JPG, PNG, GIF, TXT'
+      }, { status: 400 })
     }
 
-    // Create unique file path
+    // Create unique file path - use 'orders/' prefix to match storage policy
     const timestamp = Date.now()
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-    const filePath = `${user.id}/${orderId}/${timestamp}-${sanitizedFileName}`
+    const filePath = `orders/${orderId}/${timestamp}-${sanitizedFileName}`
 
-    // Convert File to ArrayBuffer then to Buffer for upload
+    // Convert File to ArrayBuffer then to Uint8Array for upload
     const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    const uint8Array = new Uint8Array(arrayBuffer)
+
+    // First, check if the bucket exists
+    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets()
+
+    if (bucketsError) {
+      console.error('Error listing buckets:', bucketsError)
+    }
+
+    const bucketExists = buckets?.some((b: { name: string }) => b.name === 'documents')
+
+    if (!bucketExists) {
+      // Try to create the bucket
+      const { error: createBucketError } = await supabase.storage.createBucket('documents', {
+        public: true,
+        fileSizeLimit: 52428800, // 50MB
+      })
+
+      if (createBucketError && !createBucketError.message.includes('already exists')) {
+        console.error('Error creating bucket:', createBucketError)
+        return NextResponse.json({
+          error: 'Storage not configured. Please run the storage setup SQL in Supabase.',
+          details: createBucketError.message
+        }, { status: 503 })
+      }
+    }
 
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('documents')
-      .upload(filePath, buffer, {
-        contentType: file.type,
+      .upload(filePath, uint8Array, {
+        contentType: file.type || 'application/octet-stream',
         upsert: false
       })
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError)
-      // Check for specific error types
-      if (uploadError.message.includes('bucket') || uploadError.message.includes('not found')) {
+
+      // Provide helpful error messages
+      if (uploadError.message.includes('Bucket not found')) {
         return NextResponse.json({
-          error: 'Storage configuration error: The documents bucket may not exist. Please contact support.'
+          error: 'Storage bucket not found. Please create the "documents" bucket in Supabase Storage.'
         }, { status: 503 })
       }
-      return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 })
+      if (uploadError.message.includes('row-level security') || uploadError.message.includes('policy')) {
+        return NextResponse.json({
+          error: 'Storage permission denied. Please run the storage setup SQL to configure policies.'
+        }, { status: 403 })
+      }
+
+      return NextResponse.json({
+        error: `Upload failed: ${uploadError.message}`
+      }, { status: 500 })
     }
 
     // Get the public URL
@@ -83,9 +129,9 @@ export async function POST(req: Request) {
       .insert({
         order_id: orderId,
         file_name: file.name,
-        file_type: file.type,
+        file_type: file.type || 'application/octet-stream',
         file_size: file.size,
-        file_url: urlData.publicUrl,
+        file_url: filePath, // Store the path, not the full URL (for flexibility)
         document_type: documentType || 'other',
         uploaded_by: user.id,
         is_deliverable: false
@@ -97,7 +143,17 @@ export async function POST(req: Request) {
       console.error('Database error:', dbError)
       // Try to clean up the uploaded file
       await supabase.storage.from('documents').remove([filePath])
-      return NextResponse.json({ error: `Failed to save document record: ${dbError.message}` }, { status: 500 })
+
+      // Check for specific errors
+      if (dbError.message.includes('violates row-level security')) {
+        return NextResponse.json({
+          error: 'Permission denied. Please check database RLS policies for the documents table.'
+        }, { status: 403 })
+      }
+
+      return NextResponse.json({
+        error: `Failed to save document record: ${dbError.message}`
+      }, { status: 500 })
     }
 
     return NextResponse.json({
@@ -105,14 +161,18 @@ export async function POST(req: Request) {
       document: {
         id: document.id,
         fileName: document.file_name,
-        fileUrl: document.file_url,
+        fileUrl: urlData.publicUrl,
+        filePath: filePath,
         documentType: document.document_type
       }
     })
 
   } catch (error) {
     console.error('Error uploading document:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
   }
 }
 
