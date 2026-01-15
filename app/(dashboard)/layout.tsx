@@ -17,6 +17,11 @@ export default async function DashboardLayout({
   // Get user profile
   const profile = await getProfile()
 
+  // Redirect admins to admin dashboard
+  if (profile?.role === 'admin') {
+    redirect('/admin')
+  }
+
   const userData = {
     name: profile?.full_name || user.email?.split('@')[0] || 'User',
     email: user.email || '',
