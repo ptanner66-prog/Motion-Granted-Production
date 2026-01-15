@@ -155,7 +155,8 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
           <nav className="flex-1 overflow-y-auto px-4 py-6">
             <div className="space-y-1">
               {mainNavigation.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                // Simple active logic matching admin dashboard
+                const isActive = pathname === item.href
                 return (
                   <Link
                     key={item.name}
@@ -352,10 +353,24 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
             </div>
 
             {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative rounded-lg hover:bg-gray-100 transition-colors">
-              <Bell className="h-5 w-5 text-gray-500" />
-              <span className="notification-dot absolute right-2 top-2 h-2 w-2 rounded-full bg-teal ring-2 ring-white" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative rounded-lg hover:bg-gray-100 transition-colors">
+                  <Bell className="h-5 w-5 text-gray-500" />
+                  <span className="notification-dot absolute right-2 top-2 h-2 w-2 rounded-full bg-teal ring-2 ring-white" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72 p-2">
+                <DropdownMenuLabel className="px-3 py-2 text-sm font-semibold text-navy">
+                  Notifications
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <div className="py-6 text-center">
+                  <Bell className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">No new notifications</p>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* User menu */}
             <DropdownMenu>
