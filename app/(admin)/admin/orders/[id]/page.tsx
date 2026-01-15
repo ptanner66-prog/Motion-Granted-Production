@@ -7,6 +7,7 @@ import { OrderStatusBadge } from '@/components/orders/order-status-badge'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 import { StatusUpdateForm } from '@/components/admin/status-update-form'
 import { DocumentDownloadButton } from '@/components/documents/document-download-button'
 import {
@@ -106,7 +107,7 @@ export default async function AdminOrderDetailPage({
               </h1>
               <OrderStatusBadge status={order.status as OrderStatus} />
             </div>
-            <p className="text-lg text-gray-600">{order.motion_type}</p>
+            <p className="text-lg text-gray-600">{formatMotionType(order.motion_type)}</p>
             <p className="text-sm text-gray-400 mt-1">
               <span className="font-medium">{order.case_caption}</span>
               <span className="mx-2">•</span>

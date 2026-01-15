@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Search, FileText, User, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 
 interface SearchResult {
   type: 'order' | 'client'
@@ -77,7 +78,7 @@ export function AdminSearch() {
             searchResults.push({
               type: 'order',
               id: order.id,
-              title: `${order.order_number} - ${order.motion_type}`,
+              title: `${order.order_number} - ${formatMotionType(order.motion_type)}`,
               subtitle: `${order.case_caption} • ${formatCurrency(order.total_price)}`,
               href: `/admin/orders/${order.id}`,
             })

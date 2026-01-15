@@ -17,6 +17,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 import type { OrderStatus } from '@/types'
 
 export const metadata: Metadata = {
@@ -43,7 +44,7 @@ interface Order {
 export default async function AdminDashboardPage() {
   const supabase = await createClient()
 
-  // Fetch all orders with client info
+  // Fetch recent orders with client info, sorted by filing deadline (soonest first)
   const { data: orders } = await supabase
     .from('orders')
     .select(`
@@ -53,13 +54,13 @@ export default async function AdminDashboardPage() {
         email
       )
     `)
-    .order('created_at', { ascending: false })
+    .order('filing_deadline', { ascending: true })
     .limit(10)
 
-  // Get all orders for stats
+  // Get all orders for stats (include created_at and updated_at for turnaround calculation)
   const { data: allOrders } = await supabase
     .from('orders')
-    .select('status, total_price')
+    .select('status, total_price, created_at, updated_at')
 
   // Calculate stats
   const pendingOrders = allOrders?.filter((o: { status: string }) =>
@@ -72,7 +73,24 @@ export default async function AdminDashboardPage() {
 
   const completedOrders = allOrders?.filter((o: { status: string }) =>
     o.status === 'completed'
-  ).length || 0
+  ) || []
+
+  const completedCount = completedOrders.length
+
+  // Calculate average turnaround time for completed orders
+  const avgTurnaroundDays = (() => {
+    if (completedOrders.length === 0) return null;
+
+    const totalDays = completedOrders.reduce((sum: number, o: { created_at: string; updated_at: string }) => {
+      const created = new Date(o.created_at);
+      const completed = new Date(o.updated_at);
+      const diffTime = Math.abs(completed.getTime() - created.getTime());
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      return sum + diffDays;
+    }, 0);
+
+    return Math.round(totalDays / completedOrders.length * 10) / 10; // Round to 1 decimal
+  })();
 
   const totalRevenue = allOrders?.reduce((sum: number, o: { total_price: number }) =>
     sum + (o.total_price || 0), 0
@@ -107,8 +125,8 @@ export default async function AdminDashboardPage() {
       href: '/admin/orders?status=in_progress'
     },
     {
-      label: 'Completed',
-      value: completedOrders,
+      label: 'Avg. Turnaround',
+      value: avgTurnaroundDays !== null ? `${avgTurnaroundDays} days` : 'N/A',
       icon: CheckCircle,
       bgColor: 'bg-gradient-to-br from-emerald-50 to-emerald-100',
       iconBg: 'bg-emerald-500/10',
@@ -254,7 +272,7 @@ export default async function AdminDashboardPage() {
                         <OrderStatusBadge status={order.status as OrderStatus} size="sm" />
                       </div>
                       <p className="font-medium text-navy truncate">
-                        {order.motion_type}
+                        {formatMotionType(order.motion_type)}
                       </p>
                       <p className="text-sm text-gray-500 truncate">
                         {order.profiles?.full_name || order.profiles?.email || 'Unknown Client'}
