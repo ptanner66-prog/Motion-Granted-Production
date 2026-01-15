@@ -69,13 +69,23 @@ export async function updateSession(request: NextRequest) {
   // Redirect based on role if already logged in and on auth page
   if (isAuthPath && user) {
     // Fetch user profile to check role
-    const { data: profile } = await supabase
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    const role = profile?.role?.toString().toLowerCase().trim()
+    console.log('MIDDLEWARE AUTH REDIRECT - Profile:', profile, 'Error:', error)
+
+    // If profile query fails, default to dashboard and let page-level checks handle it
+    if (error || !profile) {
+      console.log('MIDDLEWARE AUTH - Profile query failed, defaulting to dashboard')
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+    const role = profile.role?.toString().toLowerCase().trim()
     const url = request.nextUrl.clone()
 
     // Route based on role
