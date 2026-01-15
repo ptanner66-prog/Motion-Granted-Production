@@ -92,9 +92,8 @@ export default async function AdminDashboardPage() {
     return Math.round(totalDays / completedOrders.length * 10) / 10; // Round to 1 decimal
   })();
 
-  const totalRevenue = allOrders?.reduce((sum: number, o: { total_price: number }) =>
-    sum + (o.total_price || 0), 0
-  ) || 0
+  const totalRevenue = allOrders?.filter((o: { status: string }) => o.status !== 'cancelled')
+    .reduce((sum: number, o: { total_price: number }) => sum + (o.total_price || 0), 0) || 0
 
   // Get unique clients count
   const { count: clientCount } = await supabase

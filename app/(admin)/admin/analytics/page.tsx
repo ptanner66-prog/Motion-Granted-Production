@@ -48,6 +48,9 @@ export default async function AdminAnalyticsPage() {
 
   const allOrders: Order[] = orders || []
 
+  // Filter out cancelled orders for metrics
+  const activeOrders = allOrders.filter(o => o.status !== 'cancelled')
+
   // Calculate current month stats
   const now = new Date()
   const currentMonth = now.getMonth()
@@ -55,18 +58,18 @@ export default async function AdminAnalyticsPage() {
   const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
   const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear
 
-  const currentMonthOrders = allOrders.filter(o => {
+  const currentMonthOrders = activeOrders.filter(o => {
     const d = new Date(o.created_at)
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear
   })
 
-  const lastMonthOrders = allOrders.filter(o => {
+  const lastMonthOrders = activeOrders.filter(o => {
     const d = new Date(o.created_at)
     return d.getMonth() === lastMonth && d.getFullYear() === lastMonthYear
   })
 
-  // Revenue calculations
-  const totalRevenue = allOrders.reduce((sum, o) => sum + (o.total_price || 0), 0)
+  // Revenue calculations (excludes cancelled orders)
+  const totalRevenue = activeOrders.reduce((sum, o) => sum + (o.total_price || 0), 0)
   const currentMonthRevenue = currentMonthOrders.reduce((sum, o) => sum + (o.total_price || 0), 0)
   const lastMonthRevenue = lastMonthOrders.reduce((sum, o) => sum + (o.total_price || 0), 0)
 
@@ -79,26 +82,26 @@ export default async function AdminAnalyticsPage() {
     ? ((currentMonthOrders.length - lastMonthOrders.length) / lastMonthOrders.length) * 100
     : 0
 
-  // Order status breakdown
-  const completedOrders = allOrders.filter(o => o.status === 'completed').length
-  const pendingOrders = allOrders.filter(o => o.status === 'submitted').length
-  const inProgressOrders = allOrders.filter(o => ['in_progress', 'in_review', 'assigned'].includes(o.status)).length
+  // Order status breakdown (excludes cancelled)
+  const completedOrders = activeOrders.filter(o => o.status === 'completed').length
+  const pendingOrders = activeOrders.filter(o => o.status === 'submitted').length
+  const inProgressOrders = activeOrders.filter(o => ['in_progress', 'in_review', 'assigned'].includes(o.status)).length
 
-  // Average order value
-  const avgOrderValue = allOrders.length > 0 ? totalRevenue / allOrders.length : 0
+  // Average order value (excludes cancelled)
+  const avgOrderValue = activeOrders.length > 0 ? totalRevenue / activeOrders.length : 0
 
-  // Orders by motion type
+  // Orders by motion type (excludes cancelled)
   const motionTypes: Record<string, number> = {}
-  allOrders.forEach(o => {
+  activeOrders.forEach(o => {
     motionTypes[o.motion_type] = (motionTypes[o.motion_type] || 0) + 1
   })
   const topMotionTypes = Object.entries(motionTypes)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
 
-  // Orders by turnaround
+  // Orders by turnaround (excludes cancelled)
   const turnaroundTypes: Record<string, number> = {}
-  allOrders.forEach(o => {
+  activeOrders.forEach(o => {
     const type = o.turnaround === 'standard' ? 'Standard' :
                  o.turnaround === 'rush_72' ? '72-hour Rush' : '48-hour Rush'
     turnaroundTypes[type] = (turnaroundTypes[type] || 0) + 1
@@ -137,7 +140,7 @@ export default async function AdminAnalyticsPage() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500 mb-1">Total Orders</p>
-                <p className="text-3xl font-bold text-navy">{allOrders.length}</p>
+                <p className="text-3xl font-bold text-navy">{activeOrders.length}</p>
                 <div className={`flex items-center gap-1 mt-2 text-sm ${ordersChange >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                   {ordersChange >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
                   <span>{Math.abs(ordersChange).toFixed(1)}% vs last month</span>
@@ -201,7 +204,7 @@ export default async function AdminAnalyticsPage() {
                 <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-orange-500 rounded-full"
-                    style={{ width: `${allOrders.length > 0 ? (pendingOrders / allOrders.length) * 100 : 0}%` }}
+                    style={{ width: `${activeOrders.length > 0 ? (pendingOrders / activeOrders.length) * 100 : 0}%` }}
                   />
                 </div>
                 <span className="text-navy font-semibold w-8 text-right">{pendingOrders}</span>
@@ -218,7 +221,7 @@ export default async function AdminAnalyticsPage() {
                 <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-blue-500 rounded-full"
-                    style={{ width: `${allOrders.length > 0 ? (inProgressOrders / allOrders.length) * 100 : 0}%` }}
+                    style={{ width: `${activeOrders.length > 0 ? (inProgressOrders / activeOrders.length) * 100 : 0}%` }}
                   />
                 </div>
                 <span className="text-navy font-semibold w-8 text-right">{inProgressOrders}</span>
@@ -235,7 +238,7 @@ export default async function AdminAnalyticsPage() {
                 <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-emerald-500 rounded-full"
-                    style={{ width: `${allOrders.length > 0 ? (completedOrders / allOrders.length) * 100 : 0}%` }}
+                    style={{ width: `${activeOrders.length > 0 ? (completedOrders / activeOrders.length) * 100 : 0}%` }}
                   />
                 </div>
                 <span className="text-navy font-semibold w-8 text-right">{completedOrders}</span>
@@ -272,7 +275,7 @@ export default async function AdminAnalyticsPage() {
                         type === 'Standard' ? 'bg-gray-500' :
                         type === '72-hour Rush' ? 'bg-orange-500' : 'bg-red-500'
                       }`}
-                      style={{ width: `${allOrders.length > 0 ? (count / allOrders.length) * 100 : 0}%` }}
+                      style={{ width: `${activeOrders.length > 0 ? (count / activeOrders.length) * 100 : 0}%` }}
                     />
                   </div>
                   <span className="text-navy font-semibold w-8 text-right">{count}</span>
