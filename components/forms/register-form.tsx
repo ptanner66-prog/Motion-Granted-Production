@@ -115,7 +115,6 @@ export function RegisterForm() {
         })
 
         if (profileError) {
-          console.error('Profile creation error:', profileError)
           // Continue anyway - profile might be created by trigger
         }
       }

@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import { RUSH_OPTIONS, getTierForMotion, getMotionById } from '@/config/motion-types'
 
 interface Party {
+  id: string
   name: string
   role: string
 }
@@ -69,8 +70,8 @@ interface OrderFormState {
   calculateTotal: () => void
   reset: () => void
   addParty: () => void
-  removeParty: (index: number) => void
-  updateParty: (index: number, field: keyof Party, value: string) => void
+  removeParty: (id: string) => void
+  updateParty: (id: string, field: keyof Party, value: string) => void
   addDocument: (doc: UploadedDocument) => void
   removeDocument: (id: string) => void
   updateDocumentProgress: (id: string, progress: number, url?: string) => void
@@ -92,8 +93,8 @@ const initialState = {
   caseNumber: '',
   caseCaption: '',
   parties: [
-    { name: '', role: '' },
-    { name: '', role: '' },
+    { id: 'party-1', name: '', role: '' },
+    { id: 'party-2', name: '', role: '' },
   ],
   relatedEntities: '',
   statementOfFacts: '',
@@ -155,18 +156,21 @@ export const useOrderForm = create<OrderFormState>()(
 
       addParty: () =>
         set((state) => ({
-          parties: [...state.parties, { name: '', role: '' }],
+          parties: [
+            ...state.parties,
+            { id: `party-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, name: '', role: '' }
+          ],
         })),
 
-      removeParty: (index) =>
+      removeParty: (id) =>
         set((state) => ({
-          parties: state.parties.filter((_, i) => i !== index),
+          parties: state.parties.filter((party) => party.id !== id),
         })),
 
-      updateParty: (index, field, value) =>
+      updateParty: (id, field, value) =>
         set((state) => ({
-          parties: state.parties.map((party, i) =>
-            i === index ? { ...party, [field]: value } : party
+          parties: state.parties.map((party) =>
+            party.id === id ? { ...party, [field]: value } : party
           ),
         })),
 

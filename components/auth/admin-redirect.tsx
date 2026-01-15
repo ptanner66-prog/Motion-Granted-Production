@@ -15,19 +15,29 @@ export function AdminRedirect({ children }: { children: React.ReactNode }) {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
+        // Retry profile fetch up to 3 times
+        let profile = null
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
 
-        console.log('AdminRedirect - Profile:', profile)
+
+          if (data && !error) {
+            profile = data
+            break
+          }
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500))
+          }
+        }
 
         const role = profile?.role?.toString().toLowerCase().trim()
         if (role === 'admin') {
-          console.log('AdminRedirect - Redirecting to /admin')
           setIsAdmin(true)
-          router.replace('/admin')
+          window.location.href = '/admin'
           return
         }
       }

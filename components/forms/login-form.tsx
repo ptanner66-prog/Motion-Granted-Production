@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { loginSchema, type LoginInput } from '@/lib/validations/auth'
@@ -23,7 +22,6 @@ import { Loader2 } from 'lucide-react'
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -57,11 +55,27 @@ export function LoginForm() {
       let redirectPath = '/dashboard'
 
       if (authData.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', authData.user.id)
-          .single()
+        // Try to get profile with retry for timing issues
+        let profile = null
+        let retries = 3
+
+        while (retries > 0 && !profile) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', authData.user.id)
+            .single()
+
+          if (data && !error) {
+            profile = data
+          } else {
+            retries--
+            if (retries > 0) {
+              // Wait a bit before retrying (session might not be fully synced)
+              await new Promise(resolve => setTimeout(resolve, 500))
+            }
+          }
+        }
 
         const role = profile?.role?.toString().toLowerCase().trim()
         if (role === 'admin') {
@@ -74,8 +88,8 @@ export function LoginForm() {
         description: 'You have been logged in successfully.',
       })
 
-      router.push(redirectPath)
-      router.refresh()
+      // Hard redirect to ensure middleware executes for role-based routing
+      window.location.href = redirectPath
     } catch {
       toast({
         title: 'Error',

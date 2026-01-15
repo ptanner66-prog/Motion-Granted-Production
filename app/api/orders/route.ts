@@ -28,7 +28,6 @@ export async function GET() {
 
     return NextResponse.json(orders)
   } catch (error) {
-    console.error('Error fetching orders:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -115,13 +114,38 @@ export async function POST(req: Request) {
       }
     }
 
+    // Insert documents
+    if (body.documents && body.documents.length > 0) {
+      interface DocumentInput {
+        file_name: string
+        file_type: string
+        file_size: number
+        file_url: string
+        document_type: string
+      }
+
+      const documentsData = body.documents.map((doc: DocumentInput) => ({
+        order_id: order.id,
+        file_name: doc.file_name,
+        file_type: doc.file_type,
+        file_size: doc.file_size,
+        file_url: doc.file_url,
+        document_type: doc.document_type || 'other',
+        uploaded_by: user.id,
+      }))
+
+      const { error: docError } = await supabase.from('documents').insert(documentsData)
+      if (docError) {
+        // Continue even if document insert fails
+      }
+    }
+
     return NextResponse.json({
       order,
       clientSecret: paymentIntent?.client_secret || null,
       stripeConfigured: !!stripe,
     })
   } catch (error) {
-    console.error('Error creating order:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

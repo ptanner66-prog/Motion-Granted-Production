@@ -66,14 +66,72 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect to dashboard if already logged in and on auth page
+  // Redirect based on role if already logged in and on auth page
   if (isAuthPath && user) {
+    // Fetch user profile to check role
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    // If profile query fails, default to dashboard and let page-level checks handle it
+    if (error || !profile) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+    const role = profile.role?.toString().toLowerCase().trim()
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
+
+    // Route based on role
+    if (role === 'admin') {
+      url.pathname = '/admin'
+    } else {
+      url.pathname = '/dashboard'
+    }
     return NextResponse.redirect(url)
   }
 
-  // NO ROLE CHECKS - let any authenticated user access any route
+  // Role-based access control for protected routes
+  if (isProtectedPath && user) {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    // If we can't get the profile, don't redirect - let page-level checks handle it
+    // This prevents incorrectly redirecting admins when profile query fails
+    if (error || !profile) {
+      return supabaseResponse
+    }
+
+    const role = profile.role?.toString().toLowerCase().trim()
+    const pathname = request.nextUrl.pathname
+
+    // Admin routes - only admin can access
+    if (pathname.startsWith('/admin') && role !== 'admin') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+    // Client routes - redirect admin to admin dashboard
+    if ((pathname.startsWith('/dashboard') || pathname.startsWith('/orders') || pathname.startsWith('/settings')) && role === 'admin') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/admin'
+      return NextResponse.redirect(url)
+    }
+
+    // Clerk routes - only clerk or admin can access
+    if (pathname.startsWith('/clerk') && !['clerk', 'admin'].includes(role || '')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+  }
 
   return supabaseResponse
 }

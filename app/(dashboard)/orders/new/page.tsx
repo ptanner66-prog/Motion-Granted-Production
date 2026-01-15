@@ -59,6 +59,7 @@ export default function NewOrderPage() {
     instructions,
     documents,
     supervisionAcknowledged,
+    documents,
   } = useOrderForm()
 
   const currentStep = steps[step - 1]
@@ -139,7 +140,17 @@ export default function NewOrderPage() {
     setIsSubmitting(true)
 
     try {
-      // Prepare order data
+      // Prepare order data with documents
+      const uploadedDocs = documents
+        .filter(d => d.url) // Only include successfully uploaded docs
+        .map(d => ({
+          file_name: d.name,
+          file_type: d.type,
+          file_size: d.size,
+          file_url: d.url,
+          document_type: d.documentType || 'other',
+        }))
+
       const orderData = {
         motion_type: motionType,
         motion_tier: motionTier,
@@ -159,6 +170,7 @@ export default function NewOrderPage() {
         instructions,
         related_entities: relatedEntities || null,
         parties: parties.filter(p => p.name && p.role),
+        documents: uploadedDocs,
       }
 
       // Submit to API
@@ -221,7 +233,6 @@ export default function NewOrderPage() {
       router.push('/dashboard')
       router.refresh()
     } catch (error) {
-      console.error('Error submitting order:', error)
       toast({
         title: 'Error submitting order',
         description: error instanceof Error ? error.message : 'Please try again or contact support.',
