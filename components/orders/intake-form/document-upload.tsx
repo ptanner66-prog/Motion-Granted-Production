@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useOrderForm } from '@/hooks/use-order-form'
 import { Label } from '@/components/ui/label'
@@ -13,7 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Upload, FileText, X, AlertCircle, CheckCircle } from 'lucide-react'
+import { Upload, FileText, X, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
 
 const DOCUMENT_TYPES = [
   { id: 'complaint', name: 'Complaint/Petition' },
@@ -26,22 +27,67 @@ const DOCUMENT_TYPES = [
 ]
 
 export function DocumentUpload() {
-  const { documents, addDocument, removeDocument } = useOrderForm()
+  const { documents, addDocument, removeDocument, updateDocumentProgress } = useOrderForm()
+  const { toast } = useToast()
+  const [uploading, setUploading] = useState<Record<string, boolean>>({})
+
+  const uploadFile = async (file: File, docId: string) => {
+    setUploading(prev => ({ ...prev, [docId]: true }))
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('documentType', 'pending') // Will be updated when user selects type
+
+      const response = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Upload failed')
+      }
+
+      const data = await response.json()
+      updateDocumentProgress(docId, 100, data.url)
+
+      return data.url
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast({
+        title: 'Upload failed',
+        description: error instanceof Error ? error.message : 'Please try again',
+        variant: 'destructive',
+      })
+      // Remove the document on failure
+      removeDocument(docId)
+      return null
+    } finally {
+      setUploading(prev => ({ ...prev, [docId]: false }))
+    }
+  }
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      acceptedFiles.forEach((file) => {
+    async (acceptedFiles: File[]) => {
+      for (const file of acceptedFiles) {
+        const docId = `${Date.now()}-${Math.random().toString(36).substring(7)}`
+
+        // Add document to state with 0 progress
         const doc = {
-          id: `${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          id: docId,
           file,
           name: file.name,
           type: file.type,
           size: file.size,
           documentType: '',
-          uploadProgress: 100, // Simulated - in production, track actual upload
+          uploadProgress: 0,
         }
         addDocument(doc)
-      })
+
+        // Start upload
+        uploadFile(file, docId)
+      }
     },
     [addDocument]
   )
@@ -63,6 +109,15 @@ export function DocumentUpload() {
   }
 
   const hasComplaint = documents.some((d) => d.documentType === 'complaint')
+  const isAnyUploading = Object.values(uploading).some(Boolean)
+
+  const handleDocumentTypeChange = (docId: string, newType: string) => {
+    // Find and update the document
+    const doc = documents.find(d => d.id === docId)
+    if (doc) {
+      doc.documentType = newType
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -108,7 +163,7 @@ export function DocumentUpload() {
             isDragActive
               ? 'border-teal bg-teal/5'
               : 'border-gray-300 hover:border-gray-400'
-          }`}
+          } ${isAnyUploading ? 'opacity-50 pointer-events-none' : ''}`}
         >
           <input {...getInputProps()} />
           <Upload className="h-10 w-10 text-gray-400 mx-auto mb-4" />
@@ -136,42 +191,52 @@ export function DocumentUpload() {
                 className="flex items-start gap-3 rounded-lg border border-gray-200 p-4"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-                  <FileText className="h-5 w-5 text-gray-500" />
+                  {uploading[doc.id] ? (
+                    <Loader2 className="h-5 w-5 text-teal animate-spin" />
+                  ) : (
+                    <FileText className="h-5 w-5 text-gray-500" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-navy truncate">{doc.name}</p>
                   <p className="text-sm text-gray-500">
                     {formatFileSize(doc.size)}
+                    {doc.url && (
+                      <span className="ml-2 text-green-600">• Uploaded</span>
+                    )}
                   </p>
-                  {doc.uploadProgress < 100 && (
-                    <Progress value={doc.uploadProgress} className="mt-2 h-1" />
+                  {uploading[doc.id] && (
+                    <div className="mt-2">
+                      <Progress value={30} className="h-1" />
+                      <p className="text-xs text-gray-400 mt-1">Uploading...</p>
+                    </div>
                   )}
-                  <div className="mt-2">
-                    <Select
-                      value={doc.documentType}
-                      onValueChange={(value) => {
-                        // Update document type - in a real app, update the state
-                        doc.documentType = value
-                      }}
-                    >
-                      <SelectTrigger className="w-full sm:w-48 h-8 text-sm">
-                        <SelectValue placeholder="Document type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DOCUMENT_TYPES.map((type) => (
-                          <SelectItem key={type.id} value={type.id}>
-                            {type.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {!uploading[doc.id] && doc.uploadProgress === 100 && (
+                    <div className="mt-2">
+                      <Select
+                        value={doc.documentType}
+                        onValueChange={(value) => handleDocumentTypeChange(doc.id, value)}
+                      >
+                        <SelectTrigger className="w-full sm:w-48 h-8 text-sm">
+                          <SelectValue placeholder="Document type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DOCUMENT_TYPES.map((type) => (
+                            <SelectItem key={type.id} value={type.id}>
+                              {type.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="shrink-0 text-gray-400 hover:text-red-500"
                   onClick={() => removeDocument(doc.id)}
+                  disabled={uploading[doc.id]}
                 >
                   <X className="h-4 w-4" />
                 </Button>

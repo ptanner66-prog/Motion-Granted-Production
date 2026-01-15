@@ -52,7 +52,6 @@ const mainNavigation = [
     href: '/orders/new',
     icon: PlusCircle,
     description: 'Start a new motion',
-    highlight: true
   },
 ]
 
@@ -166,21 +165,18 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
                       'nav-item group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
                       isActive
                         ? 'active bg-teal/10 text-navy'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-navy',
-                      item.highlight && !isActive && 'bg-gradient-to-r from-teal/5 to-transparent border border-teal/20'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-navy'
                     )}
                   >
                     <div className={cn(
                       'icon-circle icon-circle-sm flex-shrink-0 transition-all duration-200',
                       isActive
                         ? 'bg-teal/20'
-                        : item.highlight
-                          ? 'bg-teal/10 group-hover:bg-teal/20'
-                          : 'bg-gray-100 group-hover:bg-gray-200'
+                        : 'bg-gray-100 group-hover:bg-gray-200'
                     )}>
                       <item.icon className={cn(
                         'h-5 w-5 transition-colors',
-                        isActive ? 'text-teal' : item.highlight ? 'text-teal' : 'text-gray-500 group-hover:text-navy'
+                        isActive ? 'text-teal' : 'text-gray-500 group-hover:text-navy'
                       )} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -194,9 +190,6 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
                         </span>
                       )}
                     </div>
-                    {item.highlight && !isActive && (
-                      <ChevronRight className="h-4 w-4 text-teal opacity-50 group-hover:opacity-100 transition-opacity" />
-                    )}
                   </Link>
                 )
               })}

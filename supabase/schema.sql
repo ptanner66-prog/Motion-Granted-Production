@@ -189,6 +189,7 @@ alter table public.change_orders enable row level security;
 alter table public.clerks enable row level security;
 
 -- Profiles policies
+-- Users can always view and update their own profile
 create policy "Users can view own profile"
   on public.profiles for select
   using (auth.uid() = id);
@@ -197,14 +198,25 @@ create policy "Users can update own profile"
   on public.profiles for update
   using (auth.uid() = id);
 
+-- Admin policy uses a security definer function to avoid recursion
+-- First create a function that can check admin status without causing recursion
+create or replace function public.is_admin()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin'
+  );
+$$ language sql security definer stable;
+
+-- Admins can view all profiles (uses function to avoid recursion)
 create policy "Admins can view all profiles"
   on public.profiles for select
-  using (
-    exists (
-      select 1 from public.profiles
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  using (public.is_admin());
+
+-- Admins can update all profiles
+create policy "Admins can update all profiles"
+  on public.profiles for update
+  using (public.is_admin());
 
 -- Orders policies
 create policy "Clients can view own orders"
@@ -223,14 +235,10 @@ create policy "Clerks can update assigned orders"
   on public.orders for update
   using (auth.uid() = clerk_id);
 
+-- Admins can do everything with orders (uses function to avoid recursion)
 create policy "Admins can view all orders"
   on public.orders for all
-  using (
-    exists (
-      select 1 from public.profiles
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  using (public.is_admin());
 
 -- Parties policies
 create policy "Users can view parties for their orders"
@@ -252,6 +260,11 @@ create policy "Clients can insert parties for own orders"
     )
   );
 
+-- Admins can view all parties
+create policy "Admins can view all parties"
+  on public.parties for select
+  using (public.is_admin());
+
 -- Documents policies
 create policy "Users can view documents for their orders"
   on public.documents for select
@@ -266,6 +279,11 @@ create policy "Users can view documents for their orders"
 create policy "Users can upload documents"
   on public.documents for insert
   with check (auth.uid() = uploaded_by);
+
+-- Admins can view all documents
+create policy "Admins can view all documents"
+  on public.documents for all
+  using (public.is_admin());
 
 -- Messages policies
 create policy "Users can view messages for their orders"
