@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { OrderStatusBadge } from '@/components/orders/order-status-badge'
@@ -18,119 +19,32 @@ import {
   Settings
 } from 'lucide-react'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
+import type { OrderStatus } from '@/types'
+
+interface Order {
+  id: string
+  order_number: string
+  motion_type: string
+  case_caption: string
+  status: string
+  total_price: number
+  filing_deadline: string
+  created_at: string
+}
 
 export const metadata: Metadata = {
   title: 'Dashboard',
   description: 'Your Motion Granted dashboard.',
 }
 
-// Mock data - in production, fetch from Supabase
-const stats = [
-  {
-    label: 'Active Orders',
-    value: 3,
-    icon: Clock,
-    color: 'blue',
-    bgGradient: 'from-blue-500/10 to-blue-600/5',
-    iconBg: 'bg-blue-100',
-    iconColor: 'text-blue-600',
-    trend: '+2 this week',
-    href: '/orders?status=active'
-  },
-  {
-    label: 'Completed',
-    value: 12,
-    icon: CheckCircle,
-    color: 'green',
-    bgGradient: 'from-emerald-500/10 to-emerald-600/5',
-    iconBg: 'bg-emerald-100',
-    iconColor: 'text-emerald-600',
-    trend: '+3 this month',
-    href: '/orders?status=completed'
-  },
-  {
-    label: 'Pending Review',
-    value: 1,
-    icon: AlertCircle,
-    color: 'orange',
-    bgGradient: 'from-orange-500/10 to-orange-600/5',
-    iconBg: 'bg-orange-100',
-    iconColor: 'text-orange-600',
-    trend: 'Action needed',
-    urgent: true,
-    href: '/orders?status=draft_delivered'
-  },
-]
-
-const recentOrders = [
-  {
-    id: '1',
-    order_number: 'MG-2501-0001',
-    motion_type: 'Motion for Summary Judgment',
-    case_caption: 'Smith v. Jones',
-    status: 'in_progress' as const,
-    total_price: 2000,
-    filing_deadline: '2025-02-15',
-    days_until_due: 31,
-  },
-  {
-    id: '2',
-    order_number: 'MG-2501-0002',
-    motion_type: 'Motion to Compel Discovery',
-    case_caption: 'Johnson v. ABC Corp',
-    status: 'draft_delivered' as const,
-    total_price: 600,
-    filing_deadline: '2025-01-28',
-    days_until_due: 13,
-  },
-  {
-    id: '3',
-    order_number: 'MG-2501-0003',
-    motion_type: 'Peremptory Exception — Prescription',
-    case_caption: 'Davis v. Medical Center',
-    status: 'submitted' as const,
-    total_price: 950,
-    filing_deadline: '2025-02-05',
-    days_until_due: 21,
-  },
-]
-
-const quickActions = [
-  {
-    title: 'New Order',
-    description: 'Start a new motion request',
-    icon: PlusCircle,
-    href: '/orders/new',
-    iconBg: 'bg-gradient-to-br from-teal/20 to-teal/10',
-    iconColor: 'text-teal',
-    primary: true
-  },
-  {
-    title: 'View All Orders',
-    description: 'See your order history',
-    icon: FileText,
-    href: '/orders',
-    iconBg: 'bg-blue-100',
-    iconColor: 'text-blue-600'
-  },
-  {
-    title: 'View Pricing',
-    description: 'See motion prices',
-    icon: DollarSign,
-    href: '/pricing',
-    iconBg: 'bg-violet-100',
-    iconColor: 'text-violet-600',
-    external: true
-  },
-  {
-    title: 'Settings',
-    description: 'Account settings',
-    icon: Settings,
-    href: '/settings',
-    iconBg: 'bg-gray-100',
-    iconColor: 'text-gray-600'
-  }
-]
+// Calculate days until due date
+function getDaysUntilDue(deadline: string): number {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const due = new Date(deadline)
+  due.setHours(0, 0, 0, 0)
+  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
 
 function getUrgencyClass(daysUntilDue: number) {
   if (daysUntilDue <= 3) return 'urgency-overdue'
@@ -138,7 +52,112 @@ function getUrgencyClass(daysUntilDue: number) {
   return ''
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Fetch orders from Supabase
+  const { data: orders } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('client_id', user?.id)
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  // Calculate stats
+  const { data: allOrders } = await supabase
+    .from('orders')
+    .select('status')
+    .eq('client_id', user?.id)
+
+  const activeCount = allOrders?.filter((o: { status: string }) =>
+    ['submitted', 'in_progress', 'in_review'].includes(o.status)
+  ).length || 0
+
+  const completedCount = allOrders?.filter((o: { status: string }) =>
+    o.status === 'completed'
+  ).length || 0
+
+  const pendingReviewCount = allOrders?.filter((o: { status: string }) =>
+    o.status === 'draft_delivered'
+  ).length || 0
+
+  const stats = [
+    {
+      label: 'Active Orders',
+      value: activeCount,
+      icon: Clock,
+      color: 'blue',
+      bgGradient: 'from-blue-500/10 to-blue-600/5',
+      iconBg: 'bg-blue-100',
+      iconColor: 'text-blue-600',
+      trend: 'In progress',
+      href: '/orders?status=active'
+    },
+    {
+      label: 'Completed',
+      value: completedCount,
+      icon: CheckCircle,
+      color: 'green',
+      bgGradient: 'from-emerald-500/10 to-emerald-600/5',
+      iconBg: 'bg-emerald-100',
+      iconColor: 'text-emerald-600',
+      trend: 'All time',
+      href: '/orders?status=completed'
+    },
+    {
+      label: 'Pending Review',
+      value: pendingReviewCount,
+      icon: AlertCircle,
+      color: 'orange',
+      bgGradient: 'from-orange-500/10 to-orange-600/5',
+      iconBg: 'bg-orange-100',
+      iconColor: 'text-orange-600',
+      trend: pendingReviewCount > 0 ? 'Action needed' : 'None pending',
+      urgent: pendingReviewCount > 0,
+      href: '/orders?status=draft_delivered'
+    },
+  ]
+
+  const quickActions = [
+    {
+      title: 'New Order',
+      description: 'Start a new motion request',
+      icon: PlusCircle,
+      href: '/orders/new',
+      iconBg: 'bg-gradient-to-br from-teal/20 to-teal/10',
+      iconColor: 'text-teal',
+      primary: true
+    },
+    {
+      title: 'View All Orders',
+      description: 'See your order history',
+      icon: FileText,
+      href: '/orders',
+      iconBg: 'bg-blue-100',
+      iconColor: 'text-blue-600'
+    },
+    {
+      title: 'View Pricing',
+      description: 'See motion prices',
+      icon: DollarSign,
+      href: '/pricing',
+      iconBg: 'bg-violet-100',
+      iconColor: 'text-violet-600',
+      external: true
+    },
+    {
+      title: 'Settings',
+      description: 'Account settings',
+      icon: Settings,
+      href: '/settings',
+      iconBg: 'bg-gray-100',
+      iconColor: 'text-gray-600'
+    }
+  ]
+
+  const recentOrders: Order[] = orders || []
+
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
@@ -214,60 +233,7 @@ export default function DashboardPage() {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="divide-y divide-gray-100">
-            {recentOrders.map((order, index) => (
-              <Link
-                key={order.id}
-                href={`/orders/${order.id}`}
-                className={`order-card flex items-center justify-between py-4 px-6 hover:bg-gray-50/50 transition-all ${getUrgencyClass(order.days_until_due)}`}
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <div className="flex items-center gap-4 min-w-0 flex-1">
-                  {/* Document Icon with status indicator */}
-                  <div className="relative flex-shrink-0">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 group-hover:bg-gray-200 transition-colors">
-                      <FileText className="h-6 w-6 text-gray-500" />
-                    </div>
-                  </div>
-
-                  {/* Order details */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs text-gray-400 tracking-wide">
-                        {order.order_number}
-                      </span>
-                      <OrderStatusBadge status={order.status} size="sm" />
-                    </div>
-                    <p className="font-semibold text-navy truncate">
-                      {order.motion_type}
-                    </p>
-                    <p className="text-sm text-gray-500 truncate">{order.case_caption}</p>
-                  </div>
-                </div>
-
-                {/* Price and deadline */}
-                <div className="text-right flex-shrink-0 ml-4 hidden sm:block">
-                  <p className="font-bold text-navy tabular-nums">
-                    {formatCurrency(order.total_price)}
-                  </p>
-                  <div className="flex items-center justify-end gap-1.5 mt-1 text-sm">
-                    <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                    <span className={`${order.days_until_due <= 7 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
-                      {formatDateShort(order.filing_deadline)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Arrow indicator */}
-                <div className="ml-4 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:block">
-                  <ChevronRight className="h-5 w-5 text-gray-300" />
-                </div>
-              </Link>
-            ))}
-          </div>
-
-          {/* Empty state - shown when no orders */}
-          {recentOrders.length === 0 && (
+          {recentOrders.length === 0 ? (
             <div className="empty-state py-12">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 mb-4">
                 <FileText className="h-8 w-8 text-gray-300" />
@@ -280,6 +246,57 @@ export default function DashboardPage() {
                   Create Order
                 </Link>
               </Button>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {recentOrders.map((order, index) => {
+                const daysUntilDue = getDaysUntilDue(order.filing_deadline)
+                return (
+                  <Link
+                    key={order.id}
+                    href={`/orders/${order.id}`}
+                    className={`order-card flex items-center justify-between py-4 px-6 hover:bg-gray-50/50 transition-all ${getUrgencyClass(daysUntilDue)}`}
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                      <div className="relative flex-shrink-0">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 group-hover:bg-gray-200 transition-colors">
+                          <FileText className="h-6 w-6 text-gray-500" />
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono text-xs text-gray-400 tracking-wide">
+                            {order.order_number}
+                          </span>
+                          <OrderStatusBadge status={order.status as OrderStatus} size="sm" />
+                        </div>
+                        <p className="font-semibold text-navy truncate">
+                          {order.motion_type}
+                        </p>
+                        <p className="text-sm text-gray-500 truncate">{order.case_caption}</p>
+                      </div>
+                    </div>
+
+                    <div className="text-right flex-shrink-0 ml-4 hidden sm:block">
+                      <p className="font-bold text-navy tabular-nums">
+                        {formatCurrency(order.total_price)}
+                      </p>
+                      <div className="flex items-center justify-end gap-1.5 mt-1 text-sm">
+                        <Calendar className="h-3.5 w-3.5 text-gray-400" />
+                        <span className={`${daysUntilDue <= 7 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+                          {formatDateShort(order.filing_deadline)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="ml-4 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:block">
+                      <ChevronRight className="h-5 w-5 text-gray-300" />
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           )}
         </CardContent>

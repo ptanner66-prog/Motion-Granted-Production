@@ -1,12 +1,13 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 import type { OrderStatus } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { OrderStatusBadge } from '@/components/orders/order-status-badge'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
 import {
@@ -15,80 +16,89 @@ import {
   Download,
   FileText,
   MessageSquare,
-  Send,
   Clock,
   User,
-  Building,
   Scale,
   Paperclip,
   CheckCircle,
   AlertCircle,
   ChevronRight,
   Copy,
-  ExternalLink,
 } from 'lucide-react'
+
+interface Party {
+  party_name: string
+  party_role: string
+}
+
+interface Document {
+  id: string
+  file_name: string
+  created_at: string
+}
+
+interface Message {
+  id: string
+  sender_type: string
+  content: string
+  created_at: string
+}
 
 export const metadata: Metadata = {
   title: 'Order Details',
   description: 'View order details and communicate with your clerk.',
 }
 
-// Mock data - in production, fetch from Supabase
-const order = {
-  id: '1',
-  order_number: 'MG-2501-0001',
-  motion_type: 'Motion for Summary Judgment',
-  motion_tier: 3,
-  base_price: 2000,
-  turnaround: 'standard' as const,
-  rush_surcharge: 0,
-  total_price: 2000,
-  status: 'in_progress' as OrderStatus,
-  filing_deadline: '2025-02-15',
-  expected_delivery: '2025-02-10',
-  jurisdiction: 'Louisiana State Court',
-  court_division: '19th Judicial District Court',
-  case_number: '2024-12345',
-  case_caption: 'Smith v. Jones',
-  statement_of_facts: 'Plaintiff alleges that on January 15, 2024, Defendant negligently operated a motor vehicle...',
-  procedural_history: 'Plaintiff filed suit on March 1, 2024. Defendant answered on April 1, 2024. Discovery commenced...',
-  instructions: 'Please draft a Motion for Summary Judgment arguing that there are no genuine issues of material fact...',
-  parties: [
-    { name: 'John Smith', role: 'Plaintiff' },
-    { name: 'Jane Jones', role: 'Defendant' },
-  ],
-  documents: [
-    { id: '1', name: 'Complaint.pdf', type: 'complaint', size: 245000, uploaded_at: '2025-01-10' },
-    { id: '2', name: 'Answer.pdf', type: 'answer', size: 189000, uploaded_at: '2025-01-10' },
-    { id: '3', name: 'Discovery_Responses.pdf', type: 'discovery', size: 1250000, uploaded_at: '2025-01-10' },
-  ],
-  messages: [
-    {
-      id: '1',
-      sender: 'clerk',
-      sender_name: 'Sarah Wilson',
-      message: 'Thank you for your order. I have reviewed the materials and will begin drafting. I may have a few clarifying questions as I proceed.',
-      created_at: '2025-01-11T10:30:00',
-    },
-    {
-      id: '2',
-      sender: 'client',
-      sender_name: 'John Attorney',
-      message: 'Sounds good. Please let me know if you need anything else.',
-      created_at: '2025-01-11T14:15:00',
-    },
-  ],
-  created_at: '2025-01-10',
-}
-
 // Calculate progress based on status
-function getOrderProgress(status: OrderStatus) {
+function getOrderProgress(status: string) {
   const statusOrder = ['submitted', 'in_progress', 'in_review', 'draft_delivered', 'revision_requested', 'completed']
   const currentIndex = statusOrder.indexOf(status)
   return Math.max(((currentIndex + 1) / statusOrder.length) * 100, 20)
 }
 
-export default function OrderDetailPage() {
+export default async function OrderDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Fetch order details
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', id)
+    .eq('client_id', user?.id)
+    .single()
+
+  if (error || !order) {
+    notFound()
+  }
+
+  // Fetch parties for this order
+  const { data: partiesData } = await supabase
+    .from('parties')
+    .select('party_name, party_role')
+    .eq('order_id', id)
+  const parties: Party[] = partiesData || []
+
+  // Fetch documents for this order
+  const { data: documentsData } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('order_id', id)
+  const documents: Document[] = documentsData || []
+
+  // Fetch messages for this order
+  const { data: messagesData } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('order_id', id)
+    .order('created_at', { ascending: true })
+  const messages: Message[] = messagesData || []
+
   const progress = getOrderProgress(order.status)
 
   return (
@@ -109,7 +119,7 @@ export default function OrderDetailPage() {
               <h1 className="text-2xl sm:text-3xl font-bold text-navy tracking-tight">
                 {order.order_number}
               </h1>
-              <OrderStatusBadge status={order.status} />
+              <OrderStatusBadge status={order.status as OrderStatus} />
             </div>
             <p className="text-lg text-gray-600">{order.motion_type}</p>
             <p className="text-sm text-gray-500 mt-1">
@@ -168,7 +178,7 @@ export default function OrderDetailPage() {
                 <Paperclip className="h-4 w-4" />
                 Documents
                 <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-xs font-semibold text-gray-600 ml-1">
-                  {order.documents.length}
+                  {documents?.length || 0}
                 </span>
               </TabsTrigger>
               <TabsTrigger
@@ -178,7 +188,7 @@ export default function OrderDetailPage() {
                 <MessageSquare className="h-4 w-4" />
                 Messages
                 <span className="rounded-full bg-teal/20 px-1.5 py-0.5 text-xs font-semibold text-teal ml-1">
-                  {order.messages.length}
+                  {messages?.length || 0}
                 </span>
               </TabsTrigger>
             </TabsList>
@@ -211,41 +221,45 @@ export default function OrderDetailPage() {
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Jurisdiction</p>
                       <p className="text-navy">{order.jurisdiction}</p>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Court/Division</p>
-                      <p className="text-navy">{order.court_division}</p>
-                    </div>
+                    {order.court_division && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Court/Division</p>
+                        <p className="text-navy">{order.court_division}</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
 
               {/* Parties */}
-              <Card className="border-0 shadow-sm overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-gray-50 to-transparent border-b border-gray-100">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <User className="h-5 w-5 text-gray-500" />
-                    Parties
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {order.parties.map((party, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
-                          <User className="h-5 w-5 text-gray-500" />
+              {parties && parties.length > 0 && (
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-gray-50 to-transparent border-b border-gray-100">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <User className="h-5 w-5 text-gray-500" />
+                      Parties
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {parties.map((party, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
+                        >
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
+                            <User className="h-5 w-5 text-gray-500" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-navy">{party.party_name}</p>
+                            <p className="text-sm text-gray-500">{party.party_role}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-navy">{party.name}</p>
-                          <p className="text-sm text-gray-500">{party.role}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Statement of Facts */}
               <Card className="border-0 shadow-sm overflow-hidden">
@@ -291,30 +305,37 @@ export default function OrderDetailPage() {
                   <CardDescription>Documents provided with this order</CardDescription>
                 </CardHeader>
                 <CardContent className="p-6">
-                  <div className="space-y-3">
-                    {order.documents.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="group flex items-center justify-between rounded-xl border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50/50 transition-all cursor-pointer"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 group-hover:bg-teal/10 transition-colors">
-                            <FileText className="h-6 w-6 text-gray-500 group-hover:text-teal transition-colors" />
+                  {documents && documents.length > 0 ? (
+                    <div className="space-y-3">
+                      {documents.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="group flex items-center justify-between rounded-xl border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50/50 transition-all cursor-pointer"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 group-hover:bg-teal/10 transition-colors">
+                              <FileText className="h-6 w-6 text-gray-500 group-hover:text-teal transition-colors" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-navy">{doc.file_name}</p>
+                              <p className="text-sm text-gray-500">
+                                {formatDateShort(doc.created_at)}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-semibold text-navy">{doc.name}</p>
-                            <p className="text-sm text-gray-500">
-                              {(doc.size / 1024).toFixed(0)} KB • {formatDateShort(doc.uploaded_at)}
-                            </p>
-                          </div>
+                          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Download className="h-4 w-4 mr-2" />
+                            Download
+                          </Button>
                         </div>
-                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Download className="h-4 w-4 mr-2" />
-                          Download
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p>No documents uploaded</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -329,52 +350,50 @@ export default function OrderDetailPage() {
                   <CardDescription>Communication with your assigned clerk</CardDescription>
                 </CardHeader>
                 <CardContent className="p-6">
-                  <div className="space-y-4">
-                    {order.messages.map((message) => (
-                      <div
-                        key={message.id}
-                        className={`flex gap-3 ${message.sender === 'client' ? 'flex-row-reverse' : ''}`}
-                      >
-                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                          message.sender === 'client' ? 'bg-teal/20' : 'bg-navy/10'
-                        }`}>
-                          <User className={`h-5 w-5 ${message.sender === 'client' ? 'text-teal' : 'text-navy'}`} />
-                        </div>
+                  {messages && messages.length > 0 ? (
+                    <div className="space-y-4">
+                      {messages.map((message) => (
                         <div
-                          className={`max-w-[80%] rounded-2xl p-4 ${
-                            message.sender === 'client'
-                              ? 'bg-gradient-to-br from-teal/10 to-teal/5'
-                              : 'bg-gray-100'
-                          }`}
+                          key={message.id}
+                          className={`flex gap-3 ${message.sender_type === 'client' ? 'flex-row-reverse' : ''}`}
                         >
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <span className="text-sm font-semibold text-navy">
-                              {message.sender_name}
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              {formatDateShort(message.created_at)}
-                            </span>
+                          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                            message.sender_type === 'client' ? 'bg-teal/20' : 'bg-navy/10'
+                          }`}>
+                            <User className={`h-5 w-5 ${message.sender_type === 'client' ? 'text-teal' : 'text-navy'}`} />
                           </div>
-                          <p className="text-gray-700 leading-relaxed">{message.message}</p>
+                          <div
+                            className={`max-w-[80%] rounded-2xl p-4 ${
+                              message.sender_type === 'client'
+                                ? 'bg-gradient-to-br from-teal/10 to-teal/5'
+                                : 'bg-gray-100'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="text-sm font-semibold text-navy">
+                                {message.sender_type === 'client' ? 'You' : 'Clerk'}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {formatDateShort(message.created_at)}
+                              </span>
+                            </div>
+                            <p className="text-gray-700 leading-relaxed">{message.content}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Message input */}
-                  <Separator className="my-6" />
-                  <div className="space-y-4">
-                    <Textarea
-                      placeholder="Type your message..."
-                      rows={3}
-                      className="resize-none border-gray-200 focus:border-teal focus:ring-teal/30"
-                    />
-                    <div className="flex justify-end">
-                      <Button className="btn-premium gap-2">
-                        <Send className="h-4 w-4" />
-                        Send Message
-                      </Button>
+                      ))}
                     </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <MessageSquare className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p>No messages yet</p>
+                      <p className="text-sm mt-1">Messages with your clerk will appear here</p>
+                    </div>
+                  )}
+
+                  {/* Message input placeholder */}
+                  <Separator className="my-6" />
+                  <div className="text-center text-gray-500 text-sm">
+                    <p>Messaging functionality coming soon</p>
                   </div>
                 </CardContent>
               </Card>
@@ -474,7 +493,7 @@ export default function OrderDetailPage() {
                   </Badge>
                   <p className="text-sm text-gray-500 mt-1">
                     {order.turnaround === 'standard'
-                      ? 'Tier 3: 7-14 business days'
+                      ? `Tier ${order.motion_tier}: Standard delivery`
                       : order.turnaround === 'rush_72'
                         ? '72-hour delivery'
                         : '48-hour delivery'}

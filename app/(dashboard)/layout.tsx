@@ -1,15 +1,26 @@
+import { redirect } from 'next/navigation'
 import { DashboardShell } from '@/components/layout/dashboard-shell'
+import { getUser, getProfile } from '@/lib/supabase/server'
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  // In production, you would fetch the user from the session
-  const user = {
-    name: 'John Smith',
-    email: 'john.smith@lawfirm.com',
+  const user = await getUser()
+
+  // Redirect to login if not authenticated
+  if (!user) {
+    redirect('/login')
   }
 
-  return <DashboardShell user={user}>{children}</DashboardShell>
+  // Get user profile
+  const profile = await getProfile()
+
+  const userData = {
+    name: profile?.full_name || user.email?.split('@')[0] || 'User',
+    email: user.email || '',
+  }
+
+  return <DashboardShell user={userData}>{children}</DashboardShell>
 }

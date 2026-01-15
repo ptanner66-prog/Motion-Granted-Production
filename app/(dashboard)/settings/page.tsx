@@ -1,79 +1,200 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { Loader2, LogOut } from 'lucide-react'
 
-// Mock user data - in production, fetch from Supabase
-const user = {
-  full_name: 'John Smith',
-  email: 'john.smith@lawfirm.com',
-  phone: '(555) 123-4567',
-  bar_number: '12345',
-  states_licensed: ['Louisiana'],
-  firm_name: 'Smith Law Firm',
-  firm_address: '123 Main Street, Suite 100, Baton Rouge, LA 70801',
-  firm_phone: '(555) 987-6543',
+interface UserProfile {
+  full_name: string
+  email: string
+  phone: string | null
+  bar_number: string | null
+  states_licensed: string[]
+  firm_name: string | null
+  firm_address: string | null
+  firm_phone: string | null
 }
 
 export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   const { toast } = useToast()
+  const router = useRouter()
+  const supabase = createClient()
+
+  // Load user profile on mount
+  useEffect(() => {
+    async function loadProfile() {
+      setIsLoading(true)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          router.push('/login')
+          return
+        }
+
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single()
+
+        if (error) throw error
+
+        setProfile({
+          full_name: profileData.full_name || '',
+          email: user.email || '',
+          phone: profileData.phone,
+          bar_number: profileData.bar_number,
+          states_licensed: profileData.states_licensed || [],
+          firm_name: profileData.firm_name,
+          firm_address: profileData.firm_address,
+          firm_phone: profileData.firm_phone,
+        })
+      } catch (error) {
+        console.error('Error loading profile:', error)
+        toast({
+          title: 'Error loading profile',
+          description: 'Please try again later.',
+          variant: 'destructive',
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadProfile()
+  }, [])
 
   const handleSave = async () => {
-    setIsLoading(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    toast({
-      title: 'Settings saved',
-      description: 'Your account settings have been updated.',
-    })
-    setIsLoading(false)
+    if (!profile) return
+
+    setIsSaving(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: profile.full_name,
+          phone: profile.phone,
+          bar_number: profile.bar_number,
+          firm_name: profile.firm_name,
+          firm_address: profile.firm_address,
+          firm_phone: profile.firm_phone,
+        })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast({
+        title: 'Settings saved',
+        description: 'Your account settings have been updated.',
+      })
+    } catch (error) {
+      console.error('Error saving profile:', error)
+      toast({
+        title: 'Error saving settings',
+        description: 'Please try again later.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-6 lg:p-8 flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-teal" />
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div className="p-6 lg:p-8 text-center">
+        <p className="text-gray-500">Unable to load profile</p>
+      </div>
+    )
   }
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-6 lg:p-8 max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-navy">Account Settings</h1>
-        <p className="text-gray-500">Manage your account information</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-navy tracking-tight">Account Settings</h1>
+        <p className="text-gray-500 mt-1">Manage your account information</p>
       </div>
 
-      <div className="max-w-3xl space-y-6">
+      <div className="space-y-6">
         {/* Personal Information */}
-        <Card>
-          <CardHeader>
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="bg-gradient-to-r from-gray-50 to-transparent border-b border-gray-100">
             <CardTitle>Personal Information</CardTitle>
             <CardDescription>Update your personal details</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="p-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="full_name">Full Name</Label>
-                <Input id="full_name" defaultValue={user.full_name} />
+                <Input
+                  id="full_name"
+                  value={profile.full_name}
+                  onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" defaultValue={user.email} />
+                <Input
+                  id="email"
+                  type="email"
+                  value={profile.email}
+                  disabled
+                  className="bg-gray-50"
+                />
+                <p className="text-xs text-gray-500">
+                  Contact support to change your email
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" type="tel" defaultValue={user.phone} />
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={profile.phone || ''}
+                  onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="bar_number">Bar Number</Label>
-                <Input id="bar_number" defaultValue={user.bar_number} />
+                <Input
+                  id="bar_number"
+                  value={profile.bar_number || ''}
+                  onChange={(e) => setProfile({ ...profile, bar_number: e.target.value })}
+                />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="states">State(s) of Licensure</Label>
               <Input
                 id="states"
-                defaultValue={user.states_licensed.join(', ')}
+                value={profile.states_licensed.join(', ')}
                 disabled
                 className="bg-gray-50"
               />
@@ -85,58 +206,47 @@ export default function SettingsPage() {
         </Card>
 
         {/* Firm Information */}
-        <Card>
-          <CardHeader>
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="bg-gradient-to-r from-gray-50 to-transparent border-b border-gray-100">
             <CardTitle>Firm Information</CardTitle>
             <CardDescription>Update your firm details</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="p-6 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="firm_name">Firm Name</Label>
-              <Input id="firm_name" defaultValue={user.firm_name} />
+              <Input
+                id="firm_name"
+                value={profile.firm_name || ''}
+                onChange={(e) => setProfile({ ...profile, firm_name: e.target.value })}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="firm_address">Firm Address</Label>
-              <Input id="firm_address" defaultValue={user.firm_address} />
+              <Input
+                id="firm_address"
+                value={profile.firm_address || ''}
+                onChange={(e) => setProfile({ ...profile, firm_address: e.target.value })}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="firm_phone">Firm Phone</Label>
-              <Input id="firm_phone" type="tel" defaultValue={user.firm_phone} />
+              <Input
+                id="firm_phone"
+                type="tel"
+                value={profile.firm_phone || ''}
+                onChange={(e) => setProfile({ ...profile, firm_phone: e.target.value })}
+              />
             </div>
           </CardContent>
         </Card>
 
-        {/* Password */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Change Password</CardTitle>
-            <CardDescription>Update your password</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="current_password">Current Password</Label>
-              <Input id="current_password" type="password" />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="new_password">New Password</Label>
-                <Input id="new_password" type="password" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm_password">Confirm New Password</Label>
-                <Input id="confirm_password" type="password" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Notifications */}
-        <Card>
-          <CardHeader>
+        {/* Email Notifications */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="bg-gradient-to-r from-gray-50 to-transparent border-b border-gray-100">
             <CardTitle>Email Notifications</CardTitle>
             <CardDescription>Manage your notification preferences</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium text-navy">Order Updates</p>
@@ -144,7 +254,7 @@ export default function SettingsPage() {
                   Receive notifications when your order status changes
                 </p>
               </div>
-              <input type="checkbox" defaultChecked className="h-5 w-5 rounded" />
+              <Switch defaultChecked />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -154,7 +264,7 @@ export default function SettingsPage() {
                   Get notified when your draft is ready for download
                 </p>
               </div>
-              <input type="checkbox" defaultChecked className="h-5 w-5 rounded" />
+              <Switch defaultChecked />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -164,7 +274,7 @@ export default function SettingsPage() {
                   Receive notifications for new messages
                 </p>
               </div>
-              <input type="checkbox" defaultChecked className="h-5 w-5 rounded" />
+              <Switch defaultChecked />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -174,15 +284,23 @@ export default function SettingsPage() {
                   Receive updates about new features and promotions
                 </p>
               </div>
-              <input type="checkbox" className="h-5 w-5 rounded" />
+              <Switch />
             </div>
           </CardContent>
         </Card>
 
-        {/* Save Button */}
-        <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={isLoading}>
-            {isLoading ? (
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row justify-between gap-4">
+          <Button
+            variant="outline"
+            onClick={handleSignOut}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign Out
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving} className="btn-premium">
+            {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Saving...

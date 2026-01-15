@@ -14,7 +14,7 @@ import { Instructions } from '@/components/orders/intake-form/instructions'
 import { DocumentUpload } from '@/components/orders/intake-form/document-upload'
 import { OrderSummary } from '@/components/orders/intake-form/order-summary'
 import { useToast } from '@/hooks/use-toast'
-import { ArrowLeft, ArrowRight, Loader2, CreditCard } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader2, Send } from 'lucide-react'
 import { useState } from 'react'
 
 const steps = [
@@ -39,14 +39,21 @@ export default function NewOrderPage() {
     nextStep,
     prevStep,
     reset,
-    // Validation fields
+    // Form data
     motionType,
+    motionTier,
+    basePrice,
+    turnaround,
     filingDeadline,
+    rushSurcharge,
+    totalPrice,
     jurisdiction,
     jurisdictionOther,
+    courtDivision,
     caseNumber,
     caseCaption,
     parties,
+    relatedEntities,
     statementOfFacts,
     proceduralHistory,
     instructions,
@@ -131,13 +138,42 @@ export default function NewOrderPage() {
     setIsSubmitting(true)
 
     try {
-      // In production, this would:
-      // 1. Create a Stripe PaymentIntent
-      // 2. Process payment
-      // 3. Create the order in Supabase
-      // 4. Send confirmation email
+      // Prepare order data
+      const orderData = {
+        motion_type: motionType,
+        motion_tier: motionTier,
+        base_price: basePrice,
+        turnaround,
+        rush_surcharge: rushSurcharge,
+        total_price: totalPrice,
+        filing_deadline: filingDeadline instanceof Date
+          ? filingDeadline.toISOString().split('T')[0]
+          : filingDeadline,
+        jurisdiction: jurisdiction === 'other' ? jurisdictionOther : jurisdiction,
+        court_division: courtDivision || null,
+        case_number: caseNumber,
+        case_caption: caseCaption,
+        statement_of_facts: statementOfFacts,
+        procedural_history: proceduralHistory,
+        instructions,
+        related_entities: relatedEntities || null,
+        parties: parties.filter(p => p.name && p.role),
+      }
 
-      await new Promise((resolve) => setTimeout(resolve, 2000)) // Simulate API call
+      // Submit to API
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to submit order')
+      }
 
       toast({
         title: 'Order submitted successfully!',
@@ -146,10 +182,12 @@ export default function NewOrderPage() {
 
       reset()
       router.push('/dashboard')
-    } catch {
+      router.refresh()
+    } catch (error) {
+      console.error('Error submitting order:', error)
       toast({
         title: 'Error submitting order',
-        description: 'Please try again or contact support.',
+        description: error instanceof Error ? error.message : 'Please try again or contact support.',
         variant: 'destructive',
       })
     } finally {
@@ -158,12 +196,12 @@ export default function NewOrderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-warm-gray p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-3xl">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-navy">New Order</h1>
-          <p className="text-gray-500">Complete the form to submit your order</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-navy tracking-tight">New Order</h1>
+          <p className="text-gray-500 mt-1">Complete the form to submit your order</p>
         </div>
 
         {/* Progress */}
@@ -196,7 +234,7 @@ export default function NewOrderPage() {
         </div>
 
         {/* Step Content */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardContent className="pt-6">
             <StepComponent />
           </CardContent>
@@ -208,29 +246,30 @@ export default function NewOrderPage() {
             variant="outline"
             onClick={prevStep}
             disabled={step === 1}
+            className="gap-2"
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
 
           {step === steps.length ? (
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
+            <Button onClick={handleSubmit} disabled={isSubmitting} className="btn-premium gap-2">
               {isSubmitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Submitting...
                 </>
               ) : (
                 <>
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Submit & Pay
+                  <Send className="h-4 w-4" />
+                  Submit Order
                 </>
               )}
             </Button>
           ) : (
-            <Button onClick={handleNext}>
+            <Button onClick={handleNext} className="btn-premium gap-2">
               Next
-              <ArrowRight className="ml-2 h-4 w-4" />
+              <ArrowRight className="h-4 w-4" />
             </Button>
           )}
         </div>
