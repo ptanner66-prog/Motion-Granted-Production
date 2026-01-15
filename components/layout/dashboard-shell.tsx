@@ -13,8 +13,14 @@ import {
   X,
   Bell,
   User,
+  Search,
+  HelpCircle,
+  BookOpen,
+  MessageSquare,
+  ChevronRight,
+  ExternalLink,
 } from 'lucide-react'
-import { Logo, LogoIcon } from '@/components/shared/logo'
+import { Logo } from '@/components/shared/logo'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -27,11 +33,49 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'My Orders', href: '/orders', icon: FileText },
-  { name: 'New Order', href: '/orders/new', icon: PlusCircle },
-  { name: 'Settings', href: '/settings', icon: Settings },
+const mainNavigation = [
+  {
+    name: 'Dashboard',
+    href: '/dashboard',
+    icon: LayoutDashboard,
+    description: 'Overview & stats'
+  },
+  {
+    name: 'My Orders',
+    href: '/orders',
+    icon: FileText,
+    description: 'View all orders'
+  },
+  {
+    name: 'New Order',
+    href: '/orders/new',
+    icon: PlusCircle,
+    description: 'Start a new motion',
+    highlight: true
+  },
+]
+
+const secondaryNavigation = [
+  {
+    name: 'Settings',
+    href: '/settings',
+    icon: Settings,
+  },
+]
+
+const resourceLinks = [
+  {
+    name: 'View Pricing',
+    href: '/pricing',
+    icon: ExternalLink,
+    external: true
+  },
+  {
+    name: 'Help & Support',
+    href: 'mailto:support@motiongranted.com',
+    icon: HelpCircle,
+    external: true
+  },
 ]
 
 interface DashboardShellProps {
@@ -45,6 +89,7 @@ interface DashboardShellProps {
 export function DashboardShell({ children, user }: DashboardShellProps) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchFocused, setSearchFocused] = useState(false)
 
   const initials = user?.name
     ?.split(' ')
@@ -52,12 +97,29 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
     .join('')
     .toUpperCase() || 'U'
 
+  // Generate breadcrumbs from pathname
+  const getBreadcrumbs = () => {
+    const paths = pathname.split('/').filter(Boolean)
+    const breadcrumbs = [{ name: 'Home', href: '/dashboard' }]
+
+    let currentPath = ''
+    paths.forEach((path) => {
+      currentPath += `/${path}`
+      const name = path.charAt(0).toUpperCase() + path.slice(1).replace(/-/g, ' ')
+      breadcrumbs.push({ name, href: currentPath })
+    })
+
+    return breadcrumbs
+  }
+
+  const breadcrumbs = getBreadcrumbs()
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-warm-gray">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/20 lg:hidden"
+          className="fixed inset-0 z-40 bg-navy/30 backdrop-blur-sm lg:hidden animate-fade-in"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -65,119 +127,284 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 transform bg-white shadow-lg transition-transform duration-300 lg:translate-x-0 lg:shadow-none lg:border-r lg:border-gray-200',
+          'fixed inset-y-0 left-0 z-50 w-[280px] transform bg-white shadow-elevated transition-transform duration-300 ease-out lg:translate-x-0 lg:shadow-none lg:border-r lg:border-gray-200/80',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        {/* Sidebar header */}
-        <div className="flex h-16 items-center justify-between px-4 border-b border-gray-200">
-          <Logo size="sm" />
-          <button
-            className="lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <X className="h-6 w-6 text-gray-500" />
-          </button>
-        </div>
+        <div className="flex h-full flex-col">
+          {/* Sidebar header */}
+          <div className="flex h-16 items-center justify-between px-5 border-b border-gray-100">
+            <Logo size="sm" />
+            <button
+              className="lg:hidden rounded-lg p-2 hover:bg-gray-100 transition-colors"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <X className="h-5 w-5 text-gray-500" />
+            </button>
+          </div>
 
-        {/* Navigation */}
-        <nav className="flex flex-col gap-1 p-4">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-teal/10 text-navy'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-navy'
-                )}
+          {/* Main Navigation */}
+          <nav className="flex-1 overflow-y-auto px-4 py-6">
+            <div className="space-y-1">
+              {mainNavigation.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => setSidebarOpen(false)}
+                    className={cn(
+                      'nav-item group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
+                      isActive
+                        ? 'active bg-teal/10 text-navy'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-navy',
+                      item.highlight && !isActive && 'bg-gradient-to-r from-teal/5 to-transparent border border-teal/20'
+                    )}
+                  >
+                    <div className={cn(
+                      'icon-circle icon-circle-sm flex-shrink-0 transition-all duration-200',
+                      isActive
+                        ? 'bg-teal/20'
+                        : item.highlight
+                          ? 'bg-teal/10 group-hover:bg-teal/20'
+                          : 'bg-gray-100 group-hover:bg-gray-200'
+                    )}>
+                      <item.icon className={cn(
+                        'h-5 w-5 transition-colors',
+                        isActive ? 'text-teal' : item.highlight ? 'text-teal' : 'text-gray-500 group-hover:text-navy'
+                      )} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="block truncate">{item.name}</span>
+                      {item.description && (
+                        <span className={cn(
+                          'block text-xs truncate transition-colors',
+                          isActive ? 'text-navy/60' : 'text-gray-400'
+                        )}>
+                          {item.description}
+                        </span>
+                      )}
+                    </div>
+                    {item.highlight && !isActive && (
+                      <ChevronRight className="h-4 w-4 text-teal opacity-50 group-hover:opacity-100 transition-opacity" />
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+
+            {/* Divider */}
+            <div className="my-6 border-t border-gray-100" />
+
+            {/* Secondary Navigation */}
+            <div className="space-y-1">
+              <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                Account
+              </p>
+              {secondaryNavigation.map((item) => {
+                const isActive = pathname === item.href
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => setSidebarOpen(false)}
+                    className={cn(
+                      'nav-item group flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200',
+                      isActive
+                        ? 'active bg-teal/10 text-navy'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-navy'
+                    )}
+                  >
+                    <item.icon className={cn(
+                      'h-4 w-4 transition-colors',
+                      isActive ? 'text-teal' : 'text-gray-400 group-hover:text-navy'
+                    )} />
+                    {item.name}
+                  </Link>
+                )
+              })}
+            </div>
+
+            {/* Resources */}
+            <div className="mt-6 space-y-1">
+              <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                Resources
+              </p>
+              {resourceLinks.map((item) => (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  target={item.external ? '_blank' : undefined}
+                  rel={item.external ? 'noopener noreferrer' : undefined}
+                  className="group flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-navy transition-all duration-200"
+                >
+                  <item.icon className="h-4 w-4 text-gray-400 group-hover:text-navy transition-colors" />
+                  {item.name}
+                  {item.external && (
+                    <ExternalLink className="h-3 w-3 text-gray-300 ml-auto" />
+                  )}
+                </Link>
+              ))}
+            </div>
+          </nav>
+
+          {/* Help Card */}
+          <div className="px-4 pb-4">
+            <div className="rounded-xl bg-gradient-to-br from-navy to-navy-light p-4 text-white">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
+                  <MessageSquare className="h-4 w-4" />
+                </div>
+                <span className="font-semibold text-sm">Need Help?</span>
+              </div>
+              <p className="text-xs text-white/70 mb-3">
+                Questions about your orders or our services?
+              </p>
+              <a
+                href="mailto:support@motiongranted.com"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-teal hover:text-teal-light transition-colors"
               >
-                <item.icon className={cn('h-5 w-5', isActive && 'text-teal')} />
-                {item.name}
-              </Link>
-            )
-          })}
-        </nav>
+                Contact Support
+                <ChevronRight className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
 
-        {/* Sidebar footer */}
-        <div className="absolute bottom-0 left-0 right-0 border-t border-gray-200 p-4">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-9 w-9">
-              <AvatarFallback className="bg-teal text-navy text-sm">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-navy truncate">
-                {user?.name || 'User'}
-              </p>
-              <p className="text-xs text-gray-500 truncate">
-                {user?.email || 'user@example.com'}
-              </p>
+          {/* User section */}
+          <div className="border-t border-gray-100 p-4">
+            <div className="flex items-center gap-3 rounded-xl p-2 hover:bg-gray-50 transition-colors cursor-pointer">
+              <Avatar className="h-10 w-10 ring-2 ring-teal/20">
+                <AvatarFallback className="bg-gradient-to-br from-teal to-teal-dark text-white text-sm font-medium">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-navy truncate">
+                  {user?.name || 'User'}
+                </p>
+                <p className="text-xs text-gray-500 truncate">
+                  {user?.email || 'user@example.com'}
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-gray-300" />
             </div>
           </div>
         </div>
       </aside>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+      <div className="lg:pl-[280px]">
         {/* Top header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-gray-200 bg-white px-4 sm:px-6">
-          <button
-            className="lg:hidden"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu className="h-6 w-6 text-gray-500" />
-          </button>
+        <header className="sticky top-0 z-30 border-b border-gray-200/80 bg-white/95 backdrop-blur-md">
+          <div className="flex h-16 items-center gap-4 px-4 sm:px-6">
+            {/* Mobile menu button */}
+            <button
+              className="lg:hidden rounded-lg p-2 hover:bg-gray-100 transition-colors touch-target"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu className="h-5 w-5 text-gray-600" />
+            </button>
 
-          <div className="flex-1" />
-
-          {/* Notifications */}
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-5 w-5 text-gray-500" />
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-teal" />
-          </Button>
-
-          {/* User menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-navy text-white text-xs">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium">{user?.name || 'User'}</p>
-                  <p className="text-xs text-gray-500">{user?.email || 'user@example.com'}</p>
+            {/* Breadcrumbs - Desktop */}
+            <nav className="hidden md:flex items-center gap-1.5 text-sm breadcrumb">
+              {breadcrumbs.map((crumb, index) => (
+                <div key={crumb.href} className="flex items-center gap-1.5">
+                  {index > 0 && (
+                    <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
+                  )}
+                  {index === breadcrumbs.length - 1 ? (
+                    <span className="font-medium text-navy">{crumb.name}</span>
+                  ) : (
+                    <Link
+                      href={crumb.href}
+                      className="text-gray-500 hover:text-teal transition-colors"
+                    >
+                      {crumb.name}
+                    </Link>
+                  )}
                 </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/settings" className="cursor-pointer">
-                  <User className="mr-2 h-4 w-4" />
-                  Account Settings
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600 cursor-pointer">
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              ))}
+            </nav>
+
+            {/* Search bar */}
+            <div className="flex-1 max-w-md ml-auto mr-4">
+              <div className={cn(
+                'relative transition-all duration-200',
+                searchFocused && 'scale-[1.02]'
+              )}>
+                <Search className={cn(
+                  'absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors',
+                  searchFocused ? 'text-teal' : 'text-gray-400'
+                )} />
+                <input
+                  type="text"
+                  placeholder="Search orders..."
+                  className={cn(
+                    'w-full rounded-lg border bg-gray-50/50 py-2 pl-10 pr-4 text-sm placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal/30',
+                    searchFocused ? 'border-teal bg-white shadow-sm' : 'border-gray-200 hover:border-gray-300'
+                  )}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                />
+              </div>
+            </div>
+
+            {/* Notifications */}
+            <Button variant="ghost" size="icon" className="relative rounded-lg hover:bg-gray-100 transition-colors">
+              <Bell className="h-5 w-5 text-gray-500" />
+              <span className="notification-dot absolute right-2 top-2 h-2 w-2 rounded-full bg-teal ring-2 ring-white" />
+            </Button>
+
+            {/* User menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-9 w-9 rounded-lg p-0 hover:bg-gray-100 transition-colors">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-navy text-white text-xs font-medium">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60 p-2">
+                <DropdownMenuLabel className="p-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-gradient-to-br from-teal to-teal-dark text-white text-sm">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col space-y-0.5">
+                      <p className="text-sm font-semibold text-navy">{user?.name || 'User'}</p>
+                      <p className="text-xs text-gray-500">{user?.email || 'user@example.com'}</p>
+                    </div>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator className="my-2" />
+                <DropdownMenuItem asChild className="rounded-lg p-2.5 cursor-pointer">
+                  <Link href="/settings" className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-gray-500" />
+                    <span>Account Settings</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="rounded-lg p-2.5 cursor-pointer">
+                  <Link href="/orders" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-gray-500" />
+                    <span>My Orders</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="my-2" />
+                <DropdownMenuItem className="rounded-lg p-2.5 text-red-600 cursor-pointer hover:bg-red-50 hover:text-red-700 focus:bg-red-50 focus:text-red-700">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </header>
 
         {/* Page content */}
-        <main className="min-h-[calc(100vh-4rem)]">
+        <main className="min-h-[calc(100vh-4rem)] animate-fade-in">
           {children}
         </main>
       </div>
