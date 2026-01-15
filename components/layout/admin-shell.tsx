@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/hooks/use-toast'
 import {
   LayoutDashboard,
   FileText,
@@ -97,6 +98,7 @@ export function AdminShell({ children, user }: AdminShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const { toast } = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
 
@@ -104,6 +106,13 @@ export function AdminShell({ children, user }: AdminShellProps) {
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
+  }
+
+  const handleNotificationsClick = () => {
+    toast({
+      title: 'Notifications',
+      description: 'Real-time notifications panel coming soon. You\'ll be notified of new orders, status changes, and important updates.',
+    })
   }
 
   const initials = user?.name
@@ -265,28 +274,6 @@ export function AdminShell({ children, user }: AdminShellProps) {
             </div>
           </nav>
 
-          {/* Admin Info Card */}
-          <div className="px-4 pb-4">
-            <div className="rounded-xl bg-gradient-to-br from-navy to-navy-light p-4 text-white">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-                  <Shield className="h-4 w-4" />
-                </div>
-                <span className="font-semibold text-sm">Admin Portal</span>
-              </div>
-              <p className="text-xs text-white/70 mb-3">
-                Manage orders, clients, and business analytics.
-              </p>
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-teal hover:text-teal-light transition-colors"
-              >
-                Switch to Client View
-                <ChevronRight className="h-3 w-3" />
-              </Link>
-            </div>
-          </div>
-
           {/* User section */}
           <div className="border-t border-gray-100 p-4">
             <div className="flex items-center gap-3 rounded-xl p-2 hover:bg-gray-50 transition-colors cursor-pointer">
@@ -367,7 +354,13 @@ export function AdminShell({ children, user }: AdminShellProps) {
             </div>
 
             {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative rounded-lg hover:bg-gray-100 transition-colors">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative rounded-lg hover:bg-gray-100 transition-colors"
+              onClick={handleNotificationsClick}
+              aria-label="Notifications"
+            >
               <Bell className="h-5 w-5 text-gray-500" />
               <span className="notification-dot absolute right-2 top-2 h-2 w-2 rounded-full bg-teal ring-2 ring-white" />
             </Button>
