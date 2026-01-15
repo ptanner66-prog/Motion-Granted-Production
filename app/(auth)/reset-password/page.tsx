@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { resetPasswordSchema, type ResetPasswordInput } from '@/lib/validations/auth'
@@ -22,7 +21,6 @@ import { Loader2 } from 'lucide-react'
 
 export default function ResetPasswordPage() {
   const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -56,7 +54,8 @@ export default function ResetPasswordPage() {
         description: 'Your password has been updated successfully.',
       })
 
-      router.push('/dashboard')
+      // Hard redirect - middleware will route based on role
+      window.location.href = '/dashboard'
     } catch {
       toast({
         title: 'Error',
