@@ -155,15 +155,8 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
           <nav className="flex-1 overflow-y-auto px-4 py-6">
             <div className="space-y-1">
               {mainNavigation.map((item) => {
-                // Fix active state: exact match or child routes, but /orders shouldn't match /orders/new
-                let isActive = pathname === item.href
-                if (item.href === '/orders') {
-                  // My Orders: active on /orders or /orders/[id] but NOT /orders/new
-                  isActive = pathname === '/orders' || (pathname.startsWith('/orders/') && !pathname.startsWith('/orders/new'))
-                } else if (item.href !== '/dashboard') {
-                  // Other items: exact match or child routes
-                  isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-                }
+                // Simple active logic matching admin dashboard
+                const isActive = pathname === item.href
                 return (
                   <Link
                     key={item.name}
