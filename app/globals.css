@@ -527,3 +527,9 @@ h1, h2, h3, h4, h5, h6 {
 .card-shine:hover::after {
   left: 100%;
 }
+
+/* Text overflow utilities for long content */
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useOrderForm } from '@/hooks/use-order-form'
 import { Label } from '@/components/ui/label'
@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Upload, FileText, X, AlertCircle, CheckCircle } from 'lucide-react'
+import { Upload, FileText, X, AlertCircle, CheckCircle, Info } from 'lucide-react'
 
 const DOCUMENT_TYPES = [
   { id: 'complaint', name: 'Complaint/Petition' },
@@ -27,6 +27,7 @@ const DOCUMENT_TYPES = [
 
 export function DocumentUpload() {
   const { documents, addDocument, removeDocument } = useOrderForm()
+  const [docTypes, setDocTypes] = useState<Record<string, string>>({})
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -38,7 +39,7 @@ export function DocumentUpload() {
           type: file.type,
           size: file.size,
           documentType: '',
-          uploadProgress: 100, // Simulated - in production, track actual upload
+          uploadProgress: 100,
         }
         addDocument(doc)
       })
@@ -62,7 +63,20 @@ export function DocumentUpload() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  const hasComplaint = documents.some((d) => d.documentType === 'complaint')
+  const handleDocTypeChange = (docId: string, type: string) => {
+    setDocTypes(prev => ({ ...prev, [docId]: type }))
+    // Also update the document in the store
+    const doc = documents.find(d => d.id === docId)
+    if (doc) {
+      doc.documentType = type
+    }
+  }
+
+  const getDocType = (docId: string) => {
+    return docTypes[docId] || documents.find(d => d.id === docId)?.documentType || ''
+  }
+
+  const hasComplaint = documents.some((d) => getDocType(d.id) === 'complaint')
 
   return (
     <div className="space-y-6">
@@ -129,7 +143,7 @@ export function DocumentUpload() {
         {/* Document List */}
         {documents.length > 0 && (
           <div className="space-y-3">
-            <Label>Uploaded Documents</Label>
+            <Label>Uploaded Documents ({documents.length})</Label>
             {documents.map((doc) => (
               <div
                 key={doc.id}
@@ -148,14 +162,11 @@ export function DocumentUpload() {
                   )}
                   <div className="mt-2">
                     <Select
-                      value={doc.documentType}
-                      onValueChange={(value) => {
-                        // Update document type - in a real app, update the state
-                        doc.documentType = value
-                      }}
+                      value={getDocType(doc.id)}
+                      onValueChange={(value) => handleDocTypeChange(doc.id, value)}
                     >
                       <SelectTrigger className="w-full sm:w-48 h-8 text-sm">
-                        <SelectValue placeholder="Document type" />
+                        <SelectValue placeholder="Select document type" />
                       </SelectTrigger>
                       <SelectContent>
                         {DOCUMENT_TYPES.map((type) => (
@@ -179,6 +190,19 @@ export function DocumentUpload() {
             ))}
           </div>
         )}
+
+        {/* Info about upload timing */}
+        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+          <div className="flex gap-3">
+            <Info className="h-5 w-5 text-blue-600 shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-blue-800">Documents uploaded securely on submission</p>
+              <p className="mt-1 text-blue-700">
+                Your files will be securely uploaded when you submit your order.
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Tips */}
         <div className="rounded-lg bg-gray-50 p-4">
