@@ -139,17 +139,7 @@ export default function NewOrderPage() {
     setIsSubmitting(true)
 
     try {
-      // Prepare order data with documents
-      const uploadedDocs = documents
-        .filter(d => d.url) // Only include successfully uploaded docs
-        .map(d => ({
-          file_name: d.name,
-          file_type: d.type,
-          file_size: d.size,
-          file_url: d.url,
-          document_type: d.documentType || 'other',
-        }))
-
+      // Prepare order data (documents uploaded separately after order creation)
       const orderData = {
         motion_type: motionType,
         motion_tier: motionTier,
@@ -169,10 +159,10 @@ export default function NewOrderPage() {
         instructions,
         related_entities: relatedEntities || null,
         parties: parties.filter(p => p.name && p.role),
-        documents: uploadedDocs,
+        documents: [], // Documents are uploaded separately
       }
 
-      // Submit to API
+      // Submit order first
       const response = await fetch('/api/orders', {
         method: 'POST',
         headers: {
@@ -187,51 +177,85 @@ export default function NewOrderPage() {
         throw new Error(data.error || 'Failed to submit order')
       }
 
-      // Upload documents if any
-      if (documents.length > 0 && data.order?.id) {
-        const uploadPromises = documents.map(async (doc) => {
-          if (!doc.file) return null
+      const orderId = data.order?.id
 
-          const formData = new FormData()
-          formData.append('file', doc.file)
-          formData.append('orderId', data.order.id)
-          formData.append('documentType', doc.documentType || 'other')
-
-          const uploadResponse = await fetch('/api/documents', {
-            method: 'POST',
-            body: formData,
-          })
-
-          if (!uploadResponse.ok) {
-            const uploadError = await uploadResponse.json()
-            console.error('Document upload failed:', doc.name, uploadError)
-            return { error: true, fileName: doc.name }
-          }
-
-          return { error: false, fileName: doc.name }
-        })
-
-        const uploadResults = await Promise.all(uploadPromises)
-        const failedUploads = uploadResults.filter(r => r?.error)
-
-        if (failedUploads.length > 0) {
-          toast({
-            title: 'Some documents failed to upload',
-            description: `${failedUploads.length} document(s) could not be uploaded. You can upload them later from the order details page.`,
-            variant: 'destructive',
-          })
-        }
+      if (!orderId) {
+        throw new Error('Order created but no ID returned')
       }
 
-      toast({
-        title: 'Order submitted successfully!',
-        description: 'You will receive a confirmation email shortly.',
-      })
+      // Upload documents one by one
+      let successCount = 0
+      let failCount = 0
+      const failedFiles: string[] = []
+
+      if (documents.length > 0) {
+        for (const doc of documents) {
+          // Check if we have a valid file
+          if (!doc.file || !(doc.file instanceof File)) {
+            console.error('Invalid file object for:', doc.name)
+            failCount++
+            failedFiles.push(doc.name)
+            continue
+          }
+
+          try {
+            const formData = new FormData()
+            formData.append('file', doc.file)
+            formData.append('orderId', orderId)
+            formData.append('documentType', doc.documentType || 'other')
+
+            const uploadResponse = await fetch('/api/documents', {
+              method: 'POST',
+              body: formData,
+            })
+
+            if (uploadResponse.ok) {
+              successCount++
+              console.log('Uploaded successfully:', doc.name)
+            } else {
+              const errorData = await uploadResponse.json().catch(() => ({}))
+              console.error('Upload failed for', doc.name, ':', errorData.error || uploadResponse.status)
+              failCount++
+              failedFiles.push(doc.name)
+            }
+          } catch (uploadErr) {
+            console.error('Upload exception for', doc.name, ':', uploadErr)
+            failCount++
+            failedFiles.push(doc.name)
+          }
+        }
+
+        // Show results
+        if (failCount > 0 && successCount > 0) {
+          toast({
+            title: `${successCount} document(s) uploaded, ${failCount} failed`,
+            description: `Failed: ${failedFiles.join(', ')}`,
+            variant: 'destructive',
+          })
+        } else if (failCount > 0 && successCount === 0) {
+          toast({
+            title: 'Document upload failed',
+            description: 'Your order was submitted but documents could not be uploaded. Please contact support.',
+            variant: 'destructive',
+          })
+        } else if (successCount > 0) {
+          toast({
+            title: 'Order submitted successfully!',
+            description: `${successCount} document(s) uploaded.`,
+          })
+        }
+      } else {
+        toast({
+          title: 'Order submitted successfully!',
+          description: 'You will receive a confirmation email shortly.',
+        })
+      }
 
       reset()
       router.push('/dashboard')
       router.refresh()
     } catch (error) {
+      console.error('Order submission error:', error)
       toast({
         title: 'Error submitting order',
         description: error instanceof Error ? error.message : 'Please try again or contact support.',
