@@ -196,7 +196,6 @@ export default function NewOrderPage() {
       router.push('/dashboard')
       router.refresh()
     } catch (error) {
-      console.error('Error submitting order:', error)
       toast({
         title: 'Error submitting order',
         description: error instanceof Error ? error.message : 'Please try again or contact support.',

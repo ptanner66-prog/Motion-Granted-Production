@@ -77,8 +77,6 @@ export function LoginForm() {
           }
         }
 
-        console.log('Login - Profile fetched:', profile)
-
         const role = profile?.role?.toString().toLowerCase().trim()
         if (role === 'admin') {
           redirectPath = '/admin'

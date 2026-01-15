@@ -75,11 +75,8 @@ export async function updateSession(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    console.log('MIDDLEWARE AUTH REDIRECT - Profile:', profile, 'Error:', error)
-
     // If profile query fails, default to dashboard and let page-level checks handle it
     if (error || !profile) {
-      console.log('MIDDLEWARE AUTH - Profile query failed, defaulting to dashboard')
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
       return NextResponse.redirect(url)
@@ -108,7 +105,6 @@ export async function updateSession(request: NextRequest) {
     // If we can't get the profile, don't redirect - let page-level checks handle it
     // This prevents incorrectly redirecting admins when profile query fails
     if (error || !profile) {
-      console.log('MIDDLEWARE - Profile query failed, skipping role-based redirect')
       return supabaseResponse
     }
 

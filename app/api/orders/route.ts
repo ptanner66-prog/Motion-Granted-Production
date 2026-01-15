@@ -28,7 +28,6 @@ export async function GET() {
 
     return NextResponse.json(orders)
   } catch (error) {
-    console.error('Error fetching orders:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -137,8 +136,7 @@ export async function POST(req: Request) {
 
       const { error: docError } = await supabase.from('documents').insert(documentsData)
       if (docError) {
-        console.error('Error inserting documents:', docError)
-        // Don't fail the order, just log the error
+        // Continue even if document insert fails
       }
     }
 
@@ -148,7 +146,6 @@ export async function POST(req: Request) {
       stripeConfigured: !!stripe,
     })
   } catch (error) {
-    console.error('Error creating order:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
