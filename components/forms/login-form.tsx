@@ -63,7 +63,8 @@ export function LoginForm() {
           .eq('id', authData.user.id)
           .single()
 
-        if (profile?.role === 'admin') {
+        const role = profile?.role?.toString().toLowerCase().trim()
+        if (role === 'admin') {
           redirectPath = '/admin'
         }
       }

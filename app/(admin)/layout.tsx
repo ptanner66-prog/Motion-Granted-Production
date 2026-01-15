@@ -22,8 +22,9 @@ export default async function AdminLayout({
     .eq('id', user.id)
     .single()
 
-  // Only allow admin users
-  if (profile?.role !== 'admin') {
+  // Only allow admin users (case-insensitive check)
+  const role = profile?.role?.toString().toLowerCase().trim()
+  if (role !== 'admin') {
     redirect('/dashboard')
   }
 
