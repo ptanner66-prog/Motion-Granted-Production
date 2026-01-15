@@ -63,7 +63,6 @@ export function StatusUpdateForm({ orderId, currentStatus }: StatusUpdateFormPro
 
       router.refresh()
     } catch (error) {
-      console.error('Error updating status:', error)
       toast({
         title: 'Error updating status',
         description: 'Please try again.',

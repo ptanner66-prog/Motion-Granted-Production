@@ -38,28 +38,28 @@ export function PartiesForm() {
         {/* Parties List */}
         <div className="space-y-3">
           {parties.map((party, index) => (
-            <div key={index} className="flex items-start gap-3">
+            <div key={party.id} className="flex items-start gap-3">
               <div className="flex-1 grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label htmlFor={`party-name-${index}`}>
+                  <Label htmlFor={`party-name-${party.id}`}>
                     Name {index < 2 ? '*' : ''}
                   </Label>
                   <Input
-                    id={`party-name-${index}`}
+                    id={`party-name-${party.id}`}
                     placeholder="Party name"
                     value={party.name}
-                    onChange={(e) => updateParty(index, 'name', e.target.value)}
+                    onChange={(e) => updateParty(party.id, 'name', e.target.value)}
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor={`party-role-${index}`}>
+                  <Label htmlFor={`party-role-${party.id}`}>
                     Role {index < 2 ? '*' : ''}
                   </Label>
                   <Select
                     value={party.role}
-                    onValueChange={(value) => updateParty(index, 'role', value)}
+                    onValueChange={(value) => updateParty(party.id, 'role', value)}
                   >
-                    <SelectTrigger id={`party-role-${index}`}>
+                    <SelectTrigger id={`party-role-${party.id}`}>
                       <SelectValue placeholder="Select role" />
                     </SelectTrigger>
                     <SelectContent>
@@ -78,7 +78,7 @@ export function PartiesForm() {
                   variant="ghost"
                   size="icon"
                   className="mt-6 text-gray-400 hover:text-red-500"
-                  onClick={() => removeParty(index)}
+                  onClick={() => removeParty(party.id)}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>

@@ -27,33 +27,23 @@ export async function POST(req: Request) {
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
   } catch (err) {
-    console.error('Webhook signature verification failed:', err)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
   // Handle the event
   switch (event.type) {
     case 'payment_intent.succeeded':
-      const paymentIntent = event.data.object as Stripe.PaymentIntent
-      console.log('Payment succeeded:', paymentIntent.id)
       // TODO: Update order status in database
       // TODO: Send confirmation email
       break
 
     case 'payment_intent.payment_failed':
-      const failedPayment = event.data.object as Stripe.PaymentIntent
-      console.log('Payment failed:', failedPayment.id)
       // TODO: Notify user of failed payment
       break
 
     case 'charge.refunded':
-      const refund = event.data.object as Stripe.Charge
-      console.log('Charge refunded:', refund.id)
       // TODO: Update order status
       break
-
-    default:
-      console.log(`Unhandled event type: ${event.type}`)
   }
 
   return NextResponse.json({ received: true })
