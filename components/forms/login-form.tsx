@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { loginSchema, type LoginInput } from '@/lib/validations/auth'
@@ -23,7 +22,6 @@ import { Loader2 } from 'lucide-react'
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -74,8 +72,8 @@ export function LoginForm() {
         description: 'You have been logged in successfully.',
       })
 
-      router.push(redirectPath)
-      router.refresh()
+      // Hard redirect to ensure middleware executes for role-based routing
+      window.location.href = redirectPath
     } catch {
       toast({
         title: 'Error',
