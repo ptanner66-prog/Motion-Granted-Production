@@ -133,9 +133,11 @@ export default async function OrderDetailPage({
           </div>
 
           <div className="flex gap-3">
-            <Button variant="outline" className="gap-2">
-              <MessageSquare className="h-4 w-4" />
-              Message Clerk
+            <Button variant="outline" className="gap-2" asChild>
+              <a href={`mailto:support@motiongranted.com?subject=Question about Order ${order.order_number}`}>
+                <MessageSquare className="h-4 w-4" />
+                Message Clerk
+              </a>
             </Button>
             {order.status === 'draft_delivered' && (
               <Button className="gap-2 btn-premium">
@@ -395,10 +397,16 @@ export default async function OrderDetailPage({
                     </div>
                   )}
 
-                  {/* Message input placeholder */}
+                  {/* Message input */}
                   <Separator className="my-6" />
-                  <div className="text-center text-gray-500 text-sm">
-                    <p>Messaging functionality coming soon</p>
+                  <div className="text-center">
+                    <p className="text-gray-500 text-sm mb-3">Need to contact your clerk about this order?</p>
+                    <Button variant="outline" className="gap-2" asChild>
+                      <a href={`mailto:support@motiongranted.com?subject=Question about Order ${order.order_number}`}>
+                        <MessageSquare className="h-4 w-4" />
+                        Send Message
+                      </a>
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
