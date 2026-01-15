@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard,
   FileText,
@@ -88,8 +89,16 @@ interface DashboardShellProps {
 
 export function DashboardShell({ children, user }: DashboardShellProps) {
   const pathname = usePathname()
+  const router = useRouter()
+  const supabase = createClient()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
 
   const initials = user?.name
     ?.split(' ')
@@ -394,7 +403,10 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="my-2" />
-                <DropdownMenuItem className="rounded-lg p-2.5 text-red-600 cursor-pointer hover:bg-red-50 hover:text-red-700 focus:bg-red-50 focus:text-red-700">
+                <DropdownMenuItem
+                  onClick={handleSignOut}
+                  className="rounded-lg p-2.5 text-red-600 cursor-pointer hover:bg-red-50 hover:text-red-700 focus:bg-red-50 focus:text-red-700"
+                >
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign out
                 </DropdownMenuItem>
