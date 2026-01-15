@@ -18,9 +18,15 @@ export default async function DashboardLayout({
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name')
+    .select('full_name, role')
     .eq('id', user.id)
     .single()
+
+  // Redirect admin users to admin dashboard
+  const role = profile?.role?.toString().toLowerCase().trim()
+  if (role === 'admin') {
+    redirect('/admin')
+  }
 
   const userData = {
     name: profile?.full_name || user.email?.split('@')[0] || 'User',
