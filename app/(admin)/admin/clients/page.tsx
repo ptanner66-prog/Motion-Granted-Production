@@ -61,7 +61,7 @@ export default async function AdminClientsPage() {
   }))
 
   const totalClients = clientsWithOrders.length
-  const activeClients = clientsWithOrders.filter(c => c.order_count > 0).length
+  const activeClients = clientsWithOrders.filter(c => (c.order_count ?? 0) > 0).length
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
@@ -168,7 +168,7 @@ export default async function AdminClientsPage() {
                   <div className="flex items-center gap-6 flex-shrink-0 ml-4">
                     <div className="text-right hidden sm:block">
                       <p className="text-sm font-medium text-white">
-                        {client.order_count} order{client.order_count !== 1 ? 's' : ''}
+                        {client.order_count ?? 0} order{(client.order_count ?? 0) !== 1 ? 's' : ''}
                       </p>
                       <p className="text-xs text-gray-500">
                         Joined {formatDateShort(client.created_at)}
