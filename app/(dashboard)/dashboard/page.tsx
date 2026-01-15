@@ -1,6 +1,5 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -56,20 +55,6 @@ function getUrgencyClass(daysUntilDue: number) {
 export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
-  // Check if user is admin and redirect
-  if (user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    const role = profile?.role?.toString().toLowerCase().trim()
-    if (role === 'admin') {
-      redirect('/admin')
-    }
-  }
 
   // Fetch orders from Supabase
   const { data: orders } = await supabase
