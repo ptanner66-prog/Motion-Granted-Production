@@ -138,9 +138,10 @@ export default async function AdminClientsPage() {
           ) : (
             <div className="divide-y divide-gray-200">
               {clientsWithOrders.map((client) => (
-                <div
+                <Link
                   key={client.id}
-                  className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                  href={`/admin/clients/${client.id}`}
+                  className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-4 min-w-0 flex-1">
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-teal to-teal-dark text-white font-semibold">
@@ -192,9 +193,10 @@ export default async function AdminClientsPage() {
                           )}
                         </div>
                       )}
+                      <ChevronRight className="h-5 w-5 text-gray-300" />
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}
