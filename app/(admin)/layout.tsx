@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { AdminShell } from '@/components/layout/admin-shell'
 
+export const dynamic = 'force-dynamic'
+
 export default async function AdminLayout({
   children,
 }: {
@@ -15,18 +17,12 @@ export default async function AdminLayout({
     redirect('/login')
   }
 
-  // Check if user is admin
+  // Get profile for display name only
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name')
+    .select('full_name')
     .eq('id', user.id)
     .single()
-
-  // Only allow admin users (case-insensitive check)
-  const role = profile?.role?.toString().toLowerCase().trim()
-  if (role !== 'admin') {
-    redirect('/dashboard')
-  }
 
   const userData = {
     name: profile?.full_name || user.email?.split('@')[0] || 'Admin',
