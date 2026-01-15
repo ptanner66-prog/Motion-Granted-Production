@@ -55,11 +55,29 @@ export function LoginForm() {
       let redirectPath = '/dashboard'
 
       if (authData.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', authData.user.id)
-          .single()
+        // Try to get profile with retry for timing issues
+        let profile = null
+        let retries = 3
+
+        while (retries > 0 && !profile) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', authData.user.id)
+            .single()
+
+          if (data && !error) {
+            profile = data
+          } else {
+            retries--
+            if (retries > 0) {
+              // Wait a bit before retrying (session might not be fully synced)
+              await new Promise(resolve => setTimeout(resolve, 500))
+            }
+          }
+        }
+
+        console.log('Login - Profile fetched:', profile)
 
         const role = profile?.role?.toString().toLowerCase().trim()
         if (role === 'admin') {
