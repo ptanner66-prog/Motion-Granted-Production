@@ -21,6 +21,15 @@ export const metadata: Metadata = {
   description: 'Business metrics and analytics.',
 }
 
+interface Order {
+  id: string
+  total_price: number
+  status: string
+  motion_type: string
+  turnaround: string
+  created_at: string
+}
+
 export default async function AdminAnalyticsPage() {
   const supabase = await createClient()
 
@@ -36,7 +45,7 @@ export default async function AdminAnalyticsPage() {
     .select('*', { count: 'exact', head: true })
     .eq('role', 'client')
 
-  const allOrders = orders || []
+  const allOrders: Order[] = orders || []
 
   // Calculate current month stats
   const now = new Date()
