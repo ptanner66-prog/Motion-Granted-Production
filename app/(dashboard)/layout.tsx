@@ -1,24 +1,39 @@
 import { redirect } from 'next/navigation'
 import { DashboardShell } from '@/components/layout/dashboard-shell'
-import { getUser, getProfile } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+
+// Force dynamic rendering - no caching
+export const dynamic = 'force-dynamic'
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const user = await getUser()
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
   // Redirect to login if not authenticated
   if (!user) {
     redirect('/login')
   }
 
-  // Get user profile
-  const profile = await getProfile()
+  // Get user profile directly (not using getProfile helper)
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single()
 
-  // Redirect admins to admin dashboard
-  if (profile?.role === 'admin') {
+  console.log('Dashboard Layout - User ID:', user.id)
+  console.log('Dashboard Layout - Profile:', profile)
+  console.log('Dashboard Layout - Profile Error:', error)
+  console.log('Dashboard Layout - Role:', profile?.role)
+
+  // Redirect admins to admin dashboard (case-insensitive check)
+  const role = profile?.role?.toString().toLowerCase().trim()
+  if (role === 'admin') {
+    console.log('Dashboard Layout - Redirecting to /admin')
     redirect('/admin')
   }
 

@@ -66,18 +66,30 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (isAuthPath && user) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
-
-  // Role-based access control
-  if (user && (request.nextUrl.pathname.startsWith('/admin') || request.nextUrl.pathname.startsWith('/clerk'))) {
+    // Check user role to redirect to correct dashboard
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
+
+    const url = request.nextUrl.clone()
+    url.pathname = profile?.role === 'admin' ? '/admin' : '/dashboard'
+    return NextResponse.redirect(url)
+  }
+
+  // Role-based access control
+  if (user && (request.nextUrl.pathname.startsWith('/admin') || request.nextUrl.pathname.startsWith('/clerk') || request.nextUrl.pathname.startsWith('/dashboard'))) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    // Redirect admins from client dashboard to admin dashboard
+    if (request.nextUrl.pathname.startsWith('/dashboard') && profile?.role === 'admin') {
+      return NextResponse.redirect(new URL('/admin', request.url))
+    }
 
     if (request.nextUrl.pathname.startsWith('/admin') && profile?.role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
