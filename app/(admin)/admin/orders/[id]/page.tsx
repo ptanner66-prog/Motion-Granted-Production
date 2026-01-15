@@ -205,35 +205,35 @@ export default async function AdminOrderDetailPage({
               )}
 
               {/* Statement of Facts */}
-              <Card className="bg-gray-900 border-gray-800 overflow-hidden">
-                <CardHeader className="border-b border-gray-800">
-                  <CardTitle className="text-lg text-white">Statement of Facts</CardTitle>
+              <Card className="bg-white border-gray-200 overflow-hidden">
+                <CardHeader className="border-b border-gray-200">
+                  <CardTitle className="text-lg text-navy">Statement of Facts</CardTitle>
                 </CardHeader>
                 <CardContent className="p-6 overflow-hidden">
-                  <p className="text-gray-300 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.statement_of_facts}</p>
+                  <p className="text-gray-600 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.statement_of_facts}</p>
                 </CardContent>
               </Card>
 
               {/* Procedural History */}
-              <Card className="bg-gray-900 border-gray-800 overflow-hidden">
-                <CardHeader className="border-b border-gray-800">
-                  <CardTitle className="text-lg text-white">Procedural History</CardTitle>
+              <Card className="bg-white border-gray-200 overflow-hidden">
+                <CardHeader className="border-b border-gray-200">
+                  <CardTitle className="text-lg text-navy">Procedural History</CardTitle>
                 </CardHeader>
                 <CardContent className="p-6 overflow-hidden">
-                  <p className="text-gray-300 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.procedural_history}</p>
+                  <p className="text-gray-600 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.procedural_history}</p>
                 </CardContent>
               </Card>
 
               {/* Drafting Instructions */}
-              <Card className="bg-gray-900 border-gray-800 overflow-hidden">
-                <CardHeader className="border-b border-gray-800 bg-orange-500/5">
-                  <CardTitle className="text-lg flex items-center gap-2 text-white">
-                    <FileText className="h-5 w-5 text-orange-400" />
+              <Card className="bg-white border-gray-200 overflow-hidden">
+                <CardHeader className="border-b border-gray-200">
+                  <CardTitle className="text-lg flex items-center gap-2 text-navy">
+                    <FileText className="h-5 w-5 text-gray-400" />
                     Drafting Instructions
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6 overflow-hidden">
-                  <p className="text-gray-300 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.instructions}</p>
+                  <p className="text-gray-600 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.instructions}</p>
                 </CardContent>
               </Card>
             </TabsContent>
