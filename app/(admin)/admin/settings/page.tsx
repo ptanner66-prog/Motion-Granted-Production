@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,6 +14,8 @@ import {
   Lock,
   Building,
   CreditCard,
+  ChevronRight,
+  DollarSign,
 } from 'lucide-react'
 
 export const metadata: Metadata = {
@@ -135,18 +138,16 @@ export default async function AdminSettingsPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <Link href="/admin/settings/email" className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
               <div className="flex items-center gap-3">
                 <Mail className="h-5 w-5 text-gray-500" />
                 <div>
                   <p className="text-navy font-medium">Email Notifications</p>
-                  <p className="text-sm text-gray-400">Receive updates via email</p>
+                  <p className="text-sm text-gray-400">Configure notification settings</p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="border-gray-200 text-gray-600 hover:bg-gray-100">
-                Configure
-              </Button>
-            </div>
+              <ChevronRight className="h-5 w-5 text-gray-300" />
+            </Link>
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-3">
                 <Bell className="h-5 w-5 text-gray-500" />
@@ -190,18 +191,16 @@ export default async function AdminSettingsPage() {
                 Manage
               </Button>
             </div>
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <Link href="/admin/settings/pricing" className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
               <div className="flex items-center gap-3">
-                <Settings className="h-5 w-5 text-gray-500" />
+                <DollarSign className="h-5 w-5 text-gray-500" />
                 <div>
                   <p className="text-navy font-medium">Pricing Configuration</p>
                   <p className="text-sm text-gray-400">Motion types and pricing tiers</p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="border-gray-200 text-gray-600 hover:bg-gray-100">
-                Configure
-              </Button>
-            </div>
+              <ChevronRight className="h-5 w-5 text-gray-300" />
+            </Link>
           </CardContent>
         </Card>
       </div>

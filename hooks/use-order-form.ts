@@ -74,6 +74,7 @@ interface OrderFormState {
   addDocument: (doc: UploadedDocument) => void
   removeDocument: (id: string) => void
   updateDocumentProgress: (id: string, progress: number, url?: string) => void
+  updateDocumentType: (id: string, documentType: string) => void
 }
 
 const initialState = {
@@ -184,6 +185,13 @@ export const useOrderForm = create<OrderFormState>()(
         set((state) => ({
           documents: state.documents.map((d) =>
             d.id === id ? { ...d, uploadProgress: progress, url } : d
+          ),
+        })),
+
+      updateDocumentType: (id, documentType) =>
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === id ? { ...d, documentType } : d
           ),
         })),
     }),

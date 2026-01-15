@@ -27,7 +27,7 @@ const DOCUMENT_TYPES = [
 ]
 
 export function DocumentUpload() {
-  const { documents, addDocument, removeDocument, updateDocumentProgress } = useOrderForm()
+  const { documents, addDocument, removeDocument, updateDocumentProgress, updateDocumentType } = useOrderForm()
   const { toast } = useToast()
   const [uploading, setUploading] = useState<Record<string, boolean>>({})
 
@@ -112,11 +112,7 @@ export function DocumentUpload() {
   const isAnyUploading = Object.values(uploading).some(Boolean)
 
   const handleDocumentTypeChange = (docId: string, newType: string) => {
-    // Find and update the document
-    const doc = documents.find(d => d.id === docId)
-    if (doc) {
-      doc.documentType = newType
-    }
+    updateDocumentType(docId, newType)
   }
 
   return (
