@@ -173,8 +173,8 @@ export default async function AdminDashboardPage() {
         <Card className="bg-white border border-gray-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
-              <div className="bg-teal/10 p-3 rounded-xl">
-                <Users className="h-6 w-6 text-teal" />
+              <div className="bg-gray-100 p-3 rounded-xl">
+                <Users className="h-6 w-6 text-gray-600" />
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Total Clients</p>
@@ -186,8 +186,8 @@ export default async function AdminDashboardPage() {
         <Card className="bg-white border border-gray-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
-              <div className="bg-indigo-100 p-3 rounded-xl">
-                <FileText className="h-6 w-6 text-indigo-600" />
+              <div className="bg-gray-100 p-3 rounded-xl">
+                <FileText className="h-6 w-6 text-gray-600" />
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Total Orders</p>
@@ -199,8 +199,8 @@ export default async function AdminDashboardPage() {
         <Card className="bg-white border border-gray-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
-              <div className="bg-pink-100 p-3 rounded-xl">
-                <TrendingUp className="h-6 w-6 text-pink-600" />
+              <div className="bg-gray-100 p-3 rounded-xl">
+                <TrendingUp className="h-6 w-6 text-gray-600" />
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Avg. Order Value</p>
