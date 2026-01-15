@@ -46,7 +46,7 @@ export async function updateSession(request: NextRequest) {
   // Refresh the session
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Protected routes
+  // Protected routes - require login
   const protectedPaths = ['/dashboard', '/orders', '/settings', '/clerk', '/admin']
   const isProtectedPath = protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path)
@@ -58,6 +58,7 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith(path)
   )
 
+  // Redirect to login if accessing protected route without auth
   if (isProtectedPath && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
@@ -65,48 +66,14 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Redirect to dashboard if already logged in and on auth page
   if (isAuthPath && user) {
-    // Check user role to redirect to correct dashboard
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    console.log('MIDDLEWARE AUTH PATH - Profile:', profile, 'Error:', error)
-
-    const role = profile?.role?.toString().toLowerCase().trim()
     const url = request.nextUrl.clone()
-    url.pathname = role === 'admin' ? '/admin' : '/dashboard'
+    url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
-  // Role-based access control - check on EVERY request to dashboard/admin/clerk
-  if (user && (request.nextUrl.pathname.startsWith('/admin') || request.nextUrl.pathname.startsWith('/clerk') || request.nextUrl.pathname.startsWith('/dashboard') || request.nextUrl.pathname.startsWith('/orders') || request.nextUrl.pathname.startsWith('/settings'))) {
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    console.log('MIDDLEWARE ROLE CHECK - Path:', request.nextUrl.pathname, 'Profile:', profile, 'Error:', error)
-
-    const role = profile?.role?.toString().toLowerCase().trim()
-
-    // Redirect admins from client areas to admin dashboard
-    if ((request.nextUrl.pathname.startsWith('/dashboard') || request.nextUrl.pathname.startsWith('/orders') || request.nextUrl.pathname.startsWith('/settings')) && role === 'admin') {
-      console.log('MIDDLEWARE - Redirecting admin to /admin')
-      return NextResponse.redirect(new URL('/admin', request.url))
-    }
-
-    if (request.nextUrl.pathname.startsWith('/admin') && role !== 'admin') {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-
-    if (request.nextUrl.pathname.startsWith('/clerk') && !['clerk', 'admin'].includes(role || '')) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-  }
+  // NO ROLE CHECKS - let any authenticated user access any route
 
   return supabaseResponse
 }
