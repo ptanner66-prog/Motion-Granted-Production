@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { DashboardShell } from '@/components/layout/dashboard-shell'
+import { AdminRedirect } from '@/components/auth/admin-redirect'
 import { createClient } from '@/lib/supabase/server'
 
 // Force dynamic rendering - no caching
@@ -30,7 +31,7 @@ export default async function DashboardLayout({
   console.log('Dashboard Layout - Profile Error:', error)
   console.log('Dashboard Layout - Role:', profile?.role)
 
-  // Redirect admins to admin dashboard (case-insensitive check)
+  // Server-side redirect for admins
   const role = profile?.role?.toString().toLowerCase().trim()
   if (role === 'admin') {
     console.log('Dashboard Layout - Redirecting to /admin')
@@ -42,5 +43,10 @@ export default async function DashboardLayout({
     email: user.email || '',
   }
 
-  return <DashboardShell user={userData}>{children}</DashboardShell>
+  // Wrap with client-side AdminRedirect as backup
+  return (
+    <AdminRedirect>
+      <DashboardShell user={userData}>{children}</DashboardShell>
+    </AdminRedirect>
+  )
 }
