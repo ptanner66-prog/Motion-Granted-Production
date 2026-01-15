@@ -57,8 +57,8 @@ export default function NewOrderPage() {
     statementOfFacts,
     proceduralHistory,
     instructions,
-    supervisionAcknowledged,
     documents,
+    supervisionAcknowledged,
   } = useOrderForm()
 
   const currentStep = steps[step - 1]
@@ -185,6 +185,42 @@ export default function NewOrderPage() {
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to submit order')
+      }
+
+      // Upload documents if any
+      if (documents.length > 0 && data.order?.id) {
+        const uploadPromises = documents.map(async (doc) => {
+          if (!doc.file) return null
+
+          const formData = new FormData()
+          formData.append('file', doc.file)
+          formData.append('orderId', data.order.id)
+          formData.append('documentType', doc.documentType || 'other')
+
+          const uploadResponse = await fetch('/api/documents', {
+            method: 'POST',
+            body: formData,
+          })
+
+          if (!uploadResponse.ok) {
+            const uploadError = await uploadResponse.json()
+            console.error('Document upload failed:', doc.name, uploadError)
+            return { error: true, fileName: doc.name }
+          }
+
+          return { error: false, fileName: doc.name }
+        })
+
+        const uploadResults = await Promise.all(uploadPromises)
+        const failedUploads = uploadResults.filter(r => r?.error)
+
+        if (failedUploads.length > 0) {
+          toast({
+            title: 'Some documents failed to upload',
+            description: `${failedUploads.length} document(s) could not be uploaded. You can upload them later from the order details page.`,
+            variant: 'destructive',
+          })
+        }
       }
 
       toast({

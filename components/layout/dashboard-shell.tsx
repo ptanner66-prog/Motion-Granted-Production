@@ -92,6 +92,13 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
   const supabase = createClient()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      router.push(`/orders?search=${encodeURIComponent(searchQuery.trim())}`)
+    }
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -341,7 +348,10 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
                 )} />
                 <input
                   type="text"
-                  placeholder="Search orders..."
+                  placeholder="Search orders... (Press Enter)"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearch}
                   className={cn(
                     'w-full rounded-lg border bg-gray-50/50 py-2 pl-10 pr-4 text-sm placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal/30',
                     searchFocused ? 'border-teal bg-white shadow-sm' : 'border-gray-200 hover:border-gray-300'

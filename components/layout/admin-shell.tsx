@@ -89,13 +89,51 @@ interface AdminShellProps {
     name: string
     email: string
   }
+  breadcrumbLabel?: string
 }
 
-export function AdminShell({ children, user }: AdminShellProps) {
+export function AdminShell({ children, user, breadcrumbLabel }: AdminShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Helper to format breadcrumb segments
+  const formatBreadcrumb = (segment: string): string => {
+    // Check if it looks like a UUID
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (uuidPattern.test(segment)) {
+      return 'Order Details'
+    }
+    return segment.replace(/-/g, ' ')
+  }
+
+  // Build breadcrumb segments
+  const getBreadcrumbs = () => {
+    const segments = pathname.split('/').filter(Boolean)
+    const breadcrumbs: { label: string; href: string }[] = []
+
+    if (segments[0] === 'admin') {
+      breadcrumbs.push({ label: 'Admin', href: '/admin' })
+
+      if (segments.length > 1) {
+        // Add intermediate segments
+        for (let i = 1; i < segments.length - 1; i++) {
+          const href = '/' + segments.slice(0, i + 1).join('/')
+          breadcrumbs.push({ label: formatBreadcrumb(segments[i]), href })
+        }
+
+        // Add final segment
+        const lastSegment = segments[segments.length - 1]
+        breadcrumbs.push({
+          label: breadcrumbLabel || formatBreadcrumb(lastSegment),
+          href: pathname
+        })
+      }
+    }
+
+    return breadcrumbs
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -109,24 +147,6 @@ export function AdminShell({ children, user }: AdminShellProps) {
     .join('')
     .toUpperCase() || 'A'
 
-  // Generate breadcrumbs from pathname
-  const getBreadcrumbs = () => {
-    const paths = pathname.split('/').filter(Boolean)
-    const breadcrumbs = [{ name: 'Admin', href: '/admin' }]
-
-    let currentPath = ''
-    paths.forEach((path, index) => {
-      currentPath += `/${path}`
-      if (index > 0) { // Skip 'admin' as it's already added
-        const name = path.charAt(0).toUpperCase() + path.slice(1).replace(/-/g, ' ')
-        breadcrumbs.push({ name, href: currentPath })
-      }
-    })
-
-    return breadcrumbs
-  }
-
-  const breadcrumbs = getBreadcrumbs()
 
   return (
     <div className="min-h-screen bg-warm-gray">
@@ -319,24 +339,24 @@ export function AdminShell({ children, user }: AdminShellProps) {
               <Menu className="h-5 w-5 text-gray-600" />
             </button>
 
-            {/* Breadcrumbs - Desktop */}
-            <nav className="hidden md:flex items-center gap-1.5 text-sm breadcrumb">
-              {breadcrumbs.map((crumb, index) => (
-                <div key={crumb.href} className="flex items-center gap-1.5">
-                  {index > 0 && (
-                    <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
-                  )}
-                  {index === breadcrumbs.length - 1 ? (
-                    <span className="font-medium text-navy">{crumb.name}</span>
+            {/* Breadcrumbs */}
+            <nav className="hidden md:flex items-center gap-1.5 text-sm">
+              {getBreadcrumbs().map((crumb, index, arr) => (
+                <span key={crumb.href} className="flex items-center gap-1.5">
+                  {index > 0 && <ChevronRight className="h-3.5 w-3.5 text-gray-600" />}
+                  {index === arr.length - 1 ? (
+                    <span className="font-medium text-white capitalize">
+                      {crumb.label}
+                    </span>
                   ) : (
                     <Link
                       href={crumb.href}
-                      className="text-gray-500 hover:text-teal transition-colors"
+                      className="text-gray-500 hover:text-orange-400 transition-colors capitalize"
                     >
-                      {crumb.name}
+                      {crumb.label}
                     </Link>
                   )}
-                </div>
+                </span>
               ))}
             </nav>
 
