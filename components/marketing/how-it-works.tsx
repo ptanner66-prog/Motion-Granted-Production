@@ -23,49 +23,76 @@ const steps = [
 
 export function HowItWorks() {
   return (
-    <section className="bg-gray-50 py-24 sm:py-32">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section className="relative overflow-hidden bg-gradient-to-b from-[#f8f7f4] to-[#faf9f7] py-28 sm:py-36">
+      {/* Decorative elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-20 left-1/4 h-72 w-72 rounded-full bg-teal/5 blur-3xl" />
+        <div className="absolute bottom-20 right-1/4 h-72 w-72 rounded-full bg-navy/5 blur-3xl" />
+      </div>
+
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section header */}
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-bold tracking-tight text-navy sm:text-4xl">
+          <div className="mb-4 inline-flex items-center rounded-full bg-teal/10 px-4 py-1.5 text-sm font-medium text-navy">
+            Simple Process
+          </div>
+          <h2 className="text-3xl font-bold tracking-tight text-navy sm:text-4xl lg:text-5xl">
             How It Works
           </h2>
-          <p className="mt-4 text-lg text-gray-600">
+          <p className="mt-5 text-lg text-gray-600 sm:text-xl">
             Three simple steps to professional motion drafts
           </p>
         </div>
 
         {/* Steps */}
-        <div className="mx-auto mt-16 max-w-5xl">
-          <div className="grid gap-8 sm:grid-cols-3">
-            {steps.map((step, index) => (
-              <div key={step.title} className="relative">
-                {/* Connector line */}
-                {index < steps.length - 1 && (
-                  <div className="absolute left-1/2 top-12 hidden h-0.5 w-full bg-gray-200 sm:block" />
-                )}
+        <div className="mx-auto mt-20 max-w-5xl">
+          <div className="relative">
+            {/* Connecting line - desktop */}
+            <div className="absolute left-0 right-0 top-[60px] hidden h-0.5 sm:block">
+              <div className="mx-auto h-full max-w-3xl bg-gradient-to-r from-transparent via-teal/30 to-transparent" />
+            </div>
 
-                <div className="relative flex flex-col items-center text-center">
-                  {/* Step number and icon */}
-                  <div className="relative">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-gray-100">
-                      <step.icon className="h-7 w-7 text-teal" />
+            <div className="grid gap-12 sm:grid-cols-3 sm:gap-8">
+              {steps.map((step, index) => (
+                <div key={step.title} className="relative">
+                  <div className="flex flex-col items-center text-center">
+                    {/* Step number and icon container */}
+                    <div className="relative">
+                      {/* Outer glow ring */}
+                      <div className="absolute -inset-3 rounded-full bg-gradient-to-br from-teal/20 to-teal/5 opacity-0 blur-lg transition-opacity duration-500 group-hover:opacity-100" />
+
+                      {/* Main icon circle */}
+                      <div className="relative flex h-[120px] w-[120px] items-center justify-center rounded-full bg-white shadow-lg ring-1 ring-gray-100 transition-all duration-500 hover:shadow-xl hover:ring-teal/20">
+                        {/* Inner gradient */}
+                        <div className="absolute inset-2 rounded-full bg-gradient-to-br from-teal/5 to-transparent" />
+
+                        <step.icon className="relative h-10 w-10 text-teal" />
+                      </div>
+
+                      {/* Step number badge */}
+                      <span className="absolute -right-1 -top-1 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-navy to-navy/90 text-sm font-bold text-white shadow-lg ring-4 ring-white">
+                        {index + 1}
+                      </span>
                     </div>
-                    <span className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full bg-navy text-sm font-bold text-white">
-                      {index + 1}
-                    </span>
+
+                    {/* Content */}
+                    <h3 className="mt-8 text-xl font-semibold text-navy lg:text-2xl">
+                      {step.title}
+                    </h3>
+                    <p className="mt-3 max-w-xs text-gray-600 leading-relaxed lg:text-lg">
+                      {step.description}
+                    </p>
                   </div>
 
-                  {/* Content */}
-                  <h3 className="mt-6 text-xl font-semibold text-navy">
-                    {step.title}
-                  </h3>
-                  <p className="mt-2 text-gray-600 leading-relaxed">
-                    {step.description}
-                  </p>
+                  {/* Mobile connector arrow */}
+                  {index < steps.length - 1 && (
+                    <div className="mt-8 flex justify-center sm:hidden">
+                      <div className="h-8 w-0.5 bg-gradient-to-b from-teal/30 to-transparent" />
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
