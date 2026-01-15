@@ -39,7 +39,7 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       })
@@ -53,12 +53,27 @@ export function LoginForm() {
         return
       }
 
+      // Check user role to determine redirect
+      let redirectPath = '/dashboard'
+
+      if (authData.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', authData.user.id)
+          .single()
+
+        if (profile?.role === 'admin') {
+          redirectPath = '/admin'
+        }
+      }
+
       toast({
         title: 'Welcome back!',
         description: 'You have been logged in successfully.',
       })
 
-      router.push('/dashboard')
+      router.push(redirectPath)
       router.refresh()
     } catch {
       toast({
