@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
+import { DocumentDownloadButton } from '@/components/documents/document-download-button'
 import {
   ArrowLeft,
   Calendar,
@@ -34,6 +35,7 @@ interface Party {
 interface Document {
   id: string
   file_name: string
+  file_url: string
   created_at: string
 }
 
@@ -310,7 +312,7 @@ export default async function OrderDetailPage({
                       {documents.map((doc) => (
                         <div
                           key={doc.id}
-                          className="group flex items-center justify-between rounded-xl border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50/50 transition-all cursor-pointer"
+                          className="group flex items-center justify-between rounded-xl border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50/50 transition-all"
                         >
                           <div className="flex items-center gap-4">
                             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 group-hover:bg-teal/10 transition-colors">
@@ -323,10 +325,12 @@ export default async function OrderDetailPage({
                               </p>
                             </div>
                           </div>
-                          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Download className="h-4 w-4 mr-2" />
-                            Download
-                          </Button>
+                          <DocumentDownloadButton
+                            filePath={doc.file_url}
+                            fileName={doc.file_name}
+                            variant="ghost"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          />
                         </div>
                       ))}
                     </div>

@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
 import { StatusUpdateForm } from '@/components/admin/status-update-form'
+import { DocumentDownloadButton } from '@/components/documents/document-download-button'
 import {
   ArrowLeft,
   FileText,
@@ -252,7 +253,7 @@ export default async function AdminOrderDetailPage({
                       {documents.map((doc) => (
                         <div
                           key={doc.id}
-                          className="flex items-center justify-between rounded-xl bg-gray-100 border border-gray-200 p-4"
+                          className="flex items-center justify-between rounded-xl bg-gray-100 border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50 transition-all"
                         >
                           <div className="flex items-center gap-4">
                             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-200">
@@ -265,6 +266,12 @@ export default async function AdminOrderDetailPage({
                               </p>
                             </div>
                           </div>
+                          <DocumentDownloadButton
+                            filePath={doc.file_url}
+                            fileName={doc.file_name}
+                            variant="outline"
+                            className="border-gray-300 hover:bg-teal hover:text-white hover:border-teal"
+                          />
                         </div>
                       ))}
                     </div>
