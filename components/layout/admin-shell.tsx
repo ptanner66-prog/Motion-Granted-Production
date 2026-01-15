@@ -12,14 +12,10 @@ import {
   LogOut,
   Menu,
   X,
-  Bell,
   ChevronRight,
   BarChart3,
   Shield,
-  User,
-  Search,
   HelpCircle,
-  MessageSquare,
   ExternalLink,
 } from 'lucide-react'
 import { Logo } from '@/components/shared/logo'
@@ -34,6 +30,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { AdminSearch } from '@/components/admin/admin-search'
+import { AdminNotifications } from '@/components/admin/admin-notifications'
 
 const mainNavigation = [
   {
@@ -98,7 +96,6 @@ export function AdminShell({ children, user }: AdminShellProps) {
   const router = useRouter()
   const supabase = createClient()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [searchFocused, setSearchFocused] = useState(false)
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -345,32 +342,11 @@ export function AdminShell({ children, user }: AdminShellProps) {
 
             {/* Search bar */}
             <div className="flex-1 max-w-md ml-auto mr-4">
-              <div className={cn(
-                'relative transition-all duration-200',
-                searchFocused && 'scale-[1.02]'
-              )}>
-                <Search className={cn(
-                  'absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors',
-                  searchFocused ? 'text-teal' : 'text-gray-400'
-                )} />
-                <input
-                  type="text"
-                  placeholder="Search orders, clients..."
-                  className={cn(
-                    'w-full rounded-lg border bg-gray-50/50 py-2 pl-10 pr-4 text-sm placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal/30',
-                    searchFocused ? 'border-teal bg-white shadow-sm' : 'border-gray-200 hover:border-gray-300'
-                  )}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                />
-              </div>
+              <AdminSearch />
             </div>
 
             {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative rounded-lg hover:bg-gray-100 transition-colors">
-              <Bell className="h-5 w-5 text-gray-500" />
-              <span className="notification-dot absolute right-2 top-2 h-2 w-2 rounded-full bg-teal ring-2 ring-white" />
-            </Button>
+            <AdminNotifications />
 
             {/* User menu */}
             <DropdownMenu>
