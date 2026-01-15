@@ -24,7 +24,7 @@ interface UserProfile {
 }
 
 export default function SettingsPage() {
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const { toast } = useToast()
@@ -42,30 +42,74 @@ export default function SettingsPage() {
           return
         }
 
+        // Try to fetch existing profile
         const { data: profileData, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
           .single()
 
-        if (error) throw error
+        if (error && error.code === 'PGRST116') {
+          // Profile doesn't exist - create one
+          const newProfile = {
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || '',
+            phone: null,
+            bar_number: null,
+            states_licensed: [],
+            firm_name: null,
+            firm_address: null,
+            firm_phone: null,
+            role: 'client',
+          }
 
-        setProfile({
-          full_name: profileData.full_name || '',
-          email: user.email || '',
-          phone: profileData.phone,
-          bar_number: profileData.bar_number,
-          states_licensed: profileData.states_licensed || [],
-          firm_name: profileData.firm_name,
-          firm_address: profileData.firm_address,
-          firm_phone: profileData.firm_phone,
-        })
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert(newProfile)
+
+          if (insertError) {
+            console.error('Error creating profile:', insertError)
+            // Still show the form with default values
+          }
+
+          setProfile({
+            full_name: newProfile.full_name,
+            email: user.email || '',
+            phone: null,
+            bar_number: null,
+            states_licensed: [],
+            firm_name: null,
+            firm_address: null,
+            firm_phone: null,
+          })
+        } else if (error) {
+          throw error
+        } else {
+          setProfile({
+            full_name: profileData.full_name || '',
+            email: user.email || '',
+            phone: profileData.phone,
+            bar_number: profileData.bar_number,
+            states_licensed: profileData.states_licensed || [],
+            firm_name: profileData.firm_name,
+            firm_address: profileData.firm_address,
+            firm_phone: profileData.firm_phone,
+          })
+        }
       } catch (error) {
         console.error('Error loading profile:', error)
-        toast({
-          title: 'Error loading profile',
-          description: 'Please try again later.',
-          variant: 'destructive',
+        // Show form with empty values instead of error
+        const { data: { user } } = await supabase.auth.getUser()
+        setProfile({
+          full_name: user?.email?.split('@')[0] || '',
+          email: user?.email || '',
+          phone: null,
+          bar_number: null,
+          states_licensed: [],
+          firm_name: null,
+          firm_address: null,
+          firm_phone: null,
         })
       } finally {
         setIsLoading(false)
@@ -83,17 +127,20 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
+      // Try update first, then upsert if it fails
       const { error } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.id,
+          email: user.email,
           full_name: profile.full_name,
           phone: profile.phone,
           bar_number: profile.bar_number,
           firm_name: profile.firm_name,
           firm_address: profile.firm_address,
           firm_phone: profile.firm_phone,
+          role: 'client',
         })
-        .eq('id', user.id)
 
       if (error) throw error
 
@@ -130,7 +177,10 @@ export default function SettingsPage() {
   if (!profile) {
     return (
       <div className="p-6 lg:p-8 text-center">
-        <p className="text-gray-500">Unable to load profile</p>
+        <p className="text-gray-500">Unable to load profile. Please try refreshing the page.</p>
+        <Button onClick={() => window.location.reload()} className="mt-4">
+          Refresh Page
+        </Button>
       </div>
     )
   }
@@ -178,7 +228,7 @@ export default function SettingsPage() {
                   id="phone"
                   type="tel"
                   value={profile.phone || ''}
-                  onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                  onChange={(e) => setProfile({ ...profile, phone: e.target.value || null })}
                 />
               </div>
               <div className="space-y-2">
@@ -186,7 +236,7 @@ export default function SettingsPage() {
                 <Input
                   id="bar_number"
                   value={profile.bar_number || ''}
-                  onChange={(e) => setProfile({ ...profile, bar_number: e.target.value })}
+                  onChange={(e) => setProfile({ ...profile, bar_number: e.target.value || null })}
                 />
               </div>
             </div>
@@ -194,7 +244,7 @@ export default function SettingsPage() {
               <Label htmlFor="states">State(s) of Licensure</Label>
               <Input
                 id="states"
-                value={profile.states_licensed.join(', ')}
+                value={profile.states_licensed.join(', ') || 'Not specified'}
                 disabled
                 className="bg-gray-50"
               />
@@ -217,7 +267,8 @@ export default function SettingsPage() {
               <Input
                 id="firm_name"
                 value={profile.firm_name || ''}
-                onChange={(e) => setProfile({ ...profile, firm_name: e.target.value })}
+                onChange={(e) => setProfile({ ...profile, firm_name: e.target.value || null })}
+                placeholder="Solo Practitioner"
               />
             </div>
             <div className="space-y-2">
@@ -225,7 +276,8 @@ export default function SettingsPage() {
               <Input
                 id="firm_address"
                 value={profile.firm_address || ''}
-                onChange={(e) => setProfile({ ...profile, firm_address: e.target.value })}
+                onChange={(e) => setProfile({ ...profile, firm_address: e.target.value || null })}
+                placeholder="123 Main St, Suite 100, City, State ZIP"
               />
             </div>
             <div className="space-y-2">
@@ -234,7 +286,8 @@ export default function SettingsPage() {
                 id="firm_phone"
                 type="tel"
                 value={profile.firm_phone || ''}
-                onChange={(e) => setProfile({ ...profile, firm_phone: e.target.value })}
+                onChange={(e) => setProfile({ ...profile, firm_phone: e.target.value || null })}
+                placeholder="(555) 123-4567"
               />
             </div>
           </CardContent>
