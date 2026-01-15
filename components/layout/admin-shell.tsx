@@ -147,24 +147,6 @@ export function AdminShell({ children, user, breadcrumbLabel }: AdminShellProps)
     .join('')
     .toUpperCase() || 'A'
 
-  // Generate breadcrumbs from pathname
-  const getBreadcrumbs = () => {
-    const paths = pathname.split('/').filter(Boolean)
-    const breadcrumbs = [{ name: 'Admin', href: '/admin' }]
-
-    let currentPath = ''
-    paths.forEach((path, index) => {
-      currentPath += `/${path}`
-      if (index > 0) { // Skip 'admin' as it's already added
-        const name = path.charAt(0).toUpperCase() + path.slice(1).replace(/-/g, ' ')
-        breadcrumbs.push({ name, href: currentPath })
-      }
-    })
-
-    return breadcrumbs
-  }
-
-  const breadcrumbs = getBreadcrumbs()
 
   return (
     <div className="min-h-screen bg-warm-gray">

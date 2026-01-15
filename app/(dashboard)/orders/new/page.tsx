@@ -59,7 +59,6 @@ export default function NewOrderPage() {
     instructions,
     documents,
     supervisionAcknowledged,
-    documents,
   } = useOrderForm()
 
   const currentStep = steps[step - 1]

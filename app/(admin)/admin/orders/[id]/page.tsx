@@ -211,12 +211,6 @@ export default async function AdminOrderDetailPage({
                 </CardHeader>
                 <CardContent className="p-6 overflow-hidden">
                   <p className="text-gray-300 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.statement_of_facts}</p>
-              <Card className="bg-white border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-lg text-navy">Statement of Facts</CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-gray-600 whitespace-pre-wrap leading-relaxed">{order.statement_of_facts}</p>
                 </CardContent>
               </Card>
 
