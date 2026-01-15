@@ -83,7 +83,7 @@ export const PARTY_ROLES = [
 ] as const;
 
 export const ORDER_STATUSES = {
-  submitted: { label: "Submitted", color: "blue", bgColor: "bg-blue-100", textColor: "text-blue-800" },
+  submitted: { label: "Submitted", color: "orange", bgColor: "bg-orange-100", textColor: "text-orange-800" },
   under_review: { label: "Under Review", color: "yellow", bgColor: "bg-yellow-100", textColor: "text-yellow-800" },
   assigned: { label: "Assigned", color: "purple", bgColor: "bg-purple-100", textColor: "text-purple-800" },
   in_progress: { label: "In Progress", color: "indigo", bgColor: "bg-indigo-100", textColor: "text-indigo-800" },
@@ -119,4 +119,19 @@ export function getTierForMotion(motionId: string): number {
 export function calculatePrice(basePrice: number | null, rushMultiplier: number): number | null {
   if (basePrice === null) return null;
   return Math.round(basePrice * rushMultiplier);
+}
+
+/**
+ * Formats a motion type ID to its display name
+ * e.g., 'withdraw_counsel' -> 'Motion to Withdraw as Counsel'
+ */
+export function formatMotionType(motionId: string): string {
+  const motion = getMotionById(motionId);
+  if (motion) return motion.name;
+
+  // Fallback: convert snake_case to Title Case
+  return motionId
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Bell, FileText, User, Clock, CheckCircle, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 
 interface Notification {
   id: string
@@ -69,7 +70,7 @@ export function AdminNotifications() {
           id: `order-${order.id}`,
           type: 'new_order' as const,
           title: 'New Order Received',
-          message: `${order.order_number} - ${order.motion_type}`,
+          message: `${order.order_number} - ${formatMotionType(order.motion_type)}`,
           href: `/admin/orders/${order.id}`,
           created_at: order.created_at,
           read: false,

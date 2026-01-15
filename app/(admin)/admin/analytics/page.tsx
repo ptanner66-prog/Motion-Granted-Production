@@ -15,6 +15,7 @@ import {
   ArrowDownRight,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 
 export const metadata: Metadata = {
   title: 'Analytics - Admin',
@@ -300,7 +301,7 @@ export default async function AdminAnalyticsPage() {
                 <div key={type} className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="text-2xl font-bold text-gray-300 w-8">#{index + 1}</span>
-                    <span className="text-gray-700">{type}</span>
+                    <span className="text-gray-700">{formatMotionType(type)}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-48 h-2 bg-gray-100 rounded-full overflow-hidden">

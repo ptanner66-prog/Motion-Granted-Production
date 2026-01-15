@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 
 export const metadata: Metadata = {
   title: 'Orders',
@@ -205,7 +206,7 @@ function OrderList({ orders }: { orders: OrderItem[] }) {
                     <OrderStatusBadge status={order.status} size="sm" />
                   </div>
                   <p className="font-semibold text-navy truncate">
-                    {order.motion_type}
+                    {formatMotionType(order.motion_type)}
                   </p>
                   <p className="text-sm text-gray-500 truncate">{order.case_caption}</p>
                 </div>

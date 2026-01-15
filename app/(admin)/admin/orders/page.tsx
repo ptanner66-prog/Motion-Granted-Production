@@ -11,6 +11,7 @@ import {
   User,
 } from 'lucide-react'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 import type { OrderStatus } from '@/types'
 
 export const metadata: Metadata = {
@@ -186,7 +187,7 @@ function OrderList({ orders, emptyMessage }: { orders: Order[], emptyMessage: st
                     <OrderStatusBadge status={order.status as OrderStatus} size="sm" />
                   </div>
                   <p className="font-semibold text-navy truncate">
-                    {order.motion_type}
+                    {formatMotionType(order.motion_type)}
                   </p>
                   <div className="flex items-center gap-2 text-sm text-gray-400">
                     <User className="h-3 w-3" />

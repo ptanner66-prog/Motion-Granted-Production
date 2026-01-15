@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 import { DocumentDownloadButton } from '@/components/documents/document-download-button'
 import {
   ArrowLeft,
@@ -123,7 +124,7 @@ export default async function OrderDetailPage({
               </h1>
               <OrderStatusBadge status={order.status as OrderStatus} />
             </div>
-            <p className="text-lg text-gray-600">{order.motion_type}</p>
+            <p className="text-lg text-gray-600">{formatMotionType(order.motion_type)}</p>
             <p className="text-sm text-gray-500 mt-1">
               <span className="font-medium">{order.case_caption}</span>
               <span className="mx-2">•</span>
