@@ -89,13 +89,20 @@ export async function updateSession(request: NextRequest) {
 
   // Role-based access control for protected routes
   if (isProtectedPath && user) {
-    const { data: profile } = await supabase
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    const role = profile?.role?.toString().toLowerCase().trim()
+    // If we can't get the profile, don't redirect - let page-level checks handle it
+    // This prevents incorrectly redirecting admins when profile query fails
+    if (error || !profile) {
+      console.log('MIDDLEWARE - Profile query failed, skipping role-based redirect')
+      return supabaseResponse
+    }
+
+    const role = profile.role?.toString().toLowerCase().trim()
     const pathname = request.nextUrl.pathname
 
     // Admin routes - only admin can access
@@ -109,6 +116,13 @@ export async function updateSession(request: NextRequest) {
     if ((pathname.startsWith('/dashboard') || pathname.startsWith('/orders') || pathname.startsWith('/settings')) && role === 'admin') {
       const url = request.nextUrl.clone()
       url.pathname = '/admin'
+      return NextResponse.redirect(url)
+    }
+
+    // Clerk routes - only clerk or admin can access
+    if (pathname.startsWith('/clerk') && !['clerk', 'admin'].includes(role || '')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
       return NextResponse.redirect(url)
     }
   }
