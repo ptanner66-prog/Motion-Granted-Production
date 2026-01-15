@@ -73,55 +73,55 @@ export default async function AdminOrdersPage() {
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">All Orders</h1>
-        <p className="text-gray-400 mt-1">Manage and track all customer orders</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-navy tracking-tight">All Orders</h1>
+        <p className="text-gray-500 mt-1">Manage and track all customer orders</p>
       </div>
 
       {/* Tabs */}
       <Tabs defaultValue="pending" className="space-y-6">
-        <TabsList className="bg-gray-800 p-1 border border-gray-700">
+        <TabsList className="bg-gray-100 p-1 border border-gray-200">
           <TabsTrigger
             value="pending"
-            className="data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400 text-gray-400 rounded-lg px-4"
+            className="data-[state=active]:bg-orange-100 data-[state=active]:text-orange-600 text-gray-500 rounded-lg px-4"
           >
             New
-            <span className="ml-2 rounded-full bg-orange-500/30 px-2 py-0.5 text-xs font-semibold text-orange-400">
+            <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-600">
               {pendingOrders.length}
             </span>
           </TabsTrigger>
           <TabsTrigger
             value="in_progress"
-            className="data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400 text-gray-400 rounded-lg px-4"
+            className="data-[state=active]:bg-blue-100 data-[state=active]:text-blue-600 text-gray-500 rounded-lg px-4"
           >
             In Progress
-            <span className="ml-2 rounded-full bg-blue-500/30 px-2 py-0.5 text-xs font-semibold text-blue-400">
+            <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-600">
               {inProgressOrders.length}
             </span>
           </TabsTrigger>
           <TabsTrigger
             value="review"
-            className="data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-gray-400 rounded-lg px-4"
+            className="data-[state=active]:bg-purple-100 data-[state=active]:text-purple-600 text-gray-500 rounded-lg px-4"
           >
             Pending Review
-            <span className="ml-2 rounded-full bg-purple-500/30 px-2 py-0.5 text-xs font-semibold text-purple-400">
+            <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-600">
               {reviewOrders.length}
             </span>
           </TabsTrigger>
           <TabsTrigger
             value="completed"
-            className="data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400 text-gray-400 rounded-lg px-4"
+            className="data-[state=active]:bg-emerald-100 data-[state=active]:text-emerald-600 text-gray-500 rounded-lg px-4"
           >
             Completed
-            <span className="ml-2 rounded-full bg-emerald-500/30 px-2 py-0.5 text-xs font-semibold text-emerald-400">
+            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-600">
               {completedOrders.length}
             </span>
           </TabsTrigger>
           <TabsTrigger
             value="all"
-            className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-400 rounded-lg px-4"
+            className="data-[state=active]:bg-gray-200 data-[state=active]:text-navy text-gray-500 rounded-lg px-4"
           >
             All
-            <span className="ml-2 rounded-full bg-gray-600 px-2 py-0.5 text-xs font-semibold text-gray-300">
+            <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-600">
               {allOrders.length}
             </span>
           </TabsTrigger>
@@ -154,41 +154,41 @@ export default async function AdminOrdersPage() {
 function OrderList({ orders, emptyMessage }: { orders: Order[], emptyMessage: string }) {
   if (orders.length === 0) {
     return (
-      <Card className="bg-gray-900 border-gray-800">
+      <Card className="bg-white border-gray-200">
         <CardContent className="py-12 text-center">
-          <FileText className="h-12 w-12 mx-auto mb-3 text-gray-700" />
-          <p className="text-gray-500">{emptyMessage}</p>
+          <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+          <p className="text-gray-400">{emptyMessage}</p>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <Card className="bg-gray-900 border-gray-800 overflow-hidden">
-      <div className="divide-y divide-gray-800">
+    <Card className="bg-white border-gray-200 overflow-hidden">
+      <div className="divide-y divide-gray-200">
         {orders.map((order) => {
           const daysUntilDue = getDaysUntilDue(order.filing_deadline)
           return (
             <Link
               key={order.id}
               href={`/admin/orders/${order.id}`}
-              className={`flex items-center justify-between p-4 hover:bg-gray-800/50 transition-colors ${getUrgencyClass(daysUntilDue, order.status)}`}
+              className={`flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${getUrgencyClass(daysUntilDue, order.status)}`}
             >
               <div className="flex items-center gap-4 min-w-0 flex-1">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-800">
-                  <FileText className="h-6 w-6 text-gray-500" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100">
+                  <FileText className="h-6 w-6 text-gray-400" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-mono text-xs text-gray-500">
+                    <span className="font-mono text-xs text-gray-400">
                       {order.order_number}
                     </span>
                     <OrderStatusBadge status={order.status as OrderStatus} size="sm" />
                   </div>
-                  <p className="font-semibold text-white truncate">
+                  <p className="font-semibold text-navy truncate">
                     {order.motion_type}
                   </p>
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <div className="flex items-center gap-2 text-sm text-gray-400">
                     <User className="h-3 w-3" />
                     <span className="truncate">
                       {order.profiles?.full_name || order.profiles?.email || 'Unknown'}
@@ -200,17 +200,17 @@ function OrderList({ orders, emptyMessage }: { orders: Order[], emptyMessage: st
               </div>
 
               <div className="text-right flex-shrink-0 ml-4 hidden sm:block">
-                <p className="font-bold text-white tabular-nums text-lg">
+                <p className="font-bold text-navy tabular-nums text-lg">
                   {formatCurrency(order.total_price)}
                 </p>
                 <div className="flex items-center justify-end gap-1.5 mt-1">
-                  <Calendar className="h-3.5 w-3.5 text-gray-500" />
+                  <Calendar className="h-3.5 w-3.5 text-gray-400" />
                   <span className={`text-sm ${
                     daysUntilDue > 0 && daysUntilDue <= 7
-                      ? 'text-orange-400 font-medium'
+                      ? 'text-orange-500 font-medium'
                       : daysUntilDue <= 3
-                        ? 'text-red-400 font-medium'
-                        : 'text-gray-500'
+                        ? 'text-red-500 font-medium'
+                        : 'text-gray-400'
                   }`}>
                     {order.status === 'completed' ? 'Completed' : formatDateShort(order.filing_deadline)}
                     {daysUntilDue > 0 && daysUntilDue <= 7 && order.status !== 'completed' && (
@@ -220,7 +220,7 @@ function OrderList({ orders, emptyMessage }: { orders: Order[], emptyMessage: st
                 </div>
               </div>
 
-              <ChevronRight className="h-5 w-5 text-gray-600 ml-2 flex-shrink-0" />
+              <ChevronRight className="h-5 w-5 text-gray-400 ml-2 flex-shrink-0" />
             </Link>
           )
         })}

@@ -75,30 +75,30 @@ export function StatusUpdateForm({ orderId, currentStatus }: StatusUpdateFormPro
   }
 
   return (
-    <Card className="bg-gray-900 border-gray-800">
-      <CardHeader className="border-b border-gray-800 bg-orange-500/5">
-        <CardTitle className="text-lg text-white flex items-center gap-2">
-          <RefreshCw className="h-5 w-5 text-orange-400" />
+    <Card className="bg-white border-gray-200">
+      <CardHeader className="border-b border-gray-200 bg-teal/5">
+        <CardTitle className="text-lg text-navy flex items-center gap-2">
+          <RefreshCw className="h-5 w-5 text-teal" />
           Update Status
         </CardTitle>
       </CardHeader>
       <CardContent className="p-6 space-y-4">
         <div className="space-y-2">
-          <Label className="text-gray-400">Current Status</Label>
+          <Label className="text-gray-500">Current Status</Label>
           <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+            <SelectTrigger className="bg-gray-100 border-gray-300 text-navy">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-gray-800 border-gray-700">
+            <SelectContent className="bg-white border-gray-300">
               {ORDER_STATUSES.map((s) => (
                 <SelectItem
                   key={s.value}
                   value={s.value}
-                  className="text-white focus:bg-gray-700 focus:text-white"
+                  className="text-navy focus:bg-gray-100 focus:text-navy"
                 >
                   <div>
                     <p className="font-medium">{s.label}</p>
-                    <p className="text-xs text-gray-400">{s.description}</p>
+                    <p className="text-xs text-gray-500">{s.description}</p>
                   </div>
                 </SelectItem>
               ))}
@@ -109,7 +109,7 @@ export function StatusUpdateForm({ orderId, currentStatus }: StatusUpdateFormPro
         <Button
           onClick={handleStatusUpdate}
           disabled={isUpdating || status === currentStatus}
-          className="w-full bg-orange-600 hover:bg-orange-500 text-white"
+          className="w-full bg-teal hover:bg-teal-dark text-white"
         >
           {isUpdating ? (
             <>
@@ -122,7 +122,7 @@ export function StatusUpdateForm({ orderId, currentStatus }: StatusUpdateFormPro
         </Button>
 
         {status !== currentStatus && (
-          <p className="text-xs text-orange-400 text-center">
+          <p className="text-xs text-teal text-center">
             Status will change from &quot;{ORDER_STATUSES.find(s => s.value === currentStatus)?.label}&quot; to &quot;{ORDER_STATUSES.find(s => s.value === status)?.label}&quot;
           </p>
         )}

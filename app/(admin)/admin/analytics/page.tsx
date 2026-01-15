@@ -107,73 +107,73 @@ export default async function AdminAnalyticsPage() {
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Analytics</h1>
-        <p className="text-gray-400 mt-1">Business metrics and performance insights</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-navy tracking-tight">Analytics</h1>
+        <p className="text-gray-500 mt-1">Business metrics and performance insights</p>
       </div>
 
       {/* Key Metrics */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <Card className="bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border-emerald-500/20">
+        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-400 mb-1">Total Revenue</p>
-                <p className="text-3xl font-bold text-white">{formatCurrency(totalRevenue)}</p>
-                <div className={`flex items-center gap-1 mt-2 text-sm ${revenueChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <p className="text-sm font-medium text-gray-500 mb-1">Total Revenue</p>
+                <p className="text-3xl font-bold text-navy">{formatCurrency(totalRevenue)}</p>
+                <div className={`flex items-center gap-1 mt-2 text-sm ${revenueChange >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                   {revenueChange >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
                   <span>{Math.abs(revenueChange).toFixed(1)}% vs last month</span>
                 </div>
               </div>
-              <div className="bg-emerald-500/20 p-3 rounded-xl">
-                <DollarSign className="h-6 w-6 text-emerald-400" />
+              <div className="bg-emerald-200 p-3 rounded-xl">
+                <DollarSign className="h-6 w-6 text-emerald-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-blue-500/20 to-blue-500/5 border-blue-500/20">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-400 mb-1">Total Orders</p>
-                <p className="text-3xl font-bold text-white">{allOrders.length}</p>
-                <div className={`flex items-center gap-1 mt-2 text-sm ${ordersChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <p className="text-sm font-medium text-gray-500 mb-1">Total Orders</p>
+                <p className="text-3xl font-bold text-navy">{allOrders.length}</p>
+                <div className={`flex items-center gap-1 mt-2 text-sm ${ordersChange >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                   {ordersChange >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
                   <span>{Math.abs(ordersChange).toFixed(1)}% vs last month</span>
                 </div>
               </div>
-              <div className="bg-blue-500/20 p-3 rounded-xl">
-                <FileText className="h-6 w-6 text-blue-400" />
+              <div className="bg-blue-200 p-3 rounded-xl">
+                <FileText className="h-6 w-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500/20 to-purple-500/5 border-purple-500/20">
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-400 mb-1">Avg. Order Value</p>
-                <p className="text-3xl font-bold text-white">{formatCurrency(avgOrderValue)}</p>
-                <p className="text-sm text-gray-500 mt-2">Per order</p>
+                <p className="text-sm font-medium text-gray-500 mb-1">Avg. Order Value</p>
+                <p className="text-3xl font-bold text-navy">{formatCurrency(avgOrderValue)}</p>
+                <p className="text-sm text-gray-400 mt-2">Per order</p>
               </div>
-              <div className="bg-purple-500/20 p-3 rounded-xl">
-                <TrendingUp className="h-6 w-6 text-purple-400" />
+              <div className="bg-purple-200 p-3 rounded-xl">
+                <TrendingUp className="h-6 w-6 text-purple-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-teal/20 to-teal/5 border-teal/20">
+        <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-400 mb-1">Total Clients</p>
-                <p className="text-3xl font-bold text-white">{totalClients || 0}</p>
-                <p className="text-sm text-gray-500 mt-2">Registered users</p>
+                <p className="text-sm font-medium text-gray-500 mb-1">Total Clients</p>
+                <p className="text-3xl font-bold text-navy">{totalClients || 0}</p>
+                <p className="text-sm text-gray-400 mt-2">Registered users</p>
               </div>
-              <div className="bg-teal/20 p-3 rounded-xl">
-                <Users className="h-6 w-6 text-teal" />
+              <div className="bg-teal-200 p-3 rounded-xl">
+                <Users className="h-6 w-6 text-teal-600" />
               </div>
             </div>
           </CardContent>
@@ -183,89 +183,89 @@ export default async function AdminAnalyticsPage() {
       {/* Secondary Stats */}
       <div className="grid gap-6 lg:grid-cols-2 mb-8">
         {/* Order Status Breakdown */}
-        <Card className="bg-gray-900 border-gray-800">
+        <Card className="bg-white border-gray-200">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-white">Order Status</CardTitle>
-            <CardDescription className="text-gray-500">Current order pipeline</CardDescription>
+            <CardTitle className="text-lg font-semibold text-navy">Order Status</CardTitle>
+            <CardDescription className="text-gray-400">Current order pipeline</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="bg-orange-500/20 p-2 rounded-lg">
-                  <Clock className="h-4 w-4 text-orange-400" />
+                <div className="bg-orange-100 p-2 rounded-lg">
+                  <Clock className="h-4 w-4 text-orange-500" />
                 </div>
-                <span className="text-gray-300">Pending</span>
+                <span className="text-gray-700">Pending</span>
               </div>
               <div className="flex items-center gap-3">
-                <div className="w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-orange-500 rounded-full"
                     style={{ width: `${allOrders.length > 0 ? (pendingOrders / allOrders.length) * 100 : 0}%` }}
                   />
                 </div>
-                <span className="text-white font-semibold w-8 text-right">{pendingOrders}</span>
+                <span className="text-navy font-semibold w-8 text-right">{pendingOrders}</span>
               </div>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="bg-blue-500/20 p-2 rounded-lg">
-                  <BarChart3 className="h-4 w-4 text-blue-400" />
+                <div className="bg-blue-100 p-2 rounded-lg">
+                  <BarChart3 className="h-4 w-4 text-blue-500" />
                 </div>
-                <span className="text-gray-300">In Progress</span>
+                <span className="text-gray-700">In Progress</span>
               </div>
               <div className="flex items-center gap-3">
-                <div className="w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-blue-500 rounded-full"
                     style={{ width: `${allOrders.length > 0 ? (inProgressOrders / allOrders.length) * 100 : 0}%` }}
                   />
                 </div>
-                <span className="text-white font-semibold w-8 text-right">{inProgressOrders}</span>
+                <span className="text-navy font-semibold w-8 text-right">{inProgressOrders}</span>
               </div>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="bg-emerald-500/20 p-2 rounded-lg">
-                  <CheckCircle className="h-4 w-4 text-emerald-400" />
+                <div className="bg-emerald-100 p-2 rounded-lg">
+                  <CheckCircle className="h-4 w-4 text-emerald-500" />
                 </div>
-                <span className="text-gray-300">Completed</span>
+                <span className="text-gray-700">Completed</span>
               </div>
               <div className="flex items-center gap-3">
-                <div className="w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-emerald-500 rounded-full"
                     style={{ width: `${allOrders.length > 0 ? (completedOrders / allOrders.length) * 100 : 0}%` }}
                   />
                 </div>
-                <span className="text-white font-semibold w-8 text-right">{completedOrders}</span>
+                <span className="text-navy font-semibold w-8 text-right">{completedOrders}</span>
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Turnaround Distribution */}
-        <Card className="bg-gray-900 border-gray-800">
+        <Card className="bg-white border-gray-200">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-white">Turnaround Times</CardTitle>
-            <CardDescription className="text-gray-500">Order delivery preferences</CardDescription>
+            <CardTitle className="text-lg font-semibold text-navy">Turnaround Times</CardTitle>
+            <CardDescription className="text-gray-400">Order delivery preferences</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {Object.entries(turnaroundTypes).map(([type, count]) => (
               <div key={type} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg ${
-                    type === 'Standard' ? 'bg-gray-700' :
-                    type === '72-hour Rush' ? 'bg-orange-500/20' : 'bg-red-500/20'
+                    type === 'Standard' ? 'bg-gray-200' :
+                    type === '72-hour Rush' ? 'bg-orange-100' : 'bg-red-100'
                   }`}>
                     <Clock className={`h-4 w-4 ${
-                      type === 'Standard' ? 'text-gray-400' :
-                      type === '72-hour Rush' ? 'text-orange-400' : 'text-red-400'
+                      type === 'Standard' ? 'text-gray-500' :
+                      type === '72-hour Rush' ? 'text-orange-500' : 'text-red-500'
                     }`} />
                   </div>
-                  <span className="text-gray-300">{type}</span>
+                  <span className="text-gray-700">{type}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full ${
                         type === 'Standard' ? 'bg-gray-500' :
@@ -274,42 +274,42 @@ export default async function AdminAnalyticsPage() {
                       style={{ width: `${allOrders.length > 0 ? (count / allOrders.length) * 100 : 0}%` }}
                     />
                   </div>
-                  <span className="text-white font-semibold w-8 text-right">{count}</span>
+                  <span className="text-navy font-semibold w-8 text-right">{count}</span>
                 </div>
               </div>
             ))}
             {Object.keys(turnaroundTypes).length === 0 && (
-              <p className="text-gray-500 text-center py-4">No orders yet</p>
+              <p className="text-gray-400 text-center py-4">No orders yet</p>
             )}
           </CardContent>
         </Card>
       </div>
 
       {/* Top Motion Types */}
-      <Card className="bg-gray-900 border-gray-800">
+      <Card className="bg-white border-gray-200">
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-white">Popular Motion Types</CardTitle>
-          <CardDescription className="text-gray-500">Most requested motion types</CardDescription>
+          <CardTitle className="text-lg font-semibold text-navy">Popular Motion Types</CardTitle>
+          <CardDescription className="text-gray-400">Most requested motion types</CardDescription>
         </CardHeader>
         <CardContent>
           {topMotionTypes.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No orders yet</p>
+            <p className="text-gray-400 text-center py-8">No orders yet</p>
           ) : (
             <div className="space-y-4">
               {topMotionTypes.map(([type, count], index) => (
                 <div key={type} className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl font-bold text-gray-600 w-8">#{index + 1}</span>
-                    <span className="text-gray-300">{type}</span>
+                    <span className="text-2xl font-bold text-gray-300 w-8">#{index + 1}</span>
+                    <span className="text-gray-700">{type}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="w-48 h-2 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="w-48 h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-gradient-to-r from-teal to-teal-dark rounded-full"
                         style={{ width: `${(count / topMotionTypes[0][1]) * 100}%` }}
                       />
                     </div>
-                    <span className="text-white font-semibold w-12 text-right">{count} orders</span>
+                    <span className="text-navy font-semibold w-12 text-right">{count} orders</span>
                   </div>
                 </div>
               ))}
