@@ -67,35 +67,43 @@ export async function updateSession(request: NextRequest) {
 
   if (isAuthPath && user) {
     // Check user role to redirect to correct dashboard
-    const { data: profile } = await supabase
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
+    console.log('MIDDLEWARE AUTH PATH - Profile:', profile, 'Error:', error)
+
+    const role = profile?.role?.toString().toLowerCase().trim()
     const url = request.nextUrl.clone()
-    url.pathname = profile?.role === 'admin' ? '/admin' : '/dashboard'
+    url.pathname = role === 'admin' ? '/admin' : '/dashboard'
     return NextResponse.redirect(url)
   }
 
-  // Role-based access control
-  if (user && (request.nextUrl.pathname.startsWith('/admin') || request.nextUrl.pathname.startsWith('/clerk') || request.nextUrl.pathname.startsWith('/dashboard'))) {
-    const { data: profile } = await supabase
+  // Role-based access control - check on EVERY request to dashboard/admin/clerk
+  if (user && (request.nextUrl.pathname.startsWith('/admin') || request.nextUrl.pathname.startsWith('/clerk') || request.nextUrl.pathname.startsWith('/dashboard') || request.nextUrl.pathname.startsWith('/orders') || request.nextUrl.pathname.startsWith('/settings'))) {
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    // Redirect admins from client dashboard to admin dashboard
-    if (request.nextUrl.pathname.startsWith('/dashboard') && profile?.role === 'admin') {
+    console.log('MIDDLEWARE ROLE CHECK - Path:', request.nextUrl.pathname, 'Profile:', profile, 'Error:', error)
+
+    const role = profile?.role?.toString().toLowerCase().trim()
+
+    // Redirect admins from client areas to admin dashboard
+    if ((request.nextUrl.pathname.startsWith('/dashboard') || request.nextUrl.pathname.startsWith('/orders') || request.nextUrl.pathname.startsWith('/settings')) && role === 'admin') {
+      console.log('MIDDLEWARE - Redirecting admin to /admin')
       return NextResponse.redirect(new URL('/admin', request.url))
     }
 
-    if (request.nextUrl.pathname.startsWith('/admin') && profile?.role !== 'admin') {
+    if (request.nextUrl.pathname.startsWith('/admin') && role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
-    if (request.nextUrl.pathname.startsWith('/clerk') && !['clerk', 'admin'].includes(profile?.role || '')) {
+    if (request.nextUrl.pathname.startsWith('/clerk') && !['clerk', 'admin'].includes(role || '')) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   }
