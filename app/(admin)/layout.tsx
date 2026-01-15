@@ -17,12 +17,18 @@ export default async function AdminLayout({
     redirect('/login')
   }
 
-  // Get profile for display name only
+  // Get profile including role
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name')
+    .select('full_name, role')
     .eq('id', user.id)
     .single()
+
+  // Check if user is admin - redirect non-admins to client dashboard
+  const role = profile?.role?.toString().toLowerCase().trim()
+  if (role !== 'admin') {
+    redirect('/dashboard')
+  }
 
   const userData = {
     name: profile?.full_name || user.email?.split('@')[0] || 'Admin',
