@@ -1,13 +1,26 @@
 -- Storage Bucket Setup for Document Uploads
 -- Run this ENTIRE script in Supabase SQL Editor to set up document storage
 
--- Step 1: Create the documents bucket
+-- STORAGE STRUCTURE:
+-- documents/
+--   orders/{order_id}/             - Client uploaded case documents
+--     {timestamp}-{filename}
+--   deliverables/{order_id}/       - Completed drafts from clerks
+--     {timestamp}-{filename}
+--
+-- SECURITY MODEL:
+-- - Database RLS controls who can see document records (by order ownership)
+-- - Bucket is public for URL access, but users can only find URLs through database queries
+-- - Only authenticated users can upload
+-- - Files are organized by order_id for easy management
+
+-- Step 1: Create the documents bucket (100MB limit for large legal briefs)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'documents',
   'documents',
-  true,  -- Public bucket for easy access (files are protected by path structure)
-  52428800,  -- 50MB limit
+  true,  -- Public bucket (files protected by path obscurity + database RLS)
+  104857600,  -- 100MB limit for large legal briefs
   ARRAY[
     'application/pdf',
     'application/msword',
@@ -21,7 +34,7 @@ VALUES (
 )
 ON CONFLICT (id) DO UPDATE SET
   public = true,
-  file_size_limit = 52428800,
+  file_size_limit = 104857600,  -- 100MB
   allowed_mime_types = ARRAY[
     'application/pdf',
     'application/msword',
@@ -37,13 +50,14 @@ ON CONFLICT (id) DO UPDATE SET
 DROP POLICY IF EXISTS "Allow authenticated uploads" ON storage.objects;
 DROP POLICY IF EXISTS "Allow public downloads" ON storage.objects;
 DROP POLICY IF EXISTS "Allow authenticated deletes" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated updates" ON storage.objects;
 DROP POLICY IF EXISTS "Users can upload temp files" ON storage.objects;
 DROP POLICY IF EXISTS "Users can upload order files" ON storage.objects;
 DROP POLICY IF EXISTS "Public can read documents" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete temp files" ON storage.objects;
 DROP POLICY IF EXISTS "Admins can delete documents" ON storage.objects;
 
--- Step 3: Create simple, permissive policies
+-- Step 3: Create storage policies
 
 -- Policy: Any authenticated user can upload to the documents bucket
 CREATE POLICY "Allow authenticated uploads"
@@ -51,13 +65,15 @@ ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (bucket_id = 'documents');
 
--- Policy: Anyone can download/view files from the documents bucket (it's public)
+-- Policy: Anyone can download/view files from the documents bucket
+-- Security note: File URLs are only exposed through database queries,
+-- which are protected by RLS (user can only see their own orders' documents)
 CREATE POLICY "Allow public downloads"
 ON storage.objects FOR SELECT
 TO public
 USING (bucket_id = 'documents');
 
--- Policy: Authenticated users can delete files they uploaded or admins can delete any
+-- Policy: Authenticated users can delete files
 CREATE POLICY "Allow authenticated deletes"
 ON storage.objects FOR DELETE
 TO authenticated
@@ -74,4 +90,12 @@ WITH CHECK (bucket_id = 'documents');
 SELECT id, name, public, file_size_limit FROM storage.buckets WHERE id = 'documents';
 
 -- Done! Your storage is now configured for document uploads.
--- Documents will be stored at: documents/orders/{orderId}/{timestamp}-{filename}
+--
+-- PATH CONVENTIONS:
+-- - Client documents: documents/orders/{orderId}/{timestamp}-{filename}
+-- - Clerk deliverables: documents/deliverables/{orderId}/{timestamp}-{filename}
+--
+-- The database documents table tracks all files with:
+-- - is_deliverable: boolean to distinguish client uploads from clerk deliverables
+-- - uploaded_by: UUID of the user who uploaded the file
+-- - order_id: Links file to specific order (used for RLS)

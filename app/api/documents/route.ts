@@ -40,9 +40,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Order ID is required' }, { status: 400 })
     }
 
-    // Validate file size (50MB max)
-    if (file.size > 50 * 1024 * 1024) {
-      return NextResponse.json({ error: 'File too large. Maximum size is 50MB.' }, { status: 400 })
+    // Validate file size (100MB max for large legal briefs)
+    if (file.size > 100 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large. Maximum size is 100MB.' }, { status: 400 })
     }
 
     // Validate file size is not 0

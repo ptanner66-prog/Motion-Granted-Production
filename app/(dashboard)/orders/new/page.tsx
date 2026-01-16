@@ -14,8 +14,56 @@ import { Instructions } from '@/components/orders/intake-form/instructions'
 import { DocumentUpload } from '@/components/orders/intake-form/document-upload'
 import { OrderSummary } from '@/components/orders/intake-form/order-summary'
 import { useToast } from '@/hooks/use-toast'
-import { ArrowLeft, ArrowRight, Loader2, Send } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader2, Send, Upload } from 'lucide-react'
 import { useState } from 'react'
+
+// Upload with progress tracking for large files
+function uploadWithProgress(
+  file: File,
+  orderId: string,
+  documentType: string,
+  onProgress: (percent: number) => void
+): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest()
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('orderId', orderId)
+    formData.append('documentType', documentType)
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100)
+        onProgress(percent)
+      }
+    })
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({ ok: true })
+      } else {
+        try {
+          const response = JSON.parse(xhr.responseText)
+          resolve({ ok: false, error: response.error || `Upload failed (${xhr.status})` })
+        } catch {
+          resolve({ ok: false, error: `Upload failed (${xhr.status})` })
+        }
+      }
+    })
+
+    xhr.addEventListener('error', () => {
+      resolve({ ok: false, error: 'Network error during upload' })
+    })
+
+    xhr.addEventListener('timeout', () => {
+      resolve({ ok: false, error: 'Upload timed out' })
+    })
+
+    xhr.timeout = 300000 // 5 minute timeout for large files
+    xhr.open('POST', '/api/documents')
+    xhr.send(formData)
+  })
+}
 
 const steps = [
   { number: 1, title: 'Motion Type', component: MotionSelect },
@@ -28,10 +76,18 @@ const steps = [
   { number: 8, title: 'Review', component: OrderSummary },
 ]
 
+interface UploadProgress {
+  currentFile: string
+  currentIndex: number
+  totalFiles: number
+  fileProgress: number
+}
+
 export default function NewOrderPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null)
 
   const {
     step,
@@ -183,13 +239,15 @@ export default function NewOrderPage() {
         throw new Error('Order created but no ID returned')
       }
 
-      // Upload documents one by one
+      // Upload documents one by one with progress tracking
       let successCount = 0
       let failCount = 0
       const failedFiles: string[] = []
 
       if (documents.length > 0) {
-        for (const doc of documents) {
+        for (let i = 0; i < documents.length; i++) {
+          const doc = documents[i]
+
           // Check if we have a valid file
           if (!doc.file || !(doc.file instanceof File)) {
             console.error('Invalid file object for:', doc.name)
@@ -198,23 +256,29 @@ export default function NewOrderPage() {
             continue
           }
 
+          // Update progress state
+          setUploadProgress({
+            currentFile: doc.name,
+            currentIndex: i + 1,
+            totalFiles: documents.length,
+            fileProgress: 0,
+          })
+
           try {
-            const formData = new FormData()
-            formData.append('file', doc.file)
-            formData.append('orderId', orderId)
-            formData.append('documentType', doc.documentType || 'other')
+            const result = await uploadWithProgress(
+              doc.file,
+              orderId,
+              doc.documentType || 'other',
+              (percent) => {
+                setUploadProgress((prev) => prev ? { ...prev, fileProgress: percent } : null)
+              }
+            )
 
-            const uploadResponse = await fetch('/api/documents', {
-              method: 'POST',
-              body: formData,
-            })
-
-            if (uploadResponse.ok) {
+            if (result.ok) {
               successCount++
               console.log('Uploaded successfully:', doc.name)
             } else {
-              const errorData = await uploadResponse.json().catch(() => ({}))
-              console.error('Upload failed for', doc.name, ':', errorData.error || uploadResponse.status)
+              console.error('Upload failed for', doc.name, ':', result.error)
               failCount++
               failedFiles.push(doc.name)
             }
@@ -224,6 +288,9 @@ export default function NewOrderPage() {
             failedFiles.push(doc.name)
           }
         }
+
+        // Clear upload progress
+        setUploadProgress(null)
 
         // Show results
         if (failCount > 0 && successCount > 0) {
@@ -311,12 +378,31 @@ export default function NewOrderPage() {
           </CardContent>
         </Card>
 
+        {/* Upload Progress Overlay */}
+        {uploadProgress && (
+          <Card className="mt-6 border-teal/30 bg-teal/5">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <Upload className="h-5 w-5 text-teal animate-pulse" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-navy">
+                    Uploading document {uploadProgress.currentIndex} of {uploadProgress.totalFiles}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">{uploadProgress.currentFile}</p>
+                </div>
+                <span className="text-sm font-semibold text-teal">{uploadProgress.fileProgress}%</span>
+              </div>
+              <Progress value={uploadProgress.fileProgress} className="h-2" />
+            </CardContent>
+          </Card>
+        )}
+
         {/* Navigation */}
         <div className="mt-6 flex justify-between">
           <Button
             variant="outline"
             onClick={prevStep}
-            disabled={step === 1}
+            disabled={step === 1 || isSubmitting}
             className="gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -326,10 +412,17 @@ export default function NewOrderPage() {
           {step === steps.length ? (
             <Button onClick={handleSubmit} disabled={isSubmitting} className="btn-premium gap-2">
               {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Submitting...
-                </>
+                uploadProgress ? (
+                  <>
+                    <Upload className="h-4 w-4 animate-pulse" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                )
               ) : (
                 <>
                   <Send className="h-4 w-4" />

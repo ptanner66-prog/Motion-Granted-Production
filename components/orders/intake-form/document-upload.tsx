@@ -60,7 +60,7 @@ export function DocumentUpload() {
       'application/msword': ['.doc'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
     },
-    maxSize: 50 * 1024 * 1024, // 50MB
+    maxSize: 100 * 1024 * 1024, // 100MB for large legal briefs
   })
 
   const formatFileSize = (bytes: number) => {
@@ -132,7 +132,7 @@ export function DocumentUpload() {
                 Drag and drop files here, or click to browse
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                PDF, DOC, DOCX • Max 50MB per file
+                PDF, DOC, DOCX • Max 100MB per file
               </p>
             </>
           )}
