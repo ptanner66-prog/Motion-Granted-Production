@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
+import { sendEmail } from '@/lib/resend'
+import { OrderConfirmationEmail } from '@/emails/order-confirmation'
+import { formatMotionType } from '@/config/motion-types'
 
 export async function GET() {
   // Return early if Supabase is not configured
@@ -139,6 +142,34 @@ export async function POST(req: Request) {
         // Continue even if document insert fails
       }
     }
+
+    // Send confirmation email (non-blocking)
+    const turnaroundLabels: Record<string, string> = {
+      standard: 'Standard (5-7 business days)',
+      rush_72: '72-Hour Rush',
+      rush_48: '48-Hour Rush',
+    }
+
+    sendEmail({
+      to: user.email!,
+      subject: `Order Confirmed: ${order.order_number}`,
+      react: OrderConfirmationEmail({
+        orderNumber: order.order_number,
+        motionType: formatMotionType(body.motion_type),
+        caseCaption: body.case_caption,
+        turnaround: turnaroundLabels[body.turnaround] || body.turnaround,
+        expectedDelivery: new Date(expectedDelivery).toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }),
+        totalPrice: `$${body.total_price.toFixed(2)}`,
+        portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/orders/${order.id}`,
+      }),
+    }).catch((err) => {
+      console.error('Failed to send confirmation email:', err)
+    })
 
     return NextResponse.json({
       order,
