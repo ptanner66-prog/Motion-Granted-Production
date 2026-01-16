@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
 import { formatMotionType } from '@/config/motion-types'
 import { StatusUpdateForm } from '@/components/admin/status-update-form'
 import { UploadDeliverableButton } from '@/components/admin/upload-deliverable-button'
+import { DownloadAllButton } from '@/components/admin/download-all-button'
 import { DocumentDownloadButton } from '@/components/documents/document-download-button'
 import {
   ArrowLeft,
@@ -251,7 +252,10 @@ export default async function AdminOrderDetailPage({
                       </CardTitle>
                       <CardDescription className="text-gray-400 mt-1.5">Documents provided with this order</CardDescription>
                     </div>
-                    <UploadDeliverableButton orderId={order.id} />
+                    <div className="flex items-center gap-2">
+                      <DownloadAllButton orderId={order.id} orderNumber={order.order_number} documentCount={documents.length} />
+                      <UploadDeliverableButton orderId={order.id} />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="p-6">
