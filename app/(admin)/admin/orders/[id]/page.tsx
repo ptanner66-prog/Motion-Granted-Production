@@ -22,6 +22,8 @@ import {
   Calendar,
   DollarSign,
   Building,
+  FileCheck,
+  Upload,
 } from 'lucide-react'
 import type { OrderStatus } from '@/types'
 
@@ -86,6 +88,10 @@ export default async function AdminOrderDetailPage({
     .select('*')
     .eq('order_id', id)
   const documents: Document[] = documentsData || []
+
+  // Split documents into uploads and deliverables
+  const clientUploads = documents.filter(doc => doc.document_type !== 'deliverable')
+  const deliverables = documents.filter(doc => doc.document_type === 'deliverable')
 
   const client = order.profiles
 
@@ -241,27 +247,77 @@ export default async function AdminOrderDetailPage({
               </Card>
             </TabsContent>
 
-            <TabsContent value="documents" className="mt-6">
+            <TabsContent value="documents" className="mt-6 space-y-6">
+              {/* Deliverables Section */}
+              <Card className="bg-white border-gray-200">
+                <CardHeader className="border-b border-gray-200">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2 text-navy">
+                        <FileCheck className="h-5 w-5 text-teal" />
+                        Deliverables
+                      </CardTitle>
+                      <CardDescription className="text-gray-400 mt-1.5">Completed drafts ready for client</CardDescription>
+                    </div>
+                    <UploadDeliverableButton orderId={order.id} />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {deliverables.length > 0 ? (
+                    <div className="space-y-3">
+                      {deliverables.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="flex items-center justify-between rounded-xl bg-teal/5 border border-teal/20 p-4 hover:border-teal/40 hover:bg-teal/10 transition-all"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal/20">
+                              <FileCheck className="h-6 w-6 text-teal" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-navy">{doc.file_name}</p>
+                              <p className="text-sm text-gray-400">
+                                Delivered • {formatDateShort(doc.created_at)}
+                              </p>
+                            </div>
+                          </div>
+                          <DocumentDownloadButton
+                            filePath={doc.file_url}
+                            fileName={doc.file_name}
+                            variant="outline"
+                            className="border-teal/30 hover:bg-teal hover:text-white hover:border-teal"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-400">
+                      <Upload className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p>No deliverables uploaded yet</p>
+                      <p className="text-sm mt-1">Use the button above to upload completed drafts</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Client Uploads Section */}
               <Card className="bg-white border-gray-200">
                 <CardHeader className="border-b border-gray-200">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <CardTitle className="text-lg flex items-center gap-2 text-navy">
                         <Paperclip className="h-5 w-5 text-gray-400" />
-                        Uploaded Documents
+                        Client Uploads
                       </CardTitle>
-                      <CardDescription className="text-gray-400 mt-1.5">Documents provided with this order</CardDescription>
+                      <CardDescription className="text-gray-400 mt-1.5">Supporting documents provided by client</CardDescription>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <DownloadAllButton orderId={order.id} orderNumber={order.order_number} documentCount={documents.length} />
-                      <UploadDeliverableButton orderId={order.id} />
-                    </div>
+                    <DownloadAllButton orderId={order.id} orderNumber={order.order_number} documentCount={documents.length} />
                   </div>
                 </CardHeader>
                 <CardContent className="p-6">
-                  {documents.length > 0 ? (
+                  {clientUploads.length > 0 ? (
                     <div className="space-y-3">
-                      {documents.map((doc) => (
+                      {clientUploads.map((doc) => (
                         <div
                           key={doc.id}
                           className="flex items-center justify-between rounded-xl bg-gray-100 border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50 transition-all"
@@ -289,7 +345,7 @@ export default async function AdminOrderDetailPage({
                   ) : (
                     <div className="text-center py-8 text-gray-400">
                       <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                      <p>No documents uploaded</p>
+                      <p>No documents uploaded by client</p>
                     </div>
                   )}
                 </CardContent>
