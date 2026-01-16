@@ -88,48 +88,16 @@ export function DraftReadyEmail({
 
           <Hr style={divider} />
 
-          {/* Revision Info */}
-          <Section style={revisionSection}>
+          {/* Next Steps */}
+          <Section style={nextStepsSection}>
             <Heading as="h2" style={sectionTitle}>
-              Need Changes?
+              Next Steps
             </Heading>
-
-            <div style={revisionBox}>
-              <Text style={revisionTitle}>✨ One Revision Included</Text>
-              <Text style={revisionDescription}>
-                Your order includes one complimentary revision. If the draft doesn&apos;t quite hit the mark,
-                you can request changes at no additional cost.
-              </Text>
-            </div>
-
-            <Heading as="h3" style={subSectionTitle}>
-              What Qualifies as a Revision?
-            </Heading>
-            <ul style={list}>
-              <li style={listItem}>Adjustments to arguments or legal theories</li>
-              <li style={listItem}>Adding or removing citations</li>
-              <li style={listItem}>Tone or style modifications</li>
-              <li style={listItem}>Structural reorganization</li>
-            </ul>
-
-            <Heading as="h3" style={subSectionTitle}>
-              What Counts as a New Order?
-            </Heading>
-            <ul style={list}>
-              <li style={listItem}>Changing the type of motion (e.g., MSJ to MTD)</li>
-              <li style={listItem}>Adding new claims or causes of action</li>
-              <li style={listItem}>Substantially new facts not in original materials</li>
-            </ul>
-
-            <Heading as="h3" style={subSectionTitle}>
-              How to Request a Revision
-            </Heading>
-            <ol style={list}>
-              <li style={listItem}>Log in to your portal</li>
-              <li style={listItem}>Navigate to this order</li>
-              <li style={listItem}>Click &quot;Request Revision&quot;</li>
-              <li style={listItem}>Describe the changes you need</li>
-            </ol>
+            <Text style={nextStepsText}>
+              Please review the draft carefully before filing. As the supervising attorney,
+              you are responsible for verifying all facts, citations, and legal arguments.
+              Make any edits you need directly in the Word document.
+            </Text>
           </Section>
 
           <Hr style={divider} />
@@ -225,13 +193,6 @@ const sectionTitle = {
   margin: '0 0 20px 0',
 }
 
-const subSectionTitle = {
-  color: '#0f172a',
-  fontSize: '14px',
-  fontWeight: '600',
-  margin: '20px 0 12px 0',
-}
-
 const detailsTable = {
   width: '100%',
   borderCollapse: 'collapse' as const,
@@ -274,42 +235,15 @@ const button = {
   display: 'inline-block',
 }
 
-const revisionSection = {
+const nextStepsSection = {
   padding: '32px 24px',
 }
 
-const revisionBox = {
-  backgroundColor: '#fefce8',
-  border: '1px solid #fef08a',
-  borderRadius: '8px',
-  padding: '16px',
-  marginBottom: '24px',
-}
-
-const revisionTitle = {
-  color: '#854d0e',
-  fontSize: '14px',
-  fontWeight: '600',
-  margin: '0 0 8px 0',
-}
-
-const revisionDescription = {
-  color: '#a16207',
-  fontSize: '14px',
-  margin: '0',
-  lineHeight: '1.5',
-}
-
-const list = {
-  margin: '0 0 0 0',
-  padding: '0 0 0 20px',
-}
-
-const listItem = {
+const nextStepsText = {
   color: '#64748b',
   fontSize: '14px',
-  marginBottom: '8px',
-  lineHeight: '1.5',
+  margin: '0',
+  lineHeight: '1.6',
 }
 
 const footer = {

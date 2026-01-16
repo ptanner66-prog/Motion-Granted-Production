@@ -125,7 +125,7 @@ export function OrderConfirmationEmail({
               <div>
                 <Text style={stepTitle}>Draft Delivered</Text>
                 <Text style={stepDescription}>
-                  You&apos;ll receive an email when your draft is ready. One revision is included with every order.
+                  You&apos;ll receive an email when your draft is ready for download and review.
                 </Text>
               </div>
             </div>

@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
 import { formatMotionType } from '@/config/motion-types'
 import { StatusUpdateForm } from '@/components/admin/status-update-form'
+import { UploadDeliverableButton } from '@/components/admin/upload-deliverable-button'
 import { DocumentDownloadButton } from '@/components/documents/document-download-button'
 import {
   ArrowLeft,
@@ -242,11 +243,16 @@ export default async function AdminOrderDetailPage({
             <TabsContent value="documents" className="mt-6">
               <Card className="bg-white border-gray-200">
                 <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-lg flex items-center gap-2 text-navy">
-                    <Paperclip className="h-5 w-5 text-gray-400" />
-                    Uploaded Documents
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">Documents provided with this order</CardDescription>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2 text-navy">
+                        <Paperclip className="h-5 w-5 text-gray-400" />
+                        Uploaded Documents
+                      </CardTitle>
+                      <CardDescription className="text-gray-400 mt-1.5">Documents provided with this order</CardDescription>
+                    </div>
+                    <UploadDeliverableButton orderId={order.id} />
+                  </div>
                 </CardHeader>
                 <CardContent className="p-6">
                   {documents.length > 0 ? (

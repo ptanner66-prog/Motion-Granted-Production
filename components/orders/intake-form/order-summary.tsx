@@ -172,10 +172,6 @@ export function OrderSummary() {
                   </span>
                 </div>
               )}
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Revision Included</span>
-                <span className="text-green-600">1 round</span>
-              </div>
               <Separator />
               <div className="flex justify-between">
                 <span className="font-semibold text-navy">Total Due</span>
