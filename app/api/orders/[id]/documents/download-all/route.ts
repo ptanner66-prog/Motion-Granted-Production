@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import archiver from 'archiver'
-import { PassThrough } from 'stream'
 
 // GET /api/orders/[id]/documents/download-all
 // Download all documents for an order as a ZIP file
@@ -63,59 +62,56 @@ export async function GET(
       return NextResponse.json({ error: 'No documents found' }, { status: 404 })
     }
 
-    // Create archive
-    const archive = archiver('zip', {
-      zlib: { level: 5 } // Balanced compression
-    })
+    // Create archive and collect data using a promise
+    const zipBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = []
 
-    // Create a passthrough stream to collect the archive data
-    const chunks: Uint8Array[] = []
-    const passThrough = new PassThrough()
+      const archive = archiver('zip', {
+        zlib: { level: 5 }
+      })
 
-    passThrough.on('data', (chunk) => {
-      chunks.push(chunk)
-    })
+      archive.on('data', (chunk: Buffer) => {
+        chunks.push(chunk)
+      })
 
-    archive.pipe(passThrough)
+      archive.on('end', () => {
+        resolve(Buffer.concat(chunks))
+      })
 
-    // Download each document and add to archive
-    for (const doc of documents) {
-      try {
-        const { data: fileData, error: downloadError } = await supabase.storage
-          .from('documents')
-          .download(doc.file_url)
+      archive.on('error', (err) => {
+        reject(err)
+      })
 
-        if (downloadError || !fileData) {
-          console.error(`Failed to download ${doc.file_name}:`, downloadError)
-          continue
+      // Process documents sequentially
+      const processDocuments = async () => {
+        for (const doc of documents) {
+          try {
+            const { data: fileData, error: downloadError } = await supabase.storage
+              .from('documents')
+              .download(doc.file_url)
+
+            if (downloadError || !fileData) {
+              console.error(`Failed to download ${doc.file_name}:`, downloadError)
+              continue
+            }
+
+            const buffer = Buffer.from(await fileData.arrayBuffer())
+            const folder = doc.document_type === 'deliverable' ? 'deliverables' : 'uploads'
+            archive.append(buffer, { name: `${folder}/${doc.file_name}` })
+          } catch (err) {
+            console.error(`Error processing ${doc.file_name}:`, err)
+          }
         }
 
-        // Convert blob to buffer
-        const buffer = Buffer.from(await fileData.arrayBuffer())
-
-        // Add to archive with folder structure based on document type
-        const folder = doc.document_type === 'deliverable' ? 'deliverables' : 'uploads'
-        archive.append(buffer, { name: `${folder}/${doc.file_name}` })
-      } catch (err) {
-        console.error(`Error processing ${doc.file_name}:`, err)
+        archive.finalize()
       }
-    }
 
-    // Finalize the archive
-    await archive.finalize()
-
-    // Wait for all data to be collected
-    await new Promise<void>((resolve) => {
-      passThrough.on('end', resolve)
+      processDocuments().catch(reject)
     })
 
-    // Combine all chunks into a single buffer
-    const zipBuffer = Buffer.concat(chunks)
-
-    // Create filename
     const filename = `${order.order_number}-documents.zip`
 
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(new Uint8Array(zipBuffer), {
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${filename}"`,
