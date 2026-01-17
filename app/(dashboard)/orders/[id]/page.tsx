@@ -30,6 +30,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { RevisionRequestForm } from '@/components/orders/revision-request-form'
+import { CopyButton } from '@/components/ui/copy-button'
 
 interface Party {
   party_name: string
@@ -58,9 +59,21 @@ export const metadata: Metadata = {
 
 // Calculate progress based on status
 function getOrderProgress(status: string) {
-  const statusOrder = ['submitted', 'in_progress', 'in_review', 'draft_delivered', 'revision_requested', 'completed']
-  const currentIndex = statusOrder.indexOf(status)
-  return Math.max(((currentIndex + 1) / statusOrder.length) * 100, 20)
+  // Progress milestones: revision_requested is NOT forward progress
+  const progressMap: Record<string, number> = {
+    submitted: 15,
+    under_review: 25,
+    assigned: 35,
+    in_progress: 50,
+    in_review: 65,
+    draft_delivered: 80,
+    revision_requested: 70, // Slightly back from draft_delivered
+    revision_delivered: 85,
+    completed: 100,
+    on_hold: 20,
+    cancelled: 0,
+  }
+  return progressMap[status] ?? 15
 }
 
 export default async function OrderDetailPage({
@@ -238,9 +251,7 @@ export default async function OrderDetailPage({
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Case Number</p>
                       <div className="flex items-center gap-2">
                         <p className="text-navy font-medium font-mono">{order.case_number}</p>
-                        <button className="p-1 hover:bg-gray-100 rounded transition-colors">
-                          <Copy className="h-3.5 w-3.5 text-gray-400" />
-                        </button>
+                        <CopyButton text={order.case_number} />
                       </div>
                     </div>
                     <div className="space-y-1">
