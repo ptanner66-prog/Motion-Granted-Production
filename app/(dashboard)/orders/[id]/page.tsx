@@ -26,6 +26,7 @@ import {
   AlertCircle,
   ChevronRight,
   Copy,
+  FileCheck,
 } from 'lucide-react'
 
 interface Party {
@@ -37,6 +38,7 @@ interface Document {
   id: string
   file_name: string
   file_url: string
+  document_type: string
   created_at: string
 }
 
@@ -94,6 +96,10 @@ export default async function OrderDetailPage({
     .eq('order_id', id)
   const documents: Document[] = documentsData || []
 
+  // Split documents into client uploads and deliverables
+  const clientUploads = documents.filter(doc => doc.document_type !== 'deliverable')
+  const deliverables = documents.filter(doc => doc.document_type === 'deliverable')
+
   // Fetch messages for this order
   const { data: messagesData } = await supabase
     .from('messages')
@@ -139,11 +145,14 @@ export default async function OrderDetailPage({
                 Message Clerk
               </a>
             </Button>
-            {order.status === 'draft_delivered' && (
-              <Button className="gap-2 btn-premium">
-                <Download className="h-4 w-4" />
-                Download Draft
-              </Button>
+            {deliverables.length > 0 && (
+              <DocumentDownloadButton
+                filePath={deliverables[0].file_url}
+                fileName={deliverables[0].file_name}
+                variant="default"
+                showText={true}
+                className="gap-2 btn-premium"
+              />
             )}
           </div>
         </div>
@@ -300,19 +309,67 @@ export default async function OrderDetailPage({
               </Card>
             </TabsContent>
 
-            <TabsContent value="documents" className="mt-6">
+            <TabsContent value="documents" className="mt-6 space-y-6">
+              {/* Deliverables Section */}
+              <Card className="border-0 shadow-sm overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-teal/5 to-transparent border-b border-teal/10">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileCheck className="h-5 w-5 text-teal" />
+                    Completed Drafts
+                  </CardTitle>
+                  <CardDescription>Your motion drafts ready for download</CardDescription>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {deliverables.length > 0 ? (
+                    <div className="space-y-3">
+                      {deliverables.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="group flex items-center justify-between rounded-xl border border-teal/20 bg-teal/5 p-4 hover:border-teal/40 hover:bg-teal/10 transition-all"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal/20">
+                              <FileCheck className="h-6 w-6 text-teal" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-navy">{doc.file_name}</p>
+                              <p className="text-sm text-gray-500">
+                                Delivered • {formatDateShort(doc.created_at)}
+                              </p>
+                            </div>
+                          </div>
+                          <DocumentDownloadButton
+                            filePath={doc.file_url}
+                            fileName={doc.file_name}
+                            variant="outline"
+                            className="border-teal/30 hover:bg-teal hover:text-white hover:border-teal"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <FileCheck className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p>No drafts available yet</p>
+                      <p className="text-sm mt-1">You&apos;ll be notified when your draft is ready</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Client Uploads Section */}
               <Card className="border-0 shadow-sm overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-gray-50 to-transparent border-b border-gray-100">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Paperclip className="h-5 w-5 text-gray-500" />
-                    Uploaded Documents
+                    Your Uploaded Documents
                   </CardTitle>
-                  <CardDescription>Documents provided with this order</CardDescription>
+                  <CardDescription>Supporting documents you provided with this order</CardDescription>
                 </CardHeader>
                 <CardContent className="p-6">
-                  {documents && documents.length > 0 ? (
+                  {clientUploads.length > 0 ? (
                     <div className="space-y-3">
-                      {documents.map((doc) => (
+                      {clientUploads.map((doc) => (
                         <div
                           key={doc.id}
                           className="group flex items-center justify-between rounded-xl border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50/50 transition-all"
@@ -324,7 +381,7 @@ export default async function OrderDetailPage({
                             <div>
                               <p className="font-semibold text-navy">{doc.file_name}</p>
                               <p className="text-sm text-gray-500">
-                                {formatDateShort(doc.created_at)}
+                                {doc.document_type} • {formatDateShort(doc.created_at)}
                               </p>
                             </div>
                           </div>

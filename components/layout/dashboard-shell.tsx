@@ -48,10 +48,10 @@ const mainNavigation = [
     description: 'View all orders'
   },
   {
-    name: 'New Order',
-    href: '/orders/new',
+    name: 'Submit New Matter',
+    href: '/dashboard/submit',
     icon: PlusCircle,
-    description: 'Start a new motion',
+    description: 'Submit a new motion',
   },
 ]
 
