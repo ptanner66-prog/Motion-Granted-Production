@@ -147,14 +147,38 @@ export function AutomationSettingsForm({
       }
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'Failed to save settings. Please try again.',
+        title: 'Unable to Save Settings',
+        description: 'We couldn\'t update your automation settings. Please try again, or contact support if the issue persists.',
         variant: 'destructive',
       });
     } finally {
       setSaving(false);
     }
   };
+
+  // Check if there are any settings at all
+  const hasAnySettings = Object.values(settings).some(
+    (category) => category && category.length > 0
+  );
+
+  if (!hasAnySettings) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="p-3 bg-gray-100 rounded-full mb-4">
+            <Settings className="h-8 w-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-navy mb-2">No Settings Configured</h3>
+          <p className="text-gray-500 max-w-md mb-4">
+            Automation settings haven&apos;t been initialized yet. Run the database migration to seed default settings.
+          </p>
+          <code className="text-xs bg-gray-100 px-3 py-2 rounded font-mono text-gray-600">
+            supabase db push
+          </code>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -317,13 +341,69 @@ function SettingRow({
           <select
             value={value.level as string}
             onChange={(e) => onUpdate('level', e.target.value)}
-            className="w-40 px-3 py-2 border border-gray-200 rounded-md text-sm"
+            className="w-40 px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal/50"
           >
             <option value="training_wheels">Training Wheels</option>
             <option value="supervised">Supervised</option>
             <option value="autonomous">Autonomous</option>
             <option value="full_auto">Full Auto</option>
           </select>
+        )}
+
+        {/* Handle model selection */}
+        {'model' in value && typeof value.model === 'string' && (
+          <select
+            value={value.model as string}
+            onChange={(e) => onUpdate('model', e.target.value)}
+            className="w-56 px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal/50"
+          >
+            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+            <option value="claude-opus-4-5-20251101">Claude Opus 4.5</option>
+            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+          </select>
+        )}
+
+        {/* Handle hours values */}
+        {'hours' in value && typeof value.hours === 'number' && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              value={value.hours as number}
+              onChange={(e) => onUpdate('hours', parseInt(e.target.value) || 0)}
+              className="w-20"
+              min={1}
+              max={168}
+            />
+            <span className="text-sm text-gray-500">hours</span>
+          </div>
+        )}
+
+        {/* Handle max_tokens */}
+        {'max_tokens' in value && typeof value.max_tokens === 'number' && (
+          <Input
+            type="number"
+            value={value.max_tokens as number}
+            onChange={(e) => onUpdate('max_tokens', parseInt(e.target.value) || 1024)}
+            className="w-24"
+            min={256}
+            max={8192}
+            step={256}
+          />
+        )}
+
+        {/* Handle max_orders (for clerk assignment) */}
+        {'max_orders' in value && typeof value.max_orders === 'number' && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              value={value.max_orders as number}
+              onChange={(e) => onUpdate('max_orders', parseInt(e.target.value) || 1)}
+              className="w-20"
+              min={1}
+              max={10}
+            />
+            <span className="text-sm text-gray-500">orders</span>
+          </div>
         )}
       </div>
     </div>
