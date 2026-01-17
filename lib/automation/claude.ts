@@ -173,6 +173,70 @@ export async function callClaude<T>(
   }
 }
 
+/**
+ * Simpler helper function to call Claude with a single prompt
+ * Returns raw text content rather than parsed JSON
+ */
+export async function askClaude(options: {
+  prompt: string;
+  systemPrompt?: string;
+  maxTokens?: number;
+  temperature?: number;
+}): Promise<{
+  success: boolean;
+  result?: { content: string; tokensUsed: number };
+  error?: string;
+}> {
+  if (!anthropic) {
+    return {
+      success: false,
+      error: 'Claude API is not configured. Set ANTHROPIC_API_KEY environment variable.',
+    };
+  }
+
+  const model = DEFAULT_MODEL;
+  const maxTokens = options.maxTokens || DEFAULT_MAX_TOKENS;
+
+  try {
+    const response = await anthropic.messages.create({
+      model,
+      max_tokens: maxTokens,
+      temperature: options.temperature ?? 0.2,
+      system: options.systemPrompt || 'You are a helpful assistant.',
+      messages: [
+        {
+          role: 'user',
+          content: options.prompt,
+        },
+      ],
+    });
+
+    // Extract text content from response
+    const textContent = response.content.find((block) => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      return {
+        success: false,
+        error: 'No text content in Claude response',
+      };
+    }
+
+    return {
+      success: true,
+      result: {
+        content: textContent.text,
+        tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
+      },
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error calling Claude API';
+    console.error('[Claude API Error]', errorMessage);
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
 // ============================================================================
 // CONFLICT CHECKING
 // ============================================================================

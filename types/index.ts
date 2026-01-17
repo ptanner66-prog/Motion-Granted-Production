@@ -128,3 +128,6 @@ export interface OrderWithRelations extends Order {
 
 // Re-export automation types
 export * from './automation';
+
+// Re-export workflow types
+export * from './workflow';
