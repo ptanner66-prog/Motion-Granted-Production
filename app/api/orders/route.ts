@@ -81,7 +81,7 @@ export async function POST(req: Request) {
     // Validate request body
     const parseResult = createOrderSchema.safeParse(rawBody)
     if (!parseResult.success) {
-      const firstError = parseResult.error.errors[0]
+      const firstError = parseResult.error.issues[0]
       return NextResponse.json(
         { error: `Validation failed: ${firstError.message}` },
         { status: 400 }
