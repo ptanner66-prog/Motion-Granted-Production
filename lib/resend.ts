@@ -1,6 +1,24 @@
 import { Resend } from 'resend'
 
-export const resend = new Resend(process.env.RESEND_API_KEY)
+// Lazy initialization to avoid build errors when API key is not available
+let resendInstance: Resend | null = null;
+
+function getResend(): Resend {
+  if (!resendInstance) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error('RESEND_API_KEY environment variable is not set');
+    }
+    resendInstance = new Resend(apiKey);
+  }
+  return resendInstance;
+}
+
+export const resend = {
+  get emails() {
+    return getResend().emails;
+  }
+};
 
 export async function sendEmail({
   to,
@@ -12,7 +30,7 @@ export async function sendEmail({
   react: React.ReactElement
 }) {
   try {
-    const data = await resend.emails.send({
+    const data = await getResend().emails.send({
       from: 'Motion Granted <noreply@motiongranted.com>',
       to,
       subject,

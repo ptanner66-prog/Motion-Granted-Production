@@ -125,3 +125,6 @@ export interface OrderWithRelations extends Order {
   messages?: Message[];
   revision_requests?: RevisionRequest[];
 }
+
+// Re-export automation types
+export * from './automation';

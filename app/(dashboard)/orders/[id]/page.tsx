@@ -27,7 +27,9 @@ import {
   ChevronRight,
   Copy,
   FileCheck,
+  RefreshCw,
 } from 'lucide-react'
+import { RevisionRequestForm } from '@/components/orders/revision-request-form'
 
 interface Party {
   party_name: string
@@ -138,7 +140,7 @@ export default async function OrderDetailPage({
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <Button variant="outline" className="gap-2" asChild>
               <a href={`mailto:support@motiongranted.com?subject=Question about Order ${order.order_number}`}>
                 <MessageSquare className="h-4 w-4" />
@@ -146,13 +148,23 @@ export default async function OrderDetailPage({
               </a>
             </Button>
             {deliverables.length > 0 && (
-              <DocumentDownloadButton
-                filePath={deliverables[0].file_url}
-                fileName={deliverables[0].file_name}
-                variant="default"
-                showText={true}
-                className="gap-2 btn-premium"
-              />
+              <>
+                <DocumentDownloadButton
+                  filePath={deliverables[0].file_url}
+                  fileName={deliverables[0].file_name}
+                  variant="default"
+                  showText={true}
+                  className="gap-2 btn-premium"
+                />
+                {['draft_delivered', 'revision_delivered', 'completed'].includes(order.status) && (
+                  <RevisionRequestForm
+                    orderId={order.id}
+                    orderNumber={order.order_number}
+                    revisionCount={order.revision_count || 0}
+                    maxRevisions={2}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>
