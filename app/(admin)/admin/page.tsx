@@ -101,45 +101,68 @@ export default async function AdminDashboardPage() {
     .from('orders')
     .select('status, total_price, created_at, updated_at')
 
-  // Fetch active workflows
-  const { data: activeWorkflows } = await supabase
-    .from('order_workflows')
-    .select(`
-      id,
-      order_id,
-      current_phase,
-      status,
-      citation_count,
-      quality_score,
-      motion_types(code, name, tier),
-      orders(order_number)
-    `)
-    .in('status', ['pending', 'in_progress'])
-    .order('created_at', { ascending: false })
-    .limit(5)
+  // Fetch active workflows (with graceful handling if tables don't exist)
+  let activeWorkflows: WorkflowRow[] = []
+  let phasesNeedingReview: PhaseRow[] = []
+  let workflowsInProgress = 0
+  let workflowsCompleted = 0
+  let workflowsBlocked = 0
+  let workflowTablesExist = true
 
-  // Fetch phases requiring review
-  const { data: phasesNeedingReview } = await supabase
-    .from('workflow_phase_executions')
-    .select('id, status, requires_review, phase_number, order_workflow_id')
-    .eq('requires_review', true)
-    .eq('status', 'requires_review')
+  try {
+    const { data: wfData, error: wfError } = await supabase
+      .from('order_workflows')
+      .select(`
+        id,
+        order_id,
+        current_phase,
+        status,
+        citation_count,
+        quality_score,
+        motion_types(code, name, tier),
+        orders(order_number)
+      `)
+      .in('status', ['pending', 'in_progress'])
+      .order('created_at', { ascending: false })
+      .limit(5)
 
-  // Count workflows by status
-  const { count: workflowsInProgress } = await supabase
-    .from('order_workflows')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'in_progress')
+    if (wfError && wfError.code === '42P01') {
+      // Table doesn't exist - workflow migration not run
+      workflowTablesExist = false
+    } else if (!wfError) {
+      activeWorkflows = (wfData || []) as WorkflowRow[]
 
-  const { count: workflowsCompleted } = await supabase
-    .from('order_workflows')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'completed')
+      // Fetch phases requiring review
+      const { data: reviewData } = await supabase
+        .from('workflow_phase_executions')
+        .select('id, status, requires_review, phase_number, order_workflow_id')
+        .eq('requires_review', true)
+        .eq('status', 'requires_review')
+      phasesNeedingReview = (reviewData || []) as PhaseRow[]
 
-  const { count: workflowsBlocked } = await supabase
-    .from('order_workflows')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'blocked')
+      // Count workflows by status
+      const { count: inProgress } = await supabase
+        .from('order_workflows')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'in_progress')
+      workflowsInProgress = inProgress || 0
+
+      const { count: completed } = await supabase
+        .from('order_workflows')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'completed')
+      workflowsCompleted = completed || 0
+
+      const { count: blocked } = await supabase
+        .from('order_workflows')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'blocked')
+      workflowsBlocked = blocked || 0
+    }
+  } catch {
+    // Workflow tables not available
+    workflowTablesExist = false
+  }
 
   // Calculate stats
   const pendingOrders = allOrders?.filter((o: { status: string }) =>
@@ -224,8 +247,8 @@ export default async function AdminDashboardPage() {
   ]
 
   const recentOrders: Order[] = orders || []
-  const workflows = (activeWorkflows || []) as WorkflowRow[]
-  const reviewCount = (phasesNeedingReview || []).length
+  const workflows = activeWorkflows
+  const reviewCount = phasesNeedingReview.length
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
@@ -246,6 +269,35 @@ export default async function AdminDashboardPage() {
           </Link>
         </Button>
       </div>
+
+      {/* Workflow Setup Banner */}
+      {!workflowTablesExist && (
+        <Card className="mb-8 bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="bg-amber-100 p-3 rounded-xl">
+                <AlertTriangle className="h-6 w-6 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-navy mb-1">Workflow System Setup Required</h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  The AI workflow system tables have not been created yet. Run the database migration to enable automated document production with 9-phase workflows, citation verification, and quality scoring.
+                </p>
+                <div className="bg-white/50 rounded-lg p-3 font-mono text-xs text-gray-700 mb-3">
+                  <p className="mb-1 text-gray-500">-- Run this in your Supabase SQL Editor:</p>
+                  <p>supabase/migrations/003_motion_workflow_system.sql</p>
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="gap-2">
+                    Open Supabase Dashboard
+                    <ArrowRight className="h-4 w-4" />
+                  </a>
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
@@ -273,87 +325,90 @@ export default async function AdminDashboardPage() {
       </div>
 
       {/* Workflow Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <Card className="bg-white border border-gray-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="bg-blue-100 p-3 rounded-xl">
-                <Workflow className="h-6 w-6 text-blue-600" />
+      {workflowTablesExist && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="bg-blue-100 p-3 rounded-xl">
+                  <Workflow className="h-6 w-6 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Active Workflows</p>
+                  <p className="text-2xl font-bold text-navy tabular-nums">{workflowsInProgress}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Active Workflows</p>
-                <p className="text-2xl font-bold text-navy tabular-nums">{workflowsInProgress || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="bg-yellow-100 p-3 rounded-xl">
+                  <AlertTriangle className="h-6 w-6 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Needs Review</p>
+                  <p className="text-2xl font-bold text-navy tabular-nums">{reviewCount}</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-white border border-gray-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="bg-yellow-100 p-3 rounded-xl">
-                <AlertTriangle className="h-6 w-6 text-yellow-600" />
+            </CardContent>
+          </Card>
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="bg-green-100 p-3 rounded-xl">
+                  <BookCheck className="h-6 w-6 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Completed</p>
+                  <p className="text-2xl font-bold text-navy tabular-nums">{workflowsCompleted}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Needs Review</p>
-                <p className="text-2xl font-bold text-navy tabular-nums">{reviewCount}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="bg-red-100 p-3 rounded-xl">
+                  <AlertCircle className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Blocked</p>
+                  <p className="text-2xl font-bold text-navy tabular-nums">{workflowsBlocked}</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-white border border-gray-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="bg-green-100 p-3 rounded-xl">
-                <BookCheck className="h-6 w-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Completed</p>
-                <p className="text-2xl font-bold text-navy tabular-nums">{workflowsCompleted || 0}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-white border border-gray-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="bg-red-100 p-3 rounded-xl">
-                <AlertCircle className="h-6 w-6 text-red-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Blocked</p>
-                <p className="text-2xl font-bold text-navy tabular-nums">{workflowsBlocked || 0}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2 mb-8">
         {/* Active Workflows */}
-        <Card className="bg-white border border-gray-200 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between border-b border-gray-100">
-            <div>
-              <CardTitle className="text-lg font-semibold text-navy flex items-center gap-2">
-                <Workflow className="h-5 w-5 text-blue-500" />
-                Active Workflows
-              </CardTitle>
-              <CardDescription className="text-gray-500">Document production in progress</CardDescription>
-            </div>
-            <Button variant="ghost" size="sm" asChild className="text-gray-500 hover:text-teal">
-              <Link href="/admin/automation" className="flex items-center gap-1">
-                View all
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            {workflows.length === 0 ? (
-              <div className="py-12 text-center">
-                <Workflow className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                <h3 className="text-lg font-semibold text-navy mb-1">No active workflows</h3>
-                <p className="text-gray-500">Workflows will appear here when orders are processed</p>
+        {workflowTablesExist ? (
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-gray-100">
+              <div>
+                <CardTitle className="text-lg font-semibold text-navy flex items-center gap-2">
+                  <Workflow className="h-5 w-5 text-blue-500" />
+                  Active Workflows
+                </CardTitle>
+                <CardDescription className="text-gray-500">Document production in progress</CardDescription>
               </div>
-            ) : (
+              <Button variant="ghost" size="sm" asChild className="text-gray-500 hover:text-teal">
+                <Link href="/admin/automation" className="flex items-center gap-1">
+                  View all
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {workflows.length === 0 ? (
+                <div className="py-12 text-center">
+                  <Workflow className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                  <h3 className="text-lg font-semibold text-navy mb-1">No active workflows</h3>
+                  <p className="text-gray-500">Workflows will appear here when orders are processed</p>
+                </div>
+              ) : (
               <div className="divide-y divide-gray-100">
                 {workflows.map((wf) => {
                   const progress = (wf.current_phase / 9) * 100
@@ -402,6 +457,29 @@ export default async function AdminDashboardPage() {
             )}
           </CardContent>
         </Card>
+        ) : (
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardHeader className="border-b border-gray-100">
+              <CardTitle className="text-lg font-semibold text-navy flex items-center gap-2">
+                <Workflow className="h-5 w-5 text-blue-500" />
+                AI Document Production
+              </CardTitle>
+              <CardDescription className="text-gray-500">Automated 9-phase workflow system</CardDescription>
+            </CardHeader>
+            <CardContent className="py-8 text-center">
+              <Workflow className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+              <h3 className="text-lg font-semibold text-navy mb-2">Workflow System Available</h3>
+              <p className="text-gray-500 text-sm mb-4 max-w-sm mx-auto">
+                Run the migration to enable AI-powered document production with citation verification and quality scoring.
+              </p>
+              <Button variant="outline" size="sm" asChild>
+                <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer">
+                  Setup Instructions
+                </a>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Secondary Stats */}
         <div className="space-y-4">
