@@ -26,6 +26,7 @@ import {
   Upload,
 } from 'lucide-react'
 import type { OrderStatus } from '@/types'
+import { WorkflowControlPanel } from '@/components/admin/workflow-control-panel'
 
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
@@ -356,6 +357,13 @@ export default async function AdminOrderDetailPage({
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* AI Workflow Control */}
+          <WorkflowControlPanel
+            orderId={order.id}
+            orderNumber={order.order_number}
+            motionType={order.motion_type}
+          />
+
           {/* Status Update */}
           <StatusUpdateForm orderId={order.id} currentStatus={order.status} />
 

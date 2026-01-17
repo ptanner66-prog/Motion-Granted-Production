@@ -44,11 +44,59 @@ export async function GET(request: Request) {
         .eq('order_id', orderId)
         .single();
 
-      if (error) {
-        return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
+      if (error && error.code === '42P01') {
+        // Table doesn't exist
+        return NextResponse.json({ error: 'Workflow tables do not exist. Run migration first.' }, { status: 503 });
       }
 
-      return NextResponse.json(workflow);
+      if (error) {
+        // No workflow found, but that's ok
+        return NextResponse.json({
+          exists: false,
+          orderId,
+        });
+      }
+
+      // Get current phase definition
+      const { data: phaseDef } = await supabase
+        .from('workflow_phase_definitions')
+        .select('phase_name, estimated_duration_minutes')
+        .eq('workflow_path', workflow.workflow_path)
+        .eq('phase_number', workflow.current_phase)
+        .single();
+
+      // Find if current phase requires review
+      const currentPhaseExec = workflow.workflow_phase_executions?.find(
+        (p: { phase_number: number }) => p.phase_number === workflow.current_phase
+      );
+
+      // Calculate remaining minutes
+      const { data: remainingPhases } = await supabase
+        .from('workflow_phase_definitions')
+        .select('estimated_duration_minutes')
+        .eq('workflow_path', workflow.workflow_path)
+        .gte('phase_number', workflow.current_phase);
+
+      const estimatedMinutes = (remainingPhases || []).reduce(
+        (sum: number, p: { estimated_duration_minutes: number | null }) =>
+          sum + (p.estimated_duration_minutes || 30),
+        0
+      );
+
+      return NextResponse.json({
+        exists: true,
+        workflowId: workflow.id,
+        orderId: workflow.order_id,
+        currentPhase: workflow.current_phase,
+        totalPhases: 9,
+        status: workflow.status,
+        citationCount: workflow.citation_count || 0,
+        qualityScore: workflow.quality_score,
+        currentPhaseName: phaseDef?.phase_name || `Phase ${workflow.current_phase}`,
+        currentPhaseStatus: currentPhaseExec?.status,
+        requiresReview: currentPhaseExec?.requires_review || currentPhaseExec?.status === 'requires_review',
+        estimatedMinutes,
+      });
     }
 
     // List all workflows (admin only)
@@ -106,11 +154,11 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { orderId, motionTypeId, workflowPath = 'path_a' } = body;
+    const { orderId, motionType, motionTypeId, workflowPath = 'path_a' } = body;
 
-    if (!orderId || !motionTypeId) {
+    if (!orderId) {
       return NextResponse.json(
-        { error: 'orderId and motionTypeId are required' },
+        { error: 'orderId is required' },
         { status: 400 }
       );
     }
@@ -123,9 +171,56 @@ export async function POST(request: Request) {
       );
     }
 
+    // If motionTypeId provided, use it. Otherwise look up by motionType code
+    let resolvedMotionTypeId = motionTypeId;
+
+    if (!resolvedMotionTypeId && motionType) {
+      // Try to find motion type in database by code
+      const { data: motionTypeData, error: mtError } = await supabase
+        .from('motion_types')
+        .select('id')
+        .eq('code', motionType.toUpperCase())
+        .single();
+
+      if (mtError && mtError.code === '42P01') {
+        return NextResponse.json(
+          { error: 'Workflow tables do not exist. Run migration first.' },
+          { status: 503 }
+        );
+      }
+
+      if (mtError) {
+        // If not found by code, use a default motion type based on tier
+        // For now, just get the first motion type as a fallback
+        const { data: fallback } = await supabase
+          .from('motion_types')
+          .select('id')
+          .limit(1)
+          .single();
+
+        if (fallback) {
+          resolvedMotionTypeId = fallback.id;
+        } else {
+          return NextResponse.json(
+            { error: 'No motion types configured. Run migration first.' },
+            { status: 503 }
+          );
+        }
+      } else {
+        resolvedMotionTypeId = motionTypeData.id;
+      }
+    }
+
+    if (!resolvedMotionTypeId) {
+      return NextResponse.json(
+        { error: 'Could not determine motion type for workflow' },
+        { status: 400 }
+      );
+    }
+
     const result = await startWorkflow({
       orderId,
-      motionTypeId,
+      motionTypeId: resolvedMotionTypeId,
       workflowPath: workflowPath as WorkflowPath,
     });
 
@@ -135,8 +230,16 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result.data, { status: 201 });
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // Check if this is a table not found error
+    if (errorMessage.includes('42P01') || errorMessage.includes('does not exist')) {
+      return NextResponse.json(
+        { error: 'Workflow tables do not exist. Run migration first.' },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
