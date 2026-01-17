@@ -1,9 +1,34 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
 import { sendEmail } from '@/lib/resend'
 import { OrderConfirmationEmail } from '@/emails/order-confirmation'
 import { formatMotionType } from '@/config/motion-types'
+
+// Server-side validation schema for order creation
+const createOrderSchema = z.object({
+  motion_type: z.string().min(1, 'Motion type is required'),
+  motion_tier: z.number().int().min(0).max(3),
+  base_price: z.number().nullable(),
+  turnaround: z.enum(['standard', 'rush_72', 'rush_48']),
+  rush_surcharge: z.number().min(0),
+  total_price: z.number().min(0),
+  filing_deadline: z.string().min(1, 'Filing deadline is required'),
+  jurisdiction: z.string().min(1, 'Jurisdiction is required'),
+  court_division: z.string().nullable().optional(),
+  case_number: z.string().min(1, 'Case number is required'),
+  case_caption: z.string().min(1, 'Case caption is required'),
+  statement_of_facts: z.string().min(100, 'Statement of facts is too short'),
+  procedural_history: z.string().min(50, 'Procedural history is too short'),
+  instructions: z.string().min(50, 'Instructions are too short'),
+  related_entities: z.string().nullable().optional(),
+  parties: z.array(z.object({
+    name: z.string().min(1),
+    role: z.string().min(1),
+  })).min(2, 'At least two parties are required'),
+  documents: z.array(z.any()).optional(),
+})
 
 export async function GET() {
   // Return early if Supabase is not configured
@@ -26,12 +51,14 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error('Error fetching orders:', error)
+      return NextResponse.json({ error: 'Unable to retrieve your orders. Please try again.' }, { status: 500 })
     }
 
     return NextResponse.json(orders)
   } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Orders fetch error:', error)
+    return NextResponse.json({ error: 'Unable to retrieve your orders. Please try again.' }, { status: 500 })
   }
 }
 
@@ -49,7 +76,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json()
+    const rawBody = await req.json()
+
+    // Validate request body
+    const parseResult = createOrderSchema.safeParse(rawBody)
+    if (!parseResult.success) {
+      const firstError = parseResult.error.issues[0]
+      return NextResponse.json(
+        { error: `Validation failed: ${firstError.message}` },
+        { status: 400 }
+      )
+    }
+    const body = parseResult.data
 
     // Create Stripe PaymentIntent if Stripe is configured
     let paymentIntent = null
@@ -177,6 +215,10 @@ export async function POST(req: Request) {
       stripeConfigured: !!stripe,
     })
   } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Order creation error:', error)
+    return NextResponse.json(
+      { error: 'We couldn\'t process your order. Please try again, or contact support@motiongranted.com if the issue persists.' },
+      { status: 500 }
+    )
   }
 }
