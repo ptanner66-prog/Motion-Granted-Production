@@ -87,6 +87,7 @@ export const ORDER_STATUSES = {
   under_review: { label: "Under Review", color: "yellow", bgColor: "bg-yellow-100", textColor: "text-yellow-800" },
   assigned: { label: "Assigned", color: "purple", bgColor: "bg-purple-100", textColor: "text-purple-800" },
   in_progress: { label: "In Progress", color: "indigo", bgColor: "bg-indigo-100", textColor: "text-indigo-800" },
+  pending_review: { label: "Pending Review", color: "amber", bgColor: "bg-amber-100", textColor: "text-amber-800" },
   draft_delivered: { label: "Draft Delivered", color: "green", bgColor: "bg-green-100", textColor: "text-green-800" },
   revision_requested: { label: "Revision Requested", color: "orange", bgColor: "bg-orange-100", textColor: "text-orange-800" },
   revision_delivered: { label: "Revision Delivered", color: "green", bgColor: "bg-green-100", textColor: "text-green-800" },

@@ -66,9 +66,12 @@ export default async function AdminOrdersPage() {
 
   const allOrders: Order[] = orders || []
   const pendingOrders = allOrders.filter(o => o.status === 'submitted')
-  const inProgressOrders = allOrders.filter(o => ['in_progress', 'in_review'].includes(o.status))
+  const inProgressOrders = allOrders.filter(o => ['in_progress', 'under_review', 'assigned'].includes(o.status))
   const completedOrders = allOrders.filter(o => o.status === 'completed')
-  const reviewOrders = allOrders.filter(o => o.status === 'draft_delivered')
+  // Orders waiting for admin approval before client delivery
+  const needsApprovalOrders = allOrders.filter(o => o.status === 'pending_review')
+  // Orders already delivered to client
+  const deliveredOrders = allOrders.filter(o => ['draft_delivered', 'revision_delivered'].includes(o.status))
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
@@ -79,8 +82,19 @@ export default async function AdminOrdersPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="pending" className="space-y-6">
-        <TabsList className="bg-gray-100 p-1 border border-gray-200">
+      <Tabs defaultValue={needsApprovalOrders.length > 0 ? "needs_approval" : "pending"} className="space-y-6">
+        <TabsList className="bg-gray-100 p-1 border border-gray-200 flex-wrap">
+          <TabsTrigger
+            value="needs_approval"
+            className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-700 text-gray-500 rounded-lg px-4"
+          >
+            Needs Approval
+            {needsApprovalOrders.length > 0 && (
+              <span className="ml-2 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold text-white animate-pulse">
+                {needsApprovalOrders.length}
+              </span>
+            )}
+          </TabsTrigger>
           <TabsTrigger
             value="pending"
             className="data-[state=active]:bg-orange-100 data-[state=active]:text-orange-600 text-gray-500 rounded-lg px-4"
@@ -100,12 +114,12 @@ export default async function AdminOrdersPage() {
             </span>
           </TabsTrigger>
           <TabsTrigger
-            value="review"
-            className="data-[state=active]:bg-purple-100 data-[state=active]:text-purple-600 text-gray-500 rounded-lg px-4"
+            value="delivered"
+            className="data-[state=active]:bg-green-100 data-[state=active]:text-green-600 text-gray-500 rounded-lg px-4"
           >
-            Pending Review
-            <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-600">
-              {reviewOrders.length}
+            Delivered
+            <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-600">
+              {deliveredOrders.length}
             </span>
           </TabsTrigger>
           <TabsTrigger
@@ -128,6 +142,10 @@ export default async function AdminOrdersPage() {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="needs_approval">
+          <OrderList orders={needsApprovalOrders} emptyMessage="No drafts waiting for your approval" showApprovalHint />
+        </TabsContent>
+
         <TabsContent value="pending">
           <OrderList orders={pendingOrders} emptyMessage="No new orders waiting for assignment" />
         </TabsContent>
@@ -136,8 +154,8 @@ export default async function AdminOrdersPage() {
           <OrderList orders={inProgressOrders} emptyMessage="No orders currently in progress" />
         </TabsContent>
 
-        <TabsContent value="review">
-          <OrderList orders={reviewOrders} emptyMessage="No orders pending client review" />
+        <TabsContent value="delivered">
+          <OrderList orders={deliveredOrders} emptyMessage="No drafts delivered to clients yet" />
         </TabsContent>
 
         <TabsContent value="completed">
@@ -152,7 +170,7 @@ export default async function AdminOrdersPage() {
   )
 }
 
-function OrderList({ orders, emptyMessage }: { orders: Order[], emptyMessage: string }) {
+function OrderList({ orders, emptyMessage, showApprovalHint }: { orders: Order[], emptyMessage: string, showApprovalHint?: boolean }) {
   if (orders.length === 0) {
     return (
       <Card className="bg-white border-gray-200">
@@ -164,8 +182,16 @@ function OrderList({ orders, emptyMessage }: { orders: Order[], emptyMessage: st
     )
   }
 
+  // Show hint banner for approval queue
+  const approvalBanner = showApprovalHint ? (
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 text-sm text-amber-800">
+      <strong>Action Required:</strong> Review these AI-generated drafts before they are sent to clients. Click an order to approve or request changes.
+    </div>
+  ) : null;
+
   return (
     <Card className="bg-white border-gray-200 overflow-hidden">
+      {approvalBanner}
       <div className="divide-y divide-gray-200">
         {orders.map((order) => {
           const daysUntilDue = getDaysUntilDue(order.filing_deadline)

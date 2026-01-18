@@ -72,7 +72,46 @@ export function WorkflowControlPanel({ orderId, orderNumber, motionType }: Workf
     fetchWorkflowStatus()
   }, [orderId])
 
-  // Start workflow
+  // Quick generate - one click to generate motion with superprompt
+  const quickGenerate = async () => {
+    setExecuting(true)
+    try {
+      const response = await fetch('/api/workflow/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          generatePdf: true,
+          saveAsDeliverable: true,
+          requireReview: true,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to generate motion')
+      }
+
+      toast({
+        title: 'Motion Generated!',
+        description: `${data.wordCount} words. PDF saved. Ready for your review.`,
+      })
+
+      // Refresh the page to show updated status
+      window.location.reload()
+    } catch (error) {
+      toast({
+        title: 'Generation Failed',
+        description: error instanceof Error ? error.message : 'Failed to generate motion',
+        variant: 'destructive',
+      })
+    } finally {
+      setExecuting(false)
+    }
+  }
+
+  // Start workflow (9-phase)
   const startWorkflow = async () => {
     setExecuting(true)
     try {
@@ -234,39 +273,64 @@ export function WorkflowControlPanel({ orderId, orderNumber, motionType }: Workf
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2 text-navy">
             <Workflow className="h-5 w-5 text-blue-500" />
-            AI Workflow
+            AI Motion Generator
           </CardTitle>
-          <CardDescription>Automated document production</CardDescription>
+          <CardDescription>Generate motion with AI</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="bg-blue-50 rounded-lg p-4">
+          {/* Quick Generate - Primary Action */}
+          <div className="bg-teal/10 rounded-lg p-4 border border-teal/20">
             <div className="flex items-start gap-3">
-              <FileText className="h-5 w-5 text-blue-500 mt-0.5" />
+              <FileText className="h-5 w-5 text-teal mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-navy">Ready to Start</p>
+                <p className="text-sm font-medium text-navy">One-Click Generate</p>
                 <p className="text-xs text-gray-600 mt-1">
-                  Start the 9-phase AI workflow to automatically generate a {motionType} with verified citations.
+                  Generate the motion instantly using your superprompt template. Creates PDF ready for review.
                 </p>
               </div>
             </div>
           </div>
           <Button
-            onClick={startWorkflow}
+            onClick={quickGenerate}
             disabled={executing}
-            className="w-full gap-2"
+            className="w-full gap-2 bg-teal hover:bg-teal/90"
           >
             {executing ? (
               <>
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                Starting...
+                Generating...
               </>
             ) : (
               <>
                 <Play className="h-4 w-4" />
-                Start AI Workflow
+                Generate Motion Now
               </>
             )}
           </Button>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-gray-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-gray-400">or use full workflow</span>
+            </div>
+          </div>
+
+          {/* Advanced Workflow */}
+          <Button
+            onClick={startWorkflow}
+            disabled={executing}
+            variant="outline"
+            className="w-full gap-2"
+          >
+            <Workflow className="h-4 w-4" />
+            Start 9-Phase Workflow
+          </Button>
+          <p className="text-xs text-gray-400 text-center">
+            Full workflow includes citation verification and quality checks
+          </p>
         </CardContent>
       </Card>
     )

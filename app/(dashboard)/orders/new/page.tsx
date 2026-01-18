@@ -97,6 +97,7 @@ export default function NewOrderPage() {
     reset,
     // Form data
     motionType,
+    otherDescription,
     motionTier,
     basePrice,
     turnaround,
@@ -127,6 +128,10 @@ export default function NewOrderPage() {
       case 1:
         if (!motionType) {
           toast({ title: 'Please select a motion type', variant: 'destructive' })
+          return false
+        }
+        if (motionType === 'other' && (!otherDescription || otherDescription.trim().length < 10)) {
+          toast({ title: 'Please describe the motion you need (at least 10 characters)', variant: 'destructive' })
           return false
         }
         return true
@@ -316,6 +321,19 @@ export default function NewOrderPage() {
           title: 'Order submitted successfully!',
           description: 'You will receive a confirmation email shortly.',
         })
+      }
+
+      // Trigger automation after documents are uploaded
+      // This ensures AI has access to all uploaded documents
+      if (orderId) {
+        try {
+          await fetch(`/api/automation/start?orderId=${orderId}`, {
+            method: 'POST',
+          })
+        } catch (automationErr) {
+          // Non-fatal - admin can start manually
+          console.error('Failed to start automation:', automationErr)
+        }
       }
 
       reset()

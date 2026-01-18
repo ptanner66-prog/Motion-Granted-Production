@@ -15,6 +15,7 @@ import {
   checkCitationRequirements,
   CITATION_HARD_STOP_MINIMUM,
 } from './citation-verifier';
+import { generateMotionFromOrder, type MotionType as SuperpromptMotionType } from './superprompt';
 import type {
   WorkflowPath,
   PhaseStatus,
@@ -792,6 +793,7 @@ Create a comprehensive argument outline in JSON format:
 
 /**
  * Phase 6: Document Generation
+ * Uses the SUPERPROMPT system for production-grade motion drafting
  */
 async function executeDocumentGenerationPhase(
   context: PhaseExecutionContext
@@ -807,75 +809,78 @@ async function executeDocumentGenerationPhase(
     };
   }
 
-  const { previousOutputs, motionType, workflow } = context;
-  const supabase = await createClient();
+  const { motionType, workflow } = context;
 
-  // Get order details
-  const { data: order } = await supabase
-    .from('orders')
-    .select('*, profiles(*)')
-    .eq('id', workflow.order_id)
-    .single();
+  // Map motion type code to superprompt motion type
+  const motionTypeMap: Record<string, SuperpromptMotionType> = {
+    'MTD_12B6': 'MTD_12B6',
+    'MTD_12B1': 'MTD_12B1',
+    'MTD_12B2': 'MTD_12B2',
+    'MTD_12B3': 'MTD_12B3',
+    'MSJ': 'MSJ',
+    'PMSJ': 'PMSJ',
+    'MCOMPEL': 'MCOMPEL',
+    'MTC': 'MTC',
+    'MEXT': 'MEXT',
+    'MSTRIKE': 'MSTRIKE',
+    'MIL': 'MIL',
+    'MTR': 'MTR',
+    'MSEAL': 'MSEAL',
+    'MREMAND': 'MREMAND',
+    'MPRO_HAC': 'MPRO_HAC',
+    'OPP_MTD': 'OPP_MTD',
+    'OPP_MSJ': 'OPP_MSJ',
+    'REPLY_MTD': 'REPLY_MTD',
+    'REPLY_MSJ': 'REPLY_MSJ',
+  };
 
-  const prompt = `Generate a complete ${motionType.name} motion document.
+  const superpromptMotionType = motionTypeMap[motionType.code] || 'MTD_12B6';
 
-Case Information:
-- Case Number: ${order?.case_number || '[CASE NUMBER]'}
-- Court: ${order?.court_type || 'United States District Court'}
-- Jurisdiction: ${order?.jurisdiction || 'Federal'}
+  // Use the SUPERPROMPT system for production-grade generation
+  const generationResult = await generateMotionFromOrder(
+    workflow.order_id,
+    superpromptMotionType
+  );
 
-Argument Outline:
-${JSON.stringify(previousOutputs.argument_outline || {}, null, 2)}
-
-Verified Citations to Use:
-${JSON.stringify(previousOutputs.citations || [], null, 2)}
-
-Key Facts:
-${JSON.stringify(previousOutputs.key_facts || [], null, 2)}
-
-Generate the COMPLETE motion document with:
-1. Proper caption and case heading
-2. Introduction/Summary
-3. Statement of Facts
-4. Argument (following the outline with all citations)
-5. Conclusion with specific relief requested
-6. Signature block
-
-Format as a proper legal document. Use the citations provided - do not invent new citations.
-Include appropriate legal formatting (numbered paragraphs, proper headings, etc).`;
-
-  const result = await askClaude({
-    prompt,
-    maxTokens: 8000,
-    systemPrompt: 'You are an expert legal document drafter. Create professional, well-formatted legal documents.',
-  });
-
-  if (!result.success || !result.result) {
+  if (!generationResult.success || !generationResult.data) {
     return {
       success: false,
       phaseNumber: context.phaseDefinition.phase_number,
       status: 'failed',
       outputs: {},
       requiresReview: false,
-      error: result.error || 'Document generation failed',
+      error: generationResult.error || 'Document generation failed',
     };
   }
 
-  const draftDocument = result.result.content;
-  const wordCount = draftDocument.split(/\s+/).length;
+  const { fullText, wordCount, estimatedPages, citations, qualityChecklist } = generationResult.data;
+
+  // Check quality requirements
+  const passesQuality = qualityChecklist.hasCaption &&
+    qualityChecklist.hasArgumentSection &&
+    qualityChecklist.hasConclusion &&
+    qualityChecklist.noPlaceholders;
+
+  // Calculate quality score based on checklist
+  const checklistItems = Object.values(qualityChecklist);
+  const passedChecks = checklistItems.filter(Boolean).length;
+  const qualityScore = passedChecks / checklistItems.length;
 
   return {
     success: true,
     phaseNumber: context.phaseDefinition.phase_number,
     status: 'completed',
     outputs: {
-      draft_document: draftDocument,
+      draft_document: fullText,
       word_count: wordCount,
-      estimated_pages: Math.ceil(wordCount / 300),
-      ai_tokens_used: result.result.tokensUsed,
+      estimated_pages: estimatedPages,
+      citations_used: citations.length,
+      citation_details: citations,
+      quality_checklist: qualityChecklist,
+      generation_method: 'superprompt_v2',
     },
-    qualityScore: 0.8,
-    requiresReview: true, // Always review generated documents
+    qualityScore,
+    requiresReview: !passesQuality, // Only require review if quality issues detected
   };
 }
 

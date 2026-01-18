@@ -51,6 +51,61 @@ export {
   getRecommendedActions,
 } from './quality-validator';
 
+// Document Extraction
+export {
+  extractDocumentContent,
+  extractOrderDocuments,
+  getCombinedDocumentText,
+} from './document-extractor';
+
+// Orchestration (combines checkout + docs + superprompt + workflow)
+export {
+  gatherOrderContext,
+  buildSuperprompt,
+  orchestrateWorkflow,
+  executePhaseWithContext,
+  generateDraftWithSuperprompt,
+  getWorkflowSuperprompt,
+} from './orchestrator';
+
+// PDF Generation
+export {
+  generateMotionPDF,
+  generatePDFFromWorkflow,
+  savePDFAsDeliverable,
+} from './pdf-generator';
+
+// Automation Service (end-to-end hands-off processing)
+export {
+  startOrderAutomation,
+  resumeOrderAutomation,
+  getOrderProgress,
+  getOrdersProgress,
+  syncOrderWithWorkflow,
+  processPendingOrders,
+  retryFailedWorkflows,
+} from './automation-service';
+
+// Superprompt System (production-grade motion generation)
+export {
+  generateSuperprompt,
+  generateMotion,
+  generateMotionFromOrder,
+} from './superprompt';
+
+// Superprompt Engine (merge lawyer's superprompt with order data)
+export {
+  generateMotionWithSuperprompt,
+  gatherOrderData,
+  mergeSuperprompt,
+  executeSuperprompt,
+  saveSuperpromptTemplate,
+  getSuperpromptTemplate,
+  generateMotionFromStoredTemplate,
+  AVAILABLE_PLACEHOLDERS,
+  EXAMPLE_SUPERPROMPT_TEMPLATE,
+} from './superprompt-engine';
+
 // Re-export types
 export type {
   MotionTemplate,
@@ -66,3 +121,39 @@ export type {
   QualityIssue,
   ValidationContext,
 } from './quality-validator';
+
+export type {
+  ExtractedContent,
+  DocumentExtractionResult,
+} from './document-extractor';
+
+export type {
+  OrderContext,
+  SuperPromptContext,
+  OrchestrationResult,
+} from './orchestrator';
+
+export type {
+  MotionDocument,
+  PDFGenerationResult,
+} from './pdf-generator';
+
+export type {
+  AutomationConfig,
+  AutomationResult,
+  OrderProgress,
+} from './automation-service';
+
+export type {
+  CaseContext,
+  MotionRequest,
+  GeneratedMotion,
+  MotionType as SuperpromptMotionType,
+} from './superprompt';
+
+export type {
+  SuperpromptTemplate,
+  MergedSuperprompt,
+  OrderData,
+  GenerationResult,
+} from './superprompt-engine';
