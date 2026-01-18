@@ -368,10 +368,11 @@ async function buildInitialContext(
 ): Promise<{ success: boolean; context?: string; error?: string }> {
   try {
     // Get order data
-    const orderData = await gatherOrderData(orderId);
-    if (!orderData) {
-      return { success: false, error: 'Order not found or could not gather data' };
+    const orderDataResult = await gatherOrderData(orderId);
+    if (!orderDataResult.success || !orderDataResult.data) {
+      return { success: false, error: orderDataResult.error || 'Order not found or could not gather data' };
     }
+    const orderData = orderDataResult.data;
 
     // Get the superprompt template
     const template = await getSuperpromptTemplate();

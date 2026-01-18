@@ -48,16 +48,17 @@ export async function POST(request: Request) {
     }
 
     // Build initial context
-    const orderData = await gatherOrderData(orderId);
-    if (!orderData) {
+    const orderDataResult = await gatherOrderData(orderId);
+    if (!orderDataResult.success || !orderDataResult.data) {
       // Update order status to indicate issue
       await supabase
         .from('orders')
         .update({ status: 'blocked' })
         .eq('id', orderId);
 
-      return NextResponse.json({ error: 'Could not gather order data' }, { status: 400 });
+      return NextResponse.json({ error: orderDataResult.error || 'Could not gather order data' }, { status: 400 });
     }
+    const orderData = orderDataResult.data;
 
     const template = await getSuperpromptTemplate();
     if (!template) {
