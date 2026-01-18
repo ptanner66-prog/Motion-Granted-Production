@@ -119,7 +119,7 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
     const parsedDocs = parsedResult.success && parsedResult.data
       ? parsedResult.data.map(d => ({
           fileName: d.document_id, // We'd need to join with documents table for actual name
-          documentType: d.document_type,
+          documentType: d.document_type || 'unknown',
           summary: d.summary || '',
           keyFacts: d.key_facts || [],
           legalIssues: d.legal_issues || [],
@@ -316,7 +316,7 @@ export async function orchestrateWorkflow(
       if (refreshedParsed.success && refreshedParsed.data) {
         orderContext.documents.parsed = refreshedParsed.data.map(d => ({
           fileName: d.document_id,
-          documentType: d.document_type,
+          documentType: d.document_type || 'unknown',
           summary: d.summary || '',
           keyFacts: d.key_facts || [],
           legalIssues: d.legal_issues || [],
@@ -392,7 +392,7 @@ export async function orchestrateWorkflow(
         },
       });
 
-      if (!startResult.success || !startResult.data) {
+      if (!startResult.success || !startResult.data || !startResult.data.workflowId) {
         return {
           success: false,
           error: startResult.error || 'Failed to start workflow',

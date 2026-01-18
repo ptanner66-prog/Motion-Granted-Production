@@ -72,19 +72,19 @@ export async function POST(request: Request) {
       filingDate: new Date().toISOString(),
     });
 
-    if (!pdfResult.success || !pdfResult.pdfBuffer) {
-      return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
+    if (!pdfResult.success || !pdfResult.data?.pdfBuffer) {
+      return NextResponse.json({ error: pdfResult.error || 'Failed to generate PDF' }, { status: 500 });
     }
 
     // Save PDF as deliverable
     const saveResult = await savePDFAsDeliverable(
       orderId,
-      pdfResult.pdfBuffer,
+      pdfResult.data.pdfBuffer,
       `${order.order_number}_motion.pdf`
     );
 
-    if (!saveResult.success) {
-      return NextResponse.json({ error: 'Failed to save PDF' }, { status: 500 });
+    if (!saveResult.success || !saveResult.data) {
+      return NextResponse.json({ error: saveResult.error || 'Failed to save PDF' }, { status: 500 });
     }
 
     // Update order status to delivered
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       action_details: {
         approvedBy: user.id,
         approverName: profile.full_name,
-        deliverableUrl: saveResult.url,
+        deliverableUrl: saveResult.data.fileUrl,
         approvedAt: new Date().toISOString(),
       },
     });
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Motion approved and delivered',
-      deliverableUrl: saveResult.url,
+      deliverableUrl: saveResult.data.fileUrl,
       status: 'draft_delivered',
     });
   } catch (error) {

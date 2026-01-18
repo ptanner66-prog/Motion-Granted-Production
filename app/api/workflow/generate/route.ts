@@ -21,7 +21,7 @@ import {
   EXAMPLE_SUPERPROMPT_TEMPLATE,
   AVAILABLE_PLACEHOLDERS,
 } from '@/lib/workflow/superprompt-engine';
-import { generateMotionPDF, savePDFAsDeliverable } from '@/lib/workflow/pdf-generator';
+import { generateDetailedMotionPDF, savePDFAsDeliverable, type MotionDocument } from '@/lib/workflow/pdf-generator';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
 
 export async function POST(request: Request) {
@@ -111,7 +111,7 @@ export async function POST(request: Request) {
         .filter((p: { party_role: string }) => p.party_role === 'defendant')
         .map((p: { party_name: string }) => p.party_name);
 
-      const pdfDoc = {
+      const pdfDoc: MotionDocument = {
         courtName: order.jurisdiction || 'United States District Court',
         caseNumber: order.case_number,
         caseCaption: order.case_caption,
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
         firmEmail: '[EMAIL]',
       };
 
-      pdfResult = await generateMotionPDF(pdfDoc);
+      pdfResult = await generateDetailedMotionPDF(pdfDoc);
 
       // Save as deliverable if requested
       if (saveAsDeliverable && pdfResult.success && pdfResult.data) {

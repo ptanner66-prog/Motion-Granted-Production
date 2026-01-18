@@ -92,8 +92,8 @@ export async function POST(request: Request) {
       // Build initial context from order data + superprompt
       const initialContext = await buildInitialContext(orderId, supabase);
 
-      if (!initialContext.success) {
-        return new Response(JSON.stringify({ error: initialContext.error }), {
+      if (!initialContext.success || !initialContext.context) {
+        return new Response(JSON.stringify({ error: initialContext.error || 'Failed to build context' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -375,13 +375,14 @@ async function buildInitialContext(
     const orderData = orderDataResult.data;
 
     // Get the superprompt template
-    const template = await getSuperpromptTemplate();
-    if (!template) {
+    const templateResult = await getSuperpromptTemplate();
+    if (!templateResult.success || !templateResult.data) {
       return {
         success: false,
-        error: 'No superprompt template found. Please upload a template in the admin dashboard.',
+        error: templateResult.error || 'No superprompt template found. Please upload a template in the admin dashboard.',
       };
     }
+    const template = templateResult.data;
 
     // Merge the superprompt with order data
     let context = template.template;

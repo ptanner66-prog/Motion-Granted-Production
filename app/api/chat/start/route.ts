@@ -60,12 +60,13 @@ export async function POST(request: Request) {
     }
     const orderData = orderDataResult.data;
 
-    const template = await getSuperpromptTemplate();
-    if (!template) {
+    const templateResult = await getSuperpromptTemplate();
+    if (!templateResult.success || !templateResult.data) {
       return NextResponse.json({
-        error: 'No superprompt template found. Please upload a template first.',
+        error: templateResult.error || 'No superprompt template found. Please upload a template first.',
       }, { status: 400 });
     }
+    const template = templateResult.data;
 
     // Merge superprompt with order data
     let context = template.template;

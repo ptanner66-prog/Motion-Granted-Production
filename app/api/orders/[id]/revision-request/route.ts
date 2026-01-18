@@ -64,7 +64,7 @@ export async function POST(
 
     // Count completed revisions
     const completedRevisions = existingRequests?.filter(
-      r => r.status === 'completed'
+      (r: { id: string; status: string }) => r.status === 'completed'
     ).length || 0;
 
     if (completedRevisions >= 1) {
@@ -75,7 +75,7 @@ export async function POST(
 
     // Check if there's already a pending revision request
     const pendingRequest = existingRequests?.find(
-      r => r.status === 'pending' || r.status === 'in_progress'
+      (r: { id: string; status: string }) => r.status === 'pending' || r.status === 'in_progress'
     );
 
     if (pendingRequest) {
@@ -186,9 +186,9 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch revision requests' }, { status: 500 });
     }
 
-    const completedCount = requests?.filter(r => r.status === 'completed').length || 0;
+    const completedCount = requests?.filter((r: { status: string }) => r.status === 'completed').length || 0;
     const canRequestRevision = completedCount < 1 && !requests?.some(
-      r => r.status === 'pending' || r.status === 'in_progress'
+      (r: { status: string }) => r.status === 'pending' || r.status === 'in_progress'
     );
 
     return NextResponse.json({
