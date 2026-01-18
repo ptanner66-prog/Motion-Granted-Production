@@ -266,30 +266,53 @@ export async function extractOrderDocuments(
     const results: ExtractedContent[] = [];
     const errors: Array<{ documentId: string; error: string }> = [];
 
-    for (const doc of documents || []) {
-      const extractResult = await extractDocumentContent(doc.file_url, doc.file_type);
+    // Process documents in parallel (up to 5 concurrent extractions)
+    const BATCH_SIZE = 5;
+    type DocRecord = { id: string; file_name: string; file_type: string; file_url: string };
+    const docs: DocRecord[] = documents || [];
 
-      if (extractResult.success && extractResult.data) {
-        const text = extractResult.data.text;
-        results.push({
-          documentId: doc.id,
-          fileName: doc.file_name,
-          fileType: doc.file_type,
-          textContent: text,
-          extractionMethod: extractResult.data.method as ExtractedContent['extractionMethod'],
-          confidence: text.includes('[Failed') || text.includes('[') ? 0.3 : 0.9,
-          metadata: {
-            pageCount: extractResult.data.pages,
-            wordCount: text.split(/\s+/).filter(w => w.length > 0).length,
-            characterCount: text.length,
-            extractedAt: new Date().toISOString(),
-          },
-        });
-      } else {
-        errors.push({
-          documentId: doc.id,
-          error: extractResult.error || 'Unknown extraction error',
-        });
+    for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+      const batch = docs.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (doc: DocRecord) => {
+          const extractResult = await extractDocumentContent(doc.file_url, doc.file_type);
+          return { doc, extractResult };
+        })
+      );
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          const { doc, extractResult } = result.value;
+          if (extractResult.success && extractResult.data) {
+            const text = extractResult.data.text;
+            results.push({
+              documentId: doc.id,
+              fileName: doc.file_name,
+              fileType: doc.file_type,
+              textContent: text,
+              extractionMethod: extractResult.data.method as ExtractedContent['extractionMethod'],
+              confidence: text.includes('[Failed') || text.includes('[') ? 0.3 : 0.9,
+              metadata: {
+                pageCount: extractResult.data.pages,
+                wordCount: text.split(/\s+/).filter(w => w.length > 0).length,
+                characterCount: text.length,
+                extractedAt: new Date().toISOString(),
+              },
+            });
+          } else {
+            errors.push({
+              documentId: doc.id,
+              error: extractResult.error || 'Unknown extraction error',
+            });
+          }
+        } else {
+          // Handle rejected promise (shouldn't happen but just in case)
+          const doc = batch[batchResults.indexOf(result)];
+          errors.push({
+            documentId: doc.id,
+            error: result.reason?.message || 'Extraction failed unexpectedly',
+          });
+        }
       }
     }
 

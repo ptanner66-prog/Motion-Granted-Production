@@ -560,13 +560,292 @@ function drawPageNumber(page: PDFPage, pageNum: number, totalPages: number, font
 }
 
 // ============================================================================
-// MAIN GENERATOR
+// WORKFLOW PDF GENERATOR
 // ============================================================================
 
 /**
- * Generate a court-ready PDF from a motion document
+ * Generate PDF from workflow outputs
+ */
+export async function generatePDFFromWorkflow(
+  orderId: string,
+  workflowId: string
+): Promise<OperationResult<PDFGenerationResult>> {
+  const supabase = await createClient();
+
+  try {
+    // Get order details
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        parties (party_name, party_role),
+        profiles (full_name, email)
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return { success: false, error: 'Order not found' };
+    }
+
+    // Get workflow outputs
+    const { data: workflow, error: wfError } = await supabase
+      .from('order_workflows')
+      .select('*')
+      .eq('id', workflowId)
+      .single();
+
+    if (wfError || !workflow) {
+      return { success: false, error: 'Workflow not found' };
+    }
+
+    // Get phase outputs
+    const { data: phases, error: phasesError } = await supabase
+      .from('workflow_phase_executions')
+      .select('phase_number, outputs')
+      .eq('order_workflow_id', workflowId)
+      .eq('status', 'completed')
+      .order('phase_number', { ascending: true });
+
+    if (phasesError) {
+      return { success: false, error: 'Failed to fetch workflow phases' };
+    }
+
+    // Aggregate outputs
+    const allOutputs: Record<string, unknown> = {};
+    for (const phase of phases || []) {
+      if (phase.outputs) {
+        Object.assign(allOutputs, phase.outputs);
+      }
+    }
+
+    // Get the draft document from outputs
+    const draftDocument = (allOutputs.revised_document || allOutputs.draft_document || allOutputs.final_motion) as string;
+
+    if (!draftDocument) {
+      return { success: false, error: 'No draft document found in workflow outputs' };
+    }
+
+    // Parse parties
+    const plaintiffs: string[] = [];
+    const defendants: string[] = [];
+
+    for (const party of order.parties || []) {
+      if (party.party_role === 'plaintiff') {
+        plaintiffs.push(party.party_name);
+      } else if (party.party_role === 'defendant') {
+        defendants.push(party.party_name);
+      }
+    }
+
+    // Build document structure
+    const motionDoc: MotionDocument = {
+      courtName: order.jurisdiction || 'United States District Court',
+      caseNumber: order.case_number || '[CASE NUMBER]',
+      caseCaption: order.case_caption || 'PARTIES v. PARTIES',
+      plaintiffs: plaintiffs.length > 0 ? plaintiffs : ['[PLAINTIFF]'],
+      defendants: defendants.length > 0 ? defendants : ['[DEFENDANT]'],
+      motionTitle: order.motion_type || 'Motion',
+      motionType: order.motion_type || 'motion',
+      argument: draftDocument,
+      conclusion: (allOutputs.certificate_of_service as string)
+        ? 'For the foregoing reasons, the Court should grant this Motion.'
+        : 'WHEREFORE, for the foregoing reasons, this Motion should be granted.',
+      certificateOfService: allOutputs.certificate_of_service as string || generateDefaultCertificate(),
+      attorneyName: order.profiles?.full_name || '[ATTORNEY NAME]',
+      attorneyBarNumber: '[BAR NUMBER]',
+      firmName: '[FIRM NAME]',
+      firmAddress: '[ADDRESS]',
+      firmPhone: '[PHONE]',
+      firmEmail: order.profiles?.email || '[EMAIL]',
+    };
+
+    return await generateDetailedMotionPDF(motionDoc);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'PDF generation from workflow failed',
+    };
+  }
+}
+
+// ============================================================================
+// SIMPLE PDF GENERATOR (for Claude Chat approve flow)
+// ============================================================================
+
+/**
+ * Simple interface for text-to-PDF conversion
+ * Used by the approve route for Claude-generated motions
+ */
+export interface SimpleMotionPDF {
+  title: string;
+  content: string;
+  caseNumber?: string;
+  caseCaption?: string;
+  court?: string;
+  filingDate?: string;
+}
+
+/**
+ * Generate a simple PDF from text content
+ * This is used when Claude generates the complete motion text
  */
 export async function generateMotionPDF(
+  options: SimpleMotionPDF
+): Promise<OperationResult<{ pdfBuffer: Uint8Array; pageCount: number }>> {
+  try {
+    const pdfDoc = await PDFDocument.create();
+    const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+    const timesBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+
+    let pageCount = 0;
+
+    // Helper to add a new page
+    const addPage = (): PDFPage => {
+      const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      pageCount++;
+      return page;
+    };
+
+    // Start first page
+    let page = addPage();
+    let y = PAGE_HEIGHT - MARGIN_TOP;
+
+    // Draw title
+    if (options.title) {
+      const titleText = options.title.toUpperCase();
+      const titleWidth = timesBold.widthOfTextAtSize(titleText, FONT_SIZE_TITLE);
+      page.drawText(titleText, {
+        x: (PAGE_WIDTH - titleWidth) / 2,
+        y,
+        size: FONT_SIZE_TITLE,
+        font: timesBold,
+      });
+      y -= LINE_HEIGHT * 2;
+    }
+
+    // Draw court info if provided
+    if (options.court) {
+      page.drawText(options.court, {
+        x: MARGIN_LEFT,
+        y,
+        size: FONT_SIZE_BODY,
+        font: timesRoman,
+      });
+      y -= LINE_HEIGHT;
+    }
+
+    if (options.caseCaption) {
+      page.drawText(options.caseCaption, {
+        x: MARGIN_LEFT,
+        y,
+        size: FONT_SIZE_BODY,
+        font: timesRoman,
+      });
+      y -= LINE_HEIGHT;
+    }
+
+    if (options.caseNumber) {
+      page.drawText(`Case No. ${options.caseNumber}`, {
+        x: MARGIN_LEFT,
+        y,
+        size: FONT_SIZE_BODY,
+        font: timesRoman,
+      });
+      y -= LINE_HEIGHT * 2;
+    }
+
+    // Draw main content
+    const paragraphs = options.content.split(/\n\n+/);
+
+    for (const paragraph of paragraphs) {
+      const trimmed = paragraph.trim();
+      if (!trimmed) continue;
+
+      // Check for section headers (all caps lines)
+      const isHeader = /^[A-Z\s]+$/.test(trimmed) && trimmed.length < 100;
+
+      if (isHeader) {
+        // Add space before headers
+        if (y < PAGE_HEIGHT - MARGIN_TOP - LINE_HEIGHT * 3) {
+          y -= LINE_HEIGHT;
+        }
+
+        // Check if we need a new page
+        if (y < MARGIN_BOTTOM + LINE_HEIGHT * 3) {
+          page = addPage();
+          y = PAGE_HEIGHT - MARGIN_TOP;
+        }
+
+        page.drawText(trimmed, {
+          x: MARGIN_LEFT,
+          y,
+          size: FONT_SIZE_HEADING,
+          font: timesBold,
+        });
+        y -= LINE_HEIGHT * 1.5;
+      } else {
+        // Regular paragraph - wrap text
+        const lines = wrapText(trimmed.replace(/\n/g, ' '), timesRoman, FONT_SIZE_BODY, CONTENT_WIDTH);
+
+        for (let i = 0; i < lines.length; i++) {
+          // Check if we need a new page
+          if (y < MARGIN_BOTTOM) {
+            page = addPage();
+            y = PAGE_HEIGHT - MARGIN_TOP;
+          }
+
+          // First line indent for paragraphs
+          const indent = i === 0 ? 36 : 0;
+
+          page.drawText(lines[i], {
+            x: MARGIN_LEFT + indent,
+            y,
+            size: FONT_SIZE_BODY,
+            font: timesRoman,
+          });
+          y -= LINE_HEIGHT;
+        }
+
+        y -= LINE_HEIGHT * 0.5; // Space between paragraphs
+      }
+    }
+
+    // Add page numbers
+    const pages = pdfDoc.getPages();
+    for (let i = 0; i < pages.length; i++) {
+      const pageNumText = `Page ${i + 1} of ${pages.length}`;
+      const textWidth = timesRoman.widthOfTextAtSize(pageNumText, 10);
+      pages[i].drawText(pageNumText, {
+        x: (PAGE_WIDTH - textWidth) / 2,
+        y: MARGIN_BOTTOM / 2,
+        size: 10,
+        font: timesRoman,
+      });
+    }
+
+    const pdfBytes = await pdfDoc.save();
+
+    return {
+      success: true,
+      data: {
+        pdfBuffer: pdfBytes,
+        pageCount,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'PDF generation failed',
+    };
+  }
+}
+
+/**
+ * Generate a detailed court-ready PDF from a MotionDocument structure
+ * Use this when you have structured motion data with all sections
+ */
+export async function generateDetailedMotionPDF(
   doc: MotionDocument
 ): Promise<OperationResult<PDFGenerationResult>> {
   try {
@@ -799,112 +1078,6 @@ export async function generateMotionPDF(
     return {
       success: false,
       error: error instanceof Error ? error.message : 'PDF generation failed',
-    };
-  }
-}
-
-/**
- * Generate PDF from workflow outputs
- */
-export async function generatePDFFromWorkflow(
-  orderId: string,
-  workflowId: string
-): Promise<OperationResult<PDFGenerationResult>> {
-  const supabase = await createClient();
-
-  try {
-    // Get order details
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        parties (party_name, party_role),
-        profiles (full_name, email)
-      `)
-      .eq('id', orderId)
-      .single();
-
-    if (orderError || !order) {
-      return { success: false, error: 'Order not found' };
-    }
-
-    // Get workflow outputs
-    const { data: workflow, error: wfError } = await supabase
-      .from('order_workflows')
-      .select('*')
-      .eq('id', workflowId)
-      .single();
-
-    if (wfError || !workflow) {
-      return { success: false, error: 'Workflow not found' };
-    }
-
-    // Get phase outputs
-    const { data: phases, error: phasesError } = await supabase
-      .from('workflow_phase_executions')
-      .select('phase_number, outputs')
-      .eq('order_workflow_id', workflowId)
-      .eq('status', 'completed')
-      .order('phase_number', { ascending: true });
-
-    if (phasesError) {
-      return { success: false, error: 'Failed to fetch workflow phases' };
-    }
-
-    // Aggregate outputs
-    const allOutputs: Record<string, unknown> = {};
-    for (const phase of phases || []) {
-      if (phase.outputs) {
-        Object.assign(allOutputs, phase.outputs);
-      }
-    }
-
-    // Get the draft document from outputs
-    const draftDocument = (allOutputs.revised_document || allOutputs.draft_document || allOutputs.final_motion) as string;
-
-    if (!draftDocument) {
-      return { success: false, error: 'No draft document found in workflow outputs' };
-    }
-
-    // Parse parties
-    const plaintiffs: string[] = [];
-    const defendants: string[] = [];
-
-    for (const party of order.parties || []) {
-      if (party.party_role === 'plaintiff') {
-        plaintiffs.push(party.party_name);
-      } else if (party.party_role === 'defendant') {
-        defendants.push(party.party_name);
-      }
-    }
-
-    // Build document structure
-    const motionDoc: MotionDocument = {
-      courtName: order.jurisdiction || 'United States District Court',
-      caseNumber: order.case_number || '[CASE NUMBER]',
-      caseCaption: order.case_caption || 'PARTIES v. PARTIES',
-      plaintiffs: plaintiffs.length > 0 ? plaintiffs : ['[PLAINTIFF]'],
-      defendants: defendants.length > 0 ? defendants : ['[DEFENDANT]'],
-      motionTitle: order.motion_type || 'Motion',
-      motionType: order.motion_type || 'motion',
-      argument: draftDocument,
-      conclusion: (allOutputs.certificate_of_service as string)
-        ? 'For the foregoing reasons, the Court should grant this Motion.'
-        : 'WHEREFORE, for the foregoing reasons, this Motion should be granted.',
-      certificateOfService: allOutputs.certificate_of_service as string || generateDefaultCertificate(),
-      attorneyName: order.profiles?.full_name || '[ATTORNEY NAME]',
-      attorneyBarNumber: '[BAR NUMBER]',
-      firmName: '[FIRM NAME]',
-      firmAddress: '[ADDRESS]',
-      firmPhone: '[PHONE]',
-      firmEmail: order.profiles?.email || '[EMAIL]',
-    };
-
-    return await generateMotionPDF(motionDoc);
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'PDF generation from workflow failed',
     };
   }
 }

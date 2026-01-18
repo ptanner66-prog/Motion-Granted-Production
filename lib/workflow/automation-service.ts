@@ -161,11 +161,12 @@ export async function startOrderAutomation(
     }
 
     const { workflowId, status } = workflowResult.data;
+    const resolvedWorkflowId = workflowId || orderId; // Use orderId as fallback
 
     // If workflow requires review, return current state
     if (status === 'requires_review') {
       await logAutomationEvent(orderId, 'review_required', {
-        workflowId,
+        workflowId: resolvedWorkflowId,
         phase: workflowResult.data.currentPhase,
       });
 
@@ -174,7 +175,7 @@ export async function startOrderAutomation(
         data: {
           orderId,
           orderNumber: order.order_number,
-          workflowId,
+          workflowId: resolvedWorkflowId,
           status: 'requires_review',
           currentPhase: workflowResult.data.currentPhase,
           totalPhases: 9,
@@ -186,7 +187,7 @@ export async function startOrderAutomation(
 
     // If workflow completed, generate PDF and notify
     if (status === 'completed') {
-      return await finalizeOrder(orderId, order.order_number, workflowId, mergedConfig, startTime);
+      return await finalizeOrder(orderId, order.order_number, resolvedWorkflowId, mergedConfig, startTime);
     }
 
     // Workflow is still in progress
@@ -195,7 +196,7 @@ export async function startOrderAutomation(
       data: {
         orderId,
         orderNumber: order.order_number,
-        workflowId,
+        workflowId: resolvedWorkflowId,
         status: 'in_progress',
         currentPhase: workflowResult.data.currentPhase || 1,
         totalPhases: 9,
