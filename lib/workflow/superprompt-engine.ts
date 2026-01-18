@@ -93,6 +93,27 @@ export interface GenerationResult {
 // AVAILABLE PLACEHOLDERS
 // ============================================================================
 
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/**
+ * Maximum characters for document content to avoid exceeding Claude's context
+ * Claude-3 has ~200k tokens, but we leave room for the prompt and response
+ * ~400k chars ≈ 100k tokens, leaving plenty for prompt + response
+ */
+const MAX_DOCUMENT_CONTENT_CHARS = 400000;
+const MAX_PER_DOCUMENT_CHARS = 100000; // Max chars per individual document
+const TRUNCATION_MESSAGE = '\n\n[... Document truncated for length. Full content available in uploaded files ...]';
+
+/**
+ * Truncate text to a maximum length with a helpful message
+ */
+function truncateContent(content: string, maxLength: number): string {
+  if (content.length <= maxLength) return content;
+  return content.slice(0, maxLength - TRUNCATION_MESSAGE.length) + TRUNCATION_MESSAGE;
+}
+
 /**
  * All available placeholders that can be used in a superprompt template.
  * Document these for your lawyer when they create the superprompt.
@@ -185,6 +206,11 @@ export async function gatherOrderData(orderId: string): Promise<OperationResult<
       .map(i => `• ${i}`)
       .join('\n');
 
+    // Truncate document content to fit within Claude's context window
+    // This ensures we don't exceed limits even with many large documents
+    const rawDocumentContent = ctx.documents.raw || '[No documents uploaded]';
+    const truncatedDocumentContent = truncateContent(rawDocumentContent, MAX_DOCUMENT_CONTENT_CHARS);
+
     const orderData: OrderData = {
       // Case info
       caseNumber: ctx.caseNumber,
@@ -209,8 +235,8 @@ export async function gatherOrderData(orderId: string): Promise<OperationResult<
       proceduralHistory: ctx.proceduralHistory || '[No procedural history provided]',
       clientInstructions: ctx.instructions || '[No special instructions]',
 
-      // Documents
-      documentContent: ctx.documents.raw || '[No documents uploaded]',
+      // Documents (truncated to fit context window)
+      documentContent: truncatedDocumentContent,
       documentSummaries: documentSummaries || '[No document summaries available]',
       keyFacts: keyFactsList || '[No key facts extracted]',
       legalIssues: legalIssuesList || '[No legal issues identified]',

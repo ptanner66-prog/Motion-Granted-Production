@@ -23,10 +23,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // Validate file size (50MB max)
-    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB in bytes
+    // Validate file size (100MB max for large legal briefs)
+    const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB in bytes
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'File size exceeds 50MB limit' }, { status: 400 })
+      return NextResponse.json({ error: 'File size exceeds 100MB limit' }, { status: 400 })
     }
 
     // Validate file type
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
       // Try to create the bucket
       const { error: createError } = await supabase.storage.createBucket('documents', {
         public: false,
-        fileSizeLimit: 52428800, // 50MB
+        fileSizeLimit: 104857600, // 100MB
         allowedMimeTypes: [
           'application/pdf',
           'application/msword',
