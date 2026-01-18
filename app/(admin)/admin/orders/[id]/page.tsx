@@ -134,7 +134,7 @@ export default async function AdminOrderDetailPage({
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-6">
-          <Tabs defaultValue="details">
+          <Tabs defaultValue={['pending_review', 'revision_requested', 'in_progress'].includes(order.status) ? 'chat' : 'details'}>
             <TabsList className="bg-gray-100 p-1 border border-gray-200">
               <TabsTrigger
                 value="chat"
@@ -142,6 +142,11 @@ export default async function AdminOrderDetailPage({
               >
                 <Bot className="h-4 w-4" />
                 Claude Chat
+                {['pending_review', 'revision_requested'].includes(order.status) && (
+                  <span className="ml-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-xs font-semibold text-white">
+                    Action
+                  </span>
+                )}
               </TabsTrigger>
               <TabsTrigger
                 value="details"
