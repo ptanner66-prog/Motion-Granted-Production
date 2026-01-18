@@ -24,6 +24,22 @@ interface ApprovalRequest {
   internalNotes?: string; // Optional internal notes
 }
 
+interface PendingOrderRecord {
+  id: string;
+  order_number: string;
+  motion_type: string;
+  case_number: string;
+  jurisdiction: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  profiles: { full_name: string; email: string } | null;
+}
+
+interface DeliverableRecord {
+  order_id: string;
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
 
@@ -242,7 +258,7 @@ export async function GET(request: Request) {
     }
 
     // Get deliverable counts
-    const orderIds = orders?.map(o => o.id) || [];
+    const orderIds = orders?.map((o: PendingOrderRecord) => o.id) || [];
     const { data: deliverableCounts } = await supabase
       .from('order_documents')
       .select('order_id')
@@ -251,11 +267,11 @@ export async function GET(request: Request) {
 
     // Count deliverables per order
     const countMap: Record<string, number> = {};
-    deliverableCounts?.forEach(d => {
+    deliverableCounts?.forEach((d: DeliverableRecord) => {
       countMap[d.order_id] = (countMap[d.order_id] || 0) + 1;
     });
 
-    const ordersWithCounts = orders?.map(o => ({
+    const ordersWithCounts = orders?.map((o: PendingOrderRecord) => ({
       ...o,
       deliverableCount: countMap[o.id] || 0,
     })) || [];
