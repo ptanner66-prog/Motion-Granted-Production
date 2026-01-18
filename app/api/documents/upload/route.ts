@@ -23,6 +23,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
+    // Validate file size (100MB max for large legal briefs)
+    const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB in bytes
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: 'File size exceeds 100MB limit' }, { status: 400 })
+    }
+
+    // Validate file type
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/jpeg',
+      'image/png',
+      'image/gif'
+    ]
+    if (!allowedTypes.includes(file.type)) {
+      return NextResponse.json({ error: 'Invalid file type. Only PDF, DOC, DOCX, and images are allowed' }, { status: 400 })
+    }
+
     // Generate unique file name
     const timestamp = Date.now()
     const randomStr = Math.random().toString(36).substring(7)
@@ -43,22 +62,20 @@ export async function POST(req: Request) {
     if (!bucketExists) {
       // Try to create the bucket
       const { error: createError } = await supabase.storage.createBucket('documents', {
-        public: true,
-        fileSizeLimit: 52428800, // 50MB
-        allowedMimeTypes: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        public: false,
+        fileSizeLimit: 104857600, // 100MB
+        allowedMimeTypes: [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'image/jpeg',
+          'image/png',
+          'image/gif'
+        ]
       })
 
       if (createError) {
-        console.error('Could not create storage bucket:', createError)
-        // Return a placeholder URL so the flow continues
-        return NextResponse.json({
-          success: true,
-          url: `pending://${file.name}`,
-          path: filePath,
-          fileName: file.name,
-          fileSize: file.size,
-          note: 'Storage not configured. Document info saved but file not uploaded.'
-        })
+        return NextResponse.json({ error: 'Storage configuration error' }, { status: 503 })
       }
     }
 
@@ -71,22 +88,19 @@ export async function POST(req: Request) {
       })
 
     if (uploadError) {
-      console.error('Upload error:', uploadError)
-      // Return placeholder so flow continues
-      return NextResponse.json({
-        success: true,
-        url: `pending://${file.name}`,
-        path: filePath,
-        fileName: file.name,
-        fileSize: file.size,
-        note: 'Upload failed but document info saved.'
-      })
+      return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
     }
 
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
+    // Create signed URL for private access (valid for 1 hour)
+    const { data: signedUrlData, error: urlError } = await supabase.storage
       .from('documents')
-      .getPublicUrl(filePath)
+      .createSignedUrl(filePath, 3600)
+
+    if (urlError || !signedUrlData) {
+      return NextResponse.json({ error: 'Failed to generate access URL' }, { status: 500 })
+    }
+
+    const signedUrl = signedUrlData.signedUrl
 
     // If orderId provided, save to documents table
     if (orderId) {
@@ -97,25 +111,24 @@ export async function POST(req: Request) {
           file_name: file.name,
           file_type: file.type,
           file_size: file.size,
-          file_url: publicUrl,
+          file_url: filePath, // Store file path, not signed URL
           document_type: documentType || 'other',
           uploaded_by: user.id,
         })
 
       if (dbError) {
-        console.error('Database error:', dbError)
+        return NextResponse.json({ error: 'Failed to save document metadata' }, { status: 500 })
       }
     }
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      url: signedUrl,
       path: filePath,
       fileName: file.name,
       fileSize: file.size,
     })
   } catch (error) {
-    console.error('Error uploading document:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

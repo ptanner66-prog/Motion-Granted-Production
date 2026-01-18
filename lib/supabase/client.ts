@@ -28,7 +28,7 @@ export function createClient() {
         update: () => ({ data: null, error: new Error('Supabase not configured') }),
         delete: () => ({ data: null, error: new Error('Supabase not configured') }),
       }),
-    } as any
+    } as unknown as ReturnType<typeof createBrowserClient>
   }
 
   return createBrowserClient(

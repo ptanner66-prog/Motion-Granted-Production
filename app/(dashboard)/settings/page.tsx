@@ -69,7 +69,6 @@ export default function SettingsPage() {
             .insert(newProfile)
 
           if (insertError) {
-            console.error('Error creating profile:', insertError)
             // Still show the form with default values
           }
 
@@ -98,7 +97,6 @@ export default function SettingsPage() {
           })
         }
       } catch (error) {
-        console.error('Error loading profile:', error)
         // Show form with empty values instead of error
         const { data: { user } } = await supabase.auth.getUser()
         setProfile({
@@ -149,7 +147,6 @@ export default function SettingsPage() {
         description: 'Your account settings have been updated.',
       })
     } catch (error) {
-      console.error('Error saving profile:', error)
       toast({
         title: 'Error saving settings',
         description: 'Please try again later.',

@@ -7,7 +7,11 @@ import { OrderStatusBadge } from '@/components/orders/order-status-badge'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 import { StatusUpdateForm } from '@/components/admin/status-update-form'
+import { UploadDeliverableButton } from '@/components/admin/upload-deliverable-button'
+import { DownloadAllButton } from '@/components/admin/download-all-button'
+import { DocumentDownloadButton } from '@/components/documents/document-download-button'
 import {
   ArrowLeft,
   FileText,
@@ -18,8 +22,15 @@ import {
   Calendar,
   DollarSign,
   Building,
+  FileCheck,
+  Upload,
+  Bot,
+  MessageSquare,
 } from 'lucide-react'
 import type { OrderStatus } from '@/types'
+import { ClaudeChat } from '@/components/admin/claude-chat'
+import { AdminRevisionRequests } from '@/components/admin/admin-revision-requests'
+import { QuickApproveButton } from '@/components/admin/quick-approve-button'
 
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
@@ -83,6 +94,10 @@ export default async function AdminOrderDetailPage({
     .eq('order_id', id)
   const documents: Document[] = documentsData || []
 
+  // Split documents into uploads and deliverables
+  const clientUploads = documents.filter(doc => doc.document_type !== 'deliverable')
+  const deliverables = documents.filter(doc => doc.document_type === 'deliverable')
+
   const client = order.profiles
 
   return (
@@ -105,7 +120,7 @@ export default async function AdminOrderDetailPage({
               </h1>
               <OrderStatusBadge status={order.status as OrderStatus} />
             </div>
-            <p className="text-lg text-gray-600">{order.motion_type}</p>
+            <p className="text-lg text-gray-600">{formatMotionType(order.motion_type)}</p>
             <p className="text-sm text-gray-400 mt-1">
               <span className="font-medium">{order.case_caption}</span>
               <span className="mx-2">•</span>
@@ -119,8 +134,20 @@ export default async function AdminOrderDetailPage({
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-6">
-          <Tabs defaultValue="details">
+          <Tabs defaultValue={['pending_review', 'revision_requested', 'in_progress'].includes(order.status) ? 'chat' : 'details'}>
             <TabsList className="bg-gray-100 p-1 border border-gray-200">
+              <TabsTrigger
+                value="chat"
+                className="data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700 text-gray-500 rounded-lg px-4 gap-2"
+              >
+                <Bot className="h-4 w-4" />
+                Claude Chat
+                {['pending_review', 'revision_requested'].includes(order.status) && (
+                  <span className="ml-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-xs font-semibold text-white">
+                    Action
+                  </span>
+                )}
+              </TabsTrigger>
               <TabsTrigger
                 value="details"
                 className="data-[state=active]:bg-gray-200 data-[state=active]:text-navy text-gray-500 rounded-lg px-4 gap-2"
@@ -139,6 +166,10 @@ export default async function AdminOrderDetailPage({
                 </span>
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="chat" className="mt-6">
+              <ClaudeChat orderId={order.id} orderNumber={order.order_number} />
+            </TabsContent>
 
             <TabsContent value="details" className="mt-6 space-y-6">
               {/* Case Information */}
@@ -204,55 +235,113 @@ export default async function AdminOrderDetailPage({
               )}
 
               {/* Statement of Facts */}
-              <Card className="bg-white border-gray-200">
+              <Card className="bg-white border-gray-200 overflow-hidden">
                 <CardHeader className="border-b border-gray-200">
                   <CardTitle className="text-lg text-navy">Statement of Facts</CardTitle>
                 </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-gray-600 whitespace-pre-wrap leading-relaxed">{order.statement_of_facts}</p>
+                <CardContent className="p-6 overflow-hidden">
+                  <p className="text-gray-600 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.statement_of_facts}</p>
                 </CardContent>
               </Card>
 
               {/* Procedural History */}
-              <Card className="bg-white border-gray-200">
+              <Card className="bg-white border-gray-200 overflow-hidden">
                 <CardHeader className="border-b border-gray-200">
                   <CardTitle className="text-lg text-navy">Procedural History</CardTitle>
                 </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-gray-600 whitespace-pre-wrap leading-relaxed">{order.procedural_history}</p>
+                <CardContent className="p-6 overflow-hidden">
+                  <p className="text-gray-600 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.procedural_history}</p>
                 </CardContent>
               </Card>
 
               {/* Drafting Instructions */}
-              <Card className="bg-white border-gray-200">
-                <CardHeader className="border-b border-gray-200 bg-orange-500/5">
+              <Card className="bg-white border-gray-200 overflow-hidden">
+                <CardHeader className="border-b border-gray-200">
                   <CardTitle className="text-lg flex items-center gap-2 text-navy">
-                    <FileText className="h-5 w-5 text-orange-400" />
+                    <FileText className="h-5 w-5 text-gray-400" />
                     Drafting Instructions
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-gray-600 whitespace-pre-wrap leading-relaxed">{order.instructions}</p>
+                <CardContent className="p-6 overflow-hidden">
+                  <p className="text-gray-600 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.instructions}</p>
                 </CardContent>
               </Card>
             </TabsContent>
 
-            <TabsContent value="documents" className="mt-6">
+            <TabsContent value="documents" className="mt-6 space-y-6">
+              {/* Deliverables Section */}
               <Card className="bg-white border-gray-200">
                 <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-lg flex items-center gap-2 text-navy">
-                    <Paperclip className="h-5 w-5 text-gray-400" />
-                    Uploaded Documents
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">Documents provided with this order</CardDescription>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2 text-navy">
+                        <FileCheck className="h-5 w-5 text-teal" />
+                        Deliverables
+                      </CardTitle>
+                      <CardDescription className="text-gray-400 mt-1.5">Completed drafts ready for client</CardDescription>
+                    </div>
+                    <UploadDeliverableButton orderId={order.id} />
+                  </div>
                 </CardHeader>
                 <CardContent className="p-6">
-                  {documents.length > 0 ? (
+                  {deliverables.length > 0 ? (
                     <div className="space-y-3">
-                      {documents.map((doc) => (
+                      {deliverables.map((doc) => (
                         <div
                           key={doc.id}
-                          className="flex items-center justify-between rounded-xl bg-gray-100 border border-gray-200 p-4"
+                          className="flex items-center justify-between rounded-xl bg-teal/5 border border-teal/20 p-4 hover:border-teal/40 hover:bg-teal/10 transition-all"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal/20">
+                              <FileCheck className="h-6 w-6 text-teal" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-navy">{doc.file_name}</p>
+                              <p className="text-sm text-gray-400">
+                                Delivered • {formatDateShort(doc.created_at)}
+                              </p>
+                            </div>
+                          </div>
+                          <DocumentDownloadButton
+                            filePath={doc.file_url}
+                            fileName={doc.file_name}
+                            variant="outline"
+                            className="border-teal/30 hover:bg-teal hover:text-white hover:border-teal"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-400">
+                      <Upload className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p>No deliverables uploaded yet</p>
+                      <p className="text-sm mt-1">Use the button above to upload completed drafts</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Client Uploads Section */}
+              <Card className="bg-white border-gray-200">
+                <CardHeader className="border-b border-gray-200">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2 text-navy">
+                        <Paperclip className="h-5 w-5 text-gray-400" />
+                        Client Uploads
+                      </CardTitle>
+                      <CardDescription className="text-gray-400 mt-1.5">Supporting documents provided by client</CardDescription>
+                    </div>
+                    <DownloadAllButton orderId={order.id} orderNumber={order.order_number} documentCount={documents.length} />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {clientUploads.length > 0 ? (
+                    <div className="space-y-3">
+                      {clientUploads.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="flex items-center justify-between rounded-xl bg-gray-100 border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50 transition-all"
                         >
                           <div className="flex items-center gap-4">
                             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-200">
@@ -265,13 +354,19 @@ export default async function AdminOrderDetailPage({
                               </p>
                             </div>
                           </div>
+                          <DocumentDownloadButton
+                            filePath={doc.file_url}
+                            fileName={doc.file_name}
+                            variant="outline"
+                            className="border-gray-300 hover:bg-teal hover:text-white hover:border-teal"
+                          />
                         </div>
                       ))}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-gray-400">
                       <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                      <p>No documents uploaded</p>
+                      <p>No documents uploaded by client</p>
                     </div>
                   )}
                 </CardContent>
@@ -282,6 +377,19 @@ export default async function AdminOrderDetailPage({
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* Quick Approve - shown when draft needs review */}
+          {order.status === 'pending_review' && (
+            <QuickApproveButton
+              orderId={order.id}
+              orderNumber={order.order_number}
+            />
+          )}
+
+          {/* Revision Requests - shown when client requested revision */}
+          {(order.status === 'revision_requested' || order.status === 'draft_delivered' || order.status === 'revision_delivered') && (
+            <AdminRevisionRequests orderId={order.id} />
+          )}
+
           {/* Status Update */}
           <StatusUpdateForm orderId={order.id} currentStatus={order.status} />
 

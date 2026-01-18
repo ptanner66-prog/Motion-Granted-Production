@@ -2,7 +2,6 @@ import { Metadata } from 'next'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -17,6 +16,13 @@ import {
   ChevronRight,
   DollarSign,
 } from 'lucide-react'
+import {
+  ChangePasswordButton,
+  Enable2FAButton,
+  ConfigureEmailButton,
+  ManagePaymentButton,
+  ConfigurePricingButton,
+} from '@/components/admin/settings-buttons'
 
 export const metadata: Metadata = {
   title: 'Settings - Admin',
@@ -105,9 +111,7 @@ export default async function AdminSettingsPage() {
                   <p className="text-sm text-gray-400">Last changed: Unknown</p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="border-gray-200 text-gray-600 hover:bg-gray-100">
-                Change Password
-              </Button>
+              <ChangePasswordButton />
             </div>
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-3">
@@ -117,9 +121,7 @@ export default async function AdminSettingsPage() {
                   <p className="text-sm text-gray-400">Add extra security to your account</p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="border-gray-200 text-gray-600 hover:bg-gray-100">
-                Enable
-              </Button>
+              <Enable2FAButton />
             </div>
           </CardContent>
         </Card>
@@ -187,9 +189,7 @@ export default async function AdminSettingsPage() {
                   <p className="text-sm text-gray-400">Stripe configuration</p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="border-gray-200 text-gray-600 hover:bg-gray-100">
-                Manage
-              </Button>
+              <ManagePaymentButton />
             </div>
             <Link href="/admin/settings/pricing" className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
               <div className="flex items-center gap-3">

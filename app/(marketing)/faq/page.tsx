@@ -61,7 +61,7 @@ const faqCategories = [
     questions: [
       {
         q: 'What is my role in the process?',
-        a: 'You provide the case documents, facts, and drafting instructions. You also supervise the drafting process, review the completed draft, request any revisions, and ultimately file the motion under your name. You remain responsible for all legal judgment and client relationships.',
+        a: 'You provide the case documents, facts, and drafting instructions. You also supervise the drafting process, review the completed draft, and ultimately file the motion under your name. You remain responsible for all legal judgment and client relationships.',
       },
       {
         q: 'Do I need to review the draft before filing?',
@@ -90,24 +90,7 @@ const faqCategories = [
       },
       {
         q: 'Do you offer refunds?',
-        a: 'We do not offer refunds for completed work. If we are unable to complete your order for any reason, we will provide a full refund. If you are dissatisfied with the quality of a draft, please use the included revision round to address your concerns.',
-      },
-    ],
-  },
-  {
-    title: 'Revisions',
-    questions: [
-      {
-        q: 'How many revisions are included?',
-        a: 'One round of revisions is included with every order. A "revision" means changes to the existing draft based on your feedback—not a complete rewrite or change in legal strategy.',
-      },
-      {
-        q: 'What counts as a revision vs. a new order?',
-        a: 'Revisions address feedback on the delivered draft: fixing errors, adjusting arguments, improving clarity. If you want to change the fundamental legal theory, add new claims or defenses not in the original instructions, or substantially expand the scope, that would be a new order or change order.',
-      },
-      {
-        q: 'How do I request a revision?',
-        a: 'Use the revision request feature in your order dashboard. Provide specific feedback on what changes you need. We will return a revised draft within 2-3 business days (or faster if your filing deadline requires).',
+        a: 'We do not offer refunds for completed work. If we are unable to complete your order for any reason, we will provide a full refund. If you are dissatisfied with the quality of a draft, please contact support.',
       },
     ],
   },

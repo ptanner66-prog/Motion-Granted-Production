@@ -24,7 +24,6 @@ export function AdminRedirect({ children }: { children: React.ReactNode }) {
             .eq('id', user.id)
             .single()
 
-          console.log(`AdminRedirect attempt ${attempt + 1} - Profile:`, data, 'Error:', error)
 
           if (data && !error) {
             profile = data
@@ -37,7 +36,6 @@ export function AdminRedirect({ children }: { children: React.ReactNode }) {
 
         const role = profile?.role?.toString().toLowerCase().trim()
         if (role === 'admin') {
-          console.log('AdminRedirect - Redirecting to /admin')
           setIsAdmin(true)
           window.location.href = '/admin'
           return

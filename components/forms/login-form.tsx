@@ -22,6 +22,7 @@ import { Loader2 } from 'lucide-react'
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -77,8 +78,6 @@ export function LoginForm() {
           }
         }
 
-        console.log('Login - Profile fetched:', profile)
-
         const role = profile?.role?.toString().toLowerCase().trim()
         if (role === 'admin') {
           redirectPath = '/admin'
@@ -94,8 +93,8 @@ export function LoginForm() {
       window.location.href = redirectPath
     } catch {
       toast({
-        title: 'Error',
-        description: 'Something went wrong. Please try again.',
+        title: 'Unable to Sign In',
+        description: 'We encountered an unexpected error. Please try again, or contact support@motiongranted.com if the issue persists.',
         variant: 'destructive',
       })
     } finally {
@@ -146,10 +145,14 @@ export function LoginForm() {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Checkbox id="remember" />
+              <Checkbox
+                id="remember"
+                checked={rememberMe}
+                onCheckedChange={(checked) => setRememberMe(checked === true)}
+              />
               <label
                 htmlFor="remember"
-                className="text-sm text-gray-600 cursor-pointer"
+                className="text-sm text-gray-600 cursor-pointer select-none"
               >
                 Remember me
               </label>

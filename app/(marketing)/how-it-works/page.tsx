@@ -52,14 +52,14 @@ const steps = [
     icon: Download,
     title: 'Draft Delivery',
     description:
-      'Download your completed draft from your dashboard. Review it carefully—one round of revisions is included if you need changes.',
+      'Download your completed draft from your dashboard. Review it carefully before filing.',
   },
   {
     number: 6,
     icon: FileCheck,
     title: 'Review & File',
     description:
-      'Review the draft, request any revisions, then file under your name. You remain responsible for all supervision and filings.',
+      'Review the draft, make any edits you need, then file under your name. You remain responsible for all supervision and filings.',
   },
 ]
 
@@ -67,7 +67,6 @@ const features = [
   'Secure, encrypted file storage',
   'Real-time order status tracking',
   'In-platform messaging with your clerk',
-  'One revision round included',
   'Downloadable Word documents',
   'Email notifications at every step',
 ]

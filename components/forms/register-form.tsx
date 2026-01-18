@@ -115,7 +115,6 @@ export function RegisterForm() {
         })
 
         if (profileError) {
-          console.error('Profile creation error:', profileError)
           // Continue anyway - profile might be created by trigger
         }
       }
@@ -128,8 +127,8 @@ export function RegisterForm() {
       router.push('/login?message=Please check your email to verify your account')
     } catch {
       toast({
-        title: 'Error',
-        description: 'Something went wrong. Please try again.',
+        title: 'Registration Failed',
+        description: 'We couldn\'t create your account. Please try again, or contact support@motiongranted.com if the issue persists.',
         variant: 'destructive',
       })
     } finally {

@@ -19,6 +19,7 @@ import {
   DollarSign,
 } from 'lucide-react'
 import { formatDateShort, formatCurrency } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 
 export const metadata: Metadata = {
   title: 'Client Details - Admin',
@@ -252,7 +253,7 @@ export default async function ClientDetailPage({
               <div className="py-12 text-center">
                 <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                 <h3 className="text-lg font-semibold text-navy mb-1">No orders yet</h3>
-                <p className="text-gray-400">This client hasn't placed any orders</p>
+                <p className="text-gray-400">This client has not placed any orders</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-200">
@@ -269,7 +270,7 @@ export default async function ClientDetailPage({
                           {formatStatus(order.status)}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-500">{order.motion_type}</p>
+                      <p className="text-sm text-gray-500">{formatMotionType(order.motion_type)}</p>
                       <p className="text-xs text-gray-400 mt-1">
                         Created {formatDateShort(order.created_at)} • Due {formatDateShort(order.filing_deadline)}
                       </p>

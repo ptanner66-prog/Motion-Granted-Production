@@ -28,7 +28,7 @@ export async function createClient() {
         update: () => ({ data: null, error: new Error('Supabase not configured') }),
         delete: () => ({ data: null, error: new Error('Supabase not configured') }),
       }),
-    } as any
+    } as unknown as Awaited<ReturnType<typeof createServerClient>>
   }
 
   const cookieStore = await cookies()

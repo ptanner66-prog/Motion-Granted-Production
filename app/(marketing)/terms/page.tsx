@@ -87,19 +87,12 @@ export default function TermsPage() {
               additional fees without your prior approval.
             </p>
 
-            <h2>6. Delivery and Revisions</h2>
-            <h3>6.1 Delivery</h3>
+            <h2>6. Delivery</h2>
             <p>
               We will deliver completed drafts within the timeframe specified for your
               order type. Delivery times are estimates and not guarantees. We will make
               reasonable efforts to meet deadlines but are not liable for delays beyond
               our control.
-            </p>
-            <h3>6.2 Revisions</h3>
-            <p>
-              One round of revisions is included with each order. Revisions are limited
-              to changes within the original scope of work. Requests to substantially
-              change the legal theory or expand the scope constitute new work.
             </p>
 
             <h2>7. Your Responsibilities</h2>
