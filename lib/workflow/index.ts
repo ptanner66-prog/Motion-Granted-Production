@@ -93,6 +93,19 @@ export {
   generateMotionFromOrder,
 } from './superprompt';
 
+// Superprompt Engine (merge lawyer's superprompt with order data)
+export {
+  generateMotionWithSuperprompt,
+  gatherOrderData,
+  mergeSuperprompt,
+  executeSuperprompt,
+  saveSuperpromptTemplate,
+  getSuperpromptTemplate,
+  generateMotionFromStoredTemplate,
+  AVAILABLE_PLACEHOLDERS,
+  EXAMPLE_SUPERPROMPT_TEMPLATE,
+} from './superprompt-engine';
+
 // Re-export types
 export type {
   MotionTemplate,
@@ -137,3 +150,10 @@ export type {
   GeneratedMotion,
   MotionType as SuperpromptMotionType,
 } from './superprompt';
+
+export type {
+  SuperpromptTemplate,
+  MergedSuperprompt,
+  OrderData,
+  GenerationResult,
+} from './superprompt-engine';
