@@ -24,10 +24,13 @@ import {
   Building,
   FileCheck,
   Upload,
+  Bot,
+  MessageSquare,
 } from 'lucide-react'
 import type { OrderStatus } from '@/types'
-import { WorkflowControlPanel } from '@/components/admin/workflow-control-panel'
-import { MotionApprovalPanel } from '@/components/admin/motion-approval-panel'
+import { ClaudeChat } from '@/components/admin/claude-chat'
+import { AdminRevisionRequests } from '@/components/admin/admin-revision-requests'
+import { QuickApproveButton } from '@/components/admin/quick-approve-button'
 
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
@@ -134,6 +137,13 @@ export default async function AdminOrderDetailPage({
           <Tabs defaultValue="details">
             <TabsList className="bg-gray-100 p-1 border border-gray-200">
               <TabsTrigger
+                value="chat"
+                className="data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700 text-gray-500 rounded-lg px-4 gap-2"
+              >
+                <Bot className="h-4 w-4" />
+                Claude Chat
+              </TabsTrigger>
+              <TabsTrigger
                 value="details"
                 className="data-[state=active]:bg-gray-200 data-[state=active]:text-navy text-gray-500 rounded-lg px-4 gap-2"
               >
@@ -151,6 +161,10 @@ export default async function AdminOrderDetailPage({
                 </span>
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="chat" className="mt-6">
+              <ClaudeChat orderId={order.id} orderNumber={order.order_number} />
+            </TabsContent>
 
             <TabsContent value="details" className="mt-6 space-y-6">
               {/* Case Information */}
@@ -358,22 +372,18 @@ export default async function AdminOrderDetailPage({
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Motion Approval Panel - shown when draft needs review */}
+          {/* Quick Approve - shown when draft needs review */}
           {order.status === 'pending_review' && (
-            <MotionApprovalPanel
+            <QuickApproveButton
               orderId={order.id}
               orderNumber={order.order_number}
-              clientName={client?.full_name}
-              hasDeliverable={deliverables.length > 0}
             />
           )}
 
-          {/* AI Workflow Control */}
-          <WorkflowControlPanel
-            orderId={order.id}
-            orderNumber={order.order_number}
-            motionType={order.motion_type}
-          />
+          {/* Revision Requests - shown when client requested revision */}
+          {(order.status === 'revision_requested' || order.status === 'draft_delivered' || order.status === 'revision_delivered') && (
+            <AdminRevisionRequests orderId={order.id} />
+          )}
 
           {/* Status Update */}
           <StatusUpdateForm orderId={order.id} currentStatus={order.status} />

@@ -323,16 +323,18 @@ export default function NewOrderPage() {
         })
       }
 
-      // Trigger automation after documents are uploaded
+      // Start Claude conversation with superprompt + order data
       // This ensures AI has access to all uploaded documents
       if (orderId) {
         try {
-          await fetch(`/api/automation/start?orderId=${orderId}`, {
+          await fetch('/api/chat/start', {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId }),
           })
         } catch (automationErr) {
-          // Non-fatal - admin can start manually
-          console.error('Failed to start automation:', automationErr)
+          // Non-fatal - admin can start manually from Claude Chat tab
+          console.error('Failed to start Claude conversation:', automationErr)
         }
       }
 

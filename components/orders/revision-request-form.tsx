@@ -28,7 +28,7 @@ export function RevisionRequestForm({
   orderId,
   orderNumber,
   revisionCount,
-  maxRevisions = 2,
+  maxRevisions = 1, // Changed from 2 to 1 - one free revision
   disabled = false,
 }: RevisionRequestFormProps) {
   const router = useRouter();
@@ -51,12 +51,12 @@ export function RevisionRequestForm({
     setError(null);
 
     try {
-      const response = await fetch(`/api/orders/${orderId}/revision`, {
+      const response = await fetch(`/api/orders/${orderId}/revision-request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ revisionDetails: revisionDetails.trim() }),
+        body: JSON.stringify({ feedback: revisionDetails.trim() }),
       });
 
       const data = await response.json();
@@ -151,7 +151,7 @@ export function RevisionRequestForm({
                 <AlertCircle className="h-4 w-4 text-amber-600" />
                 <AlertTitle className="text-amber-800">Important</AlertTitle>
                 <AlertDescription className="text-amber-700">
-                  Each order includes {maxRevisions} free revisions. Additional revisions may incur charges.
+                  Each order includes {maxRevisions} free revision. Contact support for additional revisions.
                   Revisions are for adjustments to the existing draft, not for changes to the original case facts or instructions.
                 </AlertDescription>
               </Alert>
