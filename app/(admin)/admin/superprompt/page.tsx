@@ -4,6 +4,19 @@ import { redirect } from 'next/navigation';
 import { SuperpromptEditor } from '@/components/admin/superprompt-editor';
 import { AVAILABLE_PLACEHOLDERS } from '@/lib/workflow/superprompt-engine';
 
+interface SuperpromptTemplateRecord {
+  id: string;
+  name: string;
+  description: string;
+  motion_types: string[];
+  template: string;
+  system_prompt: string | null;
+  max_tokens: number;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export const metadata: Metadata = {
   title: 'Superprompt Templates - Admin',
   description: 'Manage your AI motion generation templates.',
@@ -34,7 +47,7 @@ export default async function SuperpromptPage() {
     .order('is_default', { ascending: false })
     .order('updated_at', { ascending: false });
 
-  const formattedTemplates = (templates || []).map((t) => ({
+  const formattedTemplates = (templates || []).map((t: SuperpromptTemplateRecord) => ({
     id: t.id,
     name: t.name,
     description: t.description,
