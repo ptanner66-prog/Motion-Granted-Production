@@ -13,6 +13,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
+import type { NotificationType } from '@/types/automation';
 
 type ApprovalAction = 'approve' | 'reject' | 'request_revision';
 
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
 
     // Determine new status based on action
     let newStatus: string;
-    let notificationType: string | null = null;
+    let notificationType: NotificationType | null = null;
 
     switch (action) {
       case 'approve':
