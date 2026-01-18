@@ -68,6 +68,24 @@ export {
   getWorkflowSuperprompt,
 } from './orchestrator';
 
+// PDF Generation
+export {
+  generateMotionPDF,
+  generatePDFFromWorkflow,
+  savePDFAsDeliverable,
+} from './pdf-generator';
+
+// Automation Service (end-to-end hands-off processing)
+export {
+  startOrderAutomation,
+  resumeOrderAutomation,
+  getOrderProgress,
+  getOrdersProgress,
+  syncOrderWithWorkflow,
+  processPendingOrders,
+  retryFailedWorkflows,
+} from './automation-service';
+
 // Re-export types
 export type {
   MotionTemplate,
@@ -94,3 +112,14 @@ export type {
   SuperPromptContext,
   OrchestrationResult,
 } from './orchestrator';
+
+export type {
+  MotionDocument,
+  PDFGenerationResult,
+} from './pdf-generator';
+
+export type {
+  AutomationConfig,
+  AutomationResult,
+  OrderProgress,
+} from './automation-service';

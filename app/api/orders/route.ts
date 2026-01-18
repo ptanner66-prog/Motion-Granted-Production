@@ -5,6 +5,7 @@ import { stripe } from '@/lib/stripe'
 import { sendEmail } from '@/lib/resend'
 import { OrderConfirmationEmail } from '@/emails/order-confirmation'
 import { formatMotionType } from '@/config/motion-types'
+import { startOrderAutomation } from '@/lib/workflow/automation-service'
 
 // Server-side validation schema for order creation
 const createOrderSchema = z.object({
@@ -207,6 +208,17 @@ export async function POST(req: Request) {
       }),
     }).catch((err) => {
       console.error('Failed to send confirmation email:', err)
+    })
+
+    // AUTO-TRIGGER: Start workflow automation (non-blocking)
+    // This kicks off the entire drafting process automatically
+    startOrderAutomation(order.id, {
+      autoRun: true,
+      generatePDF: true,
+      sendNotifications: true,
+    }).catch((err) => {
+      console.error('Failed to start order automation:', err)
+      // Non-fatal - workflow can be started manually via admin panel
     })
 
     return NextResponse.json({
