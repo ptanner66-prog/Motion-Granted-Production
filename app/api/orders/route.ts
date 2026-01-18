@@ -210,21 +210,17 @@ export async function POST(req: Request) {
       console.error('Failed to send confirmation email:', err)
     })
 
-    // AUTO-TRIGGER: Start workflow automation (non-blocking)
-    // This kicks off the entire drafting process automatically
-    startOrderAutomation(order.id, {
-      autoRun: true,
-      generatePDF: true,
-      sendNotifications: true,
-    }).catch((err) => {
-      console.error('Failed to start order automation:', err)
-      // Non-fatal - workflow can be started manually via admin panel
-    })
+    // NOTE: Automation is NOT started here. It is triggered by:
+    // 1. Client calling POST /api/automation/start after documents are uploaded
+    // 2. Admin manually via the workflow control panel
+    // This prevents the race condition where automation runs before documents are uploaded.
 
     return NextResponse.json({
       order,
       clientSecret: paymentIntent?.client_secret || null,
       stripeConfigured: !!stripe,
+      // Tell client to call /api/automation/start after uploading documents
+      triggerAutomationUrl: `/api/automation/start?orderId=${order.id}`,
     })
   } catch (error) {
     console.error('Order creation error:', error)

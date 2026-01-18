@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import type { OrderStatus } from '@/types'
 import { WorkflowControlPanel } from '@/components/admin/workflow-control-panel'
+import { MotionApprovalPanel } from '@/components/admin/motion-approval-panel'
 
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
@@ -357,6 +358,16 @@ export default async function AdminOrderDetailPage({
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* Motion Approval Panel - shown when draft needs review */}
+          {order.status === 'pending_review' && (
+            <MotionApprovalPanel
+              orderId={order.id}
+              orderNumber={order.order_number}
+              clientName={client?.full_name}
+              hasDeliverable={deliverables.length > 0}
+            />
+          )}
+
           {/* AI Workflow Control */}
           <WorkflowControlPanel
             orderId={order.id}
