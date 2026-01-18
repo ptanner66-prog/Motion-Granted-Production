@@ -86,6 +86,13 @@ export {
   retryFailedWorkflows,
 } from './automation-service';
 
+// Superprompt System (production-grade motion generation)
+export {
+  generateSuperprompt,
+  generateMotion,
+  generateMotionFromOrder,
+} from './superprompt';
+
 // Re-export types
 export type {
   MotionTemplate,
@@ -123,3 +130,10 @@ export type {
   AutomationResult,
   OrderProgress,
 } from './automation-service';
+
+export type {
+  CaseContext,
+  MotionRequest,
+  GeneratedMotion,
+  MotionType as SuperpromptMotionType,
+} from './superprompt';
