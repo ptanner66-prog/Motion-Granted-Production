@@ -8,6 +8,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
 import { extractCitations } from './citation-verifier';
+import { extractDocumentContent } from './document-extractor';
 import type {
   ParsedDocument,
   KeyFact,
@@ -568,13 +569,22 @@ export async function parseOrderDocuments(
         continue;
       }
 
-      // Download and parse document
-      // Note: In production, you'd download from storage and extract text
-      // For now, we'll create a placeholder
+      // Extract actual content from the document
+      const extractResult = await extractDocumentContent(doc.file_url, doc.file_type || 'application/octet-stream');
+
+      let fileContent: string;
+      if (extractResult.success && extractResult.data) {
+        fileContent = extractResult.data.text;
+      } else {
+        // Log extraction failure but continue with placeholder
+        console.warn(`Failed to extract content from ${doc.file_name}: ${extractResult.error}`);
+        fileContent = `[Content extraction failed for ${doc.file_name}]`;
+      }
+
       const result = await parseDocument(
         doc.id,
         orderId,
-        `[Content would be extracted from ${doc.file_name}]`
+        fileContent
       );
 
       if (result.success) {

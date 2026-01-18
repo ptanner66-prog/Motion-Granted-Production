@@ -51,6 +51,23 @@ export {
   getRecommendedActions,
 } from './quality-validator';
 
+// Document Extraction
+export {
+  extractDocumentContent,
+  extractOrderDocuments,
+  getCombinedDocumentText,
+} from './document-extractor';
+
+// Orchestration (combines checkout + docs + superprompt + workflow)
+export {
+  gatherOrderContext,
+  buildSuperprompt,
+  orchestrateWorkflow,
+  executePhaseWithContext,
+  generateDraftWithSuperprompt,
+  getWorkflowSuperprompt,
+} from './orchestrator';
+
 // Re-export types
 export type {
   MotionTemplate,
@@ -66,3 +83,14 @@ export type {
   QualityIssue,
   ValidationContext,
 } from './quality-validator';
+
+export type {
+  ExtractedContent,
+  DocumentExtractionResult,
+} from './document-extractor';
+
+export type {
+  OrderContext,
+  SuperPromptContext,
+  OrchestrationResult,
+} from './orchestrator';
