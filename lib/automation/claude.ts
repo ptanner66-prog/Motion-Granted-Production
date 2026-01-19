@@ -4,23 +4,47 @@
  * This module provides a type-safe wrapper around the Anthropic Claude API
  * for use in automated workflow tasks like conflict checking, clerk assignment,
  * QA analysis, and report generation.
+ *
+ * API keys can be configured via:
+ * 1. Database (admin dashboard) - takes priority
+ * 2. Environment variables - fallback
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { ClaudeAnalysisRequest, ClaudeAnalysisResponse } from '@/types/automation';
+import { getAnthropicAPIKey } from '@/lib/api-keys';
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+// Environment variable fallback
+const envApiKey = process.env.ANTHROPIC_API_KEY;
 
-// Initialize Anthropic client if API key is available
-export const anthropic = anthropicApiKey && !anthropicApiKey.includes('xxxxx')
-  ? new Anthropic({ apiKey: anthropicApiKey })
+// Static client for backward compatibility (uses env var)
+export const anthropic = envApiKey && !envApiKey.includes('xxxxx')
+  ? new Anthropic({ apiKey: envApiKey })
   : null;
 
-export const isClaudeConfigured = !!anthropic;
+export const isClaudeConfigured = !!anthropic || !!envApiKey;
+
+/**
+ * Get an Anthropic client with the current API key
+ * Checks database first, falls back to environment variable
+ */
+export async function getAnthropicClient(): Promise<Anthropic | null> {
+  try {
+    const apiKey = await getAnthropicAPIKey();
+    if (apiKey && !apiKey.includes('xxxxx')) {
+      return new Anthropic({ apiKey });
+    }
+  } catch (error) {
+    console.error('Error getting Anthropic API key from database:', error);
+  }
+
+  // Fall back to static client
+  return anthropic;
+}
 
 // Default model configuration
 // For quick tasks (conflict check, QA, etc.)
@@ -566,6 +590,7 @@ import {
 /**
  * Generate a legal motion using Claude Opus with maximum context and output
  * Supports legal research tools (Westlaw/LexisNexis) when configured
+ * Uses API key from database if available, falls back to environment variable
  */
 export async function generateMotion(options: {
   systemPrompt: string;
@@ -580,10 +605,13 @@ export async function generateMotion(options: {
   toolCalls?: number;
   error?: string;
 }> {
-  if (!anthropic) {
+  // Get Anthropic client (checks database first, then env var)
+  const client = await getAnthropicClient();
+
+  if (!client) {
     return {
       success: false,
-      error: 'Claude API is not configured. Set ANTHROPIC_API_KEY environment variable.',
+      error: 'Claude API is not configured. Add your Anthropic API key in Admin Settings.',
     };
   }
 
@@ -609,13 +637,13 @@ export async function generateMotion(options: {
     while (continueLoop && iteration < maxIterations) {
       iteration++;
 
-      const response = await anthropic.messages.create({
+      const response = await client.messages.create({
         model: MOTION_MODEL,
         max_tokens: maxTokens,
         temperature: 0.3,
         system: options.systemPrompt + (useLegalResearch ? '\n\nYou have access to legal research tools. Use the legal_research tool to find relevant case law and the check_citation tool to verify citations before including them.' : ''),
         messages,
-        tools: tools.length > 0 ? tools as Parameters<typeof anthropic.messages.create>[0]['tools'] : undefined,
+        tools: tools.length > 0 ? tools as Parameters<typeof client.messages.create>[0]['tools'] : undefined,
       });
 
       totalInputTokens += response.usage.input_tokens;
