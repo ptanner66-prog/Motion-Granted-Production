@@ -1,3 +1,7 @@
+// Vercel serverless function configuration
+export const maxDuration = 120; // 2 minutes for large file uploads
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 

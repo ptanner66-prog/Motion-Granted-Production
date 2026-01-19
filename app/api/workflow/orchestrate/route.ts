@@ -8,6 +8,10 @@
  * and runs the complete 9-phase workflow.
  */
 
+// Vercel serverless function configuration
+export const maxDuration = 300; // 5 minutes for orchestration
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import {

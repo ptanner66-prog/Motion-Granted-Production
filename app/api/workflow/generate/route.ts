@@ -13,6 +13,10 @@
  * 6. Updates order status
  */
 
+// Vercel serverless function configuration
+export const maxDuration = 300; // 5 minutes for motion generation + PDF
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import {

@@ -8,6 +8,10 @@
  * GET: Get conversation history for an order
  */
 
+// Vercel serverless function configuration
+export const maxDuration = 300; // 5 minutes for Claude streaming
+export const dynamic = 'force-dynamic';
+
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { gatherOrderData, getSuperpromptTemplate } from '@/lib/workflow/superprompt-engine';
