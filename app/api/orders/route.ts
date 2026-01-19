@@ -91,8 +91,10 @@ export async function POST(req: Request) {
     const body = parseResult.data
 
     // Create Stripe PaymentIntent if Stripe is configured
+    // Use idempotency key to prevent duplicate charges on network retries
     let paymentIntent = null
     if (stripe) {
+      const idempotencyKey = `order_${user.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`
       paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(body.total_price * 100),
         currency: 'usd',
@@ -100,6 +102,8 @@ export async function POST(req: Request) {
           user_id: user.id,
           motion_type: body.motion_type,
         },
+      }, {
+        idempotencyKey,
       })
     }
 
@@ -189,26 +193,31 @@ export async function POST(req: Request) {
       rush_48: '48-Hour Rush',
     }
 
-    sendEmail({
-      to: user.email!,
-      subject: `Order Confirmed: ${order.order_number}`,
-      react: OrderConfirmationEmail({
-        orderNumber: order.order_number,
-        motionType: formatMotionType(body.motion_type),
-        caseCaption: body.case_caption,
-        turnaround: turnaroundLabels[body.turnaround] || body.turnaround,
-        expectedDelivery: new Date(expectedDelivery).toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
+    // Only send email if user has an email address
+    if (user.email) {
+      sendEmail({
+        to: user.email,
+        subject: `Order Confirmed: ${order.order_number}`,
+        react: OrderConfirmationEmail({
+          orderNumber: order.order_number,
+          motionType: formatMotionType(body.motion_type),
+          caseCaption: body.case_caption,
+          turnaround: turnaroundLabels[body.turnaround] || body.turnaround,
+          expectedDelivery: new Date(expectedDelivery).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          }),
+          totalPrice: `$${body.total_price.toFixed(2)}`,
+          portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/orders/${order.id}`,
         }),
-        totalPrice: `$${body.total_price.toFixed(2)}`,
-        portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/orders/${order.id}`,
-      }),
-    }).catch((err) => {
-      console.error('Failed to send confirmation email:', err)
-    })
+      }).catch((err) => {
+        console.error('Failed to send confirmation email:', err)
+      })
+    } else {
+      console.warn(`User ${user.id} has no email address, skipping confirmation email`)
+    }
 
     // NOTE: Automation is NOT started here. It is triggered by:
     // 1. Client calling POST /api/automation/start after documents are uploaded

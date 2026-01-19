@@ -7,37 +7,94 @@
  * - LexisNexis
  *
  * Keys are stored encrypted in the database and used at runtime.
+ * Uses AES-256-GCM encryption with a secret derived from ENCRYPTION_SECRET env var.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
+import crypto from 'crypto';
 
-// Simple encryption for API keys (in production, use a proper encryption service)
-// This uses base64 encoding with a prefix - for production, use proper AES encryption
-const ENCRYPTION_PREFIX = 'enc_v1_';
+// Encryption configuration
+const ENCRYPTION_PREFIX = 'enc_v2_'; // v2 for AES-GCM
+const ALGORITHM = 'aes-256-gcm';
+const IV_LENGTH = 16;
+const AUTH_TAG_LENGTH = 16;
 
-function encryptKey(key: string): string {
-  if (!key || key.startsWith(ENCRYPTION_PREFIX) || key.startsWith('****')) {
-    return key;
+// Get encryption key from environment or generate a deterministic one from service role key
+function getEncryptionKey(): Buffer {
+  const secret = process.env.ENCRYPTION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-dev-key-do-not-use-in-prod';
+  // Derive a 256-bit key from the secret
+  return crypto.createHash('sha256').update(secret).digest();
+}
+
+function encryptKey(plaintext: string): string {
+  if (!plaintext || plaintext.startsWith(ENCRYPTION_PREFIX) || plaintext.startsWith('****')) {
+    return plaintext;
   }
-  // Simple obfuscation (in production, use proper encryption with a secret key)
-  const encoded = Buffer.from(key).toString('base64');
-  return ENCRYPTION_PREFIX + encoded;
+
+  try {
+    const key = getEncryptionKey();
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+
+    let encrypted = cipher.update(plaintext, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+
+    const authTag = cipher.getAuthTag();
+
+    // Format: prefix + iv (base64) + : + authTag (base64) + : + ciphertext (base64)
+    return ENCRYPTION_PREFIX + iv.toString('base64') + ':' + authTag.toString('base64') + ':' + encrypted;
+  } catch (error) {
+    console.error('Encryption error:', error);
+    // Fall back to base64 encoding if encryption fails (better than storing plaintext)
+    return 'enc_v1_' + Buffer.from(plaintext).toString('base64');
+  }
 }
 
 function decryptKey(encryptedKey: string): string {
-  if (!encryptedKey || !encryptedKey.startsWith(ENCRYPTION_PREFIX)) {
-    return encryptedKey;
+  if (!encryptedKey) return '';
+
+  // Handle v1 (base64 only) format for backward compatibility
+  if (encryptedKey.startsWith('enc_v1_')) {
+    const encoded = encryptedKey.slice(7);
+    return Buffer.from(encoded, 'base64').toString('utf-8');
   }
-  const encoded = encryptedKey.slice(ENCRYPTION_PREFIX.length);
-  return Buffer.from(encoded, 'base64').toString('utf-8');
+
+  // Handle v2 (AES-GCM) format
+  if (!encryptedKey.startsWith(ENCRYPTION_PREFIX)) {
+    return encryptedKey; // Not encrypted
+  }
+
+  try {
+    const key = getEncryptionKey();
+    const parts = encryptedKey.slice(ENCRYPTION_PREFIX.length).split(':');
+
+    if (parts.length !== 3) {
+      console.error('Invalid encrypted key format');
+      return '';
+    }
+
+    const iv = Buffer.from(parts[0], 'base64');
+    const authTag = Buffer.from(parts[1], 'base64');
+    const ciphertext = parts[2];
+
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(ciphertext, 'base64', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption error:', error);
+    return '';
+  }
 }
 
 function maskKey(key: string): string {
   if (!key) return '';
-  const decrypted = key.startsWith(ENCRYPTION_PREFIX) ? decryptKey(key) : key;
-  if (decrypted.length <= 8) return '****';
+  const decrypted = key.startsWith('enc_v') ? decryptKey(key) : key;
+  if (!decrypted || decrypted.length <= 8) return '****';
   return '****' + decrypted.slice(-4);
 }
 

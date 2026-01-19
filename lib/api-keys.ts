@@ -9,16 +9,56 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import crypto from 'crypto';
 
-// Encryption helpers (must match route.ts)
-const ENCRYPTION_PREFIX = 'enc_v1_';
+// Encryption configuration (must match route.ts)
+const ENCRYPTION_PREFIX_V2 = 'enc_v2_';
+const ALGORITHM = 'aes-256-gcm';
+
+// Get encryption key from environment
+function getEncryptionKey(): Buffer {
+  const secret = process.env.ENCRYPTION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-dev-key-do-not-use-in-prod';
+  return crypto.createHash('sha256').update(secret).digest();
+}
 
 function decryptKey(encryptedKey: string): string {
-  if (!encryptedKey || !encryptedKey.startsWith(ENCRYPTION_PREFIX)) {
-    return encryptedKey;
+  if (!encryptedKey) return '';
+
+  // Handle v1 (base64 only) format for backward compatibility
+  if (encryptedKey.startsWith('enc_v1_')) {
+    const encoded = encryptedKey.slice(7);
+    return Buffer.from(encoded, 'base64').toString('utf-8');
   }
-  const encoded = encryptedKey.slice(ENCRYPTION_PREFIX.length);
-  return Buffer.from(encoded, 'base64').toString('utf-8');
+
+  // Handle v2 (AES-GCM) format
+  if (!encryptedKey.startsWith(ENCRYPTION_PREFIX_V2)) {
+    return encryptedKey; // Not encrypted
+  }
+
+  try {
+    const key = getEncryptionKey();
+    const parts = encryptedKey.slice(ENCRYPTION_PREFIX_V2.length).split(':');
+
+    if (parts.length !== 3) {
+      console.error('Invalid encrypted key format');
+      return '';
+    }
+
+    const iv = Buffer.from(parts[0], 'base64');
+    const authTag = Buffer.from(parts[1], 'base64');
+    const ciphertext = parts[2];
+
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(ciphertext, 'base64', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption error:', error);
+    return '';
+  }
 }
 
 // Cache for API keys (refresh every 5 minutes)

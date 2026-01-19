@@ -1,10 +1,23 @@
 import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
+import crypto from 'crypto';
 import {
   processTasks,
   scheduleRecurringTasks,
   processNotificationQueue,
 } from '@/lib/automation';
+
+/**
+ * Constant-time string comparison to prevent timing attacks
+ */
+function secureCompare(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * POST /api/automation/cron
@@ -18,18 +31,22 @@ import {
  * - Processing notification queue
  *
  * Security: Requires CRON_SECRET header to match environment variable
+ * IMPORTANT: Always requires authentication, even in development
  */
 export async function POST(request: Request) {
   try {
-    // Verify cron secret
+    // Verify cron secret - ALWAYS required
     const headersList = await headers();
     const cronSecret = headersList.get('x-cron-secret') || headersList.get('authorization')?.replace('Bearer ', '');
     const expectedSecret = process.env.CRON_SECRET;
 
-    // In development, allow without secret
-    const isDev = process.env.NODE_ENV === 'development';
+    // Require CRON_SECRET to be set and match (constant-time comparison)
+    if (!expectedSecret || expectedSecret.length < 16) {
+      console.error('[Cron] CRON_SECRET not configured or too short');
+      return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+    }
 
-    if (!isDev && (!expectedSecret || cronSecret !== expectedSecret)) {
+    if (!cronSecret || !secureCompare(cronSecret, expectedSecret)) {
       console.warn('[Cron] Unauthorized cron request');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -98,11 +115,20 @@ export async function POST(request: Request) {
  * GET /api/automation/cron
  *
  * Health check endpoint for the cron system
+ * Requires authentication to prevent information disclosure
  */
 export async function GET() {
+  const headersList = await headers();
+  const cronSecret = headersList.get('x-cron-secret') || headersList.get('authorization')?.replace('Bearer ', '');
+  const expectedSecret = process.env.CRON_SECRET;
+
+  // Require authentication for health check too
+  if (!expectedSecret || !cronSecret || !secureCompare(cronSecret, expectedSecret)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   return NextResponse.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    message: 'Automation cron endpoint is running',
   });
 }
