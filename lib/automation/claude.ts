@@ -23,8 +23,14 @@ export const anthropic = anthropicApiKey && !anthropicApiKey.includes('xxxxx')
 export const isClaudeConfigured = !!anthropic;
 
 // Default model configuration
+// For quick tasks (conflict check, QA, etc.)
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 const DEFAULT_MAX_TOKENS = 4096;
+
+// For motion generation (use Opus for best legal reasoning)
+export const MOTION_MODEL = 'claude-opus-4-20250514';
+export const MOTION_MAX_TOKENS = 64000; // ~50 pages of output
+export const MAX_CONTEXT_TOKENS = 180000; // Leave buffer from 200K limit
 
 // ============================================================================
 // SYSTEM PROMPTS
@@ -544,6 +550,114 @@ export async function runAnalysis(
     tokensUsed: response.tokensUsed || 0,
     processingTimeMs: Date.now() - startTime,
     error: response.error,
+  };
+}
+
+// ============================================================================
+// MOTION GENERATION (Opus + Max Tokens)
+// ============================================================================
+
+/**
+ * Generate a legal motion using Claude Opus with maximum context and output
+ * This is the main function for the superprompt workflow
+ */
+export async function generateMotion(options: {
+  systemPrompt: string;
+  userPrompt: string;
+  maxOutputTokens?: number;
+  onProgress?: (text: string) => void;
+}): Promise<{
+  success: boolean;
+  content?: string;
+  tokensUsed?: { input: number; output: number };
+  error?: string;
+}> {
+  if (!anthropic) {
+    return {
+      success: false,
+      error: 'Claude API is not configured. Set ANTHROPIC_API_KEY environment variable.',
+    };
+  }
+
+  const maxTokens = options.maxOutputTokens || MOTION_MAX_TOKENS;
+
+  try {
+    // Use streaming for long-form content
+    const stream = await anthropic.messages.stream({
+      model: MOTION_MODEL,
+      max_tokens: maxTokens,
+      temperature: 0.3, // Slightly higher for creative legal writing
+      system: options.systemPrompt,
+      messages: [
+        {
+          role: 'user',
+          content: options.userPrompt,
+        },
+      ],
+    });
+
+    let fullContent = '';
+
+    // Collect streamed content
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        fullContent += event.delta.text;
+        if (options.onProgress) {
+          options.onProgress(fullContent);
+        }
+      }
+    }
+
+    const finalMessage = await stream.finalMessage();
+
+    return {
+      success: true,
+      content: fullContent,
+      tokensUsed: {
+        input: finalMessage.usage.input_tokens,
+        output: finalMessage.usage.output_tokens,
+      },
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error generating motion';
+    console.error('[Motion Generation Error]', errorMessage);
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
+/**
+ * Estimate token count for a string (rough approximation)
+ * ~4 chars per token for English text
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Check if content fits within context limits
+ */
+export function checkContextBudget(
+  superpromptTokens: number,
+  documentTokens: number,
+  conversationTokens: number = 0
+): {
+  fits: boolean;
+  total: number;
+  available: number;
+  outputBudget: number;
+} {
+  const total = superpromptTokens + documentTokens + conversationTokens;
+  const available = MAX_CONTEXT_TOKENS - total;
+  const outputBudget = Math.min(available, MOTION_MAX_TOKENS);
+
+  return {
+    fits: total < MAX_CONTEXT_TOKENS,
+    total,
+    available,
+    outputBudget,
   };
 }
 

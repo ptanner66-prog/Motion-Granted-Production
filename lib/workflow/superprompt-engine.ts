@@ -15,7 +15,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { generateMotion, isClaudeConfigured, MOTION_MAX_TOKENS } from '@/lib/automation/claude';
 import { gatherOrderContext } from './orchestrator';
 import type { OperationResult } from '@/types/automation';
 
@@ -323,34 +323,37 @@ export function mergeSuperprompt(
 }
 
 /**
- * Execute the superprompt with Claude and get the motion
+ * Execute the superprompt with Claude Opus and get the motion
+ * Uses streaming for long-form content generation
  */
 export async function executeSuperprompt(
   merged: MergedSuperprompt,
-  options: { maxTokens?: number } = {}
+  options: { maxTokens?: number; onProgress?: (text: string) => void } = {}
 ): Promise<GenerationResult> {
   if (!isClaudeConfigured) {
     return { success: false, error: 'Claude API is not configured' };
   }
 
-  const result = await askClaude({
-    prompt: merged.finalPrompt,
-    maxTokens: options.maxTokens || 16000,
+  // Use the new Opus-powered generation with high token limits
+  const result = await generateMotion({
     systemPrompt: merged.systemPrompt,
+    userPrompt: merged.finalPrompt,
+    maxOutputTokens: options.maxTokens || MOTION_MAX_TOKENS,
+    onProgress: options.onProgress,
   });
 
-  if (!result.success || !result.result) {
+  if (!result.success || !result.content) {
     return { success: false, error: result.error || 'Failed to generate motion' };
   }
 
-  const motion = result.result.content;
+  const motion = result.content;
   const wordCount = motion.split(/\s+/).length;
 
   return {
     success: true,
     motion,
     wordCount,
-    tokensUsed: result.result.tokensUsed,
+    tokensUsed: result.tokensUsed ? result.tokensUsed.input + result.tokensUsed.output : undefined,
   };
 }
 
