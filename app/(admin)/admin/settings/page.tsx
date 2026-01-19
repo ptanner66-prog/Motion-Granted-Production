@@ -20,6 +20,7 @@ import {
   ManagePaymentButton,
   ConfigurePricingButton,
 } from '@/components/admin/settings-buttons'
+import { LegalResearchSettings } from '@/components/admin/legal-research-settings'
 
 export const metadata: Metadata = {
   title: 'Settings - Admin',
@@ -200,6 +201,9 @@ export default async function AdminSettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Legal Research Settings */}
+        <LegalResearchSettings />
       </div>
     </div>
   )

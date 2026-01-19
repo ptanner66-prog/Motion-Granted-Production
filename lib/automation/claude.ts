@@ -554,22 +554,30 @@ export async function runAnalysis(
 }
 
 // ============================================================================
-// MOTION GENERATION (Opus + Max Tokens)
+// MOTION GENERATION (Opus + Max Tokens + Legal Research Tools)
 // ============================================================================
+
+import {
+  getLegalResearchTools,
+  handleLegalResearchToolCall,
+  areLegalResearchToolsAvailable,
+} from '@/lib/legal-research';
 
 /**
  * Generate a legal motion using Claude Opus with maximum context and output
- * This is the main function for the superprompt workflow
+ * Supports legal research tools (Westlaw/LexisNexis) when configured
  */
 export async function generateMotion(options: {
   systemPrompt: string;
   userPrompt: string;
   maxOutputTokens?: number;
   onProgress?: (text: string) => void;
+  enableLegalResearch?: boolean;
 }): Promise<{
   success: boolean;
   content?: string;
   tokensUsed?: { input: number; output: number };
+  toolCalls?: number;
   error?: string;
 }> {
   if (!anthropic) {
@@ -580,43 +588,104 @@ export async function generateMotion(options: {
   }
 
   const maxTokens = options.maxOutputTokens || MOTION_MAX_TOKENS;
+  const useLegalResearch = options.enableLegalResearch !== false && areLegalResearchToolsAvailable();
+  const tools = useLegalResearch ? getLegalResearchTools() : [];
 
   try {
-    // Use streaming for long-form content
-    const stream = await anthropic.messages.stream({
-      model: MOTION_MODEL,
-      max_tokens: maxTokens,
-      temperature: 0.3, // Slightly higher for creative legal writing
-      system: options.systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: options.userPrompt,
-        },
-      ],
-    });
-
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let messages: any[] = [
+      { role: 'user', content: options.userPrompt },
+    ];
     let fullContent = '';
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let toolCallCount = 0;
+    let continueLoop = true;
 
-    // Collect streamed content
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        fullContent += event.delta.text;
-        if (options.onProgress) {
-          options.onProgress(fullContent);
+    // Agentic loop - continue until Claude is done or max iterations
+    const maxIterations = 20; // Prevent infinite loops
+    let iteration = 0;
+
+    while (continueLoop && iteration < maxIterations) {
+      iteration++;
+
+      const response = await anthropic.messages.create({
+        model: MOTION_MODEL,
+        max_tokens: maxTokens,
+        temperature: 0.3,
+        system: options.systemPrompt + (useLegalResearch ? '\n\nYou have access to legal research tools. Use the legal_research tool to find relevant case law and the check_citation tool to verify citations before including them.' : ''),
+        messages,
+        tools: tools.length > 0 ? tools as Parameters<typeof anthropic.messages.create>[0]['tools'] : undefined,
+      });
+
+      totalInputTokens += response.usage.input_tokens;
+      totalOutputTokens += response.usage.output_tokens;
+
+      // Check if there are tool calls to process
+      const toolUseBlocks = response.content.filter((block) => block.type === 'tool_use');
+      const textBlocks = response.content.filter((block) => block.type === 'text');
+
+      // Collect text content
+      for (const block of textBlocks) {
+        if (block.type === 'text') {
+          fullContent += block.text;
+          if (options.onProgress) {
+            options.onProgress(fullContent);
+          }
         }
       }
-    }
 
-    const finalMessage = await stream.finalMessage();
+      // If no tool calls, we're done
+      if (toolUseBlocks.length === 0) {
+        continueLoop = false;
+        break;
+      }
+
+      // Process tool calls
+      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = [];
+
+      for (const toolBlock of toolUseBlocks) {
+        if (toolBlock.type === 'tool_use') {
+          toolCallCount++;
+          console.log(`[Legal Research] Tool call: ${toolBlock.name}`, toolBlock.input);
+
+          const result = await handleLegalResearchToolCall({
+            name: toolBlock.name,
+            input: toolBlock.input as Record<string, unknown>,
+          });
+
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolBlock.id,
+            content: result.content,
+          });
+        }
+      }
+
+      // Add assistant response and tool results to messages
+      messages.push({
+        role: 'assistant',
+        content: response.content,
+      });
+      messages.push({
+        role: 'user',
+        content: toolResults,
+      });
+
+      // Check stop reason
+      if (response.stop_reason === 'end_turn') {
+        continueLoop = false;
+      }
+    }
 
     return {
       success: true,
       content: fullContent,
       tokensUsed: {
-        input: finalMessage.usage.input_tokens,
-        output: finalMessage.usage.output_tokens,
+        input: totalInputTokens,
+        output: totalOutputTokens,
       },
+      toolCalls: toolCallCount,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error generating motion';
