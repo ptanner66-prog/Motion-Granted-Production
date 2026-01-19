@@ -3,10 +3,15 @@
 import { useOrderForm } from '@/hooks/use-order-form'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, FileText } from 'lucide-react'
+
+const CHARS_PER_PAGE = 3000 // Approximately 500 words per page
 
 export function Instructions() {
   const { instructions, updateField } = useOrderForm()
+
+  const pageCount = Math.ceil(instructions.length / CHARS_PER_PAGE)
+  const charCount = instructions.length.toLocaleString()
 
   return (
     <div className="space-y-6">
@@ -39,29 +44,44 @@ export function Instructions() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="instructions">Your Instructions *</Label>
-            <span className="text-xs text-gray-500">
-              {instructions.length} / 100 min characters
-            </span>
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              {instructions.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <FileText className="h-3 w-3" />
+                  ~{pageCount} page{pageCount !== 1 ? 's' : ''}
+                </span>
+              )}
+              <span>{charCount} characters</span>
+            </div>
           </div>
           <Textarea
             id="instructions"
             placeholder="Provide your drafting instructions here. What arguments do you want us to make? What legal theories should we pursue? Are there specific cases or statutes we should cite? What is the desired outcome?
 
+You can paste up to 100 pages of content here including case summaries, legal research, deposition excerpts, or any other relevant information.
+
 Example: 'Please draft a motion for summary judgment arguing that there are no genuine issues of material fact regarding plaintiff's negligence claim. Focus on the lack of evidence showing defendant breached any duty. Cite Louisiana Civil Code articles on negligence and relevant jurisprudence from the First Circuit. Emphasize the deposition testimony from plaintiff admitting he did not see how the accident occurred.'"
             value={instructions}
             onChange={(e) => updateField('instructions', e.target.value)}
-            rows={12}
-            className={
+            rows={20}
+            maxLength={300000}
+            className={`resize-y min-h-[300px] ${
               instructions.length > 0 && instructions.length < 100
                 ? 'border-amber-300 focus:border-amber-400'
                 : ''
-            }
+            }`}
           />
-          {instructions.length > 0 && instructions.length < 100 && (
-            <p className="text-xs text-amber-600">
-              Please provide at least 100 characters of instructions
-            </p>
-          )}
+          <div className="flex items-center justify-between">
+            {instructions.length > 0 && instructions.length < 100 ? (
+              <p className="text-xs text-amber-600">
+                Please provide at least 100 characters of instructions
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400">
+                Supports up to 100 pages of text
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -298,16 +298,9 @@ export function AdminShell({ children, user, breadcrumbLabel }: AdminShellProps)
                 </div>
                 <span className="font-semibold text-sm">Admin Portal</span>
               </div>
-              <p className="text-xs text-white/70 mb-3">
+              <p className="text-xs text-white/70">
                 Manage orders, clients, and business analytics.
               </p>
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-teal hover:text-teal-light transition-colors"
-              >
-                Switch to Client View
-                <ChevronRight className="h-3 w-3" />
-              </Link>
             </div>
           </div>
 

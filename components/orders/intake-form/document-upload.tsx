@@ -67,8 +67,11 @@ export function DocumentUpload() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  const handleDocTypeChange = (docId: string, type: string) => {
-    updateDocument(docId, { documentType: type })
+  const hasComplaint = documents.some((d) => d.documentType === 'complaint')
+  const isAnyUploading = Object.values(uploading).some(Boolean)
+
+  const handleDocumentTypeChange = (docId: string, newType: string) => {
+    updateDocumentType(docId, newType)
   }
 
   const hasComplaint = documents.some((d) => d.documentType === 'complaint')
