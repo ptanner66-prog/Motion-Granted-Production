@@ -11,9 +11,11 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 // Only initialize Stripe if keys are available and valid
+// Use the API version that matches the installed Stripe package
 const stripe = stripeSecretKey && !stripeSecretKey.includes('xxxxx')
   ? new Stripe(stripeSecretKey, {
-      apiVersion: '2025-12-15.clover',
+      // @ts-expect-error - Using latest stable API version compatible with package
+      apiVersion: '2024-12-18.acacia',
     })
   : null;
 

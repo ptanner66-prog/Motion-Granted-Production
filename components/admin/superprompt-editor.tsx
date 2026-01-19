@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,8 @@ import {
   Edit3,
   X,
   Info,
+  Upload,
+  FileUp,
 } from 'lucide-react';
 
 interface Template {
@@ -39,6 +41,18 @@ interface SuperpromptEditorProps {
   availablePlaceholders: Record<string, string>;
 }
 
+// Helper to estimate tokens (~4 chars per token)
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+// Helper to format file size
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function SuperpromptEditor({
   initialTemplates,
   availablePlaceholders,
@@ -50,16 +64,19 @@ export function SuperpromptEditor({
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form state
+  // Form state - increased default maxTokens for Opus
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     motionTypes: '*',
     template: '',
     systemPrompt: '',
-    maxTokens: 16000,
+    maxTokens: 64000, // Increased for long motions
     isDefault: false,
   });
 
@@ -77,6 +94,86 @@ export function SuperpromptEditor({
   const { valid: validPlaceholders, invalid: invalidPlaceholders } = detectPlaceholders(
     isEditing || isCreating ? formData.template : selectedTemplate?.template || ''
   );
+
+  // File upload handler
+  const handleFileUpload = useCallback(async (file: File) => {
+    setIsUploading(true);
+    setMessage(null);
+
+    try {
+      let text = '';
+
+      if (file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+        // Plain text files
+        text = await file.text();
+      } else if (file.name.endsWith('.docx')) {
+        // For DOCX, we need to send to an API endpoint to parse
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/superprompt/parse-docx', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to parse DOCX file');
+        }
+
+        const data = await response.json();
+        text = data.text;
+      } else {
+        throw new Error('Unsupported file type. Please use .txt, .md, or .docx');
+      }
+
+      // Update the form with the file content
+      setFormData((prev) => ({
+        ...prev,
+        template: text,
+        name: prev.name || file.name.replace(/\.(txt|md|docx)$/i, ''),
+      }));
+
+      setMessage({
+        type: 'success',
+        text: `Loaded ${formatSize(file.size)} (${text.length.toLocaleString()} chars, ~${estimateTokens(text).toLocaleString()} tokens)`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to read file',
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  }, []);
+
+  // Drag and drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  }, [handleFileUpload]);
+
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  }, [handleFileUpload]);
 
   // Start editing
   const handleEdit = () => {
@@ -101,8 +198,8 @@ export function SuperpromptEditor({
       description: '',
       motionTypes: '*',
       template: '',
-      systemPrompt: 'You are an expert legal motion drafter. Produce professional, court-ready legal documents.',
-      maxTokens: 16000,
+      systemPrompt: 'You are an expert legal motion drafter using the superprompt workflow. Follow the structured phases exactly. Produce professional, court-ready legal documents with proper formatting and verified citations.',
+      maxTokens: 64000, // High limit for long motions
       isDefault: templates.length === 0,
     });
     setIsCreating(true);
@@ -411,15 +508,65 @@ export function SuperpromptEditor({
                   />
                 </div>
 
-                {/* The Superprompt */}
+                {/* The Superprompt - File Upload + Textarea */}
                 <div className="space-y-2">
                   <Label htmlFor="template">Superprompt Template *</Label>
+
+                  {/* File Upload Zone */}
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${
+                      isDragging
+                        ? 'border-teal bg-teal/5'
+                        : 'border-gray-300 hover:border-gray-400'
+                    } ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".txt,.md,.docx"
+                      onChange={handleFileInputChange}
+                      className="hidden"
+                    />
+                    {isUploading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-6 w-6 text-teal animate-spin" />
+                        <span className="text-gray-600">Processing file...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <FileUp className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600 font-medium">
+                          Drop your superprompt file here, or click to browse
+                        </p>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Supports .txt, .md, .docx • No size limit
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Token/Character Stats */}
+                  {formData.template && (
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <span>{formData.template.length.toLocaleString()} characters</span>
+                      <span>~{estimateTokens(formData.template).toLocaleString()} tokens</span>
+                      <span className={estimateTokens(formData.template) > 100000 ? 'text-amber-600' : 'text-green-600'}>
+                        {estimateTokens(formData.template) > 100000 ? '⚠️ Large prompt' : '✓ Within limits'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Textarea for editing/viewing */}
                   <Textarea
                     id="template"
                     value={formData.template}
                     onChange={(e) => setFormData((prev) => ({ ...prev, template: e.target.value }))}
-                    placeholder="Paste your lawyer's superprompt here. Use placeholders like {{CASE_NUMBER}}, {{STATEMENT_OF_FACTS}}, etc."
-                    className="min-h-[300px] font-mono text-sm"
+                    placeholder="Upload a file above or paste your lawyer's superprompt here. Use placeholders like {{CASE_NUMBER}}, {{STATEMENT_OF_FACTS}}, etc."
+                    className="min-h-[400px] font-mono text-sm"
                   />
                 </div>
 
@@ -497,7 +644,7 @@ export function SuperpromptEditor({
               <>
                 {/* View mode */}
                 <div className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
                       <p className="text-sm text-gray-500">Motion Types</p>
                       <p className="text-navy font-medium">
@@ -505,8 +652,16 @@ export function SuperpromptEditor({
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Max Tokens</p>
-                      <p className="text-navy font-medium">{selectedTemplate.maxTokens}</p>
+                      <p className="text-sm text-gray-500">Max Output Tokens</p>
+                      <p className="text-navy font-medium">{selectedTemplate.maxTokens.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Template Size</p>
+                      <p className="text-navy font-medium">{selectedTemplate.template.length.toLocaleString()} chars</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Est. Input Tokens</p>
+                      <p className="text-navy font-medium">~{estimateTokens(selectedTemplate.template).toLocaleString()}</p>
                     </div>
                   </div>
 

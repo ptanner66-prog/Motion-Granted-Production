@@ -1,11 +1,10 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useOrderForm } from '@/hooks/use-order-form'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -13,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Upload, FileText, X, AlertCircle, CheckCircle, Info, Loader2 } from 'lucide-react'
+import { Upload, FileText, X, AlertCircle, CheckCircle, Info } from 'lucide-react'
 
 const DOCUMENT_TYPES = [
   { id: 'complaint', name: 'Complaint/Petition' },
@@ -26,9 +25,7 @@ const DOCUMENT_TYPES = [
 ]
 
 export function DocumentUpload() {
-  const { documents, addDocument, removeDocument, updateDocumentProgress, updateDocumentType } = useOrderForm()
-  const { toast } = useToast()
-  const [uploading, setUploading] = useState<Record<string, boolean>>({})
+  const { documents, addDocument, removeDocument, updateDocument } = useOrderForm()
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -78,7 +75,6 @@ export function DocumentUpload() {
   }
 
   const hasComplaint = documents.some((d) => d.documentType === 'complaint')
-  const isAnyUploading = Object.values(uploading).some(v => v)
 
   return (
     <div className="space-y-6">
@@ -124,7 +120,7 @@ export function DocumentUpload() {
             isDragActive
               ? 'border-teal bg-teal/5'
               : 'border-gray-300 hover:border-gray-400'
-          } ${isAnyUploading ? 'opacity-50 pointer-events-none' : ''}`}
+          }`}
         >
           <input {...getInputProps()} />
           <Upload className="h-10 w-10 text-gray-400 mx-auto mb-4" />
@@ -152,11 +148,7 @@ export function DocumentUpload() {
                 className="flex items-start gap-3 rounded-lg border border-gray-200 p-4"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-                  {uploading[doc.id] ? (
-                    <Loader2 className="h-5 w-5 text-teal animate-spin" />
-                  ) : (
-                    <FileText className="h-5 w-5 text-gray-500" />
-                  )}
+                  <FileText className="h-5 w-5 text-gray-500" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-navy truncate">{doc.name}</p>
@@ -166,12 +158,6 @@ export function DocumentUpload() {
                       <span className="ml-2 text-green-600">• Uploaded</span>
                     )}
                   </p>
-                  {uploading[doc.id] && (
-                    <div className="mt-2">
-                      <Progress value={doc.uploadProgress} className="h-1" />
-                      <p className="text-xs text-gray-400 mt-1">Uploading...</p>
-                    </div>
-                  )}
                   <div className="mt-2">
                     <Select
                       value={doc.documentType || ''}
@@ -195,7 +181,6 @@ export function DocumentUpload() {
                   size="icon"
                   className="shrink-0 text-gray-400 hover:text-red-500"
                   onClick={() => removeDocument(doc.id)}
-                  disabled={uploading[doc.id]}
                 >
                   <X className="h-4 w-4" />
                 </Button>

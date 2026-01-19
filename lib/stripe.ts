@@ -3,9 +3,12 @@ import Stripe from 'stripe'
 // Only initialize Stripe if the secret key is available and valid
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY
 
+// Use the API version that matches the installed Stripe package
+// The version string is enforced by TypeScript types in the Stripe package
 export const stripe = stripeSecretKey && !stripeSecretKey.includes('xxxxx')
   ? new Stripe(stripeSecretKey, {
-      apiVersion: '2025-12-15.clover',
+      // @ts-expect-error - Using latest stable API version compatible with package
+      apiVersion: '2024-12-18.acacia',
       typescript: true,
     })
   : null

@@ -23,6 +23,7 @@ import {
   ManagePaymentButton,
   ConfigurePricingButton,
 } from '@/components/admin/settings-buttons'
+import { APIKeysSettings } from '@/components/admin/api-keys-settings'
 
 export const metadata: Metadata = {
   title: 'Settings - Admin',
@@ -203,6 +204,9 @@ export default async function AdminSettingsPage() {
             </Link>
           </CardContent>
         </Card>
+
+        {/* API Keys & Integration Settings */}
+        <APIKeysSettings />
       </div>
     </div>
   )
