@@ -86,15 +86,27 @@ export default async function OrderDetailPage({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
+  // Debug: Check if user is authenticated
+  if (!user) {
+    console.error('Order detail page: No authenticated user')
+    notFound()
+  }
+
   // Fetch order details including queue columns
   const { data: order, error } = await supabase
     .from('orders')
     .select('*, queue_position, generation_started_at, generation_completed_at, generation_attempts, generation_error')
     .eq('id', id)
-    .eq('client_id', user?.id)
+    .eq('client_id', user.id)
     .single()
 
-  if (error || !order) {
+  if (error) {
+    console.error('Order detail page: Query error', { error, orderId: id, userId: user.id })
+    notFound()
+  }
+
+  if (!order) {
+    console.error('Order detail page: No order found', { orderId: id, userId: user.id })
     notFound()
   }
 

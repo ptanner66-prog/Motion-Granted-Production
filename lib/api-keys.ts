@@ -8,8 +8,20 @@
  * allowing admins to configure keys without redeploying.
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+
+// Create admin client with service role key (bypasses RLS for reading API keys)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 
 // Encryption configuration (must match route.ts)
 const ENCRYPTION_PREFIX_V2 = 'enc_v2_';
@@ -97,7 +109,22 @@ export async function getAPIKeys(): Promise<{
   }
 
   try {
-    const supabase = await createClient();
+    // Use admin client to bypass RLS (API keys need to be read server-side)
+    const supabase = getAdminClient();
+
+    if (!supabase) {
+      console.warn('Supabase not configured, using environment variables for API keys');
+      return {
+        anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
+        westlaw_api_key: process.env.WESTLAW_API_KEY || '',
+        westlaw_client_id: process.env.WESTLAW_CLIENT_ID || '',
+        westlaw_enabled: !!process.env.WESTLAW_API_KEY,
+        lexisnexis_api_key: process.env.LEXISNEXIS_API_KEY || '',
+        lexisnexis_client_id: process.env.LEXISNEXIS_CLIENT_ID || '',
+        lexisnexis_enabled: !!process.env.LEXISNEXIS_API_KEY,
+        legal_research_provider: 'none',
+      };
+    }
 
     const { data: settings } = await supabase
       .from('automation_settings')
