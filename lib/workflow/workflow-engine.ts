@@ -1945,10 +1945,11 @@ RESPONSE: [UNDISPUTED/DISPUTED] [Explanation with evidence citation]`,
   }
 
   // 6. Generate Attorney Instruction Sheet with Gap Acknowledgment (v6.3 REQUIREMENT)
-  const evidenceGaps = previousOutputs.element_mapping?.filter(
-    (e: { evidence_gap?: boolean }) => e.evidence_gap
+  const elementMapping = (previousOutputs as Record<string, unknown>).element_mapping as Array<{ evidence_gap?: boolean; element?: string; gap_description?: string }> | undefined;
+  const evidenceGaps = elementMapping?.filter(
+    (e) => e.evidence_gap
   ) || [];
-  const hasEvidenceGaps = previousOutputs.has_evidence_gaps || evidenceGaps.length > 0;
+  const hasEvidenceGaps = (previousOutputs as Record<string, unknown>).has_evidence_gaps as boolean || evidenceGaps.length > 0;
 
   const today = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -1959,7 +1960,7 @@ RESPONSE: [UNDISPUTED/DISPUTED] [Explanation with evidence citation]`,
   // Build gap acknowledgment section
   let gapAcknowledgmentSection = '';
   if (hasEvidenceGaps) {
-    const gapList = evidenceGaps.map((gap: { element?: string; gap_description?: string }, i: number) =>
+    const gapList = evidenceGaps.map((gap, i) =>
       `   ${i + 1}. ${gap.element || 'Unspecified element'}: ${gap.gap_description || 'Evidence gap identified'}`
     ).join('\n');
 
