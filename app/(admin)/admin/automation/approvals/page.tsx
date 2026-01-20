@@ -175,7 +175,7 @@ export default async function ApprovalsPage({ searchParams }: PageProps) {
     .select('approval_type')
     .eq('status', status);
 
-  const typeCountMap = (typeCounts || []).reduce((acc, item) => {
+  const typeCountMap = (typeCounts || []).reduce((acc: Record<string, number>, item: { approval_type: string }) => {
     acc[item.approval_type] = (acc[item.approval_type] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);

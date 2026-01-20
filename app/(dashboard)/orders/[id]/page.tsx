@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { RevisionRequestForm } from '@/components/orders/revision-request-form'
 import { CopyButton } from '@/components/ui/copy-button'
+import { QueueStatusCard } from '@/components/orders/queue-status-card'
 
 interface Party {
   party_name: string
@@ -85,10 +86,10 @@ export default async function OrderDetailPage({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Fetch order details
+  // Fetch order details including queue columns
   const { data: order, error } = await supabase
     .from('orders')
-    .select('*')
+    .select('*, queue_position, generation_started_at, generation_completed_at, generation_attempts, generation_error')
     .eq('id', id)
     .eq('client_id', user?.id)
     .single()
@@ -195,6 +196,18 @@ export default async function OrderDetailPage({
             />
           </div>
         </div>
+
+        {/* Queue Status Card - Show for orders in queue or processing */}
+        {['submitted', 'under_review', 'in_progress', 'pending_review', 'generation_failed'].includes(order.status) && (
+          <div className="mt-6">
+            <QueueStatusCard
+              orderId={order.id}
+              status={order.status}
+              queuePosition={order.queue_position}
+              generationStartedAt={order.generation_started_at}
+            />
+          </div>
+        )}
       </div>
 
       {/* Content Grid */}

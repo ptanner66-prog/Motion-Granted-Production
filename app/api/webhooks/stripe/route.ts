@@ -7,6 +7,7 @@ import {
   scheduleTask,
 } from '@/lib/automation';
 import { processRevisionPayment } from '@/lib/workflow/checkpoint-service';
+import { inngest, calculatePriority } from '@/lib/inngest/client';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -183,6 +184,28 @@ async function handlePaymentSucceeded(
     priority: 8,
     payload: { triggeredBy: 'payment_success' },
   });
+
+  // Get filing deadline for priority calculation
+  const { data: fullOrder } = await supabase
+    .from('orders')
+    .select('filing_deadline')
+    .eq('id', orderId)
+    .single();
+
+  // Queue order for draft generation via Inngest
+  // This replaces the synchronous Claude API call
+  if (fullOrder?.filing_deadline) {
+    await inngest.send({
+      name: "order/submitted",
+      data: {
+        orderId,
+        priority: calculatePriority(fullOrder.filing_deadline),
+        filingDeadline: fullOrder.filing_deadline,
+      },
+    });
+
+    console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation`);
+  }
 
   console.log(`[Stripe Webhook] Payment succeeded for order ${order.order_number}`);
 }
@@ -400,6 +423,28 @@ async function handleCheckoutSessionCompleted(
         priority: 8,
         payload: { triggeredBy: 'checkout_success' },
       });
+
+      // Get filing deadline for priority calculation
+      const { data: fullOrder } = await supabase
+        .from('orders')
+        .select('filing_deadline')
+        .eq('id', orderId)
+        .single();
+
+      // Queue order for draft generation via Inngest
+      if (fullOrder?.filing_deadline) {
+        await inngest.send({
+          name: "order/submitted",
+          data: {
+            orderId,
+            priority: calculatePriority(fullOrder.filing_deadline),
+            filingDeadline: fullOrder.filing_deadline,
+          },
+        });
+
+        console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
+      }
+
       console.log(`[Stripe Webhook] Checkout completed for order ${order.order_number}`);
     }
   }
