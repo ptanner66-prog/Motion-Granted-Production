@@ -18,6 +18,7 @@ import {
   HelpCircle,
   ExternalLink,
   Sparkles,
+  ListOrdered,
 } from 'lucide-react'
 import { Logo } from '@/components/shared/logo'
 import { Button } from '@/components/ui/button'
@@ -46,6 +47,12 @@ const mainNavigation = [
     href: '/admin/orders',
     icon: FileText,
     description: 'Manage orders'
+  },
+  {
+    name: 'Queue',
+    href: '/admin/queue',
+    icon: ListOrdered,
+    description: 'Generation queue'
   },
   {
     name: 'Clients',
