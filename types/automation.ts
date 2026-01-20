@@ -76,7 +76,12 @@ export type NotificationType =
   | 'approval_needed'
   | 'report_delivery'
   | 'welcome_email'
-  | 'status_update';
+  | 'status_update'
+  // v6.3: Checkpoint notifications
+  | 'checkpoint_cp1'
+  | 'checkpoint_cp2'
+  | 'checkpoint_cp3'
+  | 'revision_payment_required';
 
 export type TaskStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired' | 'auto_approved';
