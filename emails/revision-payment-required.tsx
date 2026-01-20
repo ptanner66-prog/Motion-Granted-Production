@@ -48,7 +48,7 @@ export function RevisionPaymentRequiredEmail({
   return (
     <Html>
       <Head />
-      <Preview>Payment Required for Revision #{revisionNumber} - {orderNumber}</Preview>
+      <Preview>{`Payment Required for Revision #${revisionNumber} - ${orderNumber}`}</Preview>
       <Body style={main}>
         <Container style={container}>
           {/* Header */}
