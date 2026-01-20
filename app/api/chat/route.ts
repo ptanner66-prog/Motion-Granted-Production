@@ -389,12 +389,14 @@ async function buildInitialContext(
     // Get the superprompt template
     const templateResult = await getSuperpromptTemplate();
     if (!templateResult.success || !templateResult.data) {
+      console.error('[SUPERPROMPT] Failed to get template for chat:', templateResult.error);
       return {
         success: false,
         error: templateResult.error || 'No superprompt template found. Please upload a template in the admin dashboard.',
       };
     }
     const template = templateResult.data;
+    console.log(`[SUPERPROMPT] Chat using template: "${template.name}" (${template.template.length} chars)`);
 
     // Merge the superprompt with order data
     let context = template.template;
