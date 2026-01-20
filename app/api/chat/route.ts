@@ -446,6 +446,17 @@ END OF EXISTING HANDOFF
 WEB APPLICATION FILE SYSTEM - READ THIS FIRST
 ================================================================================
 
+**EXECUTION MODE: CONTINUOUS - PRODUCE COMPLETE MOTION**
+
+You MUST complete ALL phases (I through IX) in a SINGLE response without pausing.
+- DO NOT ask "Would you like me to continue?" or "Say continue"
+- DO NOT stop between phases waiting for user input
+- DO proceed automatically through every phase until the final motion is complete
+- DO save a HANDOFF file after completing ALL phases (one comprehensive file)
+- The admin will review the completed motion - no intermediate approvals needed
+
+================================================================================
+
 You are operating in a WEB APPLICATION with FILE SYSTEM ACCESS via XML commands.
 Your superprompt references /mnt/user-data/outputs/ - this is NOW AVAILABLE.
 
