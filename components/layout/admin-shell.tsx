@@ -289,21 +289,6 @@ export function AdminShell({ children, user, breadcrumbLabel }: AdminShellProps)
             </div>
           </nav>
 
-          {/* Admin Info Card */}
-          <div className="px-4 pb-4">
-            <div className="rounded-xl bg-gradient-to-br from-navy to-navy-light p-4 text-white">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-                  <Shield className="h-4 w-4" />
-                </div>
-                <span className="font-semibold text-sm">Admin Portal</span>
-              </div>
-              <p className="text-xs text-white/70">
-                Manage orders, clients, and business analytics.
-              </p>
-            </div>
-          </div>
-
           {/* User section */}
           <div className="border-t border-gray-100 p-4">
             <div className="flex items-center gap-3 rounded-xl p-2 hover:bg-gray-50 transition-colors cursor-pointer">
