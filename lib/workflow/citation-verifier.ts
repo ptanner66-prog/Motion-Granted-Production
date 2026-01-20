@@ -6,6 +6,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
 import type {
   WorkflowCitation,
@@ -16,6 +17,18 @@ import type {
   CitationVerificationResult,
 } from '@/types/workflow';
 import type { OperationResult } from '@/types/automation';
+
+// Create admin client with service role key (bypasses RLS for server-side operations)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 
 // ============================================================================
 // CONSTANTS — v6.3 SACRED NUMBERS
@@ -195,7 +208,10 @@ export async function verifyCitation(
   citation: WorkflowCitation,
   context?: VerificationContext
 ): Promise<OperationResult<CitationVerificationResult>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     // First, try pattern-based validation
@@ -415,7 +431,10 @@ export async function checkCitationRequirements(
   workflowId: string,
   minimumRequired: number = CITATION_HARD_STOP_MINIMUM
 ): Promise<OperationResult<CitationRequirement>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     // Get all citations for this workflow
@@ -464,7 +483,10 @@ export async function verifyWorkflowCitations(
   workflowId: string,
   phaseExecutionId?: string
 ): Promise<OperationResult<{ verified: number; failed: number; pending: number }>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     // Get citations to verify
@@ -545,7 +567,10 @@ export async function verifyWorkflowCitationsBatched(
   workflowId: string,
   onBatchComplete?: (progress: BatchVerificationProgress) => Promise<void>
 ): Promise<OperationResult<BatchVerificationProgress>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     // Get all pending citations ordered by creation
@@ -671,7 +696,10 @@ export async function storeCitations(
   phaseExecutionId: string,
   extractedCitations: ExtractedCitation[]
 ): Promise<OperationResult<{ count: number }>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     const citationsToInsert = extractedCitations.map(c => ({
@@ -718,7 +746,10 @@ export async function manuallyVerifyCitation(
   verified: boolean,
   notes?: string
 ): Promise<OperationResult> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     const status: CitationStatus = verified ? 'verified' : 'invalid';

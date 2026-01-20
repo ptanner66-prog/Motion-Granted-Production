@@ -12,8 +12,21 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
 import { parseDocument, parseOrderDocuments } from './document-parser';
+
+// Create admin client with service role key (bypasses RLS for server-side operations)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 import {
   extractCitations,
   storeCitations,
@@ -110,7 +123,10 @@ interface PhaseExecutionContext {
 export async function startWorkflow(
   request: StartWorkflowRequest
 ): Promise<OperationResult<StartWorkflowResponse>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     // Check if workflow already exists
@@ -197,7 +213,10 @@ export async function startWorkflow(
 export async function executeCurrentPhase(
   workflowId: string
 ): Promise<OperationResult<PhaseResult>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     // Get workflow with motion type
@@ -438,7 +457,10 @@ async function executeDocumentParsingPhase(
     };
   }
 
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   // Get all parsed documents
   const { data: parsedDocs } = await supabase
@@ -601,7 +623,10 @@ async function executeLegalResearchPhase(
   }
 
   const { previousOutputs, motionType, workflow } = context;
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   // Get order jurisdiction info
   const { data: order } = await supabase
@@ -762,7 +787,10 @@ async function executeCitationVerificationPhase(
   const { meetsRequirement, verifiedCount, currentCount, blockedReason } = requirementCheck.data;
 
   // Update workflow citation count
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
   await supabase
     .from('order_workflows')
     .update({ citation_count: verifiedCount })
@@ -1095,7 +1123,10 @@ Respond with JSON:
     const passesQuality = meetsQualityThreshold(review.overall_score);
 
     // Update workflow with judge simulation results
-    const supabase = await createClient();
+    const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
     await supabase
       .from('order_workflows')
       .update({
@@ -1236,7 +1267,10 @@ async function executeDocumentAssemblyPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
   const { previousOutputs, motionType, workflow } = context;
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   const revisedDocument = previousOutputs.revised_document as string ||
                          previousOutputs.draft_document as string;
@@ -1698,7 +1732,10 @@ async function executeCaptionValidationPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
   const { workflow, previousOutputs } = context;
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   // Get order details for caption info
   const { data: order } = await supabase
@@ -1783,7 +1820,10 @@ async function executeSupportingDocumentsPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
   const { workflow, motionType, previousOutputs } = context;
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   if (!isClaudeConfigured) {
     return {
@@ -2373,7 +2413,10 @@ async function getPreviousPhaseOutputs(
   workflowId: string,
   currentPhase: number
 ): Promise<Record<string, unknown>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   const { data: phases } = await supabase
     .from('workflow_phase_executions')
@@ -2404,7 +2447,10 @@ async function getPreviousPhaseOutputs(
 export async function getWorkflowProgress(
   workflowId: string
 ): Promise<OperationResult<WorkflowProgress>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     const { data: workflow, error: wfError } = await supabase
@@ -2490,7 +2536,10 @@ export async function approvePhase(
   approvedBy: string,
   notes?: string
 ): Promise<OperationResult> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     const { error } = await supabase
@@ -2537,7 +2586,10 @@ interface WorkflowRunResult {
 }
 
 export async function runWorkflow(workflowId: string): Promise<OperationResult<WorkflowRunResult>> {
-  const supabase = await createClient();
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   // Get workflow
   const { data: workflow, error } = await supabase

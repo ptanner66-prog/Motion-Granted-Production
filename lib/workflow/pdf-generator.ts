@@ -15,7 +15,20 @@
 
 import { PDFDocument, StandardFonts, rgb, PDFPage, PDFFont } from 'pdf-lib';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { OperationResult } from '@/types/automation';
+
+// Create admin client with service role key (bypasses RLS for server-side operations)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 
 // ============================================================================
 // CONSTANTS
@@ -570,7 +583,11 @@ export async function generatePDFFromWorkflow(
   orderId: string,
   workflowId: string
 ): Promise<OperationResult<PDFGenerationResult>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     // Get order details
@@ -1103,7 +1120,11 @@ export async function savePDFAsDeliverable(
   pdfBytes: Uint8Array,
   fileName: string
 ): Promise<OperationResult<{ documentId: string; fileUrl: string }>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     const timestamp = Date.now();
@@ -1123,10 +1144,7 @@ export async function savePDFAsDeliverable(
       return { success: false, error: `Upload failed: ${uploadError.message}` };
     }
 
-    // Get the user for uploaded_by
-    const { data: { user } } = await supabase.auth.getUser();
-
-    // Create document record
+    // Create document record (uploaded_by is null for system-generated deliverables)
     const { data: docRecord, error: dbError } = await supabase
       .from('documents')
       .insert({
@@ -1136,7 +1154,7 @@ export async function savePDFAsDeliverable(
         file_size: pdfBytes.length,
         file_url: filePath,
         document_type: 'deliverable',
-        uploaded_by: user?.id || null,
+        uploaded_by: null, // System-generated
         is_deliverable: true,
       })
       .select()

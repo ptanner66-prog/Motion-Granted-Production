@@ -15,8 +15,7 @@ export const dynamic = 'force-dynamic';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { gatherOrderData, getSuperpromptTemplate } from '@/lib/workflow/superprompt-engine';
-
-const anthropic = new Anthropic();
+import { getAnthropicAPIKey } from '@/lib/api-keys';
 
 interface ChatRequest {
   orderId: string;
@@ -225,6 +224,15 @@ export async function POST(request: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          // Get API key from database
+          const apiKey = await getAnthropicAPIKey();
+          if (!apiKey) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Anthropic API key not configured. Please add it in Admin Settings > API Keys.' })}\n\n`));
+            controller.close();
+            return;
+          }
+          const anthropic = new Anthropic({ apiKey });
+
           const response = await anthropic.messages.create({
             model: 'claude-sonnet-4-20250514',
             max_tokens: 16000,

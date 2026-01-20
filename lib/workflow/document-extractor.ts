@@ -6,7 +6,20 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { OperationResult } from '@/types/automation';
+
+// Create admin client with service role key (bypasses RLS for server-side operations)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 
 // ============================================================================
 // TYPES
@@ -162,7 +175,15 @@ export async function extractDocumentContent(
   filePath: string,
   fileType: string
 ): Promise<OperationResult<{ text: string; pages?: number; method: string }>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS for storage operations
+  const supabase = getAdminClient();
+
+  if (!supabase) {
+    return {
+      success: false,
+      error: 'Database not configured. Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.',
+    };
+  }
 
   try {
     // Download file from storage
@@ -249,7 +270,15 @@ export async function extractDocumentContent(
 export async function extractOrderDocuments(
   orderId: string
 ): Promise<OperationResult<DocumentExtractionResult>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS
+  const supabase = getAdminClient();
+
+  if (!supabase) {
+    return {
+      success: false,
+      error: 'Database not configured. Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.',
+    };
+  }
 
   try {
     // Get all non-deliverable documents for this order
