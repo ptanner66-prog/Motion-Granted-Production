@@ -15,9 +15,22 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { generateMotion, isClaudeConfigured, MOTION_MAX_TOKENS } from '@/lib/automation/claude';
 import { gatherOrderContext } from './orchestrator';
 import type { OperationResult } from '@/types/automation';
+
+// Create admin client with service role key (bypasses RLS for reading superprompt templates)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 
 // ============================================================================
 // TYPES
@@ -173,8 +186,11 @@ export async function gatherOrderData(orderId: string): Promise<OperationResult<
 
     const ctx = contextResult.data;
 
-    // Get client profile
-    const supabase = await createClient();
+    // Get client profile using admin client to bypass RLS
+    const supabase = getAdminClient();
+    if (!supabase) {
+      return { success: false, error: 'Database not configured' };
+    }
     const { data: order } = await supabase
       .from('orders')
       .select('*, profiles(full_name, email)')
@@ -466,11 +482,18 @@ export async function saveSuperpromptTemplate(
 
 /**
  * Get superprompt template for a motion type
+ * Uses service role client to bypass RLS (templates need to be read server-side)
  */
 export async function getSuperpromptTemplate(
   motionType?: string
 ): Promise<OperationResult<SuperpromptTemplate>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS (API routes may not have user session)
+  const supabase = getAdminClient();
+
+  if (!supabase) {
+    console.error('Supabase not configured - missing URL or service role key');
+    return { success: false, error: 'Database not configured. Please check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.' };
+  }
 
   let query = supabase.from('superprompt_templates').select('*');
 
@@ -485,11 +508,12 @@ export async function getSuperpromptTemplate(
   const { data, error } = await query.single();
 
   if (error) {
+    console.error('Error fetching superprompt template:', error);
     // If no specific template found, try to get default
     if (motionType) {
       return getSuperpromptTemplate(); // Recursively get default
     }
-    return { success: false, error: 'No superprompt template found' };
+    return { success: false, error: `No superprompt template found: ${error.message}` };
   }
 
   return {

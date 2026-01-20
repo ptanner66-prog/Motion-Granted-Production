@@ -11,6 +11,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
 import { extractOrderDocuments, getCombinedDocumentText } from './document-extractor';
 import { parseOrderDocuments, getOrderParsedDocuments } from './document-parser';
@@ -18,6 +19,18 @@ import { startWorkflow, runWorkflow, getWorkflowProgress, executeCurrentPhase } 
 import { getTemplateForPath, generateSectionPrompt, MOTION_TEMPLATES } from './motion-templates';
 import type { OperationResult } from '@/types/automation';
 import type { WorkflowPath, MotionTier } from '@/types/workflow';
+
+// Create admin client with service role key (bypasses RLS for server-side operations)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 
 // ============================================================================
 // TYPES
@@ -82,9 +95,15 @@ export interface OrchestrationResult {
 
 /**
  * Gather all context for an order - checkout data + documents
+ * Uses service role client to bypass RLS (needed for API routes)
  */
 export async function gatherOrderContext(orderId: string): Promise<OperationResult<OrderContext>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS (API routes may not have user session)
+  const supabase = getAdminClient();
+
+  if (!supabase) {
+    return { success: false, error: 'Database not configured. Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.' };
+  }
 
   try {
     // Get order details with parties
