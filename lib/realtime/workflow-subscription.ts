@@ -177,7 +177,7 @@ export class WorkflowSubscriptionManager {
         },
         (payload: RealtimePostgresChangesPayload<WorkflowTableRow>) => this.handleWorkflowChange(payload)
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
           console.log('[Realtime] Workflow channel subscribed');
         } else if (status === 'CHANNEL_ERROR') {
@@ -210,7 +210,7 @@ export class WorkflowSubscriptionManager {
         },
         (payload: RealtimePostgresChangesPayload<RevisionTableRow>) => this.handleRevisionUpdate(payload)
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
           console.log('[Realtime] Revision channel subscribed');
         }
