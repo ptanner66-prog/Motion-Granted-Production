@@ -132,6 +132,7 @@ Keep summaries professional and data-driven.`,
 
 /**
  * Generic function to call Claude API with structured output
+ * Uses API key from database if available, falls back to environment variable
  */
 export async function callClaude<T>(
   systemPrompt: string,
@@ -142,10 +143,12 @@ export async function callClaude<T>(
     temperature?: number;
   }
 ): Promise<{ success: boolean; result?: T; error?: string; tokensUsed?: number }> {
-  if (!anthropic) {
+  // Get dynamic client (checks database first)
+  const client = await getAnthropicClient();
+  if (!client) {
     return {
       success: false,
-      error: 'Claude API is not configured. Set ANTHROPIC_API_KEY environment variable.',
+      error: 'Claude API is not configured. Add your Anthropic API key in Admin Settings.',
     };
   }
 
@@ -154,7 +157,7 @@ export async function callClaude<T>(
   const maxTokens = options?.maxTokens || DEFAULT_MAX_TOKENS;
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await client.messages.create({
       model,
       max_tokens: maxTokens,
       temperature: options?.temperature ?? 0.2,
@@ -206,6 +209,7 @@ export async function callClaude<T>(
 /**
  * Simpler helper function to call Claude with a single prompt
  * Returns raw text content rather than parsed JSON
+ * Uses API key from database if available, falls back to environment variable
  */
 export async function askClaude(options: {
   prompt: string;
@@ -217,10 +221,12 @@ export async function askClaude(options: {
   result?: { content: string; tokensUsed: number };
   error?: string;
 }> {
-  if (!anthropic) {
+  // Get dynamic client (checks database first)
+  const client = await getAnthropicClient();
+  if (!client) {
     return {
       success: false,
-      error: 'Claude API is not configured. Set ANTHROPIC_API_KEY environment variable.',
+      error: 'Claude API is not configured. Add your Anthropic API key in Admin Settings.',
     };
   }
 
@@ -228,7 +234,7 @@ export async function askClaude(options: {
   const maxTokens = options.maxTokens || DEFAULT_MAX_TOKENS;
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await client.messages.create({
       model,
       max_tokens: maxTokens,
       temperature: options.temperature ?? 0.2,

@@ -102,17 +102,23 @@ export async function POST(request: Request) {
       .update({ status: 'completed' })
       .eq('id', conversation.id);
 
-    // Log the approval
-    await supabase.from('automation_logs').insert({
-      order_id: orderId,
-      action_type: 'motion_approved',
-      action_details: {
-        approvedBy: user.id,
-        approverName: profile.full_name,
-        deliverableUrl: saveResult.data.fileUrl,
-        approvedAt: new Date().toISOString(),
-      },
-    });
+    // Log the approval (using valid action_type 'status_changed')
+    try {
+      await supabase.from('automation_logs').insert({
+        order_id: orderId,
+        action_type: 'status_changed',
+        action_details: {
+          change_type: 'motion_approved',
+          approvedBy: user.id,
+          approverName: profile.full_name,
+          deliverableUrl: saveResult.data.fileUrl,
+          approvedAt: new Date().toISOString(),
+        },
+      });
+    } catch (logErr) {
+      console.error('Failed to log approval:', logErr);
+      // Don't fail the request if logging fails
+    }
 
     // Send notification to client
     const clientProfile = order.profiles as { full_name: string; email: string } | null;

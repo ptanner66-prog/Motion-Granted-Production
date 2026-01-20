@@ -6,6 +6,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
 import { extractCitations } from './citation-verifier';
 import { extractDocumentContent } from './document-extractor';
@@ -21,6 +22,18 @@ import type {
   CitationType,
 } from '@/types/workflow';
 import type { OperationResult } from '@/types/automation';
+
+// Create admin client with service role key (bypasses RLS for server-side operations)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 
 // ============================================================================
 // CONSTANTS
@@ -401,7 +414,11 @@ export async function parseDocument(
   orderId: string,
   fileContent: string
 ): Promise<OperationResult<ParsedDocument>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
   const errors: ParseError[] = [];
 
   try {
@@ -539,7 +556,11 @@ export async function parseDocument(
 export async function parseOrderDocuments(
   orderId: string
 ): Promise<OperationResult<{ parsed: number; failed: number }>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   try {
     // Get all documents for this order
@@ -613,7 +634,11 @@ export async function parseOrderDocuments(
 export async function getParsedDocument(
   documentId: string
 ): Promise<OperationResult<ParsedDocument>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   const { data, error } = await supabase
     .from('parsed_documents')
@@ -634,7 +659,11 @@ export async function getParsedDocument(
 export async function getOrderParsedDocuments(
   orderId: string
 ): Promise<OperationResult<ParsedDocument[]>> {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS
+  const supabase = getAdminClient();
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
 
   const { data, error } = await supabase
     .from('parsed_documents')
