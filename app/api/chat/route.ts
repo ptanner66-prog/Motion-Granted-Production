@@ -16,6 +16,12 @@ import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { gatherOrderData, getSuperpromptTemplate } from '@/lib/workflow/superprompt-engine';
 import { getAnthropicAPIKey } from '@/lib/api-keys';
+import {
+  parseFileOperations,
+  executeFileOperations,
+  findLatestHandoff,
+  WorkflowFile,
+} from '@/lib/workflow/file-system';
 
 interface ChatRequest {
   orderId: string;
@@ -249,24 +255,38 @@ export async function POST(request: Request) {
             }
           }
 
-          // Save assistant response to database
+          // Parse and execute file operations from Claude's response
+          const { operations, cleanedResponse } = parseFileOperations(fullResponse);
+          if (operations.length > 0) {
+            const fileResults = await executeFileOperations(orderId, operations);
+            // Send file operation results to user
+            for (const result of fileResults) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ fileOp: result })}\n\n`));
+            }
+          }
+
+          // Save assistant response to database (use cleaned response for display)
           const nextSequence = existingMessages.length + (claudeMessages.length > existingMessages.filter(m => m.role !== 'system').length ? 1 : 0) + 1;
           await supabase.from('conversation_messages').insert({
             conversation_id: conversation.id,
             role: 'assistant',
-            content: fullResponse,
+            content: fullResponse, // Store full response including file tags
             is_motion_draft: true,
             sequence_number: nextSequence,
           });
 
-          // Update conversation with latest motion
+          // Update conversation with latest motion (cleaned version)
           await supabase
             .from('conversations')
-            .update({ generated_motion: fullResponse })
+            .update({ generated_motion: cleanedResponse })
             .eq('id', conversation.id);
 
-          // Send completion signal
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, conversationId: conversation.id })}\n\n`));
+          // Send completion signal with file operation count
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            done: true,
+            conversationId: conversation.id,
+            filesWritten: operations.filter(o => o.type === 'write').length
+          })}\n\n`));
           controller.close();
         } catch (error) {
           console.error('Claude streaming error:', error);
@@ -398,45 +418,79 @@ async function buildInitialContext(
     const template = templateResult.data;
     console.log(`[SUPERPROMPT] Chat using template: "${template.name}" (${template.template.length} chars)`);
 
-    // Web Context Adapter: Overrides file system instructions for web API environment
+    // Check for existing handoff file for this order
+    let existingHandoffContent = '';
+    const handoffResult = await findLatestHandoff(orderId);
+    if (handoffResult.success && handoffResult.data) {
+      const handoff = handoffResult.data as WorkflowFile;
+      existingHandoffContent = `
+================================================================================
+EXISTING HANDOFF FILE FOUND - RESUME FROM HERE
+================================================================================
+
+File: ${handoff.file_path}
+Last Updated: ${handoff.updated_at}
+
+${handoff.content}
+
+================================================================================
+END OF EXISTING HANDOFF
+================================================================================
+
+`;
+    }
+
+    // Web Context Adapter: Provides file system access via XML commands
     const webContextAdapter = `
 ================================================================================
-CRITICAL: WEB APPLICATION CONTEXT OVERRIDE
+WEB APPLICATION FILE SYSTEM - READ THIS FIRST
 ================================================================================
 
-You are operating in a WEB APPLICATION environment, NOT a local file system.
-The following OVERRIDES apply to ALL instructions in this prompt:
+You are operating in a WEB APPLICATION with FILE SYSTEM ACCESS via XML commands.
+Your superprompt references /mnt/user-data/outputs/ - this is NOW AVAILABLE.
 
-1. **NO FILE SYSTEM ACCESS**: You do NOT have access to any file system.
-   - IGNORE all instructions to write to /mnt/user-data/outputs/ or any path
-   - IGNORE all instructions to use 'cat', 'bash', or any shell commands
-   - IGNORE all instructions to call 'present_files' tool (it does not exist)
+**FILE SYSTEM COMMANDS (USE THESE INSTEAD OF BASH):**
 
-2. **DIRECT OUTPUT ONLY**: Output all content DIRECTLY in your response.
-   - Motion documents: Output the full text directly
-   - Handoff status: Output as formatted text in your response
-   - Citation reports: Output as formatted text in your response
+1. **WRITE A FILE** - Use this to create HANDOFF files, motions, declarations, etc:
+   <file_write path="/mnt/user-data/outputs/HANDOFF_MMDDYYYY_HHMMam.md">
+   [Your file content here]
+   </file_write>
 
-3. **WORKFLOW ADAPTATION**:
-   - Instead of writing HANDOFF files, summarize your progress in your response
-   - Instead of writing motion files, output the motion text directly
-   - The 4-citation HARD STOP still applies, but output progress in-line
-   - When you would "present" a file, instead output its contents directly
+2. **READ A FILE** - Use this to read any existing file:
+   <file_read path="/mnt/user-data/outputs/HANDOFF_01202026_1045am.md" />
 
-4. **RESPONSE FORMAT**:
-   - Start with a brief status update (phase, progress)
-   - Output the requested document content directly
-   - End with next steps or questions if needed
+3. **LIST FILES** - Use this to see what files exist:
+   <file_list directory="/mnt/user-data/outputs/" />
 
-5. **ALL OTHER INSTRUCTIONS REMAIN IN EFFECT**:
-   - Legal standards, citation rules, quality requirements: FULLY APPLY
-   - Phase workflow logic: FULLY APPLY (adapted for direct output)
-   - Citation verification requirements: FULLY APPLY
-   - Input Priority Rule: FULLY APPLY
-   - Never Do List: FULLY APPLY (except file system items)
+4. **FIND LATEST HANDOFF** - Use this to find and read the most recent handoff:
+   <find_handoff />
 
-BEGIN PROCESSING THE MATTER BELOW. Output directly - no file operations.
+**IMPORTANT RULES:**
 
+- DO NOT use bash, cat, echo, or shell commands - they don't work here
+- DO use the XML file commands above - they ARE functional
+- The file system persists across sessions
+- Files are stored per-order (this order: ${orderId})
+- Your HANDOFF workflow works exactly as designed - just use XML tags instead of bash
+
+**WORKFLOW INSTRUCTIONS REMAIN IN FULL EFFECT:**
+- All legal standards, citation rules, quality requirements: FULLY APPLY
+- Phase workflow logic: FULLY APPLY
+- Citation verification requirements: FULLY APPLY
+- 4-citation HARD STOP: FULLY APPLY
+- Input Priority Rule: FULLY APPLY
+- HANDOFF file generation: FULLY APPLY (use <file_write> tag)
+
+${existingHandoffContent ? existingHandoffContent : `
+================================================================================
+NO EXISTING HANDOFF - THIS IS A NEW MATTER
+================================================================================
+No previous handoff file was found for this order.
+Start with Phase I: Intake & Document Processing.
+================================================================================
+`}
+================================================================================
+BEGIN PROCESSING - USE XML FILE COMMANDS AS NEEDED
 ================================================================================
 
 `;
