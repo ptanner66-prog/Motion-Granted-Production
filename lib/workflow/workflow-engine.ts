@@ -321,7 +321,7 @@ async function executePhaseByType(
   const { phaseDefinition } = context;
 
   // v6.3: Support both phase_code and ai_task_type for backwards compatibility
-  const phaseCode = (phaseDefinition as Record<string, unknown>).phase_code as string | undefined;
+  const phaseCode = (phaseDefinition as unknown as Record<string, unknown>).phase_code as string | undefined;
   const taskType = phaseDefinition.ai_task_type;
 
   // Try phase_code first (v6.3), then fall back to ai_task_type
