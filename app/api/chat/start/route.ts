@@ -13,8 +13,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { gatherOrderData, getSuperpromptTemplate } from '@/lib/workflow/superprompt-engine';
-
-const anthropic = new Anthropic();
+import { getAnthropicAPIKey } from '@/lib/api-keys';
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -149,6 +148,13 @@ export async function POST(request: Request) {
 
     // Generate motion with Claude (non-streaming for background process)
     try {
+      // Get API key from database (or fall back to env var)
+      const apiKey = await getAnthropicAPIKey();
+      if (!apiKey) {
+        throw new Error('Anthropic API key not configured. Please add it in Admin Settings > API Keys.');
+      }
+      const anthropic = new Anthropic({ apiKey });
+
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 16000,
@@ -184,11 +190,12 @@ export async function POST(request: Request) {
         .update({ status: 'pending_review' })
         .eq('id', orderId);
 
-      // Log the automation event
+      // Log the automation event (use 'status_changed' as valid action_type)
       await supabase.from('automation_logs').insert({
         order_id: orderId,
-        action_type: 'motion_generated',
+        action_type: 'status_changed',
         action_details: {
+          change_type: 'motion_generated',
           conversationId: conversation.id,
           inputTokens: response.usage.input_tokens,
           outputTokens: response.usage.output_tokens,
@@ -213,8 +220,9 @@ export async function POST(request: Request) {
 
       await supabase.from('automation_logs').insert({
         order_id: orderId,
-        action_type: 'motion_generation_failed',
+        action_type: 'task_failed',
         action_details: {
+          task_type: 'motion_generation',
           error: claudeError instanceof Error ? claudeError.message : 'Unknown error',
         },
       });
