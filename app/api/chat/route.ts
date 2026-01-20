@@ -286,7 +286,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Chat error:', error);
     return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Chat failed',
+      error: 'Chat request failed. Please try again.',
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -363,7 +363,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Get conversation error:', error);
     return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Failed to get conversation',
+      error: 'Failed to get conversation. Please try again.',
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

@@ -213,7 +213,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Motion generation error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Generation failed',
+      error: 'Motion generation failed. Please try again or contact support.',
     }, { status: 500 });
   }
 }

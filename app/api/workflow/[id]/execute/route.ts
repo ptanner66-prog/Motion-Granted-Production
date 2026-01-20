@@ -57,8 +57,9 @@ export async function POST(
       progress: progress.success ? progress.data : null,
     });
   } catch (error) {
+    console.error('Workflow execute error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Workflow execution failed. Please try again.' },
       { status: 500 }
     );
   }

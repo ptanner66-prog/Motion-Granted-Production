@@ -91,15 +91,15 @@ export async function POST(req: Request) {
     const body = parseResult.data
 
     // Create Stripe PaymentIntent if Stripe is configured
-    // Use idempotency key to prevent duplicate charges on network retries
+    // SECURITY FIX: Use crypto.randomUUID() for cryptographically secure idempotency key
     let paymentIntent = null
     if (stripe) {
-      const idempotencyKey = `order_${user.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`
+      const idempotencyKey = `order_${user.id}_${Date.now()}_${crypto.randomUUID()}`
       paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(body.total_price * 100),
         currency: 'usd',
         metadata: {
-          user_id: user.id,
+          // SECURITY: Only include order_id after creation, not PII
           motion_type: body.motion_type,
         },
       }, {
@@ -141,7 +141,8 @@ export async function POST(req: Request) {
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error('Order creation database error:', error)
+      return NextResponse.json({ error: 'Failed to create order. Please try again.' }, { status: 500 })
     }
 
     // Insert parties

@@ -33,6 +33,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
   }
 
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(orderId)) {
+    return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 });
+  }
+
   // Verify auth - either the order owner or an admin/clerk
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
@@ -107,7 +113,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Start automation error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to start automation',
+      error: 'Failed to start automation. Please try again or contact support.',
     }, { status: 500 });
   }
 }

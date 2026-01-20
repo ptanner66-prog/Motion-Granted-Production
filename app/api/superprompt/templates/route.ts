@@ -111,7 +111,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Get templates error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to fetch templates',
+      error: 'Failed to fetch templates. Please try again.',
     }, { status: 500 });
   }
 }
@@ -183,7 +183,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Create template error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to create template',
+      error: 'Failed to create template. Please try again.',
     }, { status: 500 });
   }
 }
@@ -257,7 +257,7 @@ export async function PUT(request: Request) {
   } catch (error) {
     console.error('Update template error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to update template',
+      error: 'Failed to update template. Please try again.',
     }, { status: 500 });
   }
 }
@@ -306,7 +306,7 @@ export async function DELETE(request: Request) {
   } catch (error) {
     console.error('Delete template error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to delete template',
+      error: 'Failed to delete template. Please try again.',
     }, { status: 500 });
   }
 }

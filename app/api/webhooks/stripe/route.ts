@@ -53,25 +53,37 @@ export async function POST(req: Request) {
 
   const supabase = await createClient();
 
-  // Check for duplicate webhook (idempotency)
-  const { data: existingEvent } = await supabase
+  // SECURITY FIX: Use database-level upsert for idempotency to prevent race conditions
+  // If two identical webhooks arrive simultaneously, only one will be processed
+  const { data: webhookEvent, error: insertError } = await supabase
     .from('webhook_events')
-    .select('id')
-    .eq('event_id', event.id)
+    .upsert({
+      event_id: event.id,
+      event_type: event.type,
+      source: 'stripe',
+      // Only store necessary fields to avoid PII in database
+      payload: {
+        id: (event.data.object as unknown as Record<string, unknown>).id,
+        amount: (event.data.object as unknown as Record<string, unknown>).amount,
+        status: (event.data.object as unknown as Record<string, unknown>).status,
+        currency: (event.data.object as unknown as Record<string, unknown>).currency,
+      } as Record<string, unknown>,
+    }, {
+      onConflict: 'event_id',
+      ignoreDuplicates: true,
+    })
+    .select('id, processed')
     .single();
 
-  if (existingEvent) {
-    // Already processed this event
+  // Check if already processed
+  if (webhookEvent?.processed) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
-  // Store the webhook event
-  await supabase.from('webhook_events').insert({
-    event_id: event.id,
-    event_type: event.type,
-    source: 'stripe',
-    payload: event.data.object as unknown as Record<string, unknown>,
-  });
+  // If insert failed due to constraint, it's a duplicate
+  if (insertError && insertError.code === '23505') {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
 
   try {
     // Handle the event
@@ -138,6 +150,44 @@ async function handlePaymentSucceeded(
 
   if (!orderId) {
     console.warn('[Stripe Webhook] No order_id in payment intent metadata');
+    return;
+  }
+
+  // SECURITY FIX: First fetch the order to verify payment amount and current state
+  const { data: existingOrder, error: fetchError } = await supabase
+    .from('orders')
+    .select('id, order_number, client_id, total_price, status, stripe_payment_status')
+    .eq('id', orderId)
+    .eq('stripe_payment_intent_id', paymentIntent.id)
+    .single();
+
+  if (fetchError || !existingOrder) {
+    console.warn('[Stripe Webhook] Order not found for payment intent:', paymentIntent.id);
+    return;
+  }
+
+  // CRITICAL SECURITY: Verify payment amount matches order total
+  const expectedAmount = Math.round(existingOrder.total_price * 100);
+  if (paymentIntent.amount < expectedAmount) {
+    console.error(`[Stripe Webhook] SECURITY ALERT: Payment amount mismatch! Expected: ${expectedAmount}, Received: ${paymentIntent.amount}, Order: ${orderId}`);
+    // Log the security alert
+    await supabase.from('automation_logs').insert({
+      order_id: orderId,
+      action_type: 'payment_failed',
+      action_details: {
+        paymentIntentId: paymentIntent.id,
+        error: 'Payment amount mismatch - potential fraud attempt',
+        expectedAmount: expectedAmount / 100,
+        receivedAmount: paymentIntent.amount / 100,
+      },
+    });
+    throw new Error(`Payment amount mismatch: expected ${expectedAmount}, received ${paymentIntent.amount}`);
+  }
+
+  // SECURITY: Validate order is in correct state for payment
+  const validStatesForPayment = ['submitted', 'pending'];
+  if (existingOrder.stripe_payment_status === 'succeeded') {
+    console.warn('[Stripe Webhook] Order already paid, skipping:', orderId);
     return;
   }
 
