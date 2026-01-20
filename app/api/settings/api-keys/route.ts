@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
         setting_key: 'anthropic_api_key',
         setting_value: { value: encryptKey(anthropic_api_key) },
         description: 'Anthropic API key for Claude AI',
-        category: 'api_keys',
+        category: 'general',
         updated_by: user.id,
       });
     }
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
         setting_key: 'westlaw_api_key',
         setting_value: { value: encryptKey(westlaw_api_key) },
         description: 'Westlaw API key',
-        category: 'api_keys',
+        category: 'general',
         updated_by: user.id,
       });
     }
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
       setting_key: 'westlaw_client_id',
       setting_value: { value: westlaw_client_id || '' },
       description: 'Westlaw client ID',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
       setting_key: 'westlaw_enabled',
       setting_value: { value: westlaw_enabled || false },
       description: 'Whether Westlaw integration is enabled',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
         setting_key: 'lexisnexis_api_key',
         setting_value: { value: encryptKey(lexisnexis_api_key) },
         description: 'LexisNexis API key',
-        category: 'api_keys',
+        category: 'general',
         updated_by: user.id,
       });
     }
@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
       setting_key: 'lexisnexis_client_id',
       setting_value: { value: lexisnexis_client_id || '' },
       description: 'LexisNexis client ID',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
       setting_key: 'lexisnexis_enabled',
       setting_value: { value: lexisnexis_enabled || false },
       description: 'Whether LexisNexis integration is enabled',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
@@ -290,7 +290,7 @@ export async function POST(request: NextRequest) {
       setting_key: 'legal_research_provider',
       setting_value: { value: legal_research_provider || 'none' },
       description: 'Preferred legal research provider',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
