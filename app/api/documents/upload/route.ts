@@ -27,6 +27,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
+    // SECURITY: Validate orderId format and ownership if provided
+    if (orderId) {
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!uuidRegex.test(orderId)) {
+        return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 })
+      }
+
+      // Check user role for admin/clerk access
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      const isAdminOrClerk = profile?.role === 'admin' || profile?.role === 'clerk'
+
+      // Verify user owns this order OR is admin/clerk
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select('id, client_id')
+        .eq('id', orderId)
+        .single()
+
+      if (orderError || !order) {
+        return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      }
+
+      if (!isAdminOrClerk && order.client_id !== user.id) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    }
+
     // Validate file size (100MB max for large legal briefs)
     const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB in bytes
     if (file.size > MAX_FILE_SIZE) {

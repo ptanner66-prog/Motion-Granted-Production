@@ -19,6 +19,12 @@ const anthropic = new Anthropic();
 export async function POST(request: Request) {
   const supabase = await createClient();
 
+  // Verify authentication
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { orderId } = await request.json();
 
@@ -26,15 +32,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
     }
 
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(orderId)) {
+      return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 });
+    }
+
     // Get order to verify it exists
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, order_number, status')
+      .select('id, order_number, status, client_id')
       .eq('id', orderId)
       .single();
 
     if (orderError || !order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // Check user role for authorization
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    const isAdminOrClerk = profile?.role === 'admin' || profile?.role === 'clerk';
+
+    // SECURITY: Verify user owns this order OR is admin/clerk
+    if (!isAdminOrClerk && order.client_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Check if conversation already exists
