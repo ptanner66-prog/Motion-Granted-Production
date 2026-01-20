@@ -566,7 +566,7 @@ export async function parseOrderDocuments(
     // Get all documents for this order
     const { data: documents, error: docsError } = await supabase
       .from('documents')
-      .select('id, file_url, file_name')
+      .select('id, file_url, file_name, file_type')
       .eq('order_id', orderId)
       .eq('is_deliverable', false);
 
