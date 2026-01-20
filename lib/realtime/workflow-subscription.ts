@@ -3,6 +3,7 @@
  *
  * v6.3: Manages Supabase real-time subscriptions for workflow updates.
  * Provides callbacks for phase changes, checkpoint triggers, and revision events.
+ * Updated for Supabase v2 compatibility.
  */
 
 import { createClient } from '@/lib/supabase/client';
@@ -167,14 +168,14 @@ export class WorkflowSubscriptionManager {
   private setupWorkflowChannel(): void {
     this.workflowChannel = this.supabase
       .channel('workflow-updates')
-      .on<WorkflowTableRow>(
+      .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'order_workflows',
         },
-        (payload) => this.handleWorkflowChange(payload)
+        (payload: RealtimePostgresChangesPayload<WorkflowTableRow>) => this.handleWorkflowChange(payload)
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -191,23 +192,23 @@ export class WorkflowSubscriptionManager {
   private setupRevisionChannel(): void {
     this.revisionChannel = this.supabase
       .channel('revision-updates')
-      .on<RevisionTableRow>(
+      .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'workflow_revisions',
         },
-        (payload) => this.handleRevisionInsert(payload)
+        (payload: RealtimePostgresChangesPayload<RevisionTableRow>) => this.handleRevisionInsert(payload)
       )
-      .on<RevisionTableRow>(
+      .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'workflow_revisions',
         },
-        (payload) => this.handleRevisionUpdate(payload)
+        (payload: RealtimePostgresChangesPayload<RevisionTableRow>) => this.handleRevisionUpdate(payload)
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
