@@ -10,13 +10,33 @@ export const maxDuration = 300; // 5 minutes for Claude generation
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { gatherOrderData, getSuperpromptTemplate } from '@/lib/workflow/superprompt-engine';
 import { getAnthropicAPIKey } from '@/lib/api-keys';
 
+// Create admin client with service role key (bypasses RLS for server-side operations)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
+
 export async function POST(request: Request) {
-  const supabase = await createClient();
+  // Use admin client to bypass RLS for server-side motion generation
+  const supabase = getAdminClient();
+
+  if (!supabase) {
+    return NextResponse.json(
+      { error: 'Database not configured. Missing SUPABASE_SERVICE_ROLE_KEY.' },
+      { status: 500 }
+    );
+  }
 
   try {
     const { orderId } = await request.json();
@@ -65,11 +85,14 @@ export async function POST(request: Request) {
 
     const templateResult = await getSuperpromptTemplate();
     if (!templateResult.success || !templateResult.data) {
+      console.error('[SUPERPROMPT] Failed to get template:', templateResult.error);
       return NextResponse.json({
         error: templateResult.error || 'No superprompt template found. Please upload a template first.',
       }, { status: 400 });
     }
     const template = templateResult.data;
+    console.log(`[SUPERPROMPT] Using template: "${template.name}" (${template.id})`);
+    console.log(`[SUPERPROMPT] Template length: ${template.template.length} chars`);
 
     // Merge superprompt with order data
     let context = template.template;
