@@ -459,7 +459,14 @@ async function executeDocumentParsingPhase(
 
   const supabase = getAdminClient();
   if (!supabase) {
-    return { success: false, error: 'Database not configured' };
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Database not configured',
+    };
   }
 
   // Get all parsed documents
@@ -625,7 +632,14 @@ async function executeLegalResearchPhase(
   const { previousOutputs, motionType, workflow } = context;
   const supabase = getAdminClient();
   if (!supabase) {
-    return { success: false, error: 'Database not configured' };
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Database not configured',
+    };
   }
 
   // Get order jurisdiction info
@@ -789,7 +803,14 @@ async function executeCitationVerificationPhase(
   // Update workflow citation count
   const supabase = getAdminClient();
   if (!supabase) {
-    return { success: false, error: 'Database not configured' };
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Database not configured',
+    };
   }
   await supabase
     .from('order_workflows')
@@ -1124,9 +1145,16 @@ Respond with JSON:
 
     // Update workflow with judge simulation results
     const supabase = getAdminClient();
-  if (!supabase) {
-    return { success: false, error: 'Database not configured' };
-  }
+    if (!supabase) {
+      return {
+        success: false,
+        phaseNumber: context.phaseDefinition.phase_number,
+        status: 'failed',
+        outputs: {},
+        requiresReview: false,
+        error: 'Database not configured',
+      };
+    }
     await supabase
       .from('order_workflows')
       .update({
@@ -1269,7 +1297,14 @@ async function executeDocumentAssemblyPhase(
   const { previousOutputs, motionType, workflow } = context;
   const supabase = getAdminClient();
   if (!supabase) {
-    return { success: false, error: 'Database not configured' };
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Database not configured',
+    };
   }
 
   const revisedDocument = previousOutputs.revised_document as string ||
@@ -1734,7 +1769,14 @@ async function executeCaptionValidationPhase(
   const { workflow, previousOutputs } = context;
   const supabase = getAdminClient();
   if (!supabase) {
-    return { success: false, error: 'Database not configured' };
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Database not configured',
+    };
   }
 
   // Get order details for caption info
@@ -1822,7 +1864,14 @@ async function executeSupportingDocumentsPhase(
   const { workflow, motionType, previousOutputs } = context;
   const supabase = getAdminClient();
   if (!supabase) {
-    return { success: false, error: 'Database not configured' };
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Database not configured',
+    };
   }
 
   if (!isClaudeConfigured) {
@@ -2415,7 +2464,8 @@ async function getPreviousPhaseOutputs(
 ): Promise<Record<string, unknown>> {
   const supabase = getAdminClient();
   if (!supabase) {
-    return { success: false, error: 'Database not configured' };
+    console.error('Database not configured in getPreviousPhaseOutputs');
+    return {};
   }
 
   const { data: phases } = await supabase
