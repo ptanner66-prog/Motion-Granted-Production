@@ -306,15 +306,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
     }
 
-    // Log the change
-    await supabase.from('automation_logs').insert({
-      action_type: 'api_keys_updated',
-      action_details: {
-        updated_by: user.id,
-        keys_updated: settingsToSave.map(s => s.setting_key),
-        timestamp: new Date().toISOString(),
-      },
-    });
+    // Log the change (use 'status_changed' as it's a valid action_type for settings updates)
+    // Don't let logging failure break the settings save
+    try {
+      await supabase.from('automation_logs').insert({
+        action_type: 'status_changed',
+        action_details: {
+          change_type: 'api_keys_updated',
+          updated_by: user.id,
+          keys_updated: settingsToSave.map(s => s.setting_key),
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (logError) {
+      console.error('Failed to log API key change (non-fatal):', logError);
+    }
 
     return NextResponse.json({
       success: true,
