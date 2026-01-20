@@ -1944,6 +1944,159 @@ RESPONSE: [UNDISPUTED/DISPUTED] [Explanation with evidence citation]`,
     }
   }
 
+  // 6. Generate Attorney Instruction Sheet with Gap Acknowledgment (v6.3 REQUIREMENT)
+  const evidenceGaps = previousOutputs.element_mapping?.filter(
+    (e: { evidence_gap?: boolean }) => e.evidence_gap
+  ) || [];
+  const hasEvidenceGaps = previousOutputs.has_evidence_gaps || evidenceGaps.length > 0;
+
+  const today = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  // Build gap acknowledgment section
+  let gapAcknowledgmentSection = '';
+  if (hasEvidenceGaps) {
+    const gapList = evidenceGaps.map((gap: { element?: string; gap_description?: string }, i: number) =>
+      `   ${i + 1}. ${gap.element || 'Unspecified element'}: ${gap.gap_description || 'Evidence gap identified'}`
+    ).join('\n');
+
+    gapAcknowledgmentSection = `
+================================================================================
+GAP ACKNOWLEDGMENT
+================================================================================
+
+The following evidentiary gaps have been identified in this motion. By signing
+below, I acknowledge that I have reviewed these gaps and either:
+(a) Accept them as identified, understanding they may affect the motion's strength
+(b) Have additional evidence to address these gaps that I will provide
+
+IDENTIFIED GAPS:
+${gapList || '   No specific gaps identified, but evidence may be limited.'}
+
+ATTORNEY ACKNOWLEDGMENT:
+
+I have reviewed the identified gaps above and:
+
+[ ] I accept these gaps and wish to proceed with filing
+[ ] I have additional evidence to address these gaps (specify below)
+
+Additional Evidence/Notes:
+______________________________________________________________________________
+______________________________________________________________________________
+______________________________________________________________________________
+
+Attorney Signature: _____________________________ Date: ________________
+
+Print Name: ____________________________________
+
+State Bar No: __________________________________
+`;
+  } else {
+    gapAcknowledgmentSection = `
+================================================================================
+GAP ACKNOWLEDGMENT
+================================================================================
+
+No significant evidentiary gaps were identified during the evidence mapping phase.
+All legal elements appear to have adequate evidentiary support.
+
+ATTORNEY ACKNOWLEDGMENT:
+
+I have reviewed the evidence mapping analysis and confirm that the evidentiary
+support for this motion is satisfactory.
+
+Attorney Signature: _____________________________ Date: ________________
+
+Print Name: ____________________________________
+
+State Bar No: __________________________________
+`;
+  }
+
+  generatedDocuments.attorney_instruction_sheet = `
+================================================================================
+ATTORNEY INSTRUCTION SHEET
+Motion Granted v6.3 - ${motionType.name}
+================================================================================
+Order Reference: ${order?.order_number || '[ORDER NUMBER]'}
+Case: ${order?.case_caption || '[CASE CAPTION]'}
+Case No: ${order?.case_number || '[CASE NUMBER]'}
+Generated: ${today}
+================================================================================
+
+IMPORTANT: This document is for the reviewing attorney ONLY. Do not file.
+
+--------------------------------------------------------------------------------
+SECTION 1: REVIEW CHECKLIST
+--------------------------------------------------------------------------------
+
+Before filing, the attorney MUST:
+
+[ ] 1. Read the entire motion and verify accuracy of all facts
+[ ] 2. Verify all citations are accurate and still good law
+[ ] 3. Confirm the legal arguments align with your case strategy
+[ ] 4. Review and sign all declarations
+[ ] 5. Complete any [FILL IN] placeholders
+[ ] 6. Verify the case caption and case number are correct
+[ ] 7. Review the proposed order for accuracy
+[ ] 8. Confirm service list is complete and accurate
+[ ] 9. Review the Gap Acknowledgment section below
+[ ] 10. Ensure compliance with local rules for page limits and formatting
+
+--------------------------------------------------------------------------------
+SECTION 2: FILING INSTRUCTIONS
+--------------------------------------------------------------------------------
+
+1. E-Filing: File through CM/ECF or state equivalent
+2. Format: PDF/A recommended for long-term archival
+3. Exhibits: Attach as separate documents if required by local rules
+4. Filing Fee: Verify if motion requires a filing fee
+5. Proposed Order: Some courts require separate filing; check local rules
+
+--------------------------------------------------------------------------------
+SECTION 3: DEADLINE TRACKING
+--------------------------------------------------------------------------------
+
+[ ] Opposition/Response Deadline: ______________________
+[ ] Reply Deadline (if applicable): ______________________
+[ ] Hearing Date (if applicable): ______________________
+[ ] Any other relevant deadlines: ______________________
+
+--------------------------------------------------------------------------------
+SECTION 4: DOCUMENTS INCLUDED IN THIS PACKAGE
+--------------------------------------------------------------------------------
+
+${documentList.map((doc, i) => `${(i + 1).toString().padStart(2, '0')}. ${doc}`).join('\n')}
+${documentList.length + 1}. Attorney Instruction Sheet (this document - DO NOT FILE)
+${gapAcknowledgmentSection}
+
+--------------------------------------------------------------------------------
+SECTION 5: MOTION GRANTED DISCLAIMER
+--------------------------------------------------------------------------------
+
+This motion was prepared by Motion Granted under the supervision and direction
+of the filing attorney. Motion Granted is not a law firm and does not provide
+legal advice. The filing attorney is solely responsible for:
+
+- Reviewing and approving all content
+- Verifying the accuracy of all facts and citations
+- Ensuring compliance with all applicable rules and ethical obligations
+- Making all strategic decisions regarding the case
+- Filing the motion with the court
+
+By using this work product, the attorney certifies they have reviewed and
+approved all documents in this package.
+
+================================================================================
+END OF ATTORNEY INSTRUCTION SHEET
+================================================================================
+`;
+
+  documentList.push('Attorney Instruction Sheet');
+
   return {
     success: true,
     phaseNumber: context.phaseDefinition.phase_number,
@@ -1955,6 +2108,9 @@ RESPONSE: [UNDISPUTED/DISPUTED] [Explanation with evidence citation]`,
       has_proposed_order: !!generatedDocuments.proposed_order,
       has_certificate_of_service: !!generatedDocuments.certificate_of_service,
       has_separate_statement: !!generatedDocuments.separate_statement,
+      has_attorney_instruction_sheet: true,
+      has_gap_acknowledgment: hasEvidenceGaps,
+      evidence_gaps_count: evidenceGaps.length,
       declarations_generated: declarationsNeeded.length,
     },
     qualityScore: 0.9,

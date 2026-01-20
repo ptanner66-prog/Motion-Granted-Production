@@ -74,8 +74,6 @@ export function DocumentUpload() {
     updateDocumentType(docId, newType)
   }
 
-  const hasComplaint = documents.some((d) => d.documentType === 'complaint')
-
   return (
     <div className="space-y-6">
       <div>
