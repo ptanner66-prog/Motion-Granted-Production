@@ -13,7 +13,7 @@ import { CheckCircle2, Circle, Clock, AlertCircle, Loader2 } from 'lucide-react'
 interface PhaseInfo {
   number: number;
   name: string;
-  status: 'completed' | 'in_progress' | 'pending' | 'blocked' | 'checkpoint';
+  status: 'completed' | 'in_progress' | 'pending' | 'checkpoint';
   isCheckpoint?: boolean;
   checkpointType?: 'CP1' | 'CP2' | 'CP3';
 }
@@ -162,9 +162,6 @@ export function PhaseProgress({
               )}
               {phase.status === 'pending' && (
                 <Circle className="h-5 w-5 text-muted-foreground/50" />
-              )}
-              {phase.status === 'blocked' && (
-                <AlertCircle className="h-5 w-5 text-destructive" />
               )}
             </div>
 
