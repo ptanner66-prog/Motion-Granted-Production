@@ -10,7 +10,7 @@ import { z } from 'zod';
 export const intakeFormSchema = z.object({
   // Path selection
   path: z.enum(['A', 'B'], {
-    required_error: 'Please select a workflow path',
+    message: 'Please select a workflow path',
   }),
 
   // Case information
@@ -25,7 +25,7 @@ export const intakeFormSchema = z.object({
   judge: z.string().max(100).optional(),
   department: z.string().max(50).optional(),
   filingDeadline: z.date({
-    required_error: 'Filing deadline is required',
+    message: 'Filing deadline is required',
   }).refine(
     (date) => date > new Date(),
     'Filing deadline must be in the future'
@@ -33,7 +33,7 @@ export const intakeFormSchema = z.object({
 
   // Motion type
   tier: z.enum(['A', 'B', 'C'], {
-    required_error: 'Please select a complexity tier',
+    message: 'Please select a complexity tier',
   }),
   motionType: z.string().min(1, 'Please select a motion type'),
 
@@ -97,7 +97,7 @@ export type ValidatedIntakeForm = z.infer<typeof intakeFormSchema>;
 export const stepSchemas = {
   path: z.object({
     path: z.enum(['A', 'B'], {
-      required_error: 'Please select a workflow path',
+      message: 'Please select a workflow path',
     }),
   }),
 
@@ -109,13 +109,13 @@ export const stepSchemas = {
     judge: z.string().optional(),
     department: z.string().optional(),
     filingDeadline: z.date({
-      required_error: 'Filing deadline is required',
+      message: 'Filing deadline is required',
     }),
   }),
 
   motion: z.object({
     tier: z.enum(['A', 'B', 'C'], {
-      required_error: 'Please select a complexity tier',
+      message: 'Please select a complexity tier',
     }),
     motionType: z.string().min(1, 'Please select a motion type'),
   }),
