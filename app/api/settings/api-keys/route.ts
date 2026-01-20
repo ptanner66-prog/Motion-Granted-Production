@@ -12,7 +12,20 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+
+// Create admin client with service role key (bypasses RLS)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase environment variables not configured');
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 
 // Encryption configuration
 const ENCRYPTION_PREFIX = 'enc_v2_'; // v2 for AES-GCM
@@ -199,6 +212,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
+    // Use admin client for database writes (bypasses RLS since we've verified admin)
+    const adminClient = getAdminClient();
+
     const body = await request.json();
     const {
       anthropic_api_key,
@@ -226,7 +242,7 @@ export async function POST(request: NextRequest) {
         setting_key: 'anthropic_api_key',
         setting_value: { value: encryptKey(anthropic_api_key) },
         description: 'Anthropic API key for Claude AI',
-        category: 'api_keys',
+        category: 'general',
         updated_by: user.id,
       });
     }
@@ -237,7 +253,7 @@ export async function POST(request: NextRequest) {
         setting_key: 'westlaw_api_key',
         setting_value: { value: encryptKey(westlaw_api_key) },
         description: 'Westlaw API key',
-        category: 'api_keys',
+        category: 'general',
         updated_by: user.id,
       });
     }
@@ -246,7 +262,7 @@ export async function POST(request: NextRequest) {
       setting_key: 'westlaw_client_id',
       setting_value: { value: westlaw_client_id || '' },
       description: 'Westlaw client ID',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
@@ -254,7 +270,7 @@ export async function POST(request: NextRequest) {
       setting_key: 'westlaw_enabled',
       setting_value: { value: westlaw_enabled || false },
       description: 'Whether Westlaw integration is enabled',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
@@ -264,7 +280,7 @@ export async function POST(request: NextRequest) {
         setting_key: 'lexisnexis_api_key',
         setting_value: { value: encryptKey(lexisnexis_api_key) },
         description: 'LexisNexis API key',
-        category: 'api_keys',
+        category: 'general',
         updated_by: user.id,
       });
     }
@@ -273,7 +289,7 @@ export async function POST(request: NextRequest) {
       setting_key: 'lexisnexis_client_id',
       setting_value: { value: lexisnexis_client_id || '' },
       description: 'LexisNexis client ID',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
@@ -281,7 +297,7 @@ export async function POST(request: NextRequest) {
       setting_key: 'lexisnexis_enabled',
       setting_value: { value: lexisnexis_enabled || false },
       description: 'Whether LexisNexis integration is enabled',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
@@ -290,12 +306,12 @@ export async function POST(request: NextRequest) {
       setting_key: 'legal_research_provider',
       setting_value: { value: legal_research_provider || 'none' },
       description: 'Preferred legal research provider',
-      category: 'api_keys',
+      category: 'general',
       updated_by: user.id,
     });
 
-    // Save all settings
-    const { error: saveError } = await supabase
+    // Save all settings using admin client (bypasses RLS)
+    const { error: saveError } = await adminClient
       .from('automation_settings')
       .upsert(settingsToSave, {
         onConflict: 'setting_key',
@@ -303,18 +319,23 @@ export async function POST(request: NextRequest) {
 
     if (saveError) {
       console.error('Failed to save API key settings:', saveError);
-      return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to save settings: ' + saveError.message }, { status: 500 });
     }
 
-    // Log the change
-    await supabase.from('automation_logs').insert({
-      action_type: 'api_keys_updated',
+    // Log the change - use admin client and don't let logging failure break the save
+    const { error: logError } = await adminClient.from('automation_logs').insert({
+      action_type: 'status_changed',
       action_details: {
+        change_type: 'api_keys_updated',
         updated_by: user.id,
         keys_updated: settingsToSave.map(s => s.setting_key),
         timestamp: new Date().toISOString(),
       },
     });
+
+    if (logError) {
+      console.error('Failed to log API key change (non-fatal):', logError);
+    }
 
     return NextResponse.json({
       success: true,
