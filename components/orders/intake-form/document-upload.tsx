@@ -68,10 +68,9 @@ export function DocumentUpload() {
   }
 
   const hasComplaint = documents.some((d) => d.documentType === 'complaint')
-  const isAnyUploading = Object.values(uploading).some(Boolean)
 
   const handleDocumentTypeChange = (docId: string, newType: string) => {
-    updateDocumentType(docId, newType)
+    updateDocument(docId, { documentType: newType })
   }
 
   return (
@@ -159,7 +158,7 @@ export function DocumentUpload() {
                   <div className="mt-2">
                     <Select
                       value={doc.documentType || ''}
-                      onValueChange={(value) => handleDocTypeChange(doc.id, value)}
+                      onValueChange={(value) => handleDocumentTypeChange(doc.id, value)}
                     >
                       <SelectTrigger className="w-full sm:w-48 h-8 text-sm">
                         <SelectValue placeholder="Select document type" />
