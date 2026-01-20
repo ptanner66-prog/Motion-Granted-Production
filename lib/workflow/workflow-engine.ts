@@ -1960,7 +1960,7 @@ RESPONSE: [UNDISPUTED/DISPUTED] [Explanation with evidence citation]`,
   // Build gap acknowledgment section
   let gapAcknowledgmentSection = '';
   if (hasEvidenceGaps) {
-    const gapList = evidenceGaps.map((gap: { element?: string; gap_description?: string }, i: number) =>
+    const gapList = evidenceGaps.map((gap, i) =>
       `   ${i + 1}. ${gap.element || 'Unspecified element'}: ${gap.gap_description || 'Evidence gap identified'}`
     ).join('\n');
 
