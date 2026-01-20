@@ -5,7 +5,6 @@
  * Citations must be verified before a workflow can proceed past the verification phase.
  */
 
-import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
 import type {

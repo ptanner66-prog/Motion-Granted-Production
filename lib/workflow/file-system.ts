@@ -39,6 +39,11 @@ export interface FileOperationResult {
 /**
  * Write a file to the workflow file system
  */
+// Maximum content size (10MB) to prevent DoS
+const MAX_CONTENT_SIZE = 10 * 1024 * 1024;
+// Maximum path length
+const MAX_PATH_LENGTH = 1000;
+
 export async function writeFile(
   orderId: string,
   filePath: string,
@@ -47,6 +52,23 @@ export async function writeFile(
   const supabase = getAdminClient();
   if (!supabase) {
     return { success: false, error: 'Database not configured' };
+  }
+
+  // Input validation
+  if (!filePath || typeof filePath !== 'string') {
+    return { success: false, error: 'Invalid file path: path is required' };
+  }
+  if (filePath.length > MAX_PATH_LENGTH) {
+    return { success: false, error: `Invalid file path: exceeds maximum length of ${MAX_PATH_LENGTH}` };
+  }
+  if (filePath.includes('..')) {
+    return { success: false, error: 'Invalid file path: directory traversal not allowed' };
+  }
+  if (!orderId || typeof orderId !== 'string') {
+    return { success: false, error: 'Invalid order ID' };
+  }
+  if (content && content.length > MAX_CONTENT_SIZE) {
+    return { success: false, error: `Content too large: exceeds ${MAX_CONTENT_SIZE / 1024 / 1024}MB limit` };
   }
 
   try {
