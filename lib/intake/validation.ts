@@ -168,7 +168,7 @@ export function validateStep(
     if (error instanceof z.ZodError) {
       return {
         valid: false,
-        errors: error.errors.map(e => e.message),
+        errors: error.issues.map(e => e.message),
       };
     }
     return { valid: false, errors: ['Validation failed'] };
