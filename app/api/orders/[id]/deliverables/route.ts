@@ -134,11 +134,43 @@ export async function GET(
 
   try {
     const { id: orderId } = await params
+
+    // Validate orderId is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(orderId)) {
+      return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 })
+    }
+
     const supabase = await createClient()
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get user's role to check authorization
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const isAdminOrClerk = profile?.role && ['admin', 'clerk'].includes(profile.role)
+
+    // Verify order exists and user has access
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, client_id')
+      .eq('id', orderId)
+      .single()
+
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+
+    // CRITICAL: Authorization check - user must own the order OR be admin/clerk
+    if (!isAdminOrClerk && order.client_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Fetch deliverables for the order

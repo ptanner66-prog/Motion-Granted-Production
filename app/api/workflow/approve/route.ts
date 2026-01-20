@@ -189,7 +189,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Approval error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Approval failed',
+      error: 'Approval failed. Please try again.',
     }, { status: 500 });
   }
 }
@@ -284,7 +284,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Get pending orders error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to fetch orders',
+      error: 'Failed to fetch orders. Please try again.',
     }, { status: 500 });
   }
 }

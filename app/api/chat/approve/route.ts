@@ -135,7 +135,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Approve motion error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to approve motion',
+      error: 'Failed to approve motion. Please try again.',
     }, { status: 500 });
   }
 }

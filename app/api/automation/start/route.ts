@@ -107,7 +107,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Start automation error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to start automation',
+      error: 'Failed to start automation. Please try again or contact support.',
     }, { status: 500 });
   }
 }

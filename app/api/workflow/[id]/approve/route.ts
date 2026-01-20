@@ -56,8 +56,9 @@ export async function POST(
       progress: progress.success ? progress.data : null,
     });
   } catch (error) {
+    console.error('Workflow approve error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Workflow approval failed. Please try again.' },
       { status: 500 }
     );
   }

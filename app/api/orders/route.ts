@@ -141,7 +141,8 @@ export async function POST(req: Request) {
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error('Order creation database error:', error)
+      return NextResponse.json({ error: 'Failed to create order. Please try again.' }, { status: 500 })
     }
 
     // Insert parties

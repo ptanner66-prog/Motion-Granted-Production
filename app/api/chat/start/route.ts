@@ -227,7 +227,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Start conversation error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to start conversation',
+      error: 'Failed to start conversation. Please try again.',
     }, { status: 500 });
   }
 }

@@ -44,6 +44,37 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Order ID is required' }, { status: 400 })
     }
 
+    // Validate orderId is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(orderId)) {
+      return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 })
+    }
+
+    // Verify order exists and user has permission to upload
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, client_id')
+      .eq('id', orderId)
+      .single()
+
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+
+    // Get user's role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const isAdminOrClerk = profile?.role && ['admin', 'clerk'].includes(profile.role)
+
+    // Authorization: user must own the order OR be admin/clerk
+    if (!isAdminOrClerk && order.client_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
     // Validate file size (100MB max for large legal briefs)
     if (file.size > 100 * 1024 * 1024) {
       return NextResponse.json({ error: 'File too large. Maximum size is 100MB.' }, { status: 400 })
@@ -111,7 +142,9 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'File already exists' }, { status: 409 })
         }
       } else {
-        return NextResponse.json({ error: `Upload failed: ${errorMessage}` }, { status: 500 })
+        // Don't expose internal error details to client
+        console.error('Upload error details:', errorMessage)
+        return NextResponse.json({ error: 'Upload failed. Please try again or contact support.' }, { status: 500 })
       }
     }
 
@@ -194,6 +227,37 @@ export async function GET(req: Request) {
 
     if (!orderId) {
       return NextResponse.json({ error: 'Order ID required', documents: [] }, { status: 400 })
+    }
+
+    // Validate orderId is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(orderId)) {
+      return NextResponse.json({ error: 'Invalid order ID format', documents: [] }, { status: 400 })
+    }
+
+    // Get user's role to check authorization
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const isAdminOrClerk = profile?.role && ['admin', 'clerk'].includes(profile.role)
+
+    // Verify order exists and user has access
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, client_id')
+      .eq('id', orderId)
+      .single()
+
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found', documents: [] }, { status: 404 })
+    }
+
+    // CRITICAL: Authorization check - user must own the order OR be admin/clerk
+    if (!isAdminOrClerk && order.client_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied', documents: [] }, { status: 403 })
     }
 
     const { data: documents, error } = await supabase
