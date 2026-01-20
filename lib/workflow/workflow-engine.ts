@@ -1945,9 +1945,10 @@ RESPONSE: [UNDISPUTED/DISPUTED] [Explanation with evidence citation]`,
   }
 
   // 6. Generate Attorney Instruction Sheet with Gap Acknowledgment (v6.3 REQUIREMENT)
-  const evidenceGaps = previousOutputs.element_mapping?.filter(
-    (e: { evidence_gap?: boolean }) => e.evidence_gap
-  ) || [];
+  const elementMapping = previousOutputs.element_mapping;
+  const evidenceGaps = Array.isArray(elementMapping)
+    ? elementMapping.filter((e: { evidence_gap?: boolean }) => e.evidence_gap)
+    : [];
   const hasEvidenceGaps = previousOutputs.has_evidence_gaps || evidenceGaps.length > 0;
 
   const today = new Date().toLocaleDateString('en-US', {
