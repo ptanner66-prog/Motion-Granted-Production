@@ -3,6 +3,12 @@
  *
  * Core state machine for managing workflow phase transitions.
  * Handles document production workflow from intake to final assembly.
+ *
+ * v6.3 UPDATES:
+ * - 12 phases (was 9)
+ * - B+ (87%) minimum quality threshold (was 70%)
+ * - 3 customer checkpoints (CP1, CP2, CP3)
+ * - Max 3 revision loops before escalation
  */
 
 import { createClient } from '@/lib/supabase/server';
@@ -12,9 +18,62 @@ import {
   extractCitations,
   storeCitations,
   verifyWorkflowCitations,
+  verifyWorkflowCitationsBatched,
   checkCitationRequirements,
   CITATION_HARD_STOP_MINIMUM,
+  CITATION_BATCH_SIZE,
 } from './citation-verifier';
+import { triggerCheckpoint } from './checkpoint-service';
+
+// ============================================================================
+// v6.3 QUALITY CONSTANTS — DO NOT MODIFY WITHOUT APPROVAL
+// ============================================================================
+
+/**
+ * Minimum passing grade: B+ = 87%
+ * This is a non-negotiable quality gate. Motions below this threshold
+ * MUST be revised before delivery.
+ */
+export const MINIMUM_PASSING_GRADE = 0.87;
+
+/**
+ * Maximum revision loops before escalation
+ * After 3 failed attempts to reach B+, the workflow escalates to admin review.
+ */
+export const MAX_REVISION_LOOPS = 3;
+
+/**
+ * Total phases in v6.3 workflow
+ */
+export const TOTAL_PHASES = 12;
+
+/**
+ * Convert numeric score (0.00-1.00) to letter grade
+ * Returns both the letter and whether it passes the minimum threshold
+ */
+export function scoreToGrade(score: number): { letter: string; passed: boolean } {
+  const percent = score * 100;
+
+  if (percent >= 97) return { letter: 'A+', passed: true };
+  if (percent >= 93) return { letter: 'A', passed: true };
+  if (percent >= 90) return { letter: 'A-', passed: true };
+  if (percent >= 87) return { letter: 'B+', passed: true };  // ← MINIMUM PASSING
+  if (percent >= 83) return { letter: 'B', passed: false };
+  if (percent >= 80) return { letter: 'B-', passed: false };
+  if (percent >= 77) return { letter: 'C+', passed: false };
+  if (percent >= 73) return { letter: 'C', passed: false };
+  if (percent >= 70) return { letter: 'C-', passed: false };
+  if (percent >= 60) return { letter: 'D', passed: false };
+  return { letter: 'F', passed: false };
+}
+
+/**
+ * Check if a score meets the quality threshold
+ * Use this instead of hardcoded comparisons
+ */
+export function meetsQualityThreshold(score: number): boolean {
+  return score >= MINIMUM_PASSING_GRADE;
+}
 import { generateMotionFromOrder, type MotionType as SuperpromptMotionType } from './superprompt';
 import type {
   WorkflowPath,
@@ -251,6 +310,9 @@ export async function executeCurrentPhase(
 
 /**
  * Execute a specific phase type
+ *
+ * v6.3: Updated to support phase_code in addition to ai_task_type
+ * Phase codes allow for more granular control over phase execution
  */
 async function executePhaseByType(
   context: PhaseExecutionContext,
@@ -258,36 +320,85 @@ async function executePhaseByType(
 ): Promise<PhaseResult> {
   const { phaseDefinition } = context;
 
-  switch (phaseDefinition.ai_task_type) {
+  // v6.3: Support both phase_code and ai_task_type for backwards compatibility
+  const phaseCode = (phaseDefinition as Record<string, unknown>).phase_code as string | undefined;
+  const taskType = phaseDefinition.ai_task_type;
+
+  // Try phase_code first (v6.3), then fall back to ai_task_type
+  switch (phaseCode || taskType) {
+    // Phase 1: Intake
+    case 'INTAKE':
     case 'document_parsing':
       return await executeDocumentParsingPhase(context);
 
+    // Phase 2: Legal Standards
+    case 'LEGAL_STANDARDS':
     case 'legal_analysis':
       return await executeLegalAnalysisPhase(context);
 
+    // Phase 3: Evidence Mapping (NEW in v6.3)
+    case 'EVIDENCE_MAPPING':
+    case 'evidence_analysis':
+      return await executeEvidenceMappingPhase(context);
+
+    // Phase 4: Authority Research
+    case 'AUTHORITY_RESEARCH':
+    case 'COUNTER_RESEARCH':
     case 'legal_research':
       return await executeLegalResearchPhase(context);
 
-    case 'citation_verification':
-      return await executeCitationVerificationPhase(context);
-
-    case 'argument_structuring':
-      return await executeArgumentStructuringPhase(context);
-
+    // Phase 5: Draft Motion
+    case 'DRAFT_MOTION':
+    case 'DRAFT_OPPOSITION':
     case 'document_generation':
       return await executeDocumentGenerationPhase(context);
 
+    // Phase 6: Citation Verification
+    case 'CITATION_CHECK':
+    case 'citation_verification':
+      return await executeCitationVerificationPhase(context);
+
+    // Phase 7: Opposition/Reply Anticipation (NEW in v6.3)
+    case 'OPPOSITION_ANTICIPATION':
+    case 'REPLY_ANTICIPATION':
+    case 'argument_analysis':
+      return await executeOppositionAnticipationPhase(context);
+
+    // Phase 8: Judge Simulation
+    case 'JUDGE_SIMULATION':
     case 'quality_review':
       return await executeQualityReviewPhase(context);
 
+    // Phase 9: Revisions
+    case 'REVISIONS':
     case 'document_revision':
       return await executeDocumentRevisionPhase(context);
 
+    // Phase 10: Caption Validation (NEW in v6.3)
+    case 'CAPTION_VALIDATION':
+    case 'validation':
+      return await executeCaptionValidationPhase(context);
+
+    // Phase 11: Supporting Documents (Expanded in v6.3)
+    case 'SUPPORTING_DOCS':
+      return await executeSupportingDocumentsPhase(context);
+
+    // Phase 12: Final Assembly
+    case 'FINAL_ASSEMBLY':
     case 'document_assembly':
       return await executeDocumentAssemblyPhase(context);
 
-    case 'argument_analysis':
-      return await executeArgumentAnalysisPhase(context);
+    // Phase 2B: Motion Deconstruction (Path B)
+    case 'MOTION_DECONSTRUCTION':
+      return await executeMotionDeconstructionPhase(context);
+
+    // Phase 3B: Issue Identification (Path B)
+    case 'ISSUE_IDENTIFICATION':
+      return await executeIssueIdentificationPhase(context);
+
+    // Legacy: Argument Structuring
+    case 'argument_structuring':
+      return await executeArgumentStructuringPhase(context);
 
     default:
       return {
@@ -296,7 +407,7 @@ async function executePhaseByType(
         status: 'failed',
         outputs: {},
         requiresReview: false,
-        error: `Unknown phase type: ${phaseDefinition.ai_task_type}`,
+        error: `Unknown phase type: ${phaseCode || taskType}`,
       };
   }
 }
@@ -979,6 +1090,21 @@ Respond with JSON:
       (i: { severity: string }) => i.severity === 'critical'
     );
 
+    // v6.3: Convert score to grade and check against B+ minimum
+    const grade = scoreToGrade(review.overall_score);
+    const passesQuality = meetsQualityThreshold(review.overall_score);
+
+    // Update workflow with judge simulation results
+    const supabase = await createClient();
+    await supabase
+      .from('order_workflows')
+      .update({
+        judge_sim_grade: grade.letter,
+        judge_sim_grade_numeric: review.overall_score,
+        judge_sim_passed: passesQuality && !hasCriticalIssues,
+      })
+      .eq('id', context.workflow.id);
+
     return {
       success: true,
       phaseNumber: context.phaseDefinition.phase_number,
@@ -986,12 +1112,16 @@ Respond with JSON:
       outputs: {
         review_results: review,
         overall_score: review.overall_score,
+        grade: grade.letter,                    // v6.3: Letter grade
+        grade_numeric: review.overall_score,    // v6.3: Numeric score
+        passed: grade.passed,                   // v6.3: Whether it passed B+ threshold
         issues_found: review.issues_found,
         revision_suggestions: review.revision_suggestions,
-        ready_for_delivery: review.ready_for_delivery && !hasCriticalIssues,
+        ready_for_delivery: passesQuality && !hasCriticalIssues,
       },
       qualityScore: review.overall_score,
-      requiresReview: hasCriticalIssues || review.overall_score < 0.7,
+      // v6.3: Use B+ (0.87) threshold instead of 0.7
+      requiresReview: hasCriticalIssues || !passesQuality,
     };
   } catch {
     return {
@@ -1301,6 +1431,776 @@ Provide analysis in JSON format:
       outputs: {},
       requiresReview: false,
       error: 'Failed to parse argument analysis',
+    };
+  }
+}
+
+// ============================================================================
+// v6.3 NEW PHASE HANDLERS
+// ============================================================================
+
+/**
+ * Phase 3: Evidence Mapping (NEW in v6.3)
+ * Maps available evidence to legal elements and identifies gaps
+ */
+async function executeEvidenceMappingPhase(
+  context: PhaseExecutionContext
+): Promise<PhaseResult> {
+  if (!isClaudeConfigured) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'AI not configured for evidence mapping',
+    };
+  }
+
+  const { previousOutputs, motionType } = context;
+
+  const prompt = `You are a legal evidence analyst. Map the available evidence to the legal elements for this ${motionType.name}.
+
+Legal Standards and Elements:
+${JSON.stringify(previousOutputs.applicable_standards || [], null, 2)}
+
+Key Facts from Documents:
+${JSON.stringify(previousOutputs.key_facts || [], null, 2)}
+
+Document Summaries:
+${JSON.stringify(previousOutputs.document_summary || [], null, 2)}
+
+Provide a comprehensive evidence mapping in JSON format:
+{
+  "element_mapping": [
+    {
+      "element": "Legal element name",
+      "description": "What must be proven",
+      "available_evidence": [
+        {
+          "evidence": "Description of evidence",
+          "source": "Which document/fact",
+          "strength": "strong" | "moderate" | "weak",
+          "authentication_status": "authenticated" | "needs_authentication" | "hearsay_issue"
+        }
+      ],
+      "evidence_gap": true/false,
+      "gap_description": "What evidence is missing (if any)"
+    }
+  ],
+  "evidentiary_issues": [
+    {
+      "issue_type": "hearsay" | "authentication" | "relevance" | "privilege" | "foundation",
+      "description": "Description of the issue",
+      "affected_evidence": "Which evidence is affected",
+      "possible_solution": "How to address it"
+    }
+  ],
+  "exhibits_needed": [
+    {
+      "exhibit": "Description of exhibit needed",
+      "purpose": "Why it's needed",
+      "priority": "critical" | "important" | "helpful"
+    }
+  ],
+  "declarations_needed": [
+    {
+      "declarant": "Who should provide declaration",
+      "topics": ["Topic 1", "Topic 2"],
+      "purpose": "Why this declaration is needed"
+    }
+  ],
+  "evidence_sufficiency_score": 0.0-1.0,
+  "overall_assessment": "Summary of evidence strength"
+}`;
+
+  const result = await askClaude({
+    prompt,
+    maxTokens: 4000,
+    systemPrompt: 'You are an expert legal evidence analyst. Map evidence to elements thoroughly.',
+  });
+
+  if (!result.success || !result.result) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: result.error || 'Evidence mapping failed',
+    };
+  }
+
+  try {
+    const jsonMatch = result.result.content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in response');
+
+    const mapping = JSON.parse(jsonMatch[0]);
+    const hasGaps = mapping.element_mapping?.some((e: { evidence_gap: boolean }) => e.evidence_gap);
+
+    return {
+      success: true,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'completed',
+      outputs: {
+        evidence_mapping: mapping,
+        element_mapping: mapping.element_mapping,
+        evidentiary_issues: mapping.evidentiary_issues,
+        exhibits_needed: mapping.exhibits_needed,
+        declarations_needed: mapping.declarations_needed,
+        has_evidence_gaps: hasGaps,
+        evidence_sufficiency: mapping.evidence_sufficiency_score,
+      },
+      qualityScore: mapping.evidence_sufficiency_score || 0.8,
+      requiresReview: hasGaps,
+    };
+  } catch {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Failed to parse evidence mapping response',
+    };
+  }
+}
+
+/**
+ * Phase 7: Opposition Anticipation (v6.3)
+ * Anticipates opposing arguments and prepares strategic responses
+ */
+async function executeOppositionAnticipationPhase(
+  context: PhaseExecutionContext
+): Promise<PhaseResult> {
+  if (!isClaudeConfigured) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'AI not configured',
+    };
+  }
+
+  const { previousOutputs, motionType, workflow } = context;
+  const isOpposition = workflow.workflow_path === 'path_b';
+
+  const prompt = `You are a legal strategist. ${isOpposition ? 'Anticipate how the moving party will reply to this opposition.' : 'Anticipate how the opposing party will respond to this motion.'}
+
+Motion Type: ${motionType.name}
+${isOpposition ? 'This is an opposition/response.' : 'This is an initiating motion.'}
+
+Our Arguments:
+${JSON.stringify(previousOutputs.recommended_arguments || previousOutputs.argument_outline || [], null, 2)}
+
+Our Citations:
+${JSON.stringify(previousOutputs.citations || [], null, 2)}
+
+Draft Document Summary:
+${(previousOutputs.draft_document as string)?.substring(0, 3000) || 'Not available'}
+
+Provide a comprehensive anticipation analysis in JSON format:
+{
+  "anticipated_arguments": [
+    {
+      "argument": "The argument they're likely to make",
+      "likelihood": "high" | "medium" | "low",
+      "our_weakness_exploited": "Which weakness in our position they'll attack",
+      "preemptive_response": "How to address this in our brief",
+      "supporting_authority": "Cases/statutes that help our response"
+    }
+  ],
+  "anticipated_objections": [
+    {
+      "objection_type": "procedural" | "evidentiary" | "substantive",
+      "objection": "What they might object to",
+      "response": "How to counter this objection"
+    }
+  ],
+  "case_distinctions": [
+    {
+      "our_case": "Case we cited",
+      "their_distinction": "How they might distinguish it",
+      "our_response": "Why the distinction fails"
+    }
+  ],
+  "strengthening_recommendations": [
+    {
+      "recommendation": "What to add or modify",
+      "priority": "critical" | "important" | "nice_to_have",
+      "implementation": "How to implement"
+    }
+  ],
+  "risk_assessment": {
+    "overall_risk": "low" | "medium" | "high",
+    "primary_vulnerabilities": ["Vulnerability 1"],
+    "mitigation_strategies": ["Strategy 1"]
+  }
+}`;
+
+  const result = await askClaude({
+    prompt,
+    maxTokens: 4000,
+    systemPrompt: 'You are an expert legal strategist specializing in motion practice.',
+  });
+
+  if (!result.success || !result.result) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: result.error || 'Opposition anticipation failed',
+    };
+  }
+
+  try {
+    const jsonMatch = result.result.content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in response');
+
+    const anticipation = JSON.parse(jsonMatch[0]);
+
+    return {
+      success: true,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'completed',
+      outputs: {
+        opposition_anticipation: anticipation,
+        anticipated_arguments: anticipation.anticipated_arguments,
+        anticipated_objections: anticipation.anticipated_objections,
+        case_distinctions: anticipation.case_distinctions,
+        strengthening_recommendations: anticipation.strengthening_recommendations,
+        risk_assessment: anticipation.risk_assessment,
+      },
+      qualityScore: 0.85,
+      requiresReview: anticipation.risk_assessment?.overall_risk === 'high',
+    };
+  } catch {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Failed to parse opposition anticipation response',
+    };
+  }
+}
+
+/**
+ * Phase 10: Caption Validation (NEW in v6.3)
+ * Verifies caption consistency across all documents
+ */
+async function executeCaptionValidationPhase(
+  context: PhaseExecutionContext
+): Promise<PhaseResult> {
+  const { workflow, previousOutputs } = context;
+  const supabase = await createClient();
+
+  // Get order details for caption info
+  const { data: order } = await supabase
+    .from('orders')
+    .select('case_number, case_caption, court_type, jurisdiction, plaintiff_name, defendant_name')
+    .eq('id', workflow.order_id)
+    .single();
+
+  if (!order) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Order not found for caption validation',
+    };
+  }
+
+  const draftDocument = (previousOutputs.revised_document || previousOutputs.draft_document) as string;
+
+  // Check for placeholder patterns that should have been replaced
+  const placeholderPatterns = [
+    /\[CASE NUMBER\]/gi,
+    /\[CASE CAPTION\]/gi,
+    /\[PLAINTIFF\]/gi,
+    /\[DEFENDANT\]/gi,
+    /\[COURT NAME\]/gi,
+    /\[JUDGE NAME\]/gi,
+    /\[DATE\]/gi,
+    /\[\[.*?\]\]/g,  // Double brackets
+    /{{.*?}}/g,      // Mustache style
+    /<.*?>/g,        // Angle brackets (but not HTML)
+  ];
+
+  const placeholdersFound: string[] = [];
+  for (const pattern of placeholderPatterns) {
+    const matches = draftDocument?.match(pattern);
+    if (matches) {
+      placeholdersFound.push(...matches.filter(m => !m.startsWith('</')));
+    }
+  }
+
+  // Check caption consistency
+  const captionIssues: string[] = [];
+
+  if (order.case_number && draftDocument && !draftDocument.includes(order.case_number)) {
+    captionIssues.push(`Case number "${order.case_number}" not found in document`);
+  }
+
+  // Remove duplicates from placeholders
+  const uniquePlaceholders = [...new Set(placeholdersFound)];
+  const hasPlaceholders = uniquePlaceholders.length > 0;
+
+  return {
+    success: true,
+    phaseNumber: context.phaseDefinition.phase_number,
+    status: 'completed',
+    outputs: {
+      caption_validated: !hasPlaceholders && captionIssues.length === 0,
+      placeholders_found: uniquePlaceholders,
+      caption_issues: captionIssues,
+      order_caption_info: {
+        case_number: order.case_number,
+        case_caption: order.case_caption,
+        court: order.court_type,
+        jurisdiction: order.jurisdiction,
+        plaintiff: order.plaintiff_name,
+        defendant: order.defendant_name,
+      },
+    },
+    qualityScore: hasPlaceholders ? 0.5 : (captionIssues.length > 0 ? 0.7 : 1.0),
+    requiresReview: hasPlaceholders || captionIssues.length > 0,
+  };
+}
+
+/**
+ * Phase 11: Supporting Documents (Expanded in v6.3)
+ * Generates declarations, proposed order, proof of service, etc.
+ */
+async function executeSupportingDocumentsPhase(
+  context: PhaseExecutionContext
+): Promise<PhaseResult> {
+  const { workflow, motionType, previousOutputs } = context;
+  const supabase = await createClient();
+
+  if (!isClaudeConfigured) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'AI not configured',
+    };
+  }
+
+  // Get order details
+  const { data: order } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', workflow.order_id)
+    .single();
+
+  const generatedDocuments: Record<string, string> = {};
+  const documentList: string[] = [];
+
+  // 1. Generate Proposed Order (if required)
+  if (motionType.requires_proposed_order) {
+    const orderResult = await askClaude({
+      prompt: `Generate a proposed order for this ${motionType.name}.
+
+Case Information:
+- Case Number: ${order?.case_number || '[CASE NUMBER]'}
+- Court: ${order?.court_type || 'United States District Court'}
+- Caption: ${order?.case_caption || '[CASE CAPTION]'}
+
+The proposed order should:
+1. Have proper caption matching the motion
+2. Recite that the Court has considered the motion and any opposition
+3. Grant the relief requested
+4. Include signature line for the judge
+5. Include "IT IS SO ORDERED" language
+6. Include date line
+
+Generate a complete, court-ready proposed order.`,
+      maxTokens: 1500,
+      systemPrompt: 'You are a legal document drafter. Create formal court documents.',
+    });
+
+    if (orderResult.success && orderResult.result) {
+      generatedDocuments.proposed_order = orderResult.result.content;
+      documentList.push('Proposed Order');
+    }
+  }
+
+  // 2. Generate Certificate/Proof of Service
+  if (motionType.requires_certificate_of_service) {
+    const today = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    generatedDocuments.certificate_of_service = `CERTIFICATE OF SERVICE
+
+I hereby certify that on ${today}, I caused a true and correct copy of the foregoing ${motionType.name} and all supporting documents to be served upon all counsel of record via the Court's CM/ECF electronic filing system, which will send notification of such filing to all counsel of record.
+
+Dated: ${today}
+
+_______________________________
+[Attorney Name]
+[State Bar No.]
+[Firm Name]
+[Address Line 1]
+[Address Line 2]
+[Phone]
+[Email]
+
+Attorney for [Plaintiff/Defendant]`;
+
+    documentList.push('Certificate of Service');
+  }
+
+  // 3. Generate Declaration outline (if declarations needed)
+  const declarationsNeeded = previousOutputs.declarations_needed as Array<{ declarant: string; topics: string[]; purpose: string }> || [];
+  if (declarationsNeeded.length > 0) {
+    for (const decl of declarationsNeeded) {
+      const declResult = await askClaude({
+        prompt: `Generate a declaration outline for ${decl.declarant}.
+
+Purpose: ${decl.purpose}
+Topics to cover:
+${decl.topics.map((t: string, i: number) => `${i + 1}. ${t}`).join('\n')}
+
+Case Number: ${order?.case_number || '[CASE NUMBER]'}
+
+Create a declaration template with:
+1. Proper caption
+2. Personal knowledge statement
+3. Numbered paragraphs for each topic
+4. Penalty of perjury statement
+5. Signature block with date
+
+Include [FILL IN] markers for information the declarant must provide.`,
+        maxTokens: 2000,
+        systemPrompt: 'You are a legal document drafter specializing in declarations.',
+      });
+
+      if (declResult.success && declResult.result) {
+        const key = `declaration_${decl.declarant.toLowerCase().replace(/\s+/g, '_')}`;
+        generatedDocuments[key] = declResult.result.content;
+        documentList.push(`Declaration of ${decl.declarant}`);
+      }
+    }
+  }
+
+  // 4. For MSJ: Generate Separate Statement of Undisputed Facts
+  if (motionType.code === 'MSJ' || motionType.code === 'PMSJ') {
+    const ssuResult = await askClaude({
+      prompt: `Generate a Separate Statement of Undisputed Material Facts for this Motion for Summary Judgment.
+
+Key Facts:
+${JSON.stringify(previousOutputs.key_facts || [], null, 2)}
+
+Evidence Mapping:
+${JSON.stringify(previousOutputs.element_mapping || [], null, 2)}
+
+Format each fact as:
+FACT NO. [X]: [Statement of undisputed fact]
+SUPPORTING EVIDENCE: [Citation to evidence with exhibit letter/number]
+
+Include at least the key undisputed facts that support each element of the motion.`,
+      maxTokens: 3000,
+      systemPrompt: 'You are a legal document drafter. Create properly formatted separate statements.',
+    });
+
+    if (ssuResult.success && ssuResult.result) {
+      generatedDocuments.separate_statement = ssuResult.result.content;
+      documentList.push('Separate Statement of Undisputed Material Facts');
+    }
+  }
+
+  // 5. For Opposition to MSJ: Generate Statement of Genuine Disputes
+  if (motionType.code === 'OPP_MSJ') {
+    const sgdResult = await askClaude({
+      prompt: `Generate a Statement of Genuine Disputes of Material Fact for this Opposition to Motion for Summary Judgment.
+
+For each fact the moving party claims is undisputed, either:
+1. UNDISPUTED - if we agree
+2. DISPUTED - with explanation of why and citation to contrary evidence
+
+Use the format:
+FACT NO. [X]: [Moving party's statement]
+RESPONSE: [UNDISPUTED/DISPUTED] [Explanation with evidence citation]`,
+      maxTokens: 3000,
+      systemPrompt: 'You are a legal document drafter. Create properly formatted response statements.',
+    });
+
+    if (sgdResult.success && sgdResult.result) {
+      generatedDocuments.statement_of_disputes = sgdResult.result.content;
+      documentList.push('Statement of Genuine Disputes');
+    }
+  }
+
+  return {
+    success: true,
+    phaseNumber: context.phaseDefinition.phase_number,
+    status: 'completed',
+    outputs: {
+      supporting_documents: generatedDocuments,
+      document_list: documentList,
+      document_count: documentList.length,
+      has_proposed_order: !!generatedDocuments.proposed_order,
+      has_certificate_of_service: !!generatedDocuments.certificate_of_service,
+      has_separate_statement: !!generatedDocuments.separate_statement,
+      declarations_generated: declarationsNeeded.length,
+    },
+    qualityScore: 0.9,
+    requiresReview: false,
+  };
+}
+
+/**
+ * Phase 2B: Motion Deconstruction (Path B only)
+ */
+async function executeMotionDeconstructionPhase(
+  context: PhaseExecutionContext
+): Promise<PhaseResult> {
+  if (!isClaudeConfigured) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'AI not configured',
+    };
+  }
+
+  const { previousOutputs } = context;
+
+  const prompt = `Deconstruct the opposing party's motion to identify all arguments, claims, and weaknesses.
+
+Document Summary:
+${JSON.stringify(previousOutputs.document_summary || [], null, 2)}
+
+Key Facts Claimed:
+${JSON.stringify(previousOutputs.key_facts || [], null, 2)}
+
+Legal Issues Raised:
+${JSON.stringify(previousOutputs.legal_issues || [], null, 2)}
+
+Provide a comprehensive deconstruction in JSON format:
+{
+  "main_arguments": [
+    {
+      "argument": "The main legal argument",
+      "supporting_facts": ["Fact 1"],
+      "citations_used": ["Citation 1"],
+      "logical_structure": "How the argument is constructed",
+      "potential_weaknesses": ["Weakness 1"]
+    }
+  ],
+  "factual_claims": [
+    {
+      "claim": "The factual claim",
+      "evidence_cited": "Evidence they cite",
+      "is_disputed": true/false,
+      "dispute_basis": "Why we dispute it (if applicable)"
+    }
+  ],
+  "legal_standards_invoked": [
+    {
+      "standard": "The legal standard",
+      "elements": ["Element 1"],
+      "their_application": "How they apply it"
+    }
+  ],
+  "procedural_issues": ["Any procedural problems with their motion"],
+  "overall_strength": "weak" | "moderate" | "strong",
+  "recommended_attack_vectors": ["Attack vector 1"]
+}`;
+
+  const result = await askClaude({
+    prompt,
+    maxTokens: 4000,
+    systemPrompt: 'You are an expert legal analyst. Deconstruct arguments thoroughly.',
+  });
+
+  if (!result.success || !result.result) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: result.error || 'Motion deconstruction failed',
+    };
+  }
+
+  try {
+    const jsonMatch = result.result.content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in response');
+
+    const deconstruction = JSON.parse(jsonMatch[0]);
+
+    return {
+      success: true,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'completed',
+      outputs: {
+        motion_deconstruction: deconstruction,
+        opponent_arguments: deconstruction.main_arguments,
+        opponent_factual_claims: deconstruction.factual_claims,
+        opponent_legal_standards: deconstruction.legal_standards_invoked,
+        procedural_issues: deconstruction.procedural_issues,
+        attack_vectors: deconstruction.recommended_attack_vectors,
+        opponent_strength: deconstruction.overall_strength,
+      },
+      qualityScore: 0.85,
+      requiresReview: false,
+    };
+  } catch {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Failed to parse motion deconstruction',
+    };
+  }
+}
+
+/**
+ * Phase 3B: Issue Identification (Path B only)
+ */
+async function executeIssueIdentificationPhase(
+  context: PhaseExecutionContext
+): Promise<PhaseResult> {
+  if (!isClaudeConfigured) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'AI not configured',
+    };
+  }
+
+  const { previousOutputs, motionType } = context;
+  const isMSJOpposition = motionType.code === 'OPP_MSJ';
+
+  const prompt = `Identify all ${isMSJOpposition ? 'genuine disputes of material fact and legal issues' : 'issues to challenge'} in response to the opposing motion.
+
+Motion Deconstruction:
+${JSON.stringify(previousOutputs.motion_deconstruction || {}, null, 2)}
+
+Our Key Facts:
+${JSON.stringify(previousOutputs.key_facts || [], null, 2)}
+
+${isMSJOpposition ? `
+For MSJ Opposition, identify:
+1. Which facts are genuinely disputed (with supporting evidence)
+2. Which facts, even if undisputed, don't support summary judgment
+3. Missing elements the moving party hasn't established
+` : `
+Identify:
+1. Legal errors in their argument
+2. Factual errors or misrepresentations
+3. Procedural defects
+`}
+
+Provide analysis in JSON format:
+{
+  ${isMSJOpposition ? `"genuine_disputes": [
+    {
+      "their_fact": "What they claim is undisputed",
+      "our_position": "disputed" | "undisputed_but_immaterial",
+      "our_evidence": "Evidence supporting our position",
+      "why_material": "Why this dispute is material"
+    }
+  ],
+  "missing_elements": [
+    {
+      "element": "Element they haven't proven",
+      "deficiency": "What's missing"
+    }
+  ],` : `"legal_errors": [
+    {
+      "error": "The legal error",
+      "correct_law": "What the law actually says",
+      "authority": "Supporting authority"
+    }
+  ],`}
+  "factual_issues": [
+    {
+      "issue": "The factual issue",
+      "their_claim": "What they claim",
+      "reality": "What the evidence shows"
+    }
+  ],
+  "procedural_issues": [
+    {
+      "issue": "Procedural problem",
+      "consequence": "Why it matters"
+    }
+  ],
+  "strongest_arguments": ["Our strongest counter-argument 1"],
+  "recommended_structure": "How to structure our response"
+}`;
+
+  const result = await askClaude({
+    prompt,
+    maxTokens: 4000,
+    systemPrompt: 'You are an expert legal analyst. Identify issues comprehensively.',
+  });
+
+  if (!result.success || !result.result) {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: result.error || 'Issue identification failed',
+    };
+  }
+
+  try {
+    const jsonMatch = result.result.content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in response');
+
+    const issues = JSON.parse(jsonMatch[0]);
+
+    return {
+      success: true,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'completed',
+      outputs: {
+        issue_identification: issues,
+        genuine_disputes: issues.genuine_disputes,
+        missing_elements: issues.missing_elements,
+        legal_errors: issues.legal_errors,
+        factual_issues: issues.factual_issues,
+        procedural_issues: issues.procedural_issues,
+        strongest_arguments: issues.strongest_arguments,
+        recommended_structure: issues.recommended_structure,
+      },
+      qualityScore: 0.85,
+      requiresReview: false,
+    };
+  } catch {
+    return {
+      success: false,
+      phaseNumber: context.phaseDefinition.phase_number,
+      status: 'failed',
+      outputs: {},
+      requiresReview: false,
+      error: 'Failed to parse issue identification',
     };
   }
 }

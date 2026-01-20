@@ -14,6 +14,9 @@ import { DeadlineReminderEmail } from '@/emails/deadline-reminder';
 import { ProgressUpdateEmail } from '@/emails/progress-update';
 import { OrderCompletedEmail } from '@/emails/order-completed';
 import { RevisionRequestEmail } from '@/emails/revision-request';
+// v6.3: Checkpoint notification templates
+import { CheckpointNotificationEmail } from '@/emails/checkpoint-notification';
+import { RevisionPaymentRequiredEmail } from '@/emails/revision-payment-required';
 import type {
   NotificationType,
   NotificationStatus,
@@ -392,6 +395,15 @@ function buildEmailComponent(
     case 'revision_requested':
       return buildRevisionEmail(data, baseUrl);
 
+    // v6.3: Checkpoint notifications
+    case 'checkpoint_cp1':
+    case 'checkpoint_cp2':
+    case 'checkpoint_cp3':
+      return buildCheckpointEmail(type, data, baseUrl);
+
+    case 'revision_payment_required':
+      return buildRevisionPaymentEmail(data, baseUrl);
+
     default:
       console.warn(`[Notifications] No email template for type: ${type}`);
       return null;
@@ -495,6 +507,52 @@ function buildRevisionEmail(
 }
 
 /**
+ * v6.3: Build checkpoint notification email
+ */
+function buildCheckpointEmail(
+  type: NotificationType,
+  data: Record<string, unknown>,
+  baseUrl: string
+): React.ReactElement {
+  const checkpointMap: Record<string, 'CP1' | 'CP2' | 'CP3'> = {
+    checkpoint_cp1: 'CP1',
+    checkpoint_cp2: 'CP2',
+    checkpoint_cp3: 'CP3',
+  };
+
+  return React.createElement(CheckpointNotificationEmail, {
+    orderNumber: (data.orderNumber as string) || '',
+    motionType: (data.motionType as string) || '',
+    caseCaption: (data.caseCaption as string) || '',
+    checkpoint: checkpointMap[type] || 'CP1',
+    grade: data.grade as string | undefined,
+    gradeNumeric: data.gradeNumeric as number | undefined,
+    passed: data.passed as boolean | undefined,
+    portalUrl: `${baseUrl}/dashboard`,
+    orderUrl: `${baseUrl}/orders/${data.orderId}`,
+  });
+}
+
+/**
+ * v6.3: Build revision payment required email
+ */
+function buildRevisionPaymentEmail(
+  data: Record<string, unknown>,
+  baseUrl: string
+): React.ReactElement {
+  return React.createElement(RevisionPaymentRequiredEmail, {
+    orderNumber: (data.orderNumber as string) || '',
+    motionType: (data.motionType as string) || '',
+    caseCaption: (data.caseCaption as string) || '',
+    revisionNumber: (data.revisionNumber as number) || 2,
+    tier: (data.tier as 'A' | 'B' | 'C') || 'B',
+    amount: (data.amount as number) || 125,
+    paymentUrl: (data.paymentUrl as string) || `${baseUrl}/checkout/revision/${data.revisionId}`,
+    portalUrl: `${baseUrl}/dashboard`,
+  });
+}
+
+/**
  * Get status message for display
  */
 function getStatusMessage(status: string): string {
@@ -588,6 +646,11 @@ function isHighPriority(type: NotificationType): boolean {
     'deadline_critical',
     'payment_failed',
     'approval_needed',
+    // v6.3: Checkpoint notifications are high priority (customer action required)
+    'checkpoint_cp1',
+    'checkpoint_cp2',
+    'checkpoint_cp3',
+    'revision_payment_required',
   ];
   return highPriorityTypes.includes(type);
 }
@@ -600,6 +663,11 @@ function getPriorityForType(type: NotificationType): number {
     deadline_critical: 10,
     payment_failed: 9,
     approval_needed: 8,
+    // v6.3: Checkpoint notifications require customer action
+    checkpoint_cp1: 8,
+    checkpoint_cp2: 8,
+    checkpoint_cp3: 8,
+    revision_payment_required: 8,
     deadline_warning: 7,
     draft_ready: 6,
     revision_ready: 6,
@@ -634,6 +702,11 @@ function getSubjectForType(type: NotificationType, orderNumber: string): string 
     status_update: `Status Update - ${orderNumber}`,
     approval_needed: `Action Required - ${orderNumber}`,
     revision_requested: `Revision Request Received - ${orderNumber}`,
+    // v6.3: Checkpoint notifications
+    checkpoint_cp1: `Action Required: Research Review - ${orderNumber}`,
+    checkpoint_cp2: `Action Required: Draft Review - ${orderNumber}`,
+    checkpoint_cp3: `Your Filing Package is Ready - ${orderNumber}`,
+    revision_payment_required: `Payment Required for Revision - ${orderNumber}`,
   };
   return subjects[type] || `Motion Granted Update - ${orderNumber}`;
 }

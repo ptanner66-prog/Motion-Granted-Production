@@ -6,6 +6,7 @@ import {
   queueOrderNotification,
   scheduleTask,
 } from '@/lib/automation';
+import { processRevisionPayment } from '@/lib/workflow/checkpoint-service';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -90,6 +91,11 @@ export async function POST(req: Request) {
 
       case 'payment_intent.canceled':
         await handlePaymentCanceled(supabase, event.data.object as Stripe.PaymentIntent);
+        break;
+
+      // v6.3: Handle revision checkout session completion
+      case 'checkout.session.completed':
+        await handleCheckoutSessionCompleted(supabase, event.data.object as Stripe.Checkout.Session);
         break;
 
       default:
@@ -321,4 +327,82 @@ async function handlePaymentCanceled(
   });
 
   console.log(`[Stripe Webhook] Payment canceled for order ${orderId}`);
+}
+
+/**
+ * v6.3: Handle checkout session completed (used for revision payments)
+ */
+async function handleCheckoutSessionCompleted(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  session: Stripe.Checkout.Session
+) {
+  // Check if this is a revision payment
+  if (session.metadata?.type === 'revision') {
+    const workflowId = session.metadata.workflow_id;
+    const revisionId = session.metadata.revision_id;
+    const paymentIntentId = typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id || '';
+
+    if (!workflowId || !revisionId) {
+      console.warn('[Stripe Webhook] Revision checkout missing workflow_id or revision_id');
+      return;
+    }
+
+    // Process the revision payment
+    const result = await processRevisionPayment(workflowId, revisionId, paymentIntentId);
+
+    if (!result.success) {
+      console.error('[Stripe Webhook] Failed to process revision payment:', result.error);
+      throw new Error(result.error);
+    }
+
+    // Log the revision payment
+    await supabase.from('automation_logs').insert({
+      order_id: session.metadata.order_id || null,
+      action_type: 'revision_payment_processed',
+      action_details: {
+        checkoutSessionId: session.id,
+        paymentIntentId,
+        workflowId,
+        revisionId,
+        amount: session.amount_total ? session.amount_total / 100 : 0,
+        tier: session.metadata.tier,
+      },
+      was_auto_approved: true,
+    });
+
+    console.log(`[Stripe Webhook] Revision payment processed: workflow=${workflowId}, revision=${revisionId}`);
+    return;
+  }
+
+  // Handle other checkout sessions (e.g., order payments)
+  const orderId = session.metadata?.order_id;
+  if (orderId) {
+    // Similar to payment_intent.succeeded but for checkout sessions
+    const { data: order, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        stripe_payment_status: 'succeeded',
+        status: 'under_review',
+      })
+      .eq('id', orderId)
+      .select('id, order_number')
+      .single();
+
+    if (updateError) {
+      console.error('[Stripe Webhook] Failed to update order from checkout:', updateError);
+      return;
+    }
+
+    if (order) {
+      await queueOrderNotification(orderId, 'payment_received');
+      await scheduleTask('conflict_check', {
+        orderId,
+        priority: 8,
+        payload: { triggeredBy: 'checkout_success' },
+      });
+      console.log(`[Stripe Webhook] Checkout completed for order ${order.order_number}`);
+    }
+  }
 }

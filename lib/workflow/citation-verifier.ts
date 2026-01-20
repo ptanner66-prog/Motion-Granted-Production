@@ -18,11 +18,18 @@ import type {
 import type { OperationResult } from '@/types/automation';
 
 // ============================================================================
-// CONSTANTS
+// CONSTANTS — v6.3 SACRED NUMBERS
 // ============================================================================
 
 export const CITATION_HARD_STOP_MINIMUM = 4;
 export const CITATION_VERIFICATION_TIMEOUT_MS = 30000;
+
+/**
+ * CRITICAL: Citation batch size for incremental handoffs
+ * Every 4 citations verified, we MUST save progress
+ * This prevents work loss on long verification runs
+ */
+export const CITATION_BATCH_SIZE = 4;
 
 // Citation patterns for parsing
 const CITATION_PATTERNS = {
@@ -506,6 +513,148 @@ export async function verifyWorkflowCitations(
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Batch verification failed',
+    };
+  }
+}
+
+// ============================================================================
+// v6.3 BATCHED VERIFICATION — CRITICAL FEATURE
+// ============================================================================
+
+export interface BatchVerificationProgress {
+  totalCitations: number;
+  verified: number;
+  failed: number;
+  pending: number;
+  currentBatch: number;
+  totalBatches: number;
+  isComplete: boolean;
+}
+
+/**
+ * v6.3: Verify citations in batches of 4 with progress saving
+ *
+ * CRITICAL RULE: After every 4 citations verified:
+ * 1. Create incremental handoff file
+ * 2. Update citation_count in workflow
+ * 3. Continue with next batch
+ *
+ * This prevents work loss if the session is interrupted.
+ */
+export async function verifyWorkflowCitationsBatched(
+  workflowId: string,
+  onBatchComplete?: (progress: BatchVerificationProgress) => Promise<void>
+): Promise<OperationResult<BatchVerificationProgress>> {
+  const supabase = await createClient();
+
+  try {
+    // Get all pending citations ordered by creation
+    const { data: allCitations, error } = await supabase
+      .from('workflow_citations')
+      .select('*')
+      .eq('order_workflow_id', workflowId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    const citations = allCitations || [];
+    const totalCitations = citations.length;
+    const totalBatches = Math.ceil(totalCitations / CITATION_BATCH_SIZE);
+
+    // Initialize progress tracker
+    const progress: BatchVerificationProgress = {
+      totalCitations,
+      verified: 0,
+      failed: 0,
+      pending: totalCitations,
+      currentBatch: 0,
+      totalBatches,
+      isComplete: false,
+    };
+
+    if (totalCitations === 0) {
+      progress.isComplete = true;
+      return { success: true, data: progress };
+    }
+
+    console.log(`[CITATION BATCH] Starting verification: ${totalCitations} citations in ${totalBatches} batches`);
+
+    // Process in batches of 4
+    for (let i = 0; i < totalCitations; i += CITATION_BATCH_SIZE) {
+      const batch = citations.slice(i, i + CITATION_BATCH_SIZE);
+      const batchNumber = Math.floor(i / CITATION_BATCH_SIZE) + 1;
+      progress.currentBatch = batchNumber;
+
+      console.log(`[CITATION BATCH] Processing batch ${batchNumber}/${totalBatches} (${batch.length} citations)`);
+
+      // Verify each citation in the batch
+      for (const citation of batch) {
+        const result = await verifyCitation(citation as WorkflowCitation);
+
+        if (result.success && result.data) {
+          if (result.data.status === 'verified') {
+            progress.verified++;
+          } else if (result.data.status === 'invalid') {
+            progress.failed++;
+          }
+          progress.pending--;
+        }
+      }
+
+      // CRITICAL: Save handoff after EVERY 4 citations
+      await supabase.from('handoff_files').insert({
+        order_workflow_id: workflowId,
+        phase_number: 6, // Citation verification is phase 6
+        phase_name: 'Citation Verification',
+        handoff_type: 'incremental',
+        content: {
+          type: 'citation_batch',
+          batch: batchNumber,
+          totalBatches,
+          progress: {
+            verified: progress.verified,
+            failed: progress.failed,
+            pending: progress.pending,
+            total: totalCitations,
+          },
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      // Update workflow citation count
+      await supabase
+        .from('order_workflows')
+        .update({
+          citation_count: progress.verified,
+          last_handoff_at: new Date().toISOString(),
+          handoff_count: batchNumber,
+        })
+        .eq('id', workflowId);
+
+      // Call progress callback if provided
+      if (onBatchComplete) {
+        await onBatchComplete(progress);
+      }
+
+      console.log(`[CITATION BATCH] Batch ${batchNumber} complete: ${progress.verified}/${totalCitations} verified, ${progress.failed} failed`);
+
+      // Small delay between batches to prevent rate limiting
+      if (i + CITATION_BATCH_SIZE < totalCitations) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    progress.isComplete = true;
+    console.log(`[CITATION BATCH] All batches complete: ${progress.verified} verified, ${progress.failed} failed`);
+
+    return { success: true, data: progress };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Batched verification failed',
     };
   }
 }
