@@ -175,7 +175,7 @@ export class WorkflowSubscriptionManager {
           schema: 'public',
           table: 'order_workflows',
         },
-        (payload) => this.handleWorkflowChange(payload as { new: WorkflowTableRow; old: WorkflowTableRow })
+        (payload: RealtimePostgresChangesPayload<WorkflowTableRow>) => this.handleWorkflowChange(payload)
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -199,7 +199,7 @@ export class WorkflowSubscriptionManager {
           schema: 'public',
           table: 'workflow_revisions',
         },
-        (payload) => this.handleRevisionInsert(payload as { new: RevisionTableRow })
+        (payload: RealtimePostgresChangesPayload<RevisionTableRow>) => this.handleRevisionInsert(payload)
       )
       .on(
         'postgres_changes',
@@ -208,7 +208,7 @@ export class WorkflowSubscriptionManager {
           schema: 'public',
           table: 'workflow_revisions',
         },
-        (payload) => this.handleRevisionUpdate(payload as { new: RevisionTableRow; old: RevisionTableRow })
+        (payload: RealtimePostgresChangesPayload<RevisionTableRow>) => this.handleRevisionUpdate(payload)
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
