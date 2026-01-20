@@ -3,6 +3,7 @@
  *
  * v6.3: Manages Supabase real-time subscriptions for workflow updates.
  * Provides callbacks for phase changes, checkpoint triggers, and revision events.
+ * Updated for Supabase v2 compatibility.
  */
 
 import { createClient } from '@/lib/supabase/client';
