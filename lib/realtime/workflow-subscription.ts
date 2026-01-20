@@ -167,14 +167,14 @@ export class WorkflowSubscriptionManager {
   private setupWorkflowChannel(): void {
     this.workflowChannel = this.supabase
       .channel('workflow-updates')
-      .on<WorkflowTableRow>(
+      .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'order_workflows',
         },
-        (payload) => this.handleWorkflowChange(payload)
+        (payload) => this.handleWorkflowChange(payload as { new: WorkflowTableRow; old: WorkflowTableRow })
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -191,23 +191,23 @@ export class WorkflowSubscriptionManager {
   private setupRevisionChannel(): void {
     this.revisionChannel = this.supabase
       .channel('revision-updates')
-      .on<RevisionTableRow>(
+      .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'workflow_revisions',
         },
-        (payload) => this.handleRevisionInsert(payload)
+        (payload) => this.handleRevisionInsert(payload as { new: RevisionTableRow })
       )
-      .on<RevisionTableRow>(
+      .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'workflow_revisions',
         },
-        (payload) => this.handleRevisionUpdate(payload)
+        (payload) => this.handleRevisionUpdate(payload as { new: RevisionTableRow; old: RevisionTableRow })
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
