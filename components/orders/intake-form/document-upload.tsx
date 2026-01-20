@@ -158,7 +158,7 @@ export function DocumentUpload() {
                   <div className="mt-2">
                     <Select
                       value={doc.documentType || ''}
-                      onValueChange={(value) => handleDocTypeChange(doc.id, value)}
+                      onValueChange={(value) => handleDocumentTypeChange(doc.id, value)}
                     >
                       <SelectTrigger className="w-full sm:w-48 h-8 text-sm">
                         <SelectValue placeholder="Select document type" />
