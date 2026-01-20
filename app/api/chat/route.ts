@@ -398,8 +398,51 @@ async function buildInitialContext(
     const template = templateResult.data;
     console.log(`[SUPERPROMPT] Chat using template: "${template.name}" (${template.template.length} chars)`);
 
-    // Merge the superprompt with order data
-    let context = template.template;
+    // Web Context Adapter: Overrides file system instructions for web API environment
+    const webContextAdapter = `
+================================================================================
+CRITICAL: WEB APPLICATION CONTEXT OVERRIDE
+================================================================================
+
+You are operating in a WEB APPLICATION environment, NOT a local file system.
+The following OVERRIDES apply to ALL instructions in this prompt:
+
+1. **NO FILE SYSTEM ACCESS**: You do NOT have access to any file system.
+   - IGNORE all instructions to write to /mnt/user-data/outputs/ or any path
+   - IGNORE all instructions to use 'cat', 'bash', or any shell commands
+   - IGNORE all instructions to call 'present_files' tool (it does not exist)
+
+2. **DIRECT OUTPUT ONLY**: Output all content DIRECTLY in your response.
+   - Motion documents: Output the full text directly
+   - Handoff status: Output as formatted text in your response
+   - Citation reports: Output as formatted text in your response
+
+3. **WORKFLOW ADAPTATION**:
+   - Instead of writing HANDOFF files, summarize your progress in your response
+   - Instead of writing motion files, output the motion text directly
+   - The 4-citation HARD STOP still applies, but output progress in-line
+   - When you would "present" a file, instead output its contents directly
+
+4. **RESPONSE FORMAT**:
+   - Start with a brief status update (phase, progress)
+   - Output the requested document content directly
+   - End with next steps or questions if needed
+
+5. **ALL OTHER INSTRUCTIONS REMAIN IN EFFECT**:
+   - Legal standards, citation rules, quality requirements: FULLY APPLY
+   - Phase workflow logic: FULLY APPLY (adapted for direct output)
+   - Citation verification requirements: FULLY APPLY
+   - Input Priority Rule: FULLY APPLY
+   - Never Do List: FULLY APPLY (except file system items)
+
+BEGIN PROCESSING THE MATTER BELOW. Output directly - no file operations.
+
+================================================================================
+
+`;
+
+    // Merge the superprompt with order data, prepending the web context adapter
+    let context = webContextAdapter + template.template;
 
     // Replace all placeholders
     const replacements: Record<string, string> = {
