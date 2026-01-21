@@ -76,13 +76,14 @@ function decryptKey(encryptedKey: string): string {
   }
 }
 
-// Cache for API keys (refresh every 5 minutes)
+// Cache disabled - always fetch fresh from database
+// This ensures API key changes take effect immediately
 let keyCache: {
   keys: Record<string, string>;
   timestamp: number;
 } | null = null;
 
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 0; // Disabled - fetch fresh every time
 
 /**
  * Get all API keys from database (with caching)
