@@ -156,27 +156,46 @@ END OF EXISTING HANDOFF
 #                                                                              #
 ################################################################################
 
-YOU MUST GENERATE A COMPLETE LEGAL MOTION.
+YOU MUST GENERATE A COMPLETE LEGAL MOTION - FINAL DOCUMENT ONLY.
 
-FORBIDDEN ACTIONS (will cause immediate rejection):
-- Asking for more information
-- Saying "I need" or "Please provide"
-- Listing what information you require
-- Providing a checklist of missing items
-- Asking clarifying questions
-- Summarizing what you would need to proceed
-- Outputting "PHASE I: INTAKE" or any phase status
+FORBIDDEN OUTPUTS (will cause immediate rejection):
+- "PHASE I:", "PHASE II:", etc. - NO PHASE HEADERS
+- "Status: IN PROGRESS" or any status updates
+- Tables showing phase progress or element mapping
+- "### PHASE X COMPLETE" or any completion markers
+- Workflow summaries or checklists
+- "Next Phase:" indicators
+- Research notes or citation verification reports
+- Attorney instruction sheets (these come separately)
 
-REQUIRED ACTION:
-Generate the COMPLETE motion document using the case data provided below.
-The case data section contains ALL information needed: case number, parties,
-facts, procedural history, and instructions.
+SKIP THE WORKFLOW OUTPUT. Only output the FINAL MOTION DOCUMENT.
 
-OUTPUT FORMAT:
-Start your response IMMEDIATELY with the court caption and continue with the full motion.
+REQUIRED OUTPUT FORMAT:
+Start IMMEDIATELY with the court caption. Your entire response should be the
+motion document that gets filed with the court. Nothing else.
+
+Example of CORRECT output (start like this):
+
+IN THE CIVIL DISTRICT COURT
+FOR THE PARISH OF ORLEANS
+
+JOHN DOE,
+     Plaintiff,
+
+vs.                                    CASE NO. 2025-12345
+
+JANE SMITH,
+     Defendant.
+
+                    MOTION TO COMPEL DISCOVERY
+
+TO THE HONORABLE COURT:
+[Continue with the actual motion content...]
+
+DO NOT show your work. DO NOT output phases. ONLY output the final motion.
 
 ################################################################################
-#   CASE DATA STARTS BELOW - USE THIS TO WRITE THE MOTION                     #
+#   CASE DATA BELOW - USE THIS TO WRITE THE MOTION                            #
 ################################################################################
 
 `;
@@ -212,6 +231,14 @@ The following JSON contains all the case information needed for Phase I Input:
     "procedural_history": ${JSON.stringify(orderData.proceduralHistory || '')},
     "drafting_instructions": ${JSON.stringify(orderData.clientInstructions || '')},
     "judge_name": ""
+  },
+  "attorney_info": {
+    "attorney_name": "${orderData.attorneyName || '[Attorney Name]'}",
+    "bar_number": "${orderData.barNumber || '[Bar Number]'}",
+    "firm_name": "${orderData.firmName || '[Law Firm]'}",
+    "firm_address": "${orderData.firmAddress || '[Address]'}",
+    "firm_phone": "${orderData.firmPhone || '[Phone]'}",
+    "attorney_email": "${orderData.clientEmail || '[Email]'}"
   }
 }
 \`\`\`
