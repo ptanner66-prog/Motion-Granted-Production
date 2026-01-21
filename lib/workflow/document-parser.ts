@@ -5,7 +5,6 @@
  * for workflow processing including facts, legal issues, parties, and dates.
  */
 
-import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
 import { extractCitations } from './citation-verifier';

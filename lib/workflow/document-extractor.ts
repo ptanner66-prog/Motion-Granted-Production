@@ -5,7 +5,6 @@
  * for processing by the document parser and workflow engine.
  */
 
-import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { OperationResult } from '@/types/automation';
 
