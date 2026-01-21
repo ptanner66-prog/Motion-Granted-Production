@@ -618,7 +618,7 @@ export const updateQueuePositions = inngest.createFunction(
     id: "update-queue-positions",
     // Debounce to avoid running too frequently
     debounce: {
-      key: "queue-positions",
+      key: '"queue_positions"',
       period: "10s",
     },
   },
