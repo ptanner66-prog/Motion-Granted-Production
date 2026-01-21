@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { clearAPIKeysCache } from '@/lib/api-keys';
 
 // Create admin client with service role key (bypasses RLS)
 function getAdminClient() {
@@ -327,6 +328,9 @@ export async function POST(request: NextRequest) {
       console.error('Failed to save API key settings:', saveError);
       return NextResponse.json({ error: 'Failed to save settings: ' + saveError.message }, { status: 500 });
     }
+
+    // Clear the API keys cache so new keys are used immediately
+    clearAPIKeysCache();
 
     // Log the change - use admin client and don't let logging failure break the save
     const { error: logError } = await adminClient.from('automation_logs').insert({
