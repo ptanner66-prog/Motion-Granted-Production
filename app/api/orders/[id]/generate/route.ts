@@ -99,10 +99,10 @@ export async function POST(
   const adminClient = getAdminClient();
 
   try {
-    // Get order with all related data
+    // Get order with all related data including client profile for attorney info
     const { data: order, error: orderError } = await adminClient
       .from('orders')
-      .select('*, parties(*)')
+      .select('*, parties(*), profiles!orders_client_id_fkey(full_name, email, bar_number, firm_name, firm_address, firm_phone)')
       .eq('id', orderId)
       .single();
 
@@ -207,7 +207,15 @@ The following JSON contains all the case information needed for Phase I Input:
       "document_type": "${doc.document_type}",
       "content_text": ${JSON.stringify(doc.parsed_content || '(no content extracted)')}
     }`).join(',\n    ') || ''}
-  ]
+  ],
+  "attorney_info": {
+    "attorney_name": "${order.profiles?.full_name || '[Attorney Name]'}",
+    "bar_number": "${order.profiles?.bar_number || '[Bar Number]'}",
+    "firm_name": "${order.profiles?.firm_name || '[Law Firm]'}",
+    "firm_address": "${order.profiles?.firm_address || '[Address]'}",
+    "firm_phone": "${order.profiles?.firm_phone || '[Phone]'}",
+    "attorney_email": "${order.profiles?.email || '[Email]'}"
+  }
 }
 \`\`\`
 

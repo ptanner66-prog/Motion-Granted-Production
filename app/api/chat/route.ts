@@ -541,6 +541,14 @@ The following JSON contains all the case information needed for Phase I Input:
     "procedural_history": ${JSON.stringify(orderData.proceduralHistory || '')},
     "drafting_instructions": ${JSON.stringify(orderData.clientInstructions || '')},
     "judge_name": ""
+  },
+  "attorney_info": {
+    "attorney_name": "${orderData.attorneyName || '[Attorney Name]'}",
+    "bar_number": "${orderData.barNumber || '[Bar Number]'}",
+    "firm_name": "${orderData.firmName || '[Law Firm]'}",
+    "firm_address": "${orderData.firmAddress || '[Address]'}",
+    "firm_phone": "${orderData.firmPhone || '[Phone]'}",
+    "attorney_email": "${orderData.clientEmail || '[Email]'}"
   }
 }
 \`\`\`

@@ -107,7 +107,7 @@ export const generateOrderDraft = inngest.createFunction(
 
       const currentAttempts = currentOrder?.generation_attempts || 0;
 
-      // Update with incremented attempts
+      // Update with incremented attempts - include profile for attorney info
       const { data: order, error } = await supabase
         .from("orders")
         .update({
@@ -116,7 +116,7 @@ export const generateOrderDraft = inngest.createFunction(
           generation_attempts: currentAttempts + 1,
         })
         .eq("id", orderId)
-        .select("*, parties(*)")
+        .select("*, parties(*), profiles!orders_client_id_fkey(full_name, email, bar_number, firm_name, firm_address, firm_phone)")
         .single();
 
       if (error) {
@@ -220,7 +220,15 @@ The following JSON contains all the case information needed for Phase I Input:
       "document_type": "${doc.document_type}",
       "content_text": ${JSON.stringify(doc.parsed_content || "(no content extracted)")}
     }`).join(",\n    ") || ""}
-  ]
+  ],
+  "attorney_info": {
+    "attorney_name": "${orderData.profiles?.full_name || "[Attorney Name]"}",
+    "bar_number": "${orderData.profiles?.bar_number || "[Bar Number]"}",
+    "firm_name": "${orderData.profiles?.firm_name || "[Law Firm]"}",
+    "firm_address": "${orderData.profiles?.firm_address || "[Address]"}",
+    "firm_phone": "${orderData.profiles?.firm_phone || "[Phone]"}",
+    "attorney_email": "${orderData.profiles?.email || "[Email]"}"
+  }
 }
 \`\`\`
 

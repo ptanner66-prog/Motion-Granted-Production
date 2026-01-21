@@ -92,6 +92,13 @@ export interface OrderData {
   orderNumber: string;
   clientName: string;
   clientEmail: string;
+
+  // Attorney information (from client profile)
+  attorneyName: string;
+  barNumber: string;
+  firmName: string;
+  firmAddress: string;
+  firmPhone: string;
 }
 
 export interface GenerationResult {
@@ -193,7 +200,7 @@ export async function gatherOrderData(orderId: string): Promise<OperationResult<
     }
     const { data: order } = await supabase
       .from('orders')
-      .select('*, profiles(full_name, email)')
+      .select('*, profiles(full_name, email, bar_number, firm_name, firm_address, firm_phone)')
       .eq('id', orderId)
       .single();
 
@@ -262,6 +269,13 @@ export async function gatherOrderData(orderId: string): Promise<OperationResult<
       orderNumber: ctx.orderNumber,
       clientName: order?.profiles?.full_name || 'Client',
       clientEmail: order?.profiles?.email || '',
+
+      // Attorney information
+      attorneyName: order?.profiles?.full_name || '[Attorney Name]',
+      barNumber: order?.profiles?.bar_number || '[Bar Number]',
+      firmName: order?.profiles?.firm_name || '[Law Firm]',
+      firmAddress: order?.profiles?.firm_address || '[Address]',
+      firmPhone: order?.profiles?.firm_phone || '[Phone]',
     };
 
     return { success: true, data: orderData };
