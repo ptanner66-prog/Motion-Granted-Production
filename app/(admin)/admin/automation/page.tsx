@@ -45,7 +45,6 @@ export default async function AutomationDashboardPage() {
   // Fetch dashboard stats
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   // Fetch order stats (these tables definitely exist)
   const [

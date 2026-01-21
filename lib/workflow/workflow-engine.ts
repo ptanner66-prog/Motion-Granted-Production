@@ -247,7 +247,7 @@ export async function executeCurrentPhase(
     }
 
     // Get or create phase execution
-    let { data: phaseExec, error: execError } = await supabase
+    const { data: phaseExec, error: execError } = await supabase
       .from('workflow_phase_executions')
       .select('*')
       .eq('order_workflow_id', workflowId)

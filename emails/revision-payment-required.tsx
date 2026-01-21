@@ -138,7 +138,7 @@ export function RevisionPaymentRequiredEmail({
                 changes and run the draft through quality review.
               </li>
               <li style={stepItem}>
-                <strong>Delivery:</strong> You'll receive an email when your revised
+                <strong>Delivery:</strong> You&apos;ll receive an email when your revised
                 draft is ready for review.
               </li>
             </ol>
