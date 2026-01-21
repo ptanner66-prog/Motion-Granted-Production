@@ -119,11 +119,11 @@ export async function POST(
       })
       .eq('id', orderId);
 
-    // Get superprompt template
+    // Get superprompt template (prefer is_default, fall back to most recent)
     const { data: templates } = await adminClient
       .from('superprompt_templates')
       .select('*')
-      .eq('is_active', true)
+      .order('is_default', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(1);
 

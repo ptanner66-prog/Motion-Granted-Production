@@ -146,11 +146,11 @@ export const generateOrderDraft = inngest.createFunction(
 
     // Step 3: Gather order data and build context with web adapter
     const context = await step.run("build-context", async () => {
-      // Get superprompt template
+      // Get superprompt template (prefer is_default, fall back to most recent)
       const { data: templates } = await supabase
         .from("superprompt_templates")
         .select("*")
-        .eq("is_active", true)
+        .order("is_default", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1);
 
