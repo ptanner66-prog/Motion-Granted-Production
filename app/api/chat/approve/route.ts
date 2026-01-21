@@ -8,6 +8,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateMotionPDF, savePDFAsDeliverable } from '@/lib/workflow/pdf-generator';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
+import { sendEmail } from '@/lib/resend';
+import { DraftReadyEmail } from '@/emails/draft-ready';
+import { createElement } from 'react';
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -120,16 +123,42 @@ export async function POST(request: Request) {
       // Don't fail the request if logging fails
     }
 
-    // Send notification to client
+    // Send notification to client immediately
     const clientProfile = order.profiles as { full_name: string; email: string } | null;
     if (clientProfile?.email) {
-      await queueOrderNotification(orderId, 'draft_ready', {
-        clientName: clientProfile.full_name || 'Client',
-        clientEmail: clientProfile.email,
-        deliverableReady: true,
-      }).catch(err => {
-        console.error('Failed to queue notification:', err);
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com';
+      const deliveredDate = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
       });
+
+      // Send email directly for immediate delivery
+      try {
+        await sendEmail({
+          to: clientProfile.email,
+          subject: `Your Draft is Ready - ${order.order_number}`,
+          react: createElement(DraftReadyEmail, {
+            orderNumber: order.order_number,
+            motionType: order.motion_type || 'Motion',
+            caseCaption: order.case_caption || '',
+            deliveredDate,
+            portalUrl: `${baseUrl}/dashboard`,
+            orderUrl: `${baseUrl}/orders/${orderId}`,
+          }),
+        });
+        console.log(`[APPROVE] Email sent to ${clientProfile.email} for order ${order.order_number}`);
+      } catch (emailErr) {
+        console.error('Failed to send email directly:', emailErr);
+        // Fall back to queue if direct send fails
+        await queueOrderNotification(orderId, 'draft_ready', {
+          clientName: clientProfile.full_name || 'Client',
+          clientEmail: clientProfile.email,
+          deliverableReady: true,
+        }).catch(err => {
+          console.error('Failed to queue notification:', err);
+        });
+      }
     }
 
     return NextResponse.json({

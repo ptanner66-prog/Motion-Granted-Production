@@ -293,12 +293,33 @@ export function parseFileOperations(response: string): {
   const writePattern = /<file_write\s+path="([^"]+)">([\s\S]*?)<\/file_write>/g;
   let match;
   while ((match = writePattern.exec(response)) !== null) {
+    const filePath = match[1];
+    const content = match[2].trim();
+
     operations.push({
       type: 'write',
-      path: match[1],
-      content: match[2].trim(),
+      path: filePath,
+      content: content,
     });
-    cleanedResponse = cleanedResponse.replace(match[0], `[FILE WRITTEN: ${match[1]}]`);
+
+    // For motion documents, keep the content (just remove XML tags)
+    // For handoff/workflow files, replace with placeholder
+    const filePathLower = filePath.toLowerCase();
+    const isMotionDoc = (
+      filePathLower.includes('motion') ||
+      filePathLower.includes('opposition') ||
+      filePathLower.includes('memorandum') ||
+      filePathLower.includes('brief') ||
+      filePathLower.includes('reply')
+    );
+    const isHandoff = filePathLower.includes('handoff');
+
+    if (isMotionDoc && !isHandoff) {
+      // Keep the motion content, just remove the XML tags
+      cleanedResponse = cleanedResponse.replace(match[0], `\n---\n**MOTION DOCUMENT: ${filePath.split('/').pop()}**\n---\n${content}\n---\n`);
+    } else {
+      cleanedResponse = cleanedResponse.replace(match[0], `[FILE WRITTEN: ${filePath}]`);
+    }
   }
 
   // Pattern for read operations: <file_read path="/path/to/file.md" />

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -53,6 +54,7 @@ export function ClaudeChat({ orderId, orderNumber, onMotionGenerated }: ClaudeCh
   const [copied, setCopied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const router = useRouter();
 
   // Load conversation on mount
   useEffect(() => {
@@ -165,6 +167,14 @@ export function ClaudeChat({ orderId, orderNumber, onMotionGenerated }: ClaudeCh
                 if (onMotionGenerated) {
                   onMotionGenerated(fullContent);
                 }
+
+                // Refresh the page to show updated status (e.g., Approve button)
+                router.refresh();
+
+                toast({
+                  title: 'Motion Generated',
+                  description: 'Click "Approve & Deliver" in the sidebar to send to client.',
+                });
               }
 
               if (data.error) {

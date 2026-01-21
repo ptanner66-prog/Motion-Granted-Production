@@ -26,12 +26,15 @@ import {
   Upload,
   Bot,
   MessageSquare,
+  CheckCircle,
 } from 'lucide-react'
 import type { OrderStatus } from '@/types'
 import { ClaudeChat } from '@/components/admin/claude-chat'
 import { AdminRevisionRequests } from '@/components/admin/admin-revision-requests'
 import { QuickApproveButton } from '@/components/admin/quick-approve-button'
 import { RetryGenerationButton } from '@/components/admin/retry-generation-button'
+import { MotionReview } from '@/components/admin/motion-review'
+import { GenerateNowButton } from '@/components/admin/generate-now-button'
 
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
@@ -135,19 +138,26 @@ export default async function AdminOrderDetailPage({
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-6">
-          <Tabs defaultValue={['pending_review', 'revision_requested', 'in_progress'].includes(order.status) ? 'chat' : 'details'}>
+          <Tabs defaultValue={['pending_review'].includes(order.status) ? 'review' : ['revision_requested', 'in_progress'].includes(order.status) ? 'chat' : 'details'}>
             <TabsList className="bg-gray-100 p-1 border border-gray-200">
+              <TabsTrigger
+                value="review"
+                className="data-[state=active]:bg-green-100 data-[state=active]:text-green-700 text-gray-500 rounded-lg px-4 gap-2"
+              >
+                <CheckCircle className="h-4 w-4" />
+                Review Motion
+                {order.status === 'pending_review' && (
+                  <span className="ml-1 rounded-full bg-green-500 px-1.5 py-0.5 text-xs font-semibold text-white">
+                    Ready
+                  </span>
+                )}
+              </TabsTrigger>
               <TabsTrigger
                 value="chat"
                 className="data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700 text-gray-500 rounded-lg px-4 gap-2"
               >
                 <Bot className="h-4 w-4" />
                 Claude Chat
-                {['pending_review', 'revision_requested'].includes(order.status) && (
-                  <span className="ml-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-xs font-semibold text-white">
-                    Action
-                  </span>
-                )}
               </TabsTrigger>
               <TabsTrigger
                 value="details"
@@ -167,6 +177,10 @@ export default async function AdminOrderDetailPage({
                 </span>
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="review" className="mt-6">
+              <MotionReview orderId={order.id} orderNumber={order.order_number} orderStatus={order.status} />
+            </TabsContent>
 
             <TabsContent value="chat" className="mt-6">
               <ClaudeChat orderId={order.id} orderNumber={order.order_number} />
@@ -383,6 +397,15 @@ export default async function AdminOrderDetailPage({
             <QuickApproveButton
               orderId={order.id}
               orderNumber={order.order_number}
+            />
+          )}
+
+          {/* Generate Now - shown for orders that need generation */}
+          {['submitted', 'under_review', 'in_progress', 'generation_failed', 'assigned'].includes(order.status) && (
+            <GenerateNowButton
+              orderId={order.id}
+              orderNumber={order.order_number}
+              orderStatus={order.status}
             />
           )}
 

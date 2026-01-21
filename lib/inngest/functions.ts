@@ -2,8 +2,7 @@ import { inngest } from "./client";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
-import { parseFileOperations, executeFileOperations, findLatestHandoff } from "@/lib/workflow/file-system";
-import type { WorkflowFile } from "@/lib/workflow/file-system";
+import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
 import { getAnthropicAPIKey } from "@/lib/api-keys";
 
@@ -20,70 +19,50 @@ function getSupabase() {
 }
 
 /**
- * Build web context adapter for continuous execution mode
+ * Build web context adapter for streamlined motion output
  */
-function buildWebContextAdapter(orderId: string, existingHandoffContent: string): string {
+function buildWebContextAdapter(orderId: string): string {
   return `
 ================================================================================
-WEB APPLICATION FILE SYSTEM - READ THIS FIRST
+STREAMLINED EXECUTION MODE - DIRECT MOTION OUTPUT
 ================================================================================
 
-**EXECUTION MODE: CONTINUOUS - PRODUCE COMPLETE MOTION**
+**OUTPUT REQUIREMENT: PRODUCE THE FINAL MOTION DOCUMENT ONLY**
 
-You MUST complete ALL phases (I through IX) in a SINGLE response without pausing.
-- DO NOT ask "Would you like me to continue?" or "Say continue"
-- DO NOT stop between phases waiting for user input
-- DO proceed automatically through every phase until the final motion is complete
-- DO save a HANDOFF file after completing ALL phases (one comprehensive file)
-- The admin will review the completed motion - no intermediate approvals needed
+You are generating a legal motion for admin review. Follow these rules:
+
+1. **SKIP ALL HANDOFF FILES** - Do NOT create HANDOFF_*.md files
+2. **SKIP PHASE-BY-PHASE OUTPUT** - Do NOT show status checklists or phase tracking
+3. **OUTPUT ONLY THE MOTION** - Produce the complete, formatted motion document
+
+**YOUR SINGLE OUTPUT should be the motion wrapped in a file_write tag:**
+
+<file_write path="/mnt/user-data/outputs/Motion_${orderId.slice(0, 8)}.docx">
+[Complete motion content here - properly formatted legal document]
+</file_write>
+
+**WHAT TO INCLUDE IN THE MOTION:**
+- Full caption with court, case number, parties
+- Notice of Motion
+- Memorandum of Points and Authorities
+- All legal arguments with verified citations
+- Conclusion and prayer for relief
+- Signature block
+
+**WHAT TO SKIP:**
+- Phase status updates
+- Handoff files
+- Research memos (incorporate findings directly into arguments)
+- Citation verification reports (just use verified citations)
+
+**STILL APPLY:**
+- All legal standards and quality requirements from the superprompt
+- Proper citation format and verification
+- Customer inputs as PRIMARY SOURCE for facts
+- Professional litigation tone
 
 ================================================================================
-
-You are operating in a WEB APPLICATION with FILE SYSTEM ACCESS via XML commands.
-Your superprompt references /mnt/user-data/outputs/ - this is NOW AVAILABLE.
-
-**FILE SYSTEM COMMANDS (USE THESE INSTEAD OF BASH):**
-
-1. **WRITE A FILE** - Use this to create HANDOFF files, motions, declarations, etc:
-   <file_write path="/mnt/user-data/outputs/HANDOFF_MMDDYYYY_HHMMam.md">
-   [Your file content here]
-   </file_write>
-
-2. **READ A FILE** - Use this to read any existing file:
-   <file_read path="/mnt/user-data/outputs/HANDOFF_01202026_1045am.md" />
-
-3. **LIST FILES** - Use this to see what files exist:
-   <file_list directory="/mnt/user-data/outputs/" />
-
-4. **FIND LATEST HANDOFF** - Use this to find and read the most recent handoff:
-   <find_handoff />
-
-**IMPORTANT RULES:**
-
-- DO NOT use bash, cat, echo, or shell commands - they don't work here
-- DO use the XML file commands above - they ARE functional
-- The file system persists across sessions
-- Files are stored per-order (this order: ${orderId})
-- Your HANDOFF workflow works exactly as designed - just use XML tags instead of bash
-
-**WORKFLOW INSTRUCTIONS REMAIN IN FULL EFFECT:**
-- All legal standards, citation rules, quality requirements: FULLY APPLY
-- Phase workflow logic: FULLY APPLY
-- Citation verification requirements: FULLY APPLY
-- 4-citation HARD STOP: FULLY APPLY
-- Input Priority Rule: FULLY APPLY
-- HANDOFF file generation: FULLY APPLY (use <file_write> tag)
-
-${existingHandoffContent ? existingHandoffContent : `
-================================================================================
-NO EXISTING HANDOFF - THIS IS A NEW MATTER
-================================================================================
-No previous handoff file was found for this order.
-Start with Phase I: Intake & Document Processing.
-================================================================================
-`}
-================================================================================
-BEGIN PROCESSING - USE XML FILE COMMANDS AS NEEDED
+BEGIN - OUTPUT THE COMPLETE MOTION DOCUMENT
 ================================================================================
 
 `;
@@ -200,28 +179,6 @@ export const generateOrderDraft = inngest.createFunction(
       const plaintiffs = parties?.filter((p) => p.party_role?.toLowerCase().includes("plaintiff")) || [];
       const defendants = parties?.filter((p) => p.party_role?.toLowerCase().includes("defendant")) || [];
 
-      // Check for existing handoff file
-      let existingHandoffContent = '';
-      const handoffResult = await findLatestHandoff(orderId);
-      if (handoffResult.success && handoffResult.data) {
-        const handoff = handoffResult.data as WorkflowFile;
-        existingHandoffContent = `
-================================================================================
-EXISTING HANDOFF FILE FOUND - RESUME FROM HERE
-================================================================================
-
-File: ${handoff.file_path}
-Last Updated: ${handoff.updated_at}
-
-${handoff.content}
-
-================================================================================
-END OF EXISTING HANDOFF
-================================================================================
-
-`;
-      }
-
       // Build replacements
       const replacements: Record<string, string> = {
         "{{CASE_NUMBER}}": orderData.case_number || "",
@@ -255,8 +212,8 @@ END OF EXISTING HANDOFF
         templateContent = templateContent.replace(new RegExp(placeholder.replace(/[{}]/g, "\\$&"), "g"), value);
       }
 
-      // Prepend web context adapter for continuous execution
-      const webContextAdapter = buildWebContextAdapter(orderId, existingHandoffContent);
+      // Prepend web context adapter for streamlined execution
+      const webContextAdapter = buildWebContextAdapter(orderId);
       return webContextAdapter + templateContent;
     });
 
