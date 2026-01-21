@@ -25,49 +25,49 @@ function getAdminClient() {
   return createSupabaseClient(supabaseUrl, supabaseServiceKey);
 }
 
-function buildStreamlinedPrompt(orderId: string): string {
+function buildStreamlinedPrompt(): string {
   return `
-================================================================================
-STREAMLINED EXECUTION MODE - DIRECT MOTION OUTPUT
-================================================================================
+################################################################################
+#                                                                              #
+#   MANDATORY INSTRUCTION - FAILURE TO COMPLY WILL RESULT IN REJECTION        #
+#                                                                              #
+################################################################################
 
-**OUTPUT REQUIREMENT: PRODUCE THE FINAL MOTION DOCUMENT ONLY**
+YOU MUST GENERATE A COMPLETE LEGAL MOTION.
 
-You are generating a legal motion for admin review. Follow these rules:
+FORBIDDEN ACTIONS (will cause immediate rejection):
+- Asking for more information
+- Saying "I need" or "Please provide"
+- Listing what information you require
+- Providing a checklist of missing items
+- Asking clarifying questions
+- Summarizing what you would need to proceed
 
-1. **SKIP ALL HANDOFF FILES** - Do NOT create HANDOFF_*.md files
-2. **SKIP PHASE-BY-PHASE OUTPUT** - Do NOT show status checklists or phase tracking
-3. **OUTPUT ONLY THE MOTION** - Produce the complete, formatted motion document
+REQUIRED ACTION:
+Generate the COMPLETE motion document using the case data provided below.
+The case data section contains ALL information needed: case number, parties,
+facts, procedural history, and instructions.
 
-**YOUR SINGLE OUTPUT should be the motion wrapped in a file_write tag:**
+OUTPUT FORMAT:
+Start your response IMMEDIATELY with the court caption. Example:
 
-<file_write path="/mnt/user-data/outputs/Motion_${orderId.slice(0, 8)}.docx">
-[Complete motion content here - properly formatted legal document]
-</file_write>
+IN THE [COURT] FOR THE [JURISDICTION]
 
-**WHAT TO INCLUDE IN THE MOTION:**
-- Full caption with court, case number, parties
-- Notice of Motion
-- Memorandum of Points and Authorities
-- All legal arguments with verified citations
-- Conclusion and prayer for relief
-- Signature block
+[PLAINTIFF NAME],
+     Plaintiff,
 
-**WHAT TO SKIP:**
-- Phase status updates
-- Handoff files
-- Research memos (incorporate findings directly into arguments)
-- Citation verification reports (just use verified citations)
+vs.                                    Case No. [NUMBER]
 
-**STILL APPLY:**
-- All legal standards and quality requirements from the superprompt
-- Proper citation format and verification
-- Customer inputs as PRIMARY SOURCE for facts
-- Professional litigation tone
+[DEFENDANT NAME],
+     Defendant.
 
-================================================================================
-BEGIN - OUTPUT THE COMPLETE MOTION DOCUMENT
-================================================================================
+                    MOTION FOR [TYPE]
+
+[Continue with full motion content...]
+
+################################################################################
+#   CASE DATA STARTS BELOW - USE THIS TO WRITE THE MOTION                     #
+################################################################################
 
 `;
 }
@@ -110,6 +110,20 @@ export async function POST(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
+    // Debug: Log what data we found
+    console.log('[Generate] Order data:', JSON.stringify({
+      orderId,
+      order_number: order.order_number,
+      case_number: order.case_number,
+      case_caption: order.case_caption,
+      motion_type: order.motion_type,
+      jurisdiction: order.jurisdiction,
+      has_statement_of_facts: !!order.statement_of_facts,
+      statement_preview: order.statement_of_facts?.substring(0, 200),
+      parties_count: order.parties?.length || 0,
+      parties: order.parties,
+    }, null, 2));
+
     // Update status to in_progress
     await adminClient
       .from('orders')
@@ -119,11 +133,11 @@ export async function POST(
       })
       .eq('id', orderId);
 
-    // Get superprompt template
+    // Get superprompt template (prefer is_default, fall back to most recent)
     const { data: templates } = await adminClient
       .from('superprompt_templates')
       .select('*')
-      .eq('is_active', true)
+      .order('is_default', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(1);
 
@@ -152,7 +166,71 @@ export async function POST(
       p.party_role?.toLowerCase().includes('defendant')
     );
 
-    // Build replacements
+    // Build structured case data that will ALWAYS be appended
+    const todayDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const structuredCaseData = `
+
+================================================================================
+CASE DATA - USE THIS INFORMATION TO GENERATE THE MOTION
+================================================================================
+
+CASE IDENTIFICATION:
+- Case Number: ${order.case_number || 'Not specified'}
+- Case Caption: ${order.case_caption || 'Not specified'}
+- Court/Jurisdiction: ${order.jurisdiction || 'Not specified'}
+- Court Division: ${order.court_division || 'Not specified'}
+- Order Number: ${order.order_number || 'Not specified'}
+- Today's Date: ${todayDate}
+
+MOTION DETAILS:
+- Motion Type: ${order.motion_type || 'Not specified'}
+- Motion Tier: ${order.motion_tier || 'Not specified'}
+- Filing Deadline: ${order.filing_deadline || 'Not specified'}
+
+PARTIES:
+${parties.length > 0
+  ? parties.map((p: { party_name: string; party_role: string }) =>
+      `- ${p.party_name} (${p.party_role})`
+    ).join('\n')
+  : '- No parties specified'}
+
+PLAINTIFFS: ${plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') || 'Not specified'}
+DEFENDANTS: ${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || 'Not specified'}
+
+================================================================================
+STATEMENT OF FACTS
+================================================================================
+${order.statement_of_facts || 'No statement of facts provided.'}
+
+================================================================================
+PROCEDURAL HISTORY
+================================================================================
+${order.procedural_history || 'No procedural history provided.'}
+
+================================================================================
+CLIENT INSTRUCTIONS / SPECIAL REQUESTS
+================================================================================
+${order.instructions || 'No special instructions provided.'}
+
+================================================================================
+SUPPORTING DOCUMENTS
+================================================================================
+${documentContent || 'No documents uploaded.'}
+
+================================================================================
+END OF CASE DATA - NOW GENERATE THE MOTION
+================================================================================
+
+Using ALL the case information above, generate the complete ${order.motion_type || 'motion'} document now.
+Do NOT ask for more information. Do NOT provide a checklist. START WITH THE COURT CAPTION.
+`;
+
+    // Build replacements for any placeholders that might exist in template
     const replacements: Record<string, string> = {
       '{{CASE_NUMBER}}': order.case_number || '',
       '{{CASE_CAPTION}}': order.case_caption || '',
@@ -174,14 +252,10 @@ export async function POST(
       '{{DOCUMENT_CONTENT}}': documentContent,
       '{{ORDER_ID}}': orderId,
       '{{ORDER_NUMBER}}': order.order_number || '',
-      '{{TODAY_DATE}}': new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      }),
+      '{{TODAY_DATE}}': todayDate,
     };
 
-    // Replace placeholders
+    // Replace placeholders in template (if any exist)
     let templateContent = template.template;
     for (const [placeholder, value] of Object.entries(replacements)) {
       templateContent = templateContent.replace(
@@ -190,8 +264,22 @@ export async function POST(
       );
     }
 
-    // Build full context
-    const fullContext = buildStreamlinedPrompt(orderId) + templateContent;
+    // Build full context: CASE DATA FIRST (so Claude sees it), then workflow template
+    // Put case data at the BEGINNING so it doesn't get lost in the massive superprompt
+    const fullContext = buildStreamlinedPrompt() + structuredCaseData + '\n\n' + templateContent;
+
+    // Debug: Log replacements and final context preview
+    console.log('[Generate] Replacements applied:', {
+      case_number: replacements['{{CASE_NUMBER}}'],
+      case_caption: replacements['{{CASE_CAPTION}}'],
+      motion_type: replacements['{{MOTION_TYPE}}'],
+      jurisdiction: replacements['{{JURISDICTION}}'],
+      has_statement: !!replacements['{{STATEMENT_OF_FACTS}}'],
+      statement_preview: replacements['{{STATEMENT_OF_FACTS}}']?.substring(0, 200),
+      parties: replacements['{{ALL_PARTIES}}'],
+      documents_length: replacements['{{DOCUMENT_CONTENT}}']?.length || 0,
+    });
+    console.log('[Generate] Context length:', fullContext.length, 'chars');
 
     // Generate with Claude (with automatic rate limit handling)
     console.log(`[Generate] Starting Claude generation for order ${orderId}`);
