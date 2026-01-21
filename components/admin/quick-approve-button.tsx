@@ -52,21 +52,21 @@ export function QuickApproveButton({ orderId, orderNumber }: QuickApproveButtonP
   };
 
   return (
-    <Card className="bg-green-50 border-green-200">
+    <Card className="bg-teal-50 border-teal-200">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2 text-green-800">
+        <CardTitle className="text-lg flex items-center gap-2 text-teal-800">
           <CheckCircle className="h-5 w-5" />
           Ready for Review
         </CardTitle>
-        <CardDescription className="text-green-700">
+        <CardDescription className="text-teal-700">
           Order {orderNumber} has a generated motion ready for approval.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-green-700">
+        <p className="text-sm text-teal-700">
           Review the motion in the Claude Chat tab. When satisfied, click below to:
         </p>
-        <ul className="text-sm text-green-700 space-y-1 ml-4 list-disc">
+        <ul className="text-sm text-teal-700 space-y-1 ml-4 list-disc">
           <li>Generate the PDF</li>
           <li>Save as deliverable</li>
           <li>Email the client</li>
@@ -74,7 +74,7 @@ export function QuickApproveButton({ orderId, orderNumber }: QuickApproveButtonP
         <Button
           onClick={handleApprove}
           disabled={isApproving}
-          className="w-full bg-green-600 hover:bg-green-700 text-white"
+          className="w-full bg-teal-600 hover:bg-teal-700 text-white"
         >
           {isApproving ? (
             <>
@@ -88,7 +88,7 @@ export function QuickApproveButton({ orderId, orderNumber }: QuickApproveButtonP
             </>
           )}
         </Button>
-        <p className="text-xs text-green-600 text-center">
+        <p className="text-xs text-teal-600 text-center">
           Need changes? Use the Claude Chat tab to revise first.
         </p>
       </CardContent>

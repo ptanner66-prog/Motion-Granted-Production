@@ -71,7 +71,7 @@ export function QuickActionsPanel({
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {/* Status Overview */}
-      <Card className={totalActionable > 0 ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}>
+      <Card className={totalActionable > 0 ? 'border-amber-200 bg-amber-50' : 'border-teal-200 bg-teal-50'}>
         <CardHeader className="pb-2">
           <CardTitle className="text-lg flex items-center gap-2">
             {totalActionable > 0 ? (
@@ -81,12 +81,12 @@ export function QuickActionsPanel({
               </>
             ) : (
               <>
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <span className="text-green-800">All Clear</span>
+                <CheckCircle className="h-5 w-5 text-teal-600" />
+                <span className="text-teal-800">All Clear</span>
               </>
             )}
           </CardTitle>
-          <CardDescription className={totalActionable > 0 ? 'text-amber-700' : 'text-green-700'}>
+          <CardDescription className={totalActionable > 0 ? 'text-amber-700' : 'text-teal-700'}>
             {pendingReviewCount > 0 && (
               <span className="block">
                 <strong>{pendingReviewCount}</strong> motion(s) ready for review
@@ -115,7 +115,7 @@ export function QuickActionsPanel({
         <CardContent className="pt-2">
           <div className="flex flex-wrap gap-2">
             {pendingReviewCount > 0 && (
-              <Button size="sm" className="bg-green-600 hover:bg-green-700" asChild>
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700" asChild>
                 <Link href="/admin/queue">
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Review & Approve ({pendingReviewCount})
@@ -183,7 +183,7 @@ export function QuickActionsPanel({
 
 function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { color: string; label: string }> = {
-    pending_review: { color: 'bg-green-100 text-green-700', label: 'Ready' },
+    pending_review: { color: 'bg-teal-100 text-teal-700', label: 'Ready' },
     in_progress: { color: 'bg-blue-100 text-blue-700', label: 'Generating' },
     submitted: { color: 'bg-gray-100 text-gray-700', label: 'Queued' },
     generation_failed: { color: 'bg-red-100 text-red-700', label: 'Failed' },

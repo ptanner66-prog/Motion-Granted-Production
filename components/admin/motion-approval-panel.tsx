@@ -106,8 +106,8 @@ export function MotionApprovalPanel({
             variant={action === 'approve' ? 'default' : 'outline'}
             className={`h-auto py-4 flex-col gap-2 ${
               action === 'approve'
-                ? 'bg-green-600 hover:bg-green-700 text-white border-green-600'
-                : 'border-green-300 text-green-700 hover:bg-green-50 hover:border-green-400'
+                ? 'bg-teal-600 hover:bg-teal-700 text-white border-teal-600'
+                : 'border-teal-300 text-teal-700 hover:bg-teal-50 hover:border-teal-400'
             }`}
             onClick={() => {
               setAction('approve');
@@ -186,7 +186,7 @@ export function MotionApprovalPanel({
               disabled={isSubmitting || ((action === 'reject' || action === 'request_revision') && !feedback.trim())}
               className={`px-6 ${
                 action === 'approve'
-                  ? 'bg-green-600 hover:bg-green-700'
+                  ? 'bg-teal-600 hover:bg-teal-700'
                   : action === 'request_revision'
                   ? 'bg-orange-600 hover:bg-orange-700'
                   : 'bg-red-600 hover:bg-red-700'
