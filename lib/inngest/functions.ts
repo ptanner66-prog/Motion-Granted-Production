@@ -23,47 +23,54 @@ function getSupabase() {
  */
 function buildWebContextAdapter(orderId: string): string {
   return `
-================================================================================
-STREAMLINED EXECUTION MODE - DIRECT MOTION OUTPUT
-================================================================================
+################################################################################
+#                                                                              #
+#   MANDATORY INSTRUCTION - FAILURE TO COMPLY WILL RESULT IN REJECTION        #
+#                                                                              #
+################################################################################
 
-**OUTPUT REQUIREMENT: PRODUCE THE FINAL MOTION DOCUMENT ONLY**
+YOU MUST GENERATE A COMPLETE LEGAL MOTION - FINAL DOCUMENT ONLY.
 
-You are generating a legal motion for admin review. Follow these rules:
+FORBIDDEN OUTPUTS (will cause immediate rejection):
+- "PHASE I:", "PHASE II:", etc. - NO PHASE HEADERS
+- "Status: IN PROGRESS" or any status updates
+- Tables showing phase progress or element mapping
+- "### PHASE X COMPLETE" or any completion markers
+- Workflow summaries or checklists
+- "Next Phase:" indicators
+- Research notes or citation verification reports
+- Attorney instruction sheets (these come separately)
+- HANDOFF files or file_write tags
 
-1. **SKIP ALL HANDOFF FILES** - Do NOT create HANDOFF_*.md files
-2. **SKIP PHASE-BY-PHASE OUTPUT** - Do NOT show status checklists or phase tracking
-3. **OUTPUT ONLY THE MOTION** - Produce the complete, formatted motion document
+SKIP THE WORKFLOW OUTPUT. Only output the FINAL MOTION DOCUMENT.
 
-**YOUR SINGLE OUTPUT should be the motion wrapped in a file_write tag:**
+REQUIRED OUTPUT FORMAT:
+Start IMMEDIATELY with the court caption. Your entire response should be the
+motion document that gets filed with the court. Nothing else.
 
-<file_write path="/mnt/user-data/outputs/Motion_${orderId.slice(0, 8)}.docx">
-[Complete motion content here - properly formatted legal document]
-</file_write>
+Example of CORRECT output (start like this):
 
-**WHAT TO INCLUDE IN THE MOTION:**
-- Full caption with court, case number, parties
-- Notice of Motion
-- Memorandum of Points and Authorities
-- All legal arguments with verified citations
-- Conclusion and prayer for relief
-- Signature block
+IN THE CIVIL DISTRICT COURT
+FOR THE PARISH OF ORLEANS
 
-**WHAT TO SKIP:**
-- Phase status updates
-- Handoff files
-- Research memos (incorporate findings directly into arguments)
-- Citation verification reports (just use verified citations)
+JOHN DOE,
+     Plaintiff,
 
-**STILL APPLY:**
-- All legal standards and quality requirements from the superprompt
-- Proper citation format and verification
-- Customer inputs as PRIMARY SOURCE for facts
-- Professional litigation tone
+vs.                                    CASE NO. 2025-12345
 
-================================================================================
-BEGIN - OUTPUT THE COMPLETE MOTION DOCUMENT
-================================================================================
+JANE SMITH,
+     Defendant.
+
+                    MOTION TO COMPEL DISCOVERY
+
+TO THE HONORABLE COURT:
+[Continue with the actual motion content...]
+
+DO NOT show your work. DO NOT output phases. ONLY output the final motion.
+
+################################################################################
+#   CASE DATA BELOW - USE THIS TO WRITE THE MOTION                            #
+################################################################################
 
 `;
 }
