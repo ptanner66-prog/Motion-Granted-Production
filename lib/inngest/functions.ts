@@ -338,7 +338,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
 
       const response = await createMessageWithRetry(
         {
-          model: "claude-sonnet-4-20250514",
+          model: "claude-opus-4-5-20251101",
           max_tokens: 64000,
           system: context,
           messages: [{ role: "user", content: userMessage }],
@@ -444,7 +444,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
           conversationId: conversation?.id,
           inputTokens: generatedMotion.inputTokens,
           outputTokens: generatedMotion.outputTokens,
-          model: "claude-sonnet-4-20250514",
+          model: "claude-opus-4-5-20251101",
           fileOperations: operations.length,
           generationTimeMs:
             Date.now() - new Date(orderData.generation_started_at || Date.now()).getTime(),
