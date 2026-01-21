@@ -1,7 +1,9 @@
-import { inngest, calculatePriority } from "./client";
+import { inngest } from "./client";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
+import { parseFileOperations, executeFileOperations, findLatestHandoff } from "@/lib/workflow/file-system";
+import type { WorkflowFile } from "@/lib/workflow/file-system";
 
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
@@ -15,13 +17,105 @@ function getSupabase() {
   return createSupabaseClient(supabaseUrl, supabaseServiceKey);
 }
 
-// Lazy-initialized Anthropic client
-let anthropicClient: Anthropic | null = null;
-function getAnthropic(): Anthropic {
-  if (!anthropicClient) {
-    anthropicClient = new Anthropic();
+/**
+ * Get Anthropic API key from database or fallback to env var
+ */
+async function getAnthropicAPIKey(): Promise<string | null> {
+  const supabase = getSupabase();
+
+  try {
+    // Try to get from automation_settings
+    const { data } = await supabase
+      .from('automation_settings')
+      .select('setting_value')
+      .eq('setting_key', 'anthropic_api_key')
+      .single();
+
+    if (data?.setting_value) {
+      // Check if it's encrypted (v2 format)
+      if (data.setting_value.startsWith('v2:')) {
+        // Import decryption function
+        const { decryptAPIKey } = await import('@/lib/api-keys');
+        return decryptAPIKey(data.setting_value);
+      }
+      return data.setting_value;
+    }
+  } catch {
+    // Fall through to env var
   }
-  return anthropicClient;
+
+  // Fallback to environment variable
+  return process.env.ANTHROPIC_API_KEY || null;
+}
+
+/**
+ * Build web context adapter for continuous execution mode
+ */
+function buildWebContextAdapter(orderId: string, existingHandoffContent: string): string {
+  return `
+================================================================================
+WEB APPLICATION FILE SYSTEM - READ THIS FIRST
+================================================================================
+
+**EXECUTION MODE: CONTINUOUS - PRODUCE COMPLETE MOTION**
+
+You MUST complete ALL phases (I through IX) in a SINGLE response without pausing.
+- DO NOT ask "Would you like me to continue?" or "Say continue"
+- DO NOT stop between phases waiting for user input
+- DO proceed automatically through every phase until the final motion is complete
+- DO save a HANDOFF file after completing ALL phases (one comprehensive file)
+- The admin will review the completed motion - no intermediate approvals needed
+
+================================================================================
+
+You are operating in a WEB APPLICATION with FILE SYSTEM ACCESS via XML commands.
+Your superprompt references /mnt/user-data/outputs/ - this is NOW AVAILABLE.
+
+**FILE SYSTEM COMMANDS (USE THESE INSTEAD OF BASH):**
+
+1. **WRITE A FILE** - Use this to create HANDOFF files, motions, declarations, etc:
+   <file_write path="/mnt/user-data/outputs/HANDOFF_MMDDYYYY_HHMMam.md">
+   [Your file content here]
+   </file_write>
+
+2. **READ A FILE** - Use this to read any existing file:
+   <file_read path="/mnt/user-data/outputs/HANDOFF_01202026_1045am.md" />
+
+3. **LIST FILES** - Use this to see what files exist:
+   <file_list directory="/mnt/user-data/outputs/" />
+
+4. **FIND LATEST HANDOFF** - Use this to find and read the most recent handoff:
+   <find_handoff />
+
+**IMPORTANT RULES:**
+
+- DO NOT use bash, cat, echo, or shell commands - they don't work here
+- DO use the XML file commands above - they ARE functional
+- The file system persists across sessions
+- Files are stored per-order (this order: ${orderId})
+- Your HANDOFF workflow works exactly as designed - just use XML tags instead of bash
+
+**WORKFLOW INSTRUCTIONS REMAIN IN FULL EFFECT:**
+- All legal standards, citation rules, quality requirements: FULLY APPLY
+- Phase workflow logic: FULLY APPLY
+- Citation verification requirements: FULLY APPLY
+- 4-citation HARD STOP: FULLY APPLY
+- Input Priority Rule: FULLY APPLY
+- HANDOFF file generation: FULLY APPLY (use <file_write> tag)
+
+${existingHandoffContent ? existingHandoffContent : `
+================================================================================
+NO EXISTING HANDOFF - THIS IS A NEW MATTER
+================================================================================
+No previous handoff file was found for this order.
+Start with Phase I: Intake & Document Processing.
+================================================================================
+`}
+================================================================================
+BEGIN PROCESSING - USE XML FILE COMMANDS AS NEEDED
+================================================================================
+
+`;
 }
 
 /**
@@ -34,6 +128,7 @@ function getAnthropic(): Anthropic {
  * - 3 retries with exponential backoff
  * - Concurrency limit of 5 for Claude rate limit safety
  * - Failure alerting via email
+ * - Continuous execution mode (all 9 phases in one shot)
  */
 export const generateOrderDraft = inngest.createFunction(
   {
@@ -99,11 +194,11 @@ export const generateOrderDraft = inngest.createFunction(
     await step.run("rate-limit-check", async () => {
       if (!canMakeRequest()) {
         // Wait 30 seconds if rate limited
-        await step.sleep("rate-limit-wait", "30s");
+        await new Promise(resolve => setTimeout(resolve, 30000));
       }
     });
 
-    // Step 3: Gather order data and build context
+    // Step 3: Gather order data and build context with web adapter
     const context = await step.run("build-context", async () => {
       // Get superprompt template
       const { data: templates } = await supabase
@@ -138,6 +233,28 @@ export const generateOrderDraft = inngest.createFunction(
       const plaintiffs = parties?.filter((p) => p.party_role?.toLowerCase().includes("plaintiff")) || [];
       const defendants = parties?.filter((p) => p.party_role?.toLowerCase().includes("defendant")) || [];
 
+      // Check for existing handoff file
+      let existingHandoffContent = '';
+      const handoffResult = await findLatestHandoff(orderId);
+      if (handoffResult.success && handoffResult.data) {
+        const handoff = handoffResult.data as WorkflowFile;
+        existingHandoffContent = `
+================================================================================
+EXISTING HANDOFF FILE FOUND - RESUME FROM HERE
+================================================================================
+
+File: ${handoff.file_path}
+Last Updated: ${handoff.updated_at}
+
+${handoff.content}
+
+================================================================================
+END OF EXISTING HANDOFF
+================================================================================
+
+`;
+      }
+
       // Build replacements
       const replacements: Record<string, string> = {
         "{{CASE_NUMBER}}": orderData.case_number || "",
@@ -166,26 +283,34 @@ export const generateOrderDraft = inngest.createFunction(
       };
 
       // Replace all placeholders in template
-      let context = template.template;
+      let templateContent = template.template;
       for (const [placeholder, value] of Object.entries(replacements)) {
-        context = context.replace(new RegExp(placeholder.replace(/[{}]/g, "\\$&"), "g"), value);
+        templateContent = templateContent.replace(new RegExp(placeholder.replace(/[{}]/g, "\\$&"), "g"), value);
       }
 
-      return context;
+      // Prepend web context adapter for continuous execution
+      const webContextAdapter = buildWebContextAdapter(orderId, existingHandoffContent);
+      return webContextAdapter + templateContent;
     });
 
-    // Step 4: Generate draft with Claude
+    // Step 4: Generate draft with Claude using dynamic API key
     const generatedMotion = await step.run("generate-draft", async () => {
-      const anthropic = getAnthropic();
+      // Get API key from database or env
+      const apiKey = await getAnthropicAPIKey();
+      if (!apiKey) {
+        throw new Error("Anthropic API key not configured. Add it in Admin Settings > API Keys.");
+      }
+
+      const anthropic = new Anthropic({ apiKey });
 
       // Log the request
       logRequest();
 
-      const initialPrompt = "Please generate the motion based on the case information and documents provided.";
+      const initialPrompt = "Please generate the complete motion based on the case information and documents provided. Complete all phases without stopping.";
 
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 16000,
+        max_tokens: 64000, // Increased for full motion generation through all phases
         system: context,
         messages: [{ role: "user", content: initialPrompt }],
       });
@@ -202,15 +327,23 @@ export const generateOrderDraft = inngest.createFunction(
       };
     });
 
-    // Step 5: Save the draft and create conversation
-    await step.run("save-draft", async () => {
+    // Step 5: Process file operations and save the draft
+    const conversationData = await step.run("save-draft", async () => {
+      // Parse any file operations from the response
+      const { operations, cleanedResponse } = parseFileOperations(generatedMotion.motion);
+
+      // Execute file operations (save HANDOFF files, etc.)
+      if (operations.length > 0) {
+        await executeFileOperations(orderId, operations);
+      }
+
       // Create conversation record
       const { data: conversation, error: convError } = await supabase
         .from("conversations")
         .insert({
           order_id: orderId,
           initial_context: context,
-          generated_motion: generatedMotion.motion,
+          generated_motion: cleanedResponse, // Use cleaned response (without XML tags)
           status: "active",
         })
         .select()
@@ -232,13 +365,13 @@ export const generateOrderDraft = inngest.createFunction(
           {
             conversation_id: conversation.id,
             role: "user",
-            content: "Please generate the motion based on the case information and documents provided.",
+            content: "Please generate the complete motion based on the case information and documents provided. Complete all phases without stopping.",
             sequence_number: 2,
           },
           {
             conversation_id: conversation.id,
             role: "assistant",
-            content: generatedMotion.motion,
+            content: generatedMotion.motion, // Store full response including file tags
             is_motion_draft: true,
             sequence_number: 3,
             input_tokens: generatedMotion.inputTokens,
@@ -247,7 +380,7 @@ export const generateOrderDraft = inngest.createFunction(
         ]);
       }
 
-      // Update order status
+      // Update order status to pending_review so admin can approve
       await supabase
         .from("orders")
         .update({
@@ -266,6 +399,7 @@ export const generateOrderDraft = inngest.createFunction(
           inputTokens: generatedMotion.inputTokens,
           outputTokens: generatedMotion.outputTokens,
           model: "claude-sonnet-4-20250514",
+          fileOperations: operations.length,
           generationTimeMs:
             Date.now() - new Date(orderData.generation_started_at || Date.now()).getTime(),
         },
@@ -303,6 +437,7 @@ export const generateOrderDraft = inngest.createFunction(
     return {
       success: true,
       orderId,
+      conversationId: conversationData.conversationId,
       status: "pending_review",
     };
   }
