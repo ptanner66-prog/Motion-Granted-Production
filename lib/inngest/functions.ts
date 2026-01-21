@@ -616,9 +616,8 @@ Motion Granted Automated Alert System
 export const updateQueuePositions = inngest.createFunction(
   {
     id: "update-queue-positions",
-    // Debounce to avoid running too frequently
+    // Debounce to avoid running too frequently (no key = all events debounced together)
     debounce: {
-      key: '"queue_positions"',
       period: "10s",
     },
   },
