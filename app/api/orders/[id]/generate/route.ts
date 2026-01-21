@@ -285,6 +285,28 @@ Do NOT ask for more information. START WITH THE COURT CAPTION.
     // Generate with Claude (with automatic rate limit handling)
     console.log(`[Generate] Starting Claude generation for order ${orderId}`);
 
+    // Put the critical instruction in the USER MESSAGE so it's the last thing Claude sees
+    const userMessage = `CRITICAL: The case data has already been provided in the system context above. DO NOT ask for more information. DO NOT say "I need" or list requirements. DO NOT output Phase I status updates.
+
+Your task: Using the customer_intake JSON and uploaded_documents provided above, generate the COMPLETE ${order.motion_type || 'motion'} document NOW.
+
+START YOUR RESPONSE WITH THE COURT CAPTION:
+
+IN THE ${order.jurisdiction === 'la_state' ? 'CIVIL DISTRICT COURT' : order.jurisdiction?.toUpperCase() || '[COURT]'}
+${order.court_division ? `FOR THE ${order.court_division.toUpperCase()}` : ''}
+
+${plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') || '[PLAINTIFF]'},
+     Plaintiff${plaintiffs.length > 1 ? 's' : ''},
+
+vs.                                    CASE NO. ${order.case_number || '[NUMBER]'}
+
+${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || '[DEFENDANT]'},
+     Defendant${defendants.length > 1 ? 's' : ''}.
+
+                    MOTION FOR ${(order.motion_type || 'RELIEF').toUpperCase().replace(/_/g, ' ')}
+
+[NOW CONTINUE WITH THE COMPLETE MOTION DOCUMENT - Introduction, Statement of Facts, Legal Arguments, Conclusion, Prayer for Relief, Certificate of Service]`;
+
     const response = await createMessageWithRetry(
       {
         model: 'claude-sonnet-4-20250514',
@@ -292,7 +314,7 @@ Do NOT ask for more information. START WITH THE COURT CAPTION.
         system: fullContext,
         messages: [{
           role: 'user',
-          content: 'Please generate the complete motion based on the case information and documents provided.'
+          content: userMessage
         }],
       },
       {
