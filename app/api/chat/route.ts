@@ -285,8 +285,8 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
           const anthropic = new Anthropic({ apiKey });
 
           const response = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 16000,
+            model: 'claude-opus-4-5-20251101',
+            max_tokens: 64000,
             system: systemMessage,
             messages: claudeMessages,
             stream: true,
