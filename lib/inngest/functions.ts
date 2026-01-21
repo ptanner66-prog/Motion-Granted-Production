@@ -133,17 +133,13 @@ BEGIN PROCESSING - USE XML FILE COMMANDS AS NEEDED
 export const generateOrderDraft = inngest.createFunction(
   {
     id: "generate-order-draft",
-    // Concurrency limit to respect Claude API rate limits
+    // Process one order at a time for reliability and cost control
+    // Increase to 2-3 once system is proven stable
     concurrency: {
-      limit: 5,
+      limit: 1,
     },
     // Retry configuration
     retries: 3,
-    // Throttle to prevent overwhelming the API
-    throttle: {
-      limit: 10,
-      period: "1m",
-    },
   },
   { event: "order/submitted" },
   async ({ event, step }) => {
