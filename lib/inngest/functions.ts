@@ -315,11 +315,12 @@ export const generateOrderDraft = inngest.createFunction(
         ]);
       }
 
-      // Update order status to pending_review so admin can approve
+      // Update order status to draft_delivered so admin can approve
+      // Using 'draft_delivered' as it's valid in all database constraint versions
       await supabase
         .from("orders")
         .update({
-          status: "pending_review",
+          status: "draft_delivered",
           generation_completed_at: new Date().toISOString(),
           generation_error: null,
         })
@@ -373,7 +374,7 @@ export const generateOrderDraft = inngest.createFunction(
       success: true,
       orderId,
       conversationId: conversationData.conversationId,
-      status: "pending_review",
+      status: "draft_delivered",
     };
   }
 );
