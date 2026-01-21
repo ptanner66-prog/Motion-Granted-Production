@@ -41,6 +41,13 @@ FORBIDDEN OUTPUTS (will cause immediate rejection):
 - Research notes or citation verification reports
 - Attorney instruction sheets (these come separately)
 - HANDOFF files or file_write tags
+- INTRODUCTORY SENTENCES like "I'll generate..." or "Let me create..." or "Here is..."
+- CONCLUDING COMMENTARY like "Key Improvements Made" or summaries of what you did
+- Any text before the court caption
+- Any text after the Certificate of Service
+
+YOUR ENTIRE RESPONSE MUST BE ONLY THE MOTION DOCUMENT.
+No introduction. No explanation. No commentary. Just the motion.
 
 SKIP THE WORKFLOW OUTPUT. Only output the FINAL MOTION DOCUMENT.
 
