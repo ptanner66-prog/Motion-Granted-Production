@@ -25,48 +25,46 @@ function getAdminClient() {
   return createSupabaseClient(supabaseUrl, supabaseServiceKey);
 }
 
-function buildStreamlinedPrompt(orderId: string): string {
+function buildStreamlinedPrompt(): string {
   return `
 ================================================================================
-STREAMLINED EXECUTION MODE - DIRECT MOTION OUTPUT
+CRITICAL INSTRUCTION - READ THIS FIRST
 ================================================================================
 
-**OUTPUT REQUIREMENT: PRODUCE THE FINAL MOTION DOCUMENT ONLY**
+**YOU HAVE ALL THE INFORMATION YOU NEED BELOW. DO NOT ASK FOR MORE.**
+**DO NOT REQUEST CLARIFICATION. DO NOT LIST WHAT YOU NEED.**
+**GENERATE THE COMPLETE MOTION NOW USING THE CASE DATA PROVIDED.**
 
-You are generating a legal motion for admin review. Follow these rules:
+All case information, parties, facts, and documents are provided in this prompt.
+Your ONLY task is to draft the motion. Start writing the motion immediately.
 
-1. **SKIP ALL HANDOFF FILES** - Do NOT create HANDOFF_*.md files
-2. **SKIP PHASE-BY-PHASE OUTPUT** - Do NOT show status checklists or phase tracking
-3. **OUTPUT ONLY THE MOTION** - Produce the complete, formatted motion document
-
-**YOUR SINGLE OUTPUT should be the motion wrapped in a file_write tag:**
-
-<file_write path="/mnt/user-data/outputs/Motion_${orderId.slice(0, 8)}.docx">
-[Complete motion content here - properly formatted legal document]
-</file_write>
-
-**WHAT TO INCLUDE IN THE MOTION:**
-- Full caption with court, case number, parties
-- Notice of Motion
-- Memorandum of Points and Authorities
-- All legal arguments with verified citations
-- Conclusion and prayer for relief
-- Signature block
-
-**WHAT TO SKIP:**
-- Phase status updates
-- Handoff files
-- Research memos (incorporate findings directly into arguments)
-- Citation verification reports (just use verified citations)
-
-**STILL APPLY:**
-- All legal standards and quality requirements from the superprompt
-- Proper citation format and verification
-- Customer inputs as PRIMARY SOURCE for facts
-- Professional litigation tone
+If any information seems incomplete, work with what is provided and draft the
+best possible motion. Do NOT ask the user for more information.
 
 ================================================================================
-BEGIN - OUTPUT THE COMPLETE MOTION DOCUMENT
+OUTPUT INSTRUCTIONS
+================================================================================
+
+1. Output the complete motion document directly as plain text
+2. Do NOT wrap in XML tags or code blocks
+3. Do NOT ask questions or request clarification
+4. Do NOT provide checklists or summaries of what you need
+5. START YOUR RESPONSE DIRECTLY WITH THE MOTION
+
+Begin your response with the court caption, like this:
+
+IN THE [COURT NAME FROM DATA BELOW]
+
+[PARTIES FROM DATA BELOW]
+
+Case No. [CASE NUMBER FROM DATA BELOW]
+
+[MOTION TITLE]
+
+...then continue with the complete motion including all sections...
+
+================================================================================
+CASE DATA FOR THIS MOTION (USE THIS TO GENERATE)
 ================================================================================
 
 `;
@@ -205,7 +203,7 @@ export async function POST(
     }
 
     // Build full context
-    const fullContext = buildStreamlinedPrompt(orderId) + templateContent;
+    const fullContext = buildStreamlinedPrompt() + templateContent;
 
     // Debug: Log replacements and final context preview
     console.log('[Generate] Replacements applied:', {
