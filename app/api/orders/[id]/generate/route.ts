@@ -25,61 +25,42 @@ function getAdminClient() {
   return createSupabaseClient(supabaseUrl, supabaseServiceKey);
 }
 
-function buildStreamlinedPrompt(): string {
+function buildWorkflowEnforcementPrompt(): string {
   return `
 ################################################################################
 #                                                                              #
-#   MANDATORY INSTRUCTION - FAILURE TO COMPLY WILL RESULT IN REJECTION        #
+#   MANDATORY INSTRUCTION - FOLLOW THE SUPERPROMPT WORKFLOW EXACTLY           #
 #                                                                              #
 ################################################################################
 
-YOU MUST GENERATE A COMPLETE LEGAL MOTION - FINAL DOCUMENT ONLY.
+You are being provided with a SUPERPROMPT WORKFLOW TEMPLATE that contains a
+structured, multi-phase legal motion drafting process.
 
-FORBIDDEN OUTPUTS (will cause immediate rejection):
-- "PHASE I:", "PHASE II:", etc. - NO PHASE HEADERS
-- "Status: IN PROGRESS" or any status updates
-- Tables showing phase progress or element mapping
-- "### PHASE X COMPLETE" or any completion markers
-- Workflow summaries or checklists
-- "Next Phase:" indicators
-- Research notes or citation verification reports
-- Attorney instruction sheets (these come separately)
-- INTRODUCTORY SENTENCES like "I'll generate..." or "Let me create..." or "Here is..."
-- CONCLUDING COMMENTARY like "Key Improvements Made" or summaries of what you did
-- Any text before the court caption
-- Any text after the Certificate of Service
+CRITICAL REQUIREMENTS:
+1. FOLLOW the workflow phases EXACTLY as specified in the superprompt template
+2. Execute EACH phase completely before moving to the next phase
+3. Use the case data provided to inform your analysis at each phase
+4. Apply the legal standards, citation requirements, and quality checks specified
+5. The superprompt contains your lawyer's proven methodology - follow it precisely
 
-YOUR ENTIRE RESPONSE MUST BE ONLY THE MOTION DOCUMENT.
-No introduction. No explanation. No commentary. Just the motion.
+The workflow template will guide you through:
+- Phase I: Intake & Document Processing
+- Phase II: Legal Standards Research
+- Phase III: Evidence Strategy
+- Phase IV: Authority Research
+- Phase V: Drafting
+- Phase V.1: Citation Accuracy Check
+- Phase VI: Opposition Anticipation
+- Phase VII: Quality Review
+- And subsequent phases as defined in the template
 
-SKIP THE WORKFLOW OUTPUT. Only output the FINAL MOTION DOCUMENT.
+DO NOT skip phases. DO NOT take shortcuts. The workflow exists for quality assurance.
 
-REQUIRED OUTPUT FORMAT:
-Start IMMEDIATELY with the court caption. Your entire response should be the
-motion document that gets filed with the court. Nothing else.
-
-Example of CORRECT output (start like this):
-
-IN THE CIVIL DISTRICT COURT
-FOR THE PARISH OF ORLEANS
-
-JOHN DOE,
-     Plaintiff,
-
-vs.                                    CASE NO. 2025-12345
-
-JANE SMITH,
-     Defendant.
-
-                    MOTION TO COMPEL DISCOVERY
-
-TO THE HONORABLE COURT:
-[Continue with the actual motion content...]
-
-DO NOT show your work. DO NOT output phases. ONLY output the final motion.
+After completing ALL phases, your final output should be the complete, court-ready
+motion document with proper formatting, citations, and all required sections.
 
 ################################################################################
-#   CASE DATA BELOW - USE THIS TO WRITE THE MOTION                            #
+#   CASE DATA BELOW - USE THIS THROUGHOUT THE WORKFLOW                        #
 ################################################################################
 
 `;
@@ -286,9 +267,9 @@ Do NOT ask for more information. START WITH THE COURT CAPTION.
       );
     }
 
-    // Build full context: CASE DATA FIRST (so Claude sees it), then workflow template
-    // Put case data at the BEGINNING so it doesn't get lost in the massive superprompt
-    const fullContext = buildStreamlinedPrompt() + structuredCaseData + '\n\n' + templateContent;
+    // Build full context: Workflow enforcement + case data + superprompt template
+    // The superprompt template contains the full workflow that Claude must follow
+    const fullContext = buildWorkflowEnforcementPrompt() + structuredCaseData + '\n\n' + templateContent;
 
     // Debug: Log replacements and final context preview
     console.log('[Generate] Replacements applied:', {
@@ -306,27 +287,25 @@ Do NOT ask for more information. START WITH THE COURT CAPTION.
     // Generate with Claude (with automatic rate limit handling)
     console.log(`[Generate] Starting Claude generation for order ${orderId}`);
 
-    // Put the critical instruction in the USER MESSAGE so it's the last thing Claude sees
-    const userMessage = `CRITICAL: The case data has already been provided in the system context above. DO NOT ask for more information. DO NOT say "I need" or list requirements. DO NOT output Phase I status updates.
+    // Put the workflow execution instruction in the USER MESSAGE
+    const userMessage = `EXECUTE THE SUPERPROMPT WORKFLOW NOW.
 
-Your task: Using the customer_intake JSON and uploaded_documents provided above, generate the COMPLETE ${order.motion_type || 'motion'} document NOW.
+The system context above contains:
+1. A WORKFLOW TEMPLATE that specifies the exact phases you must follow
+2. CASE DATA including customer intake, uploaded documents, and attorney information
 
-START YOUR RESPONSE WITH THE COURT CAPTION:
+Your task: Execute the complete workflow from Phase I through the final phase.
+- Follow each phase exactly as specified in the workflow template
+- Use the provided case data at each phase
+- Complete ALL phases before producing the final motion
 
-IN THE ${order.jurisdiction === 'la_state' ? 'CIVIL DISTRICT COURT' : order.jurisdiction?.toUpperCase() || '[COURT]'}
-${order.court_division ? `FOR THE ${order.court_division.toUpperCase()}` : ''}
+Motion Type: ${order.motion_type || 'Motion'}
+Case Number: ${order.case_number || '[NUMBER]'}
+Court: ${order.jurisdiction === 'la_state' ? 'Civil District Court' : order.jurisdiction || '[COURT]'}
+Plaintiffs: ${plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') || '[PLAINTIFF]'}
+Defendants: ${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || '[DEFENDANT]'}
 
-${plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') || '[PLAINTIFF]'},
-     Plaintiff${plaintiffs.length > 1 ? 's' : ''},
-
-vs.                                    CASE NO. ${order.case_number || '[NUMBER]'}
-
-${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || '[DEFENDANT]'},
-     Defendant${defendants.length > 1 ? 's' : ''}.
-
-                    MOTION FOR ${(order.motion_type || 'RELIEF').toUpperCase().replace(/_/g, ' ')}
-
-[NOW CONTINUE WITH THE COMPLETE MOTION DOCUMENT - Introduction, Statement of Facts, Legal Arguments, Conclusion, Prayer for Relief, Certificate of Service]`;
+BEGIN EXECUTING THE WORKFLOW NOW. Start with Phase I as defined in your superprompt template.`;
 
     const response = await createMessageWithRetry(
       {
