@@ -22,11 +22,22 @@ import Link from 'next/link';
 import { ApprovalQueueList } from '@/components/admin/automation/approval-queue-list';
 import { AutomationActivityFeed } from '@/components/admin/automation/activity-feed';
 import { AutomationStatsCards } from '@/components/admin/automation/stats-cards';
+import { QuickActionsPanel } from '@/components/admin/automation/quick-actions-panel';
 
 export const metadata: Metadata = {
   title: 'AI Operations Center',
   description: 'Automation command center for Motion Granted.',
 };
+
+// Helper to safely run queries that may fail if table doesn't exist
+async function safeQuery<T>(promise: Promise<{ data: T | null; count?: number | null; error: unknown }>, defaultValue: T): Promise<{ data: T; count: number }> {
+  try {
+    const result = await promise;
+    return { data: result.data ?? defaultValue, count: result.count || 0 };
+  } catch {
+    return { data: defaultValue, count: 0 };
+  }
+}
 
 export default async function AutomationDashboardPage() {
   const supabase = await createClient();
@@ -36,78 +47,83 @@ export default async function AutomationDashboardPage() {
   today.setHours(0, 0, 0, 0);
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  // Parallel data fetching
+  // Fetch order stats (these tables definitely exist)
   const [
-    { count: pendingApprovals },
-    { count: autoProcessedToday },
-    { count: activeAlerts },
-    { count: pendingTasks },
-    { count: failedTasks24h },
-    { count: notificationsSentToday },
-    { data: recentApprovals },
-    { data: recentActivity },
+    { count: pendingReviewCount },
+    { count: inProgressCount },
+    { count: submittedCount },
+    { count: failedCount },
+    { data: recentOrders },
   ] = await Promise.all([
     supabase
-      .from('approval_queue')
+      .from('orders')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending'),
+      .eq('status', 'pending_review'),
     supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'in_progress'),
+    supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['submitted', 'under_review']),
+    supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'generation_failed'),
+    supabase
+      .from('orders')
+      .select('id, order_number, status, motion_type')
+      .in('status', ['pending_review', 'in_progress', 'submitted', 'under_review', 'generation_failed'])
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ]);
+
+  // Safely fetch from tables that may not exist
+  const [
+    approvalResult,
+    activityResult,
+    autoProcessedResult,
+    notificationResult,
+  ] = await Promise.all([
+    safeQuery(supabase
+      .from('approval_queue')
+      .select(`*, orders:order_id (order_number, case_caption, motion_type)`)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(5), []),
+    safeQuery(supabase
+      .from('automation_logs')
+      .select(`*, orders:order_id (order_number)`)
+      .order('created_at', { ascending: false })
+      .limit(15), []),
+    safeQuery(supabase
       .from('automation_logs')
       .select('*', { count: 'exact', head: true })
       .eq('was_auto_approved', true)
-      .gte('created_at', today.toISOString()),
-    supabase
-      .from('approval_queue')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending')
-      .in('urgency', ['high', 'critical']),
-    supabase
-      .from('automation_tasks')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending'),
-    supabase
-      .from('automation_tasks')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'failed')
-      .gte('completed_at', yesterday.toISOString()),
-    supabase
+      .gte('created_at', today.toISOString()), null),
+    safeQuery(supabase
       .from('notification_queue')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'sent')
-      .gte('sent_at', today.toISOString()),
-    supabase
-      .from('approval_queue')
-      .select(`
-        *,
-        orders:order_id (
-          order_number,
-          case_caption,
-          motion_type
-        )
-      `)
-      .eq('status', 'pending')
-      .order('urgency', { ascending: false })
-      .order('created_at', { ascending: true })
-      .limit(5),
-    supabase
-      .from('automation_logs')
-      .select(`
-        *,
-        orders:order_id (
-          order_number
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .limit(15),
+      .gte('sent_at', today.toISOString()), null),
   ]);
 
   const stats = {
-    pendingApprovals: pendingApprovals || 0,
-    autoProcessedToday: autoProcessedToday || 0,
-    activeAlerts: activeAlerts || 0,
-    pendingTasks: pendingTasks || 0,
-    failedTasks24h: failedTasks24h || 0,
-    notificationsSentToday: notificationsSentToday || 0,
+    pendingApprovals: approvalResult.count,
+    autoProcessedToday: autoProcessedResult.count,
+    activeAlerts: 0,
+    pendingTasks: (submittedCount || 0) + (inProgressCount || 0),
+    failedTasks24h: failedCount || 0,
+    notificationsSentToday: notificationResult.count,
+  };
+
+  const orderStats = {
+    pendingReviewCount: pendingReviewCount || 0,
+    inProgressCount: inProgressCount || 0,
+    submittedCount: submittedCount || 0,
+    failedCount: failedCount || 0,
+    recentOrders: recentOrders || [],
   };
 
   return (
@@ -144,8 +160,13 @@ export default async function AutomationDashboardPage() {
         </div>
       </div>
 
+      {/* Quick Actions - Most Important */}
+      <QuickActionsPanel {...orderStats} />
+
       {/* Stats Cards */}
-      <AutomationStatsCards stats={stats} />
+      <div className="mt-6">
+        <AutomationStatsCards stats={stats} />
+      </div>
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="approvals" className="mt-8">
@@ -188,7 +209,7 @@ export default async function AutomationDashboardPage() {
               )}
             </CardHeader>
             <CardContent>
-              <ApprovalQueueList approvals={recentApprovals || []} />
+              <ApprovalQueueList approvals={approvalResult.data} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -202,7 +223,7 @@ export default async function AutomationDashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <AutomationActivityFeed activities={recentActivity || []} />
+              <AutomationActivityFeed activities={activityResult.data} />
             </CardContent>
           </Card>
         </TabsContent>

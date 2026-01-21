@@ -304,10 +304,17 @@ export function parseFileOperations(response: string): {
 
     // For motion documents, keep the content (just remove XML tags)
     // For handoff/workflow files, replace with placeholder
-    const isMotionDoc = filePath.toLowerCase().includes('motion') &&
-                        (filePath.endsWith('.docx') || filePath.endsWith('.doc') || filePath.endsWith('.pdf'));
+    const filePathLower = filePath.toLowerCase();
+    const isMotionDoc = (
+      filePathLower.includes('motion') ||
+      filePathLower.includes('opposition') ||
+      filePathLower.includes('memorandum') ||
+      filePathLower.includes('brief') ||
+      filePathLower.includes('reply')
+    );
+    const isHandoff = filePathLower.includes('handoff');
 
-    if (isMotionDoc) {
+    if (isMotionDoc && !isHandoff) {
       // Keep the motion content, just remove the XML tags
       cleanedResponse = cleanedResponse.replace(match[0], `\n---\n**MOTION DOCUMENT: ${filePath.split('/').pop()}**\n---\n${content}\n---\n`);
     } else {

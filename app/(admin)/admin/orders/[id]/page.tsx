@@ -34,6 +34,7 @@ import { AdminRevisionRequests } from '@/components/admin/admin-revision-request
 import { QuickApproveButton } from '@/components/admin/quick-approve-button'
 import { RetryGenerationButton } from '@/components/admin/retry-generation-button'
 import { MotionReview } from '@/components/admin/motion-review'
+import { GenerateNowButton } from '@/components/admin/generate-now-button'
 
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
@@ -396,6 +397,15 @@ export default async function AdminOrderDetailPage({
             <QuickApproveButton
               orderId={order.id}
               orderNumber={order.order_number}
+            />
+          )}
+
+          {/* Generate Now - shown for orders that need generation */}
+          {['submitted', 'under_review', 'in_progress', 'generation_failed', 'assigned'].includes(order.status) && (
+            <GenerateNowButton
+              orderId={order.id}
+              orderNumber={order.order_number}
+              orderStatus={order.status}
             />
           )}
 
