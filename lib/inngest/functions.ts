@@ -270,9 +270,9 @@ Do NOT ask for more information. Do NOT provide a checklist. START WITH THE COUR
         templateContent = templateContent.replace(new RegExp(placeholder.replace(/[{}]/g, "\\$&"), "g"), value);
       }
 
-      // Prepend web context adapter + template + ALWAYS append structured case data
+      // Put CASE DATA FIRST so it doesn't get lost in the massive superprompt
       const webContextAdapter = buildWebContextAdapter(orderId);
-      return webContextAdapter + templateContent + structuredCaseData;
+      return webContextAdapter + structuredCaseData + '\n\n' + templateContent;
     });
 
     // Step 4: Generate draft with Claude (with automatic rate limit handling)

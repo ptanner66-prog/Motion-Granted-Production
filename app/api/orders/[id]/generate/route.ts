@@ -27,45 +27,47 @@ function getAdminClient() {
 
 function buildStreamlinedPrompt(): string {
   return `
-================================================================================
-CRITICAL INSTRUCTION - READ THIS FIRST
-================================================================================
+################################################################################
+#                                                                              #
+#   MANDATORY INSTRUCTION - FAILURE TO COMPLY WILL RESULT IN REJECTION        #
+#                                                                              #
+################################################################################
 
-**YOU HAVE ALL THE INFORMATION YOU NEED BELOW. DO NOT ASK FOR MORE.**
-**DO NOT REQUEST CLARIFICATION. DO NOT LIST WHAT YOU NEED.**
-**GENERATE THE COMPLETE MOTION NOW USING THE CASE DATA PROVIDED.**
+YOU MUST GENERATE A COMPLETE LEGAL MOTION.
 
-All case information, parties, facts, and documents are provided in this prompt.
-Your ONLY task is to draft the motion. Start writing the motion immediately.
+FORBIDDEN ACTIONS (will cause immediate rejection):
+- Asking for more information
+- Saying "I need" or "Please provide"
+- Listing what information you require
+- Providing a checklist of missing items
+- Asking clarifying questions
+- Summarizing what you would need to proceed
 
-If any information seems incomplete, work with what is provided and draft the
-best possible motion. Do NOT ask the user for more information.
+REQUIRED ACTION:
+Generate the COMPLETE motion document using the case data provided below.
+The case data section contains ALL information needed: case number, parties,
+facts, procedural history, and instructions.
 
-================================================================================
-OUTPUT INSTRUCTIONS
-================================================================================
+OUTPUT FORMAT:
+Start your response IMMEDIATELY with the court caption. Example:
 
-1. Output the complete motion document directly as plain text
-2. Do NOT wrap in XML tags or code blocks
-3. Do NOT ask questions or request clarification
-4. Do NOT provide checklists or summaries of what you need
-5. START YOUR RESPONSE DIRECTLY WITH THE MOTION
+IN THE [COURT] FOR THE [JURISDICTION]
 
-Begin your response with the court caption, like this:
+[PLAINTIFF NAME],
+     Plaintiff,
 
-IN THE [COURT NAME FROM DATA BELOW]
+vs.                                    Case No. [NUMBER]
 
-[PARTIES FROM DATA BELOW]
+[DEFENDANT NAME],
+     Defendant.
 
-Case No. [CASE NUMBER FROM DATA BELOW]
+                    MOTION FOR [TYPE]
 
-[MOTION TITLE]
+[Continue with full motion content...]
 
-...then continue with the complete motion including all sections...
-
-================================================================================
-CASE DATA FOR THIS MOTION (USE THIS TO GENERATE)
-================================================================================
+################################################################################
+#   CASE DATA STARTS BELOW - USE THIS TO WRITE THE MOTION                     #
+################################################################################
 
 `;
 }
@@ -262,8 +264,9 @@ Do NOT ask for more information. Do NOT provide a checklist. START WITH THE COUR
       );
     }
 
-    // Build full context: instructions + workflow template + ALWAYS append structured case data
-    const fullContext = buildStreamlinedPrompt() + templateContent + structuredCaseData;
+    // Build full context: CASE DATA FIRST (so Claude sees it), then workflow template
+    // Put case data at the BEGINNING so it doesn't get lost in the massive superprompt
+    const fullContext = buildStreamlinedPrompt() + structuredCaseData + '\n\n' + templateContent;
 
     // Debug: Log replacements and final context preview
     console.log('[Generate] Replacements applied:', {
