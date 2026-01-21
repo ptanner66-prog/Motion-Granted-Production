@@ -4,6 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations, findLatestHandoff } from "@/lib/workflow/file-system";
 import type { WorkflowFile } from "@/lib/workflow/file-system";
+import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
+import { getAnthropicAPIKey } from "@/lib/api-keys";
 
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
@@ -15,37 +17,6 @@ function getSupabase() {
   }
 
   return createSupabaseClient(supabaseUrl, supabaseServiceKey);
-}
-
-/**
- * Get Anthropic API key from database or fallback to env var
- */
-async function getAnthropicAPIKey(): Promise<string | null> {
-  const supabase = getSupabase();
-
-  try {
-    // Try to get from automation_settings
-    const { data } = await supabase
-      .from('automation_settings')
-      .select('setting_value')
-      .eq('setting_key', 'anthropic_api_key')
-      .single();
-
-    if (data?.setting_value) {
-      // Check if it's encrypted (v2 format)
-      if (data.setting_value.startsWith('v2:')) {
-        // Import decryption function
-        const { decryptAPIKey } = await import('@/lib/api-keys');
-        return decryptAPIKey(data.setting_value);
-      }
-      return data.setting_value;
-    }
-  } catch {
-    // Fall through to env var
-  }
-
-  // Fallback to environment variable
-  return process.env.ANTHROPIC_API_KEY || null;
 }
 
 /**
@@ -409,7 +380,7 @@ END OF EXISTING HANDOFF
       // Queue notification for admin
       await supabase.from("notification_queue").insert({
         notification_type: "draft_ready",
-        recipient_email: "porter@motion-granted.com",
+        recipient_email: ADMIN_EMAIL,
         order_id: orderId,
         template_data: {
           orderNumber: orderData.order_number,
@@ -497,8 +468,8 @@ export const handleGenerationFailure = inngest.createFunction(
         const resend = new Resend(process.env.RESEND_API_KEY);
 
         await resend.emails.send({
-          from: "Motion Granted Alerts <alerts@motiongranted.com>",
-          to: "porter@motion-granted.com",
+          from: EMAIL_FROM.alerts,
+          to: ALERT_EMAIL,
           subject: `[ALERT] Order ${order?.order_number || orderId} generation failed`,
           text: `
 Order Generation Failed - Requires Manual Intervention
@@ -526,7 +497,7 @@ Admin Dashboard: ${process.env.NEXT_PUBLIC_APP_URL}/admin/orders/${orderId}
         // Queue for retry via notification queue
         await supabase.from("notification_queue").insert({
           notification_type: "generation_failed",
-          recipient_email: "porter@motion-granted.com",
+          recipient_email: ALERT_EMAIL,
           order_id: orderId,
           template_data: {
             orderNumber: order?.order_number,
@@ -596,8 +567,8 @@ export const deadlineCheck = inngest.createFunction(
           .join("\n");
 
         await resend.emails.send({
-          from: "Motion Granted Alerts <alerts@motiongranted.com>",
-          to: "porter@motion-granted.com",
+          from: EMAIL_FROM.alerts,
+          to: ALERT_EMAIL,
           subject: `[URGENT] ${urgentOrders.length} order(s) due within 24 hours`,
           text: `
 Deadline Alert - Orders Due Within 24 Hours

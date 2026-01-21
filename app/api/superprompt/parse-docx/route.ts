@@ -1,7 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import mammoth from 'mammoth';
 
 export async function POST(request: NextRequest) {
+  // Verify authentication - admin only
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Verify admin role
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (profile?.role !== 'admin') {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -12,6 +32,11 @@ export async function POST(request: NextRequest) {
 
     if (!file.name.endsWith('.docx')) {
       return NextResponse.json({ error: 'File must be a .docx file' }, { status: 400 });
+    }
+
+    // Limit file size (10MB max for DOCX parsing)
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large. Maximum size is 10MB.' }, { status: 400 });
     }
 
     // Convert file to buffer
@@ -28,7 +53,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error parsing DOCX:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to parse DOCX file' },
+      { error: 'Failed to parse DOCX file' },
       { status: 500 }
     );
   }

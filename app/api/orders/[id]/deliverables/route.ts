@@ -141,6 +141,31 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Check user role and order ownership
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const isAdminOrClerk = profile && ['admin', 'clerk'].includes(profile.role)
+
+    // Verify order exists and user has access
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, client_id')
+      .eq('id', orderId)
+      .single()
+
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+
+    // Authorization: must be admin/clerk OR the client who owns this order
+    if (!isAdminOrClerk && order.client_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
     // Fetch deliverables for the order
     const { data: deliverables, error } = await supabase
       .from('documents')
