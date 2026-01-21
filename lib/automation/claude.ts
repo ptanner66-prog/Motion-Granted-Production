@@ -46,10 +46,9 @@ export async function getAnthropicClient(): Promise<Anthropic | null> {
   return anthropic;
 }
 
-// Default model configuration
-// For quick tasks (conflict check, QA, etc.) - use Sonnet 4
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
-const DEFAULT_MAX_TOKENS = 4096;
+// Default model configuration - Use Opus 4.5 for all tasks
+const DEFAULT_MODEL = 'claude-opus-4-5-20251101';
+const DEFAULT_MAX_TOKENS = 8192;
 
 // For motion generation (use Opus 4.5 for best legal reasoning)
 export const MOTION_MODEL = 'claude-opus-4-5-20251101';
@@ -216,6 +215,7 @@ export async function askClaude(options: {
   systemPrompt?: string;
   maxTokens?: number;
   temperature?: number;
+  model?: string;
 }): Promise<{
   success: boolean;
   result?: { content: string; tokensUsed: number };
@@ -230,7 +230,7 @@ export async function askClaude(options: {
     };
   }
 
-  const model = DEFAULT_MODEL;
+  const model = options.model || DEFAULT_MODEL;
   const maxTokens = options.maxTokens || DEFAULT_MAX_TOKENS;
 
   try {

@@ -12,7 +12,7 @@
  * Designed for hands-off production use by lawyers.
  */
 
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude, isClaudeConfigured, MOTION_MODEL } from '@/lib/automation/claude';
 import type { OperationResult } from '@/types/automation';
 
 // ============================================================================
@@ -787,10 +787,11 @@ export async function generateMotion(
 
   const superprompt = generateSuperprompt(request);
 
-  // Call Claude with the superprompt
+  // Call Claude with the superprompt using Opus 4.5 for best legal reasoning
   const result = await askClaude({
     prompt: superprompt,
-    maxTokens: 16000, // Allow long output for complete motions
+    maxTokens: 64000, // Allow long output for complete motions
+    model: MOTION_MODEL, // Use Opus 4.5 for motion generation
     systemPrompt: `You are an expert federal litigation attorney with extensive experience drafting court filings. You produce precise, well-cited, professionally formatted legal documents. You NEVER use placeholder text - every citation is real and accurate. You follow Bluebook citation format.`,
   });
 
