@@ -118,7 +118,7 @@ export function RevisionPaymentModal({
 
             {/* What's included */}
             <div className="border-t pt-3">
-              <div className="text-sm font-medium mb-2">What's Included:</div>
+              <div className="text-sm font-medium mb-2">What&apos;s Included:</div>
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li className="flex items-center gap-2">
                   <CheckCircle className="h-4 w-4 text-green-500" />

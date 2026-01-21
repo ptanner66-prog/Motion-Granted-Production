@@ -145,6 +145,8 @@ export default async function QueuePage() {
   const queuedOrders = queuedOrdersData as QueuedOrder[] | null
 
   // Fetch recently completed orders (last 24h)
+  // Server component - Date.now() is safe here (ESLint purity rule is for client components)
+  // eslint-disable-next-line react-hooks/purity
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const { data: completedOrdersData } = await supabase
     .from('orders')

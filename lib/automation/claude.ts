@@ -627,7 +627,7 @@ export async function generateMotion(options: {
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let messages: any[] = [
+    const messages: any[] = [
       { role: 'user', content: options.userPrompt },
     ];
     let fullContent = '';

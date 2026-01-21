@@ -159,7 +159,7 @@ export function CheckpointNotificationEmail({
                 <div style={optionBox}>
                   <Text style={optionTitle}>Approve Draft</Text>
                   <Text style={optionDescription}>
-                    If you're satisfied with the draft, approve it to proceed with final assembly
+                    If you&apos;re satisfied with the draft, approve it to proceed with final assembly
                     and supporting document generation.
                   </Text>
                 </div>
