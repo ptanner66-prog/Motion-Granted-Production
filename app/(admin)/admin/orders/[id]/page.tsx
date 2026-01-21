@@ -31,6 +31,7 @@ import type { OrderStatus } from '@/types'
 import { ClaudeChat } from '@/components/admin/claude-chat'
 import { AdminRevisionRequests } from '@/components/admin/admin-revision-requests'
 import { QuickApproveButton } from '@/components/admin/quick-approve-button'
+import { RetryGenerationButton } from '@/components/admin/retry-generation-button'
 
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
@@ -382,6 +383,15 @@ export default async function AdminOrderDetailPage({
             <QuickApproveButton
               orderId={order.id}
               orderNumber={order.order_number}
+            />
+          )}
+
+          {/* Retry Generation - shown when generation failed */}
+          {(order.status === 'generation_failed' || order.status === 'blocked') && (
+            <RetryGenerationButton
+              orderId={order.id}
+              orderNumber={order.order_number}
+              errorMessage={order.generation_error}
             />
           )}
 
