@@ -495,33 +495,18 @@ FORBIDDEN OUTPUTS (will cause immediate rejection):
 - Workflow summaries or checklists
 - "Next Phase:" indicators
 - Research notes or citation verification reports
-- Attorney instruction sheets (these come separately)
+- Attorney instruction sheets
+- INTRODUCTORY SENTENCES like "I'll generate..." or "Let me create..."
+- CONCLUDING COMMENTARY like "Key Improvements Made" or summaries of what you did
+- Any text before the court caption
+- Any text after the Certificate of Service
 
-SKIP THE WORKFLOW OUTPUT. Only output the FINAL MOTION DOCUMENT.
+YOUR ENTIRE RESPONSE MUST BE ONLY THE MOTION DOCUMENT.
+No introduction. No explanation. No commentary. Just the motion.
 
 REQUIRED OUTPUT FORMAT:
-Start IMMEDIATELY with the court caption. Your entire response should be the
-motion document that gets filed with the court. Nothing else.
-
-Example of CORRECT output (start like this):
-
-IN THE CIVIL DISTRICT COURT
-FOR THE PARISH OF ORLEANS
-
-JOHN DOE,
-     Plaintiff,
-
-vs.                                    CASE NO. 2025-12345
-
-JANE SMITH,
-     Defendant.
-
-                    MOTION TO COMPEL DISCOVERY
-
-TO THE HONORABLE COURT:
-[Continue with the actual motion content...]
-
-DO NOT show your work. DO NOT output phases. ONLY output the final motion.
+Start IMMEDIATELY with the court caption (e.g., "IN THE CIVIL DISTRICT COURT").
+End with the Certificate of Service. Nothing else.
 
 ################################################################################
 #   CASE DATA BELOW - USE THIS TO WRITE THE MOTION                            #
