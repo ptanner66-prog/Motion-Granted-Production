@@ -56,8 +56,33 @@ The workflow template will guide you through:
 
 DO NOT skip phases. DO NOT take shortcuts. The workflow exists for quality assurance.
 
-After completing ALL phases, your final output should be the complete, court-ready
-motion document with proper formatting, citations, and all required sections.
+################################################################################
+#                                                                              #
+#   CRITICAL OUTPUT REQUIREMENT                                                #
+#                                                                              #
+################################################################################
+
+IMPORTANT: Execute all workflow phases INTERNALLY, but your OUTPUT must contain
+ONLY the final court-ready motion document.
+
+DO NOT OUTPUT:
+- Phase headers ("PHASE I:", "PHASE II:", etc.)
+- Status updates ("Status: IN PROGRESS", "Status: COMPLETE")
+- Progress tables or element mapping tables
+- Completion markers ("### PHASE X COMPLETE")
+- Workflow summaries or checklists
+- "Next Phase:" indicators
+- Research notes or citation verification reports
+- Attorney instruction sheets (generate separately if needed)
+- Introductory sentences ("I'll generate...", "Let me execute...")
+- Concluding commentary ("Workflow Complete", "Ready for Delivery")
+
+YOUR OUTPUT MUST BE:
+The complete, court-ready motion document only, starting with the court caption
+and ending with the signature block and certificate of service.
+
+Think of it this way: Execute the full workflow in your reasoning, but only
+deliver the final product - the motion itself - in your response.
 
 ################################################################################
 #   CASE DATA BELOW - USE THIS THROUGHOUT THE WORKFLOW                        #
@@ -288,16 +313,17 @@ Do NOT ask for more information. START WITH THE COURT CAPTION.
     console.log(`[Generate] Starting Claude generation for order ${orderId}`);
 
     // Put the workflow execution instruction in the USER MESSAGE
-    const userMessage = `EXECUTE THE SUPERPROMPT WORKFLOW NOW.
+    const userMessage = `EXECUTE THE SUPERPROMPT WORKFLOW AND OUTPUT ONLY THE FINAL MOTION.
 
 The system context above contains:
 1. A WORKFLOW TEMPLATE that specifies the exact phases you must follow
 2. CASE DATA including customer intake, uploaded documents, and attorney information
 
-Your task: Execute the complete workflow from Phase I through the final phase.
-- Follow each phase exactly as specified in the workflow template
-- Use the provided case data at each phase
-- Complete ALL phases before producing the final motion
+Your task:
+1. Execute the complete workflow from Phase I through the final phase INTERNALLY
+2. Follow each phase exactly as specified in the workflow template
+3. Use the provided case data at each phase
+4. OUTPUT ONLY THE FINAL COURT-READY MOTION DOCUMENT
 
 Motion Type: ${order.motion_type || 'Motion'}
 Case Number: ${order.case_number || '[NUMBER]'}
@@ -305,11 +331,17 @@ Court: ${order.jurisdiction === 'la_state' ? 'Civil District Court' : order.juri
 Plaintiffs: ${plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') || '[PLAINTIFF]'}
 Defendants: ${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || '[DEFENDANT]'}
 
-BEGIN EXECUTING THE WORKFLOW NOW. Start with Phase I as defined in your superprompt template.`;
+CRITICAL: Your response must contain ONLY the motion document itself.
+- Start with the court caption
+- End with the signature block and certificate of service
+- NO phase headers, status updates, tables, or workflow commentary
+- NO introductory text or concluding remarks
+
+BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
 
     const response = await createMessageWithRetry(
       {
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-5-20251101',
         max_tokens: 64000,
         system: fullContext,
         messages: [{
@@ -424,7 +456,7 @@ BEGIN EXECUTING THE WORKFLOW NOW. Start with Phase I as defined in your superpro
         generatedBy: user.id,
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-5-20251101',
       },
     });
 
