@@ -1,7 +1,7 @@
 /**
  * Start Automation API
  *
- * POST: Start the workflow automation for an order
+ * POST: Start the workflow automation for an order via Inngest queue
  *       Called by client after documents are uploaded
  *       Or by admin via workflow control panel
  *
@@ -11,7 +11,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { startOrderAutomation } from '@/lib/workflow/automation-service';
+import { inngest, calculatePriority } from '@/lib/inngest/client';
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   // Get the order
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, client_id, status, order_number')
+    .select('id, client_id, status, order_number, filing_deadline')
     .eq('id', orderId)
     .single();
 
@@ -87,33 +87,51 @@ export async function POST(request: Request) {
     .neq('document_type', 'deliverable');
 
   try {
-    // Start the automation
-    const result = await startOrderAutomation(orderId, {
-      autoRun: true,
-      generatePDF: true,
-      sendNotifications: true,
+    // Calculate priority based on filing deadline (closer deadline = higher priority)
+    const priority = calculatePriority(order.filing_deadline);
+
+    // Send event to Inngest queue
+    await inngest.send({
+      name: 'order/submitted',
+      data: {
+        orderId,
+        priority,
+        filingDeadline: order.filing_deadline,
+      },
     });
 
-    if (!result.success) {
-      return NextResponse.json({
-        error: result.error || 'Failed to start automation',
-      }, { status: 500 });
-    }
+    // Update order status to show it's queued
+    await supabase
+      .from('orders')
+      .update({ status: 'under_review' })
+      .eq('id', orderId);
+
+    // Log the queue event
+    await supabase.from('automation_logs').insert({
+      order_id: orderId,
+      action_type: 'queued_for_generation',
+      action_details: {
+        priority,
+        documentsFound: documentCount || 0,
+        queuedAt: new Date().toISOString(),
+      },
+    });
 
     return NextResponse.json({
       success: true,
       orderId,
       orderNumber: order.order_number,
-      workflowId: result.data?.workflowId,
+      status: 'queued',
+      priority,
       documentsFound: documentCount || 0,
       message: documentCount && documentCount > 0
-        ? `Automation started with ${documentCount} document(s).`
-        : 'Automation started. Note: No documents were found - motion will be generated from checkout data only.',
+        ? `Order queued for processing with ${documentCount} document(s). Priority: ${priority}`
+        : 'Order queued for processing. Note: No documents were found - motion will be generated from checkout data only.',
     });
   } catch (error) {
-    console.error('Start automation error:', error);
+    console.error('Queue automation error:', error);
     return NextResponse.json({
-      error: 'Failed to start automation. Please try again or contact support.',
+      error: error instanceof Error ? error.message : 'Failed to queue automation',
     }, { status: 500 });
   }
 }

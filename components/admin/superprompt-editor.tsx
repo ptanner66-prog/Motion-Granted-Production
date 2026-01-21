@@ -707,7 +707,7 @@ export function SuperpromptEditor({
                         Copy
                       </Button>
                     </div>
-                    <pre className="p-4 bg-gray-50 rounded-lg overflow-x-auto text-sm font-mono text-navy whitespace-pre-wrap max-h-[400px] overflow-y-auto">
+                    <pre className="p-4 bg-gray-50 rounded-lg text-sm font-mono text-navy whitespace-pre-wrap break-words max-h-[400px] overflow-y-auto overflow-x-hidden w-full">
                       {selectedTemplate.template}
                     </pre>
                   </div>
@@ -715,7 +715,7 @@ export function SuperpromptEditor({
                   {selectedTemplate.systemPrompt && (
                     <div>
                       <p className="text-sm text-gray-500 mb-2">System Prompt</p>
-                      <pre className="p-4 bg-gray-50 rounded-lg overflow-x-auto text-sm font-mono text-navy whitespace-pre-wrap">
+                      <pre className="p-4 bg-gray-50 rounded-lg text-sm font-mono text-navy whitespace-pre-wrap break-words overflow-x-hidden w-full">
                         {selectedTemplate.systemPrompt}
                       </pre>
                     </div>

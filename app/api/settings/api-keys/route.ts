@@ -36,9 +36,12 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 
-// Get encryption key from environment or generate a deterministic one from service role key
+// Get encryption key from environment - MUST be configured in production
 function getEncryptionKey(): Buffer {
-  const secret = process.env.ENCRYPTION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-dev-key-do-not-use-in-prod';
+  const secret = process.env.ENCRYPTION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!secret) {
+    throw new Error('ENCRYPTION_SECRET or SUPABASE_SERVICE_ROLE_KEY must be configured for API key encryption');
+  }
   // Derive a 256-bit key from the secret
   return crypto.createHash('sha256').update(secret).digest();
 }

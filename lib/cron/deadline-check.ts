@@ -11,6 +11,7 @@
  */
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
 
 // Initialize Supabase client for background jobs
 function getSupabase() {
@@ -126,8 +127,8 @@ export async function sendDeadlineAlert(
         : `⚠️ URGENT: ${urgentOrders.length} order(s) due within 24 hours`;
 
     await resend.emails.send({
-      from: "Motion Granted Alerts <alerts@motiongranted.com>",
-      to: "porter@motion-granted.com",
+      from: EMAIL_FROM.alerts,
+      to: ALERT_EMAIL,
       subject,
       text: `
 Deadline Alert - Orders Requiring Attention

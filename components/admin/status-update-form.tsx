@@ -17,12 +17,16 @@ import {
 } from '@/components/ui/select'
 
 const ORDER_STATUSES = [
-  { value: 'submitted', label: 'Submitted', description: 'New order awaiting assignment' },
-  { value: 'in_progress', label: 'In Progress', description: 'Being drafted' },
-  { value: 'in_review', label: 'In Review', description: 'Under internal review' },
+  { value: 'submitted', label: 'Submitted', description: 'New order awaiting processing' },
+  { value: 'under_review', label: 'Under Review', description: 'Queued for generation' },
+  { value: 'in_progress', label: 'In Progress', description: 'Being drafted by AI' },
+  { value: 'pending_review', label: 'Pending Review', description: 'Draft ready for admin review' },
   { value: 'draft_delivered', label: 'Draft Delivered', description: 'Sent to client for review' },
   { value: 'revision_requested', label: 'Revision Requested', description: 'Client requested changes' },
+  { value: 'revision_delivered', label: 'Revision Delivered', description: 'Revised draft ready' },
   { value: 'completed', label: 'Completed', description: 'Order finalized' },
+  { value: 'generation_failed', label: 'Generation Failed', description: 'AI generation failed - retry needed' },
+  { value: 'blocked', label: 'Blocked', description: 'Requires manual intervention' },
   { value: 'cancelled', label: 'Cancelled', description: 'Order cancelled' },
 ]
 
