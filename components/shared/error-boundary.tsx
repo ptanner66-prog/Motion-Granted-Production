@@ -25,6 +25,10 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log error to console for debugging
+    console.error('[ErrorBoundary] Caught error:', error);
+    console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
+
     // Log error to monitoring service (e.g., Sentry) in production
     if (process.env.NODE_ENV === 'production') {
       // TODO: Send to error tracking service
@@ -61,14 +65,14 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               Go to Dashboard
             </Button>
           </div>
-          {process.env.NODE_ENV === 'development' && this.state.error && (
+          {this.state.error && (
             <details className="mt-8 text-left w-full max-w-2xl">
               <summary className="cursor-pointer text-sm font-medium text-gray-700 mb-2">
-                Error Details (Development Only)
+                Error Details
               </summary>
               <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs overflow-auto">
                 {this.state.error.toString()}
-                {this.state.error.stack}
+                {process.env.NODE_ENV === 'development' && this.state.error.stack}
               </pre>
             </details>
           )}
