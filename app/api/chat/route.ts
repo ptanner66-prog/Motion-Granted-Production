@@ -237,6 +237,13 @@ export async function POST(request: Request) {
             controller.close();
             return;
           }
+
+          // Debug: Log which key is being used (first 8 + last 4 chars)
+          const keyPreview = apiKey.length > 12
+            ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`
+            : '(key too short)';
+          console.log(`[CHAT] Using API key: ${keyPreview}`);
+
           const anthropic = new Anthropic({ apiKey });
 
           const response = await anthropic.messages.create({

@@ -207,7 +207,18 @@ export async function getAPIKeys(): Promise<{
  */
 export async function getAnthropicAPIKey(): Promise<string> {
   const keys = await getAPIKeys();
-  return keys.anthropic_api_key;
+  const key = keys.anthropic_api_key;
+
+  // Debug logging - show source and key preview
+  if (key) {
+    const preview = key.length > 12 ? `${key.slice(0, 8)}...${key.slice(-4)}` : '(short)';
+    const source = key === process.env.ANTHROPIC_API_KEY ? 'ENV' : 'DATABASE';
+    console.log(`[API-KEYS] Anthropic key from ${source}: ${preview}`);
+  } else {
+    console.log('[API-KEYS] No Anthropic API key found in database or env');
+  }
+
+  return key;
 }
 
 /**
