@@ -281,6 +281,12 @@ export async function POST(request: Request) {
             .update({ generated_motion: cleanedResponse })
             .eq('id', conversation.id);
 
+          // Update order status to pending_review so admin can approve
+          await supabase
+            .from('orders')
+            .update({ status: 'pending_review' })
+            .eq('id', orderId);
+
           // Send completion signal with file operation count
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             done: true,
