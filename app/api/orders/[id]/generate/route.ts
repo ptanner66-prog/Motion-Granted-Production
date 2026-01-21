@@ -110,6 +110,20 @@ export async function POST(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
+    // Debug: Log what data we found
+    console.log('[Generate] Order data:', JSON.stringify({
+      orderId,
+      order_number: order.order_number,
+      case_number: order.case_number,
+      case_caption: order.case_caption,
+      motion_type: order.motion_type,
+      jurisdiction: order.jurisdiction,
+      has_statement_of_facts: !!order.statement_of_facts,
+      statement_preview: order.statement_of_facts?.substring(0, 200),
+      parties_count: order.parties?.length || 0,
+      parties: order.parties,
+    }, null, 2));
+
     // Update status to in_progress
     await adminClient
       .from('orders')
@@ -192,6 +206,19 @@ export async function POST(
 
     // Build full context
     const fullContext = buildStreamlinedPrompt(orderId) + templateContent;
+
+    // Debug: Log replacements and final context preview
+    console.log('[Generate] Replacements applied:', {
+      case_number: replacements['{{CASE_NUMBER}}'],
+      case_caption: replacements['{{CASE_CAPTION}}'],
+      motion_type: replacements['{{MOTION_TYPE}}'],
+      jurisdiction: replacements['{{JURISDICTION}}'],
+      has_statement: !!replacements['{{STATEMENT_OF_FACTS}}'],
+      statement_preview: replacements['{{STATEMENT_OF_FACTS}}']?.substring(0, 200),
+      parties: replacements['{{ALL_PARTIES}}'],
+      documents_length: replacements['{{DOCUMENT_CONTENT}}']?.length || 0,
+    });
+    console.log('[Generate] Context length:', fullContext.length, 'chars');
 
     // Generate with Claude (with automatic rate limit handling)
     console.log(`[Generate] Starting Claude generation for order ${orderId}`);
