@@ -208,9 +208,33 @@ export async function POST(request: Request) {
         content: m.content,
       }));
 
-    // If no user messages yet, add initial prompt
+    // If no user messages yet, add initial prompt with pre-filled caption
     if (claudeMessages.length === 0) {
-      const initialPrompt = 'Please generate the motion based on the case information and documents provided.';
+      // Get order data for the user message
+      const orderDataResult = await gatherOrderData(orderId);
+      const orderData = orderDataResult.data;
+
+      const initialPrompt = `CRITICAL: The case data has already been provided in the system context above. DO NOT ask for more information. DO NOT say "I need" or list requirements. DO NOT output Phase I status updates.
+
+Your task: Using the customer_intake JSON and uploaded_documents provided above, generate the COMPLETE ${orderData?.motionType || 'motion'} document NOW.
+
+START YOUR RESPONSE WITH THE COURT CAPTION:
+
+IN THE ${orderData?.jurisdiction === 'la_state' ? 'CIVIL DISTRICT COURT' : orderData?.jurisdiction?.toUpperCase() || '[COURT]'}
+${orderData?.courtDivision ? `FOR THE ${orderData.courtDivision.toUpperCase()}` : ''}
+
+${orderData?.plaintiffNames || '[PLAINTIFF]'},
+     Plaintiff,
+
+vs.                                    CASE NO. ${orderData?.caseNumber || '[NUMBER]'}
+
+${orderData?.defendantNames || '[DEFENDANT]'},
+     Defendant.
+
+                    MOTION FOR ${(orderData?.motionType || 'RELIEF').toUpperCase().replace(/_/g, ' ')}
+
+[NOW CONTINUE WITH THE COMPLETE MOTION DOCUMENT - Introduction, Statement of Facts, Legal Arguments, Conclusion, Prayer for Relief, Certificate of Service]`;
+
       await supabase.from('conversation_messages').insert({
         conversation_id: conversation.id,
         role: 'user',
@@ -453,54 +477,94 @@ END OF EXISTING HANDOFF
 `;
     }
 
-    // Web Context Adapter: Streamlined for direct motion output
-    const webContextAdapter = `
-================================================================================
-STREAMLINED EXECUTION MODE - DIRECT MOTION OUTPUT
-================================================================================
+    // Critical instruction header
+    const criticalInstruction = `
+################################################################################
+#                                                                              #
+#   MANDATORY INSTRUCTION - FAILURE TO COMPLY WILL RESULT IN REJECTION        #
+#                                                                              #
+################################################################################
 
-**OUTPUT REQUIREMENT: PRODUCE THE FINAL MOTION DOCUMENT ONLY**
+YOU MUST GENERATE A COMPLETE LEGAL MOTION.
 
-You are generating a legal motion for admin review. Follow these rules:
+FORBIDDEN ACTIONS (will cause immediate rejection):
+- Asking for more information
+- Saying "I need" or "Please provide"
+- Listing what information you require
+- Providing a checklist of missing items
+- Asking clarifying questions
+- Summarizing what you would need to proceed
+- Outputting "PHASE I: INTAKE" or any phase status
 
-1. **SKIP ALL HANDOFF FILES** - Do NOT create HANDOFF_*.md files
-2. **SKIP PHASE-BY-PHASE OUTPUT** - Do NOT show status checklists or phase tracking
-3. **OUTPUT ONLY THE MOTION** - Produce the complete, formatted motion document
+REQUIRED ACTION:
+Generate the COMPLETE motion document using the case data provided below.
+The case data section contains ALL information needed: case number, parties,
+facts, procedural history, and instructions.
 
-**YOUR SINGLE OUTPUT should be the motion wrapped in a file_write tag:**
+OUTPUT FORMAT:
+Start your response IMMEDIATELY with the court caption and continue with the full motion.
 
-<file_write path="/mnt/user-data/outputs/Motion_${orderId.slice(0, 8)}.docx">
-[Complete motion content here - properly formatted legal document]
-</file_write>
-
-**WHAT TO INCLUDE IN THE MOTION:**
-- Full caption with court, case number, parties
-- Notice of Motion
-- Memorandum of Points and Authorities
-- All legal arguments with verified citations
-- Conclusion and prayer for relief
-- Signature block
-
-**WHAT TO SKIP:**
-- Phase status updates
-- Handoff files
-- Research memos (incorporate findings directly into arguments)
-- Citation verification reports (just use verified citations)
-
-**STILL APPLY:**
-- All legal standards and quality requirements from the superprompt
-- Proper citation format and verification
-- Customer inputs as PRIMARY SOURCE for facts
-- Professional litigation tone
-
-================================================================================
-BEGIN - OUTPUT THE COMPLETE MOTION DOCUMENT
-================================================================================
+################################################################################
+#   CASE DATA STARTS BELOW - USE THIS TO WRITE THE MOTION                     #
+################################################################################
 
 `;
 
-    // Merge the superprompt with order data, prepending the web context adapter
-    let context = webContextAdapter + template.template;
+    // Build structured JSON case data matching superprompt schema
+    const todayDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const structuredCaseData = `
+================================================================================
+CASE DATA - USE THIS INFORMATION TO GENERATE THE MOTION
+================================================================================
+
+The following JSON contains all the case information needed for Phase I Input:
+
+\`\`\`json
+{
+  "order_id": "${orderId}",
+  "customer_intake": {
+    "motion_type": "${orderData.motionType || ''}",
+    "filing_deadline": "${orderData.filingDeadline || ''}",
+    "party_represented": "${orderData.plaintiffNames ? 'plaintiff' : 'defendant'}",
+    "party_name": "${orderData.plaintiffNames || orderData.defendantNames || ''}",
+    "opposing_party_name": "${orderData.plaintiffNames ? orderData.defendantNames : orderData.plaintiffNames || ''}",
+    "case_number": "${orderData.caseNumber || ''}",
+    "case_caption": "${orderData.caseCaption || ''}",
+    "court": "${orderData.jurisdiction || ''}",
+    "court_division": "${orderData.courtDivision || ''}",
+    "statement_of_facts": ${JSON.stringify(orderData.statementOfFacts || '')},
+    "procedural_history": ${JSON.stringify(orderData.proceduralHistory || '')},
+    "drafting_instructions": ${JSON.stringify(orderData.clientInstructions || '')},
+    "judge_name": ""
+  }
+}
+\`\`\`
+
+UPLOADED DOCUMENT CONTENT:
+${orderData.documentContent || 'No documents uploaded.'}
+\`\`\`
+
+ADDITIONAL CONTEXT:
+- Today's Date: ${todayDate}
+- Order Number: ${orderData.orderNumber || 'Not specified'}
+- All Parties: ${orderData.parties?.map((p: { name: string; role: string }) => `${p.name} (${p.role})`).join(', ') || 'Not specified'}
+
+================================================================================
+END OF CASE DATA - NOW GENERATE THE MOTION
+================================================================================
+
+You have received all required Phase I inputs above. Execute the workflow and generate the complete ${orderData.motionType || 'motion'} document.
+Do NOT ask for more information. START WITH THE COURT CAPTION.
+
+`;
+
+    // Build context: Critical instruction + Case data FIRST + then superprompt template
+    let context = criticalInstruction + structuredCaseData + '\n\n' + template.template;
 
     // Replace all placeholders
     const replacements: Record<string, string> = {
