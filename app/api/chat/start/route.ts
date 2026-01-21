@@ -148,74 +148,93 @@ END OF EXISTING HANDOFF
 `;
     }
 
-    // Web Context Adapter: Provides file system access via XML commands
-    const webContextAdapter = `
-================================================================================
-WEB APPLICATION FILE SYSTEM - READ THIS FIRST
-================================================================================
+    // Critical instruction header - MUST come first
+    const criticalInstruction = `
+################################################################################
+#                                                                              #
+#   MANDATORY INSTRUCTION - FAILURE TO COMPLY WILL RESULT IN REJECTION        #
+#                                                                              #
+################################################################################
 
-**EXECUTION MODE: CONTINUOUS - PRODUCE COMPLETE MOTION**
+YOU MUST GENERATE A COMPLETE LEGAL MOTION.
 
-You MUST complete ALL phases (I through IX) in a SINGLE response without pausing.
-- DO NOT ask "Would you like me to continue?" or "Say continue"
-- DO NOT stop between phases waiting for user input
-- DO proceed automatically through every phase until the final motion is complete
-- DO save a HANDOFF file after completing ALL phases (one comprehensive file)
-- The admin will review the completed motion - no intermediate approvals needed
+FORBIDDEN ACTIONS (will cause immediate rejection):
+- Asking for more information
+- Saying "I need" or "Please provide"
+- Listing what information you require
+- Providing a checklist of missing items
+- Asking clarifying questions
+- Summarizing what you would need to proceed
+- Outputting "PHASE I: INTAKE" or any phase status
 
-================================================================================
+REQUIRED ACTION:
+Generate the COMPLETE motion document using the case data provided below.
+The case data section contains ALL information needed: case number, parties,
+facts, procedural history, and instructions.
 
-You are operating in a WEB APPLICATION with FILE SYSTEM ACCESS via XML commands.
-Your superprompt references /mnt/user-data/outputs/ - this is NOW AVAILABLE.
+OUTPUT FORMAT:
+Start your response IMMEDIATELY with the court caption and continue with the full motion.
 
-**FILE SYSTEM COMMANDS (USE THESE INSTEAD OF BASH):**
-
-1. **WRITE A FILE** - Use this to create HANDOFF files, motions, declarations, etc:
-   <file_write path="/mnt/user-data/outputs/HANDOFF_MMDDYYYY_HHMMam.md">
-   [Your file content here]
-   </file_write>
-
-2. **READ A FILE** - Use this to read any existing file:
-   <file_read path="/mnt/user-data/outputs/HANDOFF_01202026_1045am.md" />
-
-3. **LIST FILES** - Use this to see what files exist:
-   <file_list directory="/mnt/user-data/outputs/" />
-
-4. **FIND LATEST HANDOFF** - Use this to find and read the most recent handoff:
-   <find_handoff />
-
-**IMPORTANT RULES:**
-
-- DO NOT use bash, cat, echo, or shell commands - they don't work here
-- DO use the XML file commands above - they ARE functional
-- The file system persists across sessions
-- Files are stored per-order (this order: ${orderId})
-- Your HANDOFF workflow works exactly as designed - just use XML tags instead of bash
-
-**WORKFLOW INSTRUCTIONS REMAIN IN FULL EFFECT:**
-- All legal standards, citation rules, quality requirements: FULLY APPLY
-- Phase workflow logic: FULLY APPLY
-- Citation verification requirements: FULLY APPLY
-- 4-citation HARD STOP: FULLY APPLY
-- Input Priority Rule: FULLY APPLY
-- HANDOFF file generation: FULLY APPLY (use <file_write> tag)
-
-${existingHandoffContent ? existingHandoffContent : `
-================================================================================
-NO EXISTING HANDOFF - THIS IS A NEW MATTER
-================================================================================
-No previous handoff file was found for this order.
-Start with Phase I: Intake & Document Processing.
-================================================================================
-`}
-================================================================================
-BEGIN PROCESSING - USE XML FILE COMMANDS AS NEEDED
-================================================================================
+################################################################################
+#   CASE DATA STARTS BELOW - USE THIS TO WRITE THE MOTION                     #
+################################################################################
 
 `;
 
-    // Merge superprompt with order data, prepending the web context adapter
-    let context = webContextAdapter + template.template;
+    // Build structured JSON case data matching superprompt schema
+    const todayDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const structuredCaseData = `
+================================================================================
+CASE DATA - USE THIS INFORMATION TO GENERATE THE MOTION
+================================================================================
+
+The following JSON contains all the case information needed for Phase I Input:
+
+\`\`\`json
+{
+  "order_id": "${orderId}",
+  "customer_intake": {
+    "motion_type": "${orderData.motionType || ''}",
+    "filing_deadline": "${orderData.filingDeadline || ''}",
+    "party_represented": "${orderData.plaintiffNames ? 'plaintiff' : 'defendant'}",
+    "party_name": "${orderData.plaintiffNames || orderData.defendantNames || ''}",
+    "opposing_party_name": "${orderData.plaintiffNames ? orderData.defendantNames : orderData.plaintiffNames || ''}",
+    "case_number": "${orderData.caseNumber || ''}",
+    "case_caption": "${orderData.caseCaption || ''}",
+    "court": "${orderData.jurisdiction || ''}",
+    "court_division": "${orderData.courtDivision || ''}",
+    "statement_of_facts": ${JSON.stringify(orderData.statementOfFacts || '')},
+    "procedural_history": ${JSON.stringify(orderData.proceduralHistory || '')},
+    "drafting_instructions": ${JSON.stringify(orderData.clientInstructions || '')},
+    "judge_name": ""
+  }
+}
+\`\`\`
+
+UPLOADED DOCUMENT CONTENT:
+${orderData.documentContent || 'No documents uploaded.'}
+
+ADDITIONAL CONTEXT:
+- Today's Date: ${todayDate}
+- Order Number: ${orderData.orderNumber || 'Not specified'}
+- All Parties: ${orderData.parties?.map((p: { name: string; role: string }) => `${p.name} (${p.role})`).join(', ') || 'Not specified'}
+
+================================================================================
+END OF CASE DATA - NOW GENERATE THE MOTION
+================================================================================
+
+You have received all required Phase I inputs above. Generate the complete ${orderData.motionType || 'motion'} document.
+Do NOT ask for more information. START WITH THE COURT CAPTION.
+
+`;
+
+    // Build context: Critical instruction + Case data FIRST + then superprompt template
+    let context = criticalInstruction + structuredCaseData + '\n\n' + template.template;
     const replacements: Record<string, string> = {
       '{{CASE_NUMBER}}': orderData.caseNumber || '',
       '{{CASE_CAPTION}}': orderData.caseCaption || '',
@@ -274,8 +293,28 @@ BEGIN PROCESSING - USE XML FILE COMMANDS AS NEEDED
       sequence_number: 1,
     });
 
-    // Add initial user prompt
-    const initialPrompt = 'Please generate the motion based on the case information and documents provided.';
+    // Add initial user prompt with pre-filled caption to force motion generation
+    const initialPrompt = `CRITICAL: The case data has already been provided in the system context above. DO NOT ask for more information. DO NOT say "I need" or list requirements. DO NOT output Phase I status updates.
+
+Your task: Using the customer_intake JSON provided above, generate the COMPLETE ${orderData.motionType || 'motion'} document NOW.
+
+START YOUR RESPONSE WITH THE COURT CAPTION:
+
+IN THE ${orderData.jurisdiction === 'la_state' ? 'CIVIL DISTRICT COURT' : orderData.jurisdiction?.toUpperCase() || '[COURT]'}
+${orderData.courtDivision ? `FOR THE ${orderData.courtDivision.toUpperCase()}` : ''}
+
+${orderData.plaintiffNames || '[PLAINTIFF]'},
+     Plaintiff,
+
+vs.                                    CASE NO. ${orderData.caseNumber || '[NUMBER]'}
+
+${orderData.defendantNames || '[DEFENDANT]'},
+     Defendant.
+
+                    MOTION FOR ${(orderData.motionType || 'RELIEF').toUpperCase().replace(/_/g, ' ')}
+
+[NOW CONTINUE WITH THE COMPLETE MOTION DOCUMENT - Introduction, Statement of Facts, Legal Arguments, Conclusion, Prayer for Relief, Certificate of Service]`;
+
     await supabase.from('conversation_messages').insert({
       conversation_id: conversation.id,
       role: 'user',
