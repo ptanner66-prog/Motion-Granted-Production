@@ -92,6 +92,7 @@ export const ORDER_STATUSES = {
   revision_requested: { label: "Revision Requested", color: "purple", bgColor: "bg-purple-100", textColor: "text-purple-800" },
   revision_delivered: { label: "Revision Delivered", color: "green", bgColor: "bg-green-100", textColor: "text-green-800" },
   completed: { label: "Completed", color: "emerald", bgColor: "bg-emerald-100", textColor: "text-emerald-800" },
+  generation_failed: { label: "Generation Failed", color: "red", bgColor: "bg-red-100", textColor: "text-red-800" },
   blocked: { label: "Blocked", color: "red", bgColor: "bg-red-100", textColor: "text-red-800" },
   on_hold: { label: "On Hold", color: "red", bgColor: "bg-red-100", textColor: "text-red-800" },
   cancelled: { label: "Cancelled", color: "gray", bgColor: "bg-gray-100", textColor: "text-gray-800" },
