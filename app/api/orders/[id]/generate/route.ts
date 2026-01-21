@@ -164,7 +164,71 @@ export async function POST(
       p.party_role?.toLowerCase().includes('defendant')
     );
 
-    // Build replacements
+    // Build structured case data that will ALWAYS be appended
+    const todayDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const structuredCaseData = `
+
+================================================================================
+CASE DATA - USE THIS INFORMATION TO GENERATE THE MOTION
+================================================================================
+
+CASE IDENTIFICATION:
+- Case Number: ${order.case_number || 'Not specified'}
+- Case Caption: ${order.case_caption || 'Not specified'}
+- Court/Jurisdiction: ${order.jurisdiction || 'Not specified'}
+- Court Division: ${order.court_division || 'Not specified'}
+- Order Number: ${order.order_number || 'Not specified'}
+- Today's Date: ${todayDate}
+
+MOTION DETAILS:
+- Motion Type: ${order.motion_type || 'Not specified'}
+- Motion Tier: ${order.motion_tier || 'Not specified'}
+- Filing Deadline: ${order.filing_deadline || 'Not specified'}
+
+PARTIES:
+${parties.length > 0
+  ? parties.map((p: { party_name: string; party_role: string }) =>
+      `- ${p.party_name} (${p.party_role})`
+    ).join('\n')
+  : '- No parties specified'}
+
+PLAINTIFFS: ${plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') || 'Not specified'}
+DEFENDANTS: ${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || 'Not specified'}
+
+================================================================================
+STATEMENT OF FACTS
+================================================================================
+${order.statement_of_facts || 'No statement of facts provided.'}
+
+================================================================================
+PROCEDURAL HISTORY
+================================================================================
+${order.procedural_history || 'No procedural history provided.'}
+
+================================================================================
+CLIENT INSTRUCTIONS / SPECIAL REQUESTS
+================================================================================
+${order.instructions || 'No special instructions provided.'}
+
+================================================================================
+SUPPORTING DOCUMENTS
+================================================================================
+${documentContent || 'No documents uploaded.'}
+
+================================================================================
+END OF CASE DATA - NOW GENERATE THE MOTION
+================================================================================
+
+Using ALL the case information above, generate the complete ${order.motion_type || 'motion'} document now.
+Do NOT ask for more information. Do NOT provide a checklist. START WITH THE COURT CAPTION.
+`;
+
+    // Build replacements for any placeholders that might exist in template
     const replacements: Record<string, string> = {
       '{{CASE_NUMBER}}': order.case_number || '',
       '{{CASE_CAPTION}}': order.case_caption || '',
@@ -186,14 +250,10 @@ export async function POST(
       '{{DOCUMENT_CONTENT}}': documentContent,
       '{{ORDER_ID}}': orderId,
       '{{ORDER_NUMBER}}': order.order_number || '',
-      '{{TODAY_DATE}}': new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      }),
+      '{{TODAY_DATE}}': todayDate,
     };
 
-    // Replace placeholders
+    // Replace placeholders in template (if any exist)
     let templateContent = template.template;
     for (const [placeholder, value] of Object.entries(replacements)) {
       templateContent = templateContent.replace(
@@ -202,8 +262,8 @@ export async function POST(
       );
     }
 
-    // Build full context
-    const fullContext = buildStreamlinedPrompt() + templateContent;
+    // Build full context: instructions + workflow template + ALWAYS append structured case data
+    const fullContext = buildStreamlinedPrompt() + templateContent + structuredCaseData;
 
     // Debug: Log replacements and final context preview
     console.log('[Generate] Replacements applied:', {

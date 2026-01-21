@@ -179,7 +179,69 @@ export const generateOrderDraft = inngest.createFunction(
       const plaintiffs = parties?.filter((p) => p.party_role?.toLowerCase().includes("plaintiff")) || [];
       const defendants = parties?.filter((p) => p.party_role?.toLowerCase().includes("defendant")) || [];
 
-      // Build replacements
+      const todayDate = new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      // Build structured case data that will ALWAYS be appended
+      const structuredCaseData = `
+
+================================================================================
+CASE DATA - USE THIS INFORMATION TO GENERATE THE MOTION
+================================================================================
+
+CASE IDENTIFICATION:
+- Case Number: ${orderData.case_number || "Not specified"}
+- Case Caption: ${orderData.case_caption || "Not specified"}
+- Court/Jurisdiction: ${orderData.jurisdiction || "Not specified"}
+- Court Division: ${orderData.court_division || "Not specified"}
+- Order Number: ${orderData.order_number || "Not specified"}
+- Today's Date: ${todayDate}
+
+MOTION DETAILS:
+- Motion Type: ${orderData.motion_type || "Not specified"}
+- Motion Tier: ${orderData.motion_tier || "Not specified"}
+- Filing Deadline: ${orderData.filing_deadline || "Not specified"}
+
+PARTIES:
+${parties && parties.length > 0
+  ? parties.map((p) => `- ${p.party_name} (${p.party_role})`).join("\n")
+  : "- No parties specified"}
+
+PLAINTIFFS: ${plaintiffs.map((p) => p.party_name).join(", ") || "Not specified"}
+DEFENDANTS: ${defendants.map((p) => p.party_name).join(", ") || "Not specified"}
+
+================================================================================
+STATEMENT OF FACTS
+================================================================================
+${orderData.statement_of_facts || "No statement of facts provided."}
+
+================================================================================
+PROCEDURAL HISTORY
+================================================================================
+${orderData.procedural_history || "No procedural history provided."}
+
+================================================================================
+CLIENT INSTRUCTIONS / SPECIAL REQUESTS
+================================================================================
+${orderData.instructions || "No special instructions provided."}
+
+================================================================================
+SUPPORTING DOCUMENTS
+================================================================================
+${documentContent || "No documents uploaded."}
+
+================================================================================
+END OF CASE DATA - NOW GENERATE THE MOTION
+================================================================================
+
+Using ALL the case information above, generate the complete ${orderData.motion_type || "motion"} document now.
+Do NOT ask for more information. Do NOT provide a checklist. START WITH THE COURT CAPTION.
+`;
+
+      // Build replacements for any placeholders that might exist in template
       const replacements: Record<string, string> = {
         "{{CASE_NUMBER}}": orderData.case_number || "",
         "{{CASE_CAPTION}}": orderData.case_caption || "",
@@ -199,22 +261,18 @@ export const generateOrderDraft = inngest.createFunction(
         "{{DOCUMENT_CONTENT}}": documentContent,
         "{{ORDER_ID}}": orderId,
         "{{ORDER_NUMBER}}": orderData.order_number || "",
-        "{{TODAY_DATE}}": new Date().toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }),
+        "{{TODAY_DATE}}": todayDate,
       };
 
-      // Replace all placeholders in template
+      // Replace all placeholders in template (if any exist)
       let templateContent = template.template;
       for (const [placeholder, value] of Object.entries(replacements)) {
         templateContent = templateContent.replace(new RegExp(placeholder.replace(/[{}]/g, "\\$&"), "g"), value);
       }
 
-      // Prepend web context adapter for streamlined execution
+      // Prepend web context adapter + template + ALWAYS append structured case data
       const webContextAdapter = buildWebContextAdapter(orderId);
-      return webContextAdapter + templateContent;
+      return webContextAdapter + templateContent + structuredCaseData;
     });
 
     // Step 4: Generate draft with Claude (with automatic rate limit handling)
