@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
-import { getAnthropicAPIKey } from "@/lib/api-keys";
+import { createMessageWithRetry } from "@/lib/claude-client";
 
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
@@ -217,27 +217,38 @@ export const generateOrderDraft = inngest.createFunction(
       return webContextAdapter + templateContent;
     });
 
-    // Step 4: Generate draft with Claude using dynamic API key
+    // Step 4: Generate draft with Claude (with automatic rate limit handling)
     const generatedMotion = await step.run("generate-draft", async () => {
-      // Get API key from database or env
-      const apiKey = await getAnthropicAPIKey();
-      if (!apiKey) {
-        throw new Error("Anthropic API key not configured. Add it in Admin Settings > API Keys.");
-      }
-
-      const anthropic = new Anthropic({ apiKey });
-
-      // Log the request
+      // Log the request attempt
       logRequest();
 
       const initialPrompt = "Please generate the complete motion based on the case information and documents provided. Complete all phases without stopping.";
 
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 64000, // Increased for full motion generation through all phases
-        system: context,
-        messages: [{ role: "user", content: initialPrompt }],
-      });
+      console.log(`[Inngest] Starting Claude generation for order ${orderId}`);
+
+      const response = await createMessageWithRetry(
+        {
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 64000,
+          system: context,
+          messages: [{ role: "user", content: initialPrompt }],
+        },
+        {
+          maxRetries: 5,
+          onRetry: async (attempt, waitMs, error) => {
+            console.log(`[Inngest] Retry ${attempt} for order ${orderId}. Waiting ${Math.round(waitMs / 1000)}s. Error: ${error}`);
+            // Log retry to database
+            await supabase.from("automation_logs").insert({
+              order_id: orderId,
+              action_type: "generation_retry",
+              action_details: { attempt, waitMs, error, source: "inngest" },
+            });
+          },
+          onSuccess: (inputTokens, outputTokens) => {
+            console.log(`[Inngest] Success for order ${orderId}. Tokens: ${inputTokens} in, ${outputTokens} out`);
+          },
+        }
+      );
 
       const motion = response.content
         .filter((block): block is Anthropic.TextBlock => block.type === "text")
