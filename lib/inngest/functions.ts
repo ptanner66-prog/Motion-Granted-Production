@@ -185,60 +185,61 @@ export const generateOrderDraft = inngest.createFunction(
         day: "numeric",
       });
 
-      // Build structured case data that will ALWAYS be appended
+      // Build structured case data in JSON format matching the superprompt schema
       const structuredCaseData = `
 
 ================================================================================
 CASE DATA - USE THIS INFORMATION TO GENERATE THE MOTION
 ================================================================================
 
-CASE IDENTIFICATION:
-- Case Number: ${orderData.case_number || "Not specified"}
-- Case Caption: ${orderData.case_caption || "Not specified"}
-- Court/Jurisdiction: ${orderData.jurisdiction || "Not specified"}
-- Court Division: ${orderData.court_division || "Not specified"}
-- Order Number: ${orderData.order_number || "Not specified"}
-- Today's Date: ${todayDate}
+The following JSON contains all the case information needed for Phase I Input:
 
-MOTION DETAILS:
-- Motion Type: ${orderData.motion_type || "Not specified"}
-- Motion Tier: ${orderData.motion_tier || "Not specified"}
-- Filing Deadline: ${orderData.filing_deadline || "Not specified"}
+\`\`\`json
+{
+  "order_id": "${orderId}",
+  "customer_intake": {
+    "motion_type": "${orderData.motion_type || ""}",
+    "filing_deadline": "${orderData.filing_deadline || ""}",
+    "hearing_date": "${orderData.hearing_date || ""}",
+    "party_represented": "${plaintiffs.length > 0 ? "plaintiff" : "defendant"}",
+    "party_name": "${plaintiffs.length > 0 ? plaintiffs.map((p) => p.party_name).join(", ") : defendants.map((p) => p.party_name).join(", ")}",
+    "opposing_party_name": "${plaintiffs.length > 0 ? defendants.map((p) => p.party_name).join(", ") : plaintiffs.map((p) => p.party_name).join(", ")}",
+    "case_number": "${orderData.case_number || ""}",
+    "case_caption": "${orderData.case_caption || ""}",
+    "court": "${orderData.jurisdiction || ""}",
+    "court_division": "${orderData.court_division || ""}",
+    "statement_of_facts": ${JSON.stringify(orderData.statement_of_facts || "")},
+    "procedural_history": ${JSON.stringify(orderData.procedural_history || "")},
+    "drafting_instructions": ${JSON.stringify(orderData.instructions || "")},
+    "judge_name": ""
+  },
+  "uploaded_documents": [
+    ${documents?.map((doc) => `{
+      "document_id": "${doc.id}",
+      "filename": "${doc.file_name}",
+      "document_type": "${doc.document_type}",
+      "content_text": ${JSON.stringify(doc.parsed_content || "(no content extracted)")}
+    }`).join(",\n    ") || ""}
+  ]
+}
+\`\`\`
+
+ADDITIONAL CONTEXT (Plain Text):
 
 PARTIES:
 ${parties && parties.length > 0
   ? parties.map((p) => `- ${p.party_name} (${p.party_role})`).join("\n")
   : "- No parties specified"}
 
-PLAINTIFFS: ${plaintiffs.map((p) => p.party_name).join(", ") || "Not specified"}
-DEFENDANTS: ${defendants.map((p) => p.party_name).join(", ") || "Not specified"}
-
-================================================================================
-STATEMENT OF FACTS
-================================================================================
-${orderData.statement_of_facts || "No statement of facts provided."}
-
-================================================================================
-PROCEDURAL HISTORY
-================================================================================
-${orderData.procedural_history || "No procedural history provided."}
-
-================================================================================
-CLIENT INSTRUCTIONS / SPECIAL REQUESTS
-================================================================================
-${orderData.instructions || "No special instructions provided."}
-
-================================================================================
-SUPPORTING DOCUMENTS
-================================================================================
-${documentContent || "No documents uploaded."}
+Today's Date: ${todayDate}
+Order Number: ${orderData.order_number || "Not specified"}
 
 ================================================================================
 END OF CASE DATA - NOW GENERATE THE MOTION
 ================================================================================
 
-Using ALL the case information above, generate the complete ${orderData.motion_type || "motion"} document now.
-Do NOT ask for more information. Do NOT provide a checklist. START WITH THE COURT CAPTION.
+You have received all required Phase I inputs above. Execute the workflow and generate the complete ${orderData.motion_type || "motion"} document.
+Do NOT ask for more information. START WITH THE COURT CAPTION.
 `;
 
       // Build replacements for any placeholders that might exist in template
@@ -280,7 +281,36 @@ Do NOT ask for more information. Do NOT provide a checklist. START WITH THE COUR
       // Log the request attempt
       logRequest();
 
-      const initialPrompt = "Please generate the complete motion based on the case information and documents provided. Complete all phases without stopping.";
+      // Get parties for the user message
+      const { data: parties } = await supabase
+        .from("parties")
+        .select("*")
+        .eq("order_id", orderId);
+
+      const plaintiffs = parties?.filter((p) => p.party_role?.toLowerCase().includes("plaintiff")) || [];
+      const defendants = parties?.filter((p) => p.party_role?.toLowerCase().includes("defendant")) || [];
+
+      // Put the critical instruction in the USER MESSAGE so it's the last thing Claude sees
+      const userMessage = `CRITICAL: The case data has already been provided in the system context above. DO NOT ask for more information. DO NOT say "I need" or list requirements. DO NOT output Phase I status updates.
+
+Your task: Using the customer_intake JSON and uploaded_documents provided above, generate the COMPLETE ${orderData.motion_type || "motion"} document NOW.
+
+START YOUR RESPONSE WITH THE COURT CAPTION:
+
+IN THE ${orderData.jurisdiction === "la_state" ? "CIVIL DISTRICT COURT" : orderData.jurisdiction?.toUpperCase() || "[COURT]"}
+${orderData.court_division ? `FOR THE ${orderData.court_division.toUpperCase()}` : ""}
+
+${plaintiffs.map((p) => p.party_name).join(", ") || "[PLAINTIFF]"},
+     Plaintiff${plaintiffs.length > 1 ? "s" : ""},
+
+vs.                                    CASE NO. ${orderData.case_number || "[NUMBER]"}
+
+${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
+     Defendant${defendants.length > 1 ? "s" : ""}.
+
+                    MOTION FOR ${(orderData.motion_type || "RELIEF").toUpperCase().replace(/_/g, " ")}
+
+[NOW CONTINUE WITH THE COMPLETE MOTION DOCUMENT - Introduction, Statement of Facts, Legal Arguments, Conclusion, Prayer for Relief, Certificate of Service]`;
 
       console.log(`[Inngest] Starting Claude generation for order ${orderId}`);
 
@@ -289,7 +319,7 @@ Do NOT ask for more information. Do NOT provide a checklist. START WITH THE COUR
           model: "claude-sonnet-4-20250514",
           max_tokens: 64000,
           system: context,
-          messages: [{ role: "user", content: initialPrompt }],
+          messages: [{ role: "user", content: userMessage }],
         },
         {
           maxRetries: 5,
