@@ -80,7 +80,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Orchestration error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Orchestration failed' },
+      { error: 'Orchestration failed. Please try again.' },
       { status: 500 }
     );
   }
@@ -183,7 +183,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Get orchestration status error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to get status' },
+      { error: 'Failed to get status. Please try again.' },
       { status: 500 }
     );
   }

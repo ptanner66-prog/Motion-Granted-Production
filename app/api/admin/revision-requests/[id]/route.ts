@@ -120,7 +120,7 @@ export async function PATCH(
   } catch (error) {
     console.error('Update revision request error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to update revision request',
+      error: 'Failed to update revision request. Please try again.',
     }, { status: 500 });
   }
 }
@@ -153,7 +153,7 @@ export async function GET(
   } catch (error) {
     console.error('Get revision request error:', error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to get revision request',
+      error: 'Failed to get revision request. Please try again.',
     }, { status: 500 });
   }
 }

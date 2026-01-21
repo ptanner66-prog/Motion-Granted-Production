@@ -134,6 +134,13 @@ export async function GET(
 
   try {
     const { id: orderId } = await params
+
+    // Validate orderId is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(orderId)) {
+      return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 })
+    }
+
     const supabase = await createClient()
 
     const { data: { user } } = await supabase.auth.getUser()

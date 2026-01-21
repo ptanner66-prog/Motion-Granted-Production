@@ -27,13 +27,51 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
+    // SECURITY FIX: Validate file is not empty
+    if (file.size === 0) {
+      return NextResponse.json({ error: 'File is empty' }, { status: 400 })
+    }
+
+    // SECURITY: Validate orderId format and ownership if provided
+    if (orderId) {
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!uuidRegex.test(orderId)) {
+        return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 })
+      }
+
+      // Check user role for admin/clerk access
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      const isAdminOrClerk = profile?.role === 'admin' || profile?.role === 'clerk'
+
+      // Verify user owns this order OR is admin/clerk
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select('id, client_id')
+        .eq('id', orderId)
+        .single()
+
+      if (orderError || !order) {
+        return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      }
+
+      if (!isAdminOrClerk && order.client_id !== user.id) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    }
+
     // Validate file size (100MB max for large legal briefs)
     const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB in bytes
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: 'File size exceeds 100MB limit' }, { status: 400 })
     }
 
-    // Validate file type
+    // SECURITY: Validate file type (MIME)
     const allowedTypes = [
       'application/pdf',
       'application/msword',
@@ -46,11 +84,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid file type. Only PDF, DOC, DOCX, and images are allowed' }, { status: 400 })
     }
 
-    // Generate unique file name
+    // SECURITY FIX: Also validate file extension (defense in depth)
+    const allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif']
+    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+    if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
+      return NextResponse.json({ error: 'Invalid file extension. Only PDF, DOC, DOCX, and images are allowed' }, { status: 400 })
+    }
+
+    // SECURITY: Prevent double extension attacks (e.g., file.pdf.exe)
+    const nameParts = file.name.split('.')
+    if (nameParts.length > 2) {
+      // Check if any middle extension is dangerous
+      const dangerousExtensions = ['exe', 'bat', 'cmd', 'sh', 'php', 'phtml', 'js', 'vbs', 'ps1']
+      for (let i = 0; i < nameParts.length - 1; i++) {
+        if (dangerousExtensions.includes(nameParts[i].toLowerCase())) {
+          return NextResponse.json({ error: 'Invalid filename' }, { status: 400 })
+        }
+      }
+    }
+
+    // Generate unique file name with secure random
     const timestamp = Date.now()
-    const randomStr = Math.random().toString(36).substring(7)
-    const fileExt = file.name.split('.').pop()
-    const fileName = `${timestamp}-${randomStr}.${fileExt}`
+    const randomStr = crypto.randomUUID().substring(0, 8)
+    const safeExt = fileExtension // Already validated above
+    const fileName = `${timestamp}-${randomStr}.${safeExt}`
     const filePath = orderId
       ? `orders/${orderId}/${fileName}`
       : `temp/${user.id}/${fileName}`

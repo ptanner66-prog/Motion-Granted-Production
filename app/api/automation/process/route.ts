@@ -126,7 +126,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Automation process error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Automation failed' },
+      { error: 'Automation failed. Please try again.' },
       { status: 500 }
     );
   }
@@ -185,7 +185,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Get progress error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to get progress' },
+      { error: 'Failed to get progress. Please try again.' },
       { status: 500 }
     );
   }
