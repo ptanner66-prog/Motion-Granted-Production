@@ -116,11 +116,12 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    // Log detailed error internally but don't expose to client
     console.error('Health check error:', error);
     return NextResponse.json(
       {
         status: 'unhealthy',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: 'Service unavailable',
         timestamp: new Date().toISOString(),
       },
       { status: 500 }

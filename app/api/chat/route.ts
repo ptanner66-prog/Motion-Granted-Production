@@ -78,6 +78,15 @@ export async function POST(request: Request) {
       });
     }
 
+    // Validate orderId is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(orderId)) {
+      return new Response(JSON.stringify({ error: 'Invalid order ID format' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // Get or create conversation for this order
     let { data: conversation } = await supabase
       .from('conversations')
@@ -385,6 +394,15 @@ export async function GET(request: Request) {
 
   if (!orderId) {
     return new Response(JSON.stringify({ error: 'orderId is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Validate orderId is a valid UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(orderId)) {
+    return new Response(JSON.stringify({ error: 'Invalid order ID format' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
