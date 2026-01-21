@@ -1118,7 +1118,8 @@ function generateDefaultCertificate(): string {
 export async function savePDFAsDeliverable(
   orderId: string,
   pdfBytes: Uint8Array,
-  fileName: string
+  fileName: string,
+  uploadedBy?: string // Optional user ID who approved/uploaded
 ): Promise<OperationResult<{ documentId: string; fileUrl: string }>> {
   // Use admin client to bypass RLS
   const supabase = getAdminClient();
@@ -1144,7 +1145,18 @@ export async function savePDFAsDeliverable(
       return { success: false, error: `Upload failed: ${uploadError.message}` };
     }
 
-    // Create document record (uploaded_by is null for system-generated deliverables)
+    // If no uploadedBy provided, get the order's client_id
+    let uploaderUserId = uploadedBy;
+    if (!uploaderUserId) {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('client_id')
+        .eq('id', orderId)
+        .single();
+      uploaderUserId = order?.client_id;
+    }
+
+    // Create document record
     const { data: docRecord, error: dbError } = await supabase
       .from('documents')
       .insert({
@@ -1154,7 +1166,7 @@ export async function savePDFAsDeliverable(
         file_size: pdfBytes.length,
         file_url: filePath,
         document_type: 'deliverable',
-        uploaded_by: null, // System-generated
+        uploaded_by: uploaderUserId,
         is_deliverable: true,
       })
       .select()

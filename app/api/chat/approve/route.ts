@@ -79,11 +79,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: pdfResult.error || 'Failed to generate PDF' }, { status: 500 });
     }
 
-    // Save PDF as deliverable
+    // Save PDF as deliverable (pass user.id for uploaded_by)
     const saveResult = await savePDFAsDeliverable(
       orderId,
       pdfResult.data.pdfBuffer,
-      `${order.order_number}_motion.pdf`
+      `${order.order_number}_motion.pdf`,
+      user.id
     );
 
     if (!saveResult.success || !saveResult.data) {

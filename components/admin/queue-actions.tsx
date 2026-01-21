@@ -55,21 +55,21 @@ export function QueueActions({ pendingReviewCount, failedCount, stuckCount }: Qu
   const hasIssues = failedCount > 0 || stuckCount > 0;
 
   return (
-    <Card className={`border-0 shadow-sm ${hasIssues ? 'bg-amber-50' : 'bg-green-50'}`}>
+    <Card className={`border-0 shadow-sm ${hasIssues ? 'bg-amber-50' : 'bg-teal-50'}`}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {hasIssues ? (
               <AlertCircle className="h-5 w-5 text-amber-600" />
             ) : (
-              <CheckCircle className="h-5 w-5 text-green-600" />
+              <CheckCircle className="h-5 w-5 text-teal-600" />
             )}
             <CardTitle className="text-lg">
               {hasIssues ? 'Queue Actions Needed' : 'Queue Status Good'}
             </CardTitle>
           </div>
         </div>
-        <CardDescription className={hasIssues ? 'text-amber-700' : 'text-green-700'}>
+        <CardDescription className={hasIssues ? 'text-amber-700' : 'text-teal-700'}>
           {pendingReviewCount > 0 && (
             <span className="font-medium">{pendingReviewCount} motion(s) ready for review. </span>
           )}

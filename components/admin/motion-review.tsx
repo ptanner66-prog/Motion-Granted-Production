@@ -127,13 +127,13 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
     <div className="space-y-4">
       {/* Approve Button - Prominent at top */}
       {!isDelivered && (
-        <Card className="bg-green-50 border-green-200">
+        <Card className="bg-teal-50 border-teal-200">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2 text-green-800">
+            <CardTitle className="text-lg flex items-center gap-2 text-teal-800">
               <CheckCircle className="h-5 w-5" />
               Motion Ready for Review
             </CardTitle>
-            <CardDescription className="text-green-700">
+            <CardDescription className="text-teal-700">
               Review the motion below. When satisfied, click to approve and deliver to client.
             </CardDescription>
           </CardHeader>
@@ -141,7 +141,7 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
             <Button
               onClick={handleApprove}
               disabled={isApproving}
-              className="w-full bg-green-600 hover:bg-green-700 text-white text-lg py-6"
+              className="w-full bg-teal-600 hover:bg-teal-700 text-white text-lg py-6"
               size="lg"
             >
               {isApproving ? (
@@ -156,7 +156,7 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
                 </>
               )}
             </Button>
-            <p className="text-xs text-green-600 text-center mt-3">
+            <p className="text-xs text-teal-600 text-center mt-3">
               This will generate a PDF, save it as a deliverable, and email the client.
             </p>
           </CardContent>
