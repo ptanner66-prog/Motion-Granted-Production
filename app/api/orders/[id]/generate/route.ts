@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
-import { getAnthropicAPIKey } from '@/lib/api-keys';
+import { createMessageWithRetry } from '@/lib/claude-client';
 import { parseFileOperations, executeFileOperations } from '@/lib/workflow/file-system';
 
 export const maxDuration = 300; // 5 minutes for Vercel
@@ -193,24 +193,35 @@ export async function POST(
     // Build full context
     const fullContext = buildStreamlinedPrompt(orderId) + templateContent;
 
-    // Get API key
-    const apiKey = await getAnthropicAPIKey();
-    if (!apiKey) {
-      throw new Error('Anthropic API key not configured. Add it in Admin Settings > API Keys.');
-    }
+    // Generate with Claude (with automatic rate limit handling)
+    console.log(`[Generate] Starting Claude generation for order ${orderId}`);
 
-    // Generate with Claude
-    const anthropic = new Anthropic({ apiKey });
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 64000,
-      system: fullContext,
-      messages: [{
-        role: 'user',
-        content: 'Please generate the complete motion based on the case information and documents provided.'
-      }],
-    });
+    const response = await createMessageWithRetry(
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 64000,
+        system: fullContext,
+        messages: [{
+          role: 'user',
+          content: 'Please generate the complete motion based on the case information and documents provided.'
+        }],
+      },
+      {
+        maxRetries: 5,
+        onRetry: (attempt, waitMs, error) => {
+          console.log(`[Generate] Retry ${attempt} for order ${orderId}. Waiting ${Math.round(waitMs / 1000)}s. Error: ${error}`);
+          // Log retry to database
+          adminClient.from('automation_logs').insert({
+            order_id: orderId,
+            action_type: 'generation_retry',
+            action_details: { attempt, waitMs, error },
+          }).then(() => {});
+        },
+        onSuccess: (inputTokens, outputTokens) => {
+          console.log(`[Generate] Success for order ${orderId}. Tokens: ${inputTokens} in, ${outputTokens} out`);
+        },
+      }
+    );
 
     const motionContent = response.content
       .filter((block): block is Anthropic.TextBlock => block.type === 'text')

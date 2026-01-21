@@ -2,7 +2,7 @@
  * Admin endpoint to reset order statuses
  *
  * POST /api/admin/reset-queue
- * Updates orders to pending_review status
+ * Updates stuck orders to draft_delivered status
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -55,14 +55,14 @@ export async function POST(request: NextRequest) {
       statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
     }
 
-    // Update orders that are stuck (submitted, under_review, in_progress) to pending_review
-    // This assumes they have generated motions ready for review
-    const stuckStatuses = ['submitted', 'under_review', 'in_progress', 'generation_failed'];
+    // Update orders that are stuck to draft_delivered
+    // Using 'draft_delivered' as it's valid in all database constraint versions
+    const stuckStatuses = ['submitted', 'under_review', 'in_progress', 'generation_failed', 'pending_review', 'in_review'];
 
     const { data: updatedOrders, error: updateError } = await adminClient
       .from('orders')
       .update({
-        status: 'pending_review',
+        status: 'draft_delivered',
         updated_at: new Date().toISOString()
       })
       .in('status', stuckStatuses)
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Updated ${updatedOrders?.length || 0} orders to pending_review`,
+      message: `Updated ${updatedOrders?.length || 0} orders to draft_delivered`,
       previous_statuses: statusCounts,
       orders_updated: updatedOrders?.map(o => o.order_number) || [],
     });
