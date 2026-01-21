@@ -130,17 +130,8 @@ export async function POST(req: Request) {
       }
 
       if (errorMessage.includes('duplicate') || errorMessage.includes('already exists')) {
-        // Try with upsert
-        const { error: retryError } = await supabase.storage
-          .from('documents')
-          .upload(filePath, fileBuffer, {
-            contentType: file.type || 'application/octet-stream',
-            upsert: true
-          })
-
-        if (retryError) {
-          return NextResponse.json({ error: 'File already exists' }, { status: 409 })
-        }
+        // SECURITY: Don't allow file overwrites - reject duplicate uploads
+        return NextResponse.json({ error: 'A file with this name already exists for this order' }, { status: 409 })
       } else {
         // Don't expose internal error details to client
         console.error('Upload error details:', errorMessage)
@@ -150,10 +141,17 @@ export async function POST(req: Request) {
 
     console.log('File uploaded successfully to:', filePath)
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
+    // Get signed URL (expires in 1 hour) instead of public URL for security
+    const { data: urlData, error: urlError } = await supabase.storage
       .from('documents')
-      .getPublicUrl(filePath)
+      .createSignedUrl(filePath, 3600)
+
+    if (urlError) {
+      console.error('Failed to create signed URL:', urlError)
+      // Clean up uploaded file
+      await supabase.storage.from('documents').remove([filePath]).catch(() => {})
+      return NextResponse.json({ error: 'Failed to create secure file access' }, { status: 500 })
+    }
 
     // Save to database
     const { data: doc, error: dbError } = await supabase
@@ -195,7 +193,7 @@ export async function POST(req: Request) {
       document: {
         id: doc.id,
         fileName: doc.file_name,
-        fileUrl: urlData.publicUrl,
+        fileUrl: urlData.signedUrl,
         documentType: doc.document_type
       }
     })

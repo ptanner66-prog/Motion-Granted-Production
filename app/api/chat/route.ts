@@ -78,6 +78,15 @@ export async function POST(request: Request) {
       });
     }
 
+    // Validate orderId is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(orderId)) {
+      return new Response(JSON.stringify({ error: 'Invalid order ID format' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // Get or create conversation for this order
     let { data: conversation } = await supabase
       .from('conversations')
@@ -214,26 +223,24 @@ export async function POST(request: Request) {
       const orderDataResult = await gatherOrderData(orderId);
       const orderData = orderDataResult.data;
 
-      const initialPrompt = `CRITICAL: The case data has already been provided in the system context above. DO NOT ask for more information. DO NOT say "I need" or list requirements. DO NOT output Phase I status updates.
+      const initialPrompt = `EXECUTE THE SUPERPROMPT WORKFLOW NOW.
 
-Your task: Using the customer_intake JSON and uploaded_documents provided above, generate the COMPLETE ${orderData?.motionType || 'motion'} document NOW.
+The system context above contains:
+1. A WORKFLOW TEMPLATE that specifies the exact phases you must follow
+2. CASE DATA including customer intake, uploaded documents, and attorney information
 
-START YOUR RESPONSE WITH THE COURT CAPTION:
+Your task: Execute the complete workflow from Phase I through the final phase.
+- Follow each phase exactly as specified in the workflow template
+- Use the provided case data at each phase
+- Complete ALL phases before producing the final motion
 
-IN THE ${orderData?.jurisdiction === 'la_state' ? 'CIVIL DISTRICT COURT' : orderData?.jurisdiction?.toUpperCase() || '[COURT]'}
-${orderData?.courtDivision ? `FOR THE ${orderData.courtDivision.toUpperCase()}` : ''}
+Motion Type: ${orderData?.motionType || 'Motion'}
+Case Number: ${orderData?.caseNumber || '[NUMBER]'}
+Court: ${orderData?.jurisdiction === 'la_state' ? 'Civil District Court' : orderData?.jurisdiction || '[COURT]'}
+Plaintiffs: ${orderData?.plaintiffNames || '[PLAINTIFF]'}
+Defendants: ${orderData?.defendantNames || '[DEFENDANT]'}
 
-${orderData?.plaintiffNames || '[PLAINTIFF]'},
-     Plaintiff,
-
-vs.                                    CASE NO. ${orderData?.caseNumber || '[NUMBER]'}
-
-${orderData?.defendantNames || '[DEFENDANT]'},
-     Defendant.
-
-                    MOTION FOR ${(orderData?.motionType || 'RELIEF').toUpperCase().replace(/_/g, ' ')}
-
-[NOW CONTINUE WITH THE COMPLETE MOTION DOCUMENT - Introduction, Statement of Facts, Legal Arguments, Conclusion, Prayer for Relief, Certificate of Service]`;
+BEGIN EXECUTING THE WORKFLOW NOW. Start with Phase I as defined in your superprompt template.`;
 
       await supabase.from('conversation_messages').insert({
         conversation_id: conversation.id,
@@ -390,6 +397,15 @@ export async function GET(request: Request) {
     });
   }
 
+  // Validate orderId is a valid UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(orderId)) {
+    return new Response(JSON.stringify({ error: 'Invalid order ID format' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     // Get conversation
     const { data: conversation } = await supabase
@@ -477,39 +493,42 @@ END OF EXISTING HANDOFF
 `;
     }
 
-    // Critical instruction header
-    const criticalInstruction = `
+    // Workflow enforcement instruction header
+    const workflowInstruction = `
 ################################################################################
 #                                                                              #
-#   MANDATORY INSTRUCTION - FAILURE TO COMPLY WILL RESULT IN REJECTION        #
+#   MANDATORY INSTRUCTION - FOLLOW THE SUPERPROMPT WORKFLOW EXACTLY           #
 #                                                                              #
 ################################################################################
 
-YOU MUST GENERATE A COMPLETE LEGAL MOTION - FINAL DOCUMENT ONLY.
+You are being provided with a SUPERPROMPT WORKFLOW TEMPLATE that contains a
+structured, multi-phase legal motion drafting process.
 
-FORBIDDEN OUTPUTS (will cause immediate rejection):
-- "PHASE I:", "PHASE II:", etc. - NO PHASE HEADERS
-- "Status: IN PROGRESS" or any status updates
-- Tables showing phase progress or element mapping
-- "### PHASE X COMPLETE" or any completion markers
-- Workflow summaries or checklists
-- "Next Phase:" indicators
-- Research notes or citation verification reports
-- Attorney instruction sheets
-- INTRODUCTORY SENTENCES like "I'll generate..." or "Let me create..."
-- CONCLUDING COMMENTARY like "Key Improvements Made" or summaries of what you did
-- Any text before the court caption
-- Any text after the Certificate of Service
+CRITICAL REQUIREMENTS:
+1. FOLLOW the workflow phases EXACTLY as specified in the superprompt template
+2. Execute EACH phase completely before moving to the next phase
+3. Use the case data provided to inform your analysis at each phase
+4. Apply the legal standards, citation requirements, and quality checks specified
+5. The superprompt contains your lawyer's proven methodology - follow it precisely
 
-YOUR ENTIRE RESPONSE MUST BE ONLY THE MOTION DOCUMENT.
-No introduction. No explanation. No commentary. Just the motion.
+The workflow template will guide you through:
+- Phase I: Intake & Document Processing
+- Phase II: Legal Standards Research
+- Phase III: Evidence Strategy
+- Phase IV: Authority Research
+- Phase V: Drafting
+- Phase V.1: Citation Accuracy Check
+- Phase VI: Opposition Anticipation
+- Phase VII: Quality Review
+- And subsequent phases as defined in the template
 
-REQUIRED OUTPUT FORMAT:
-Start IMMEDIATELY with the court caption (e.g., "IN THE CIVIL DISTRICT COURT").
-End with the Certificate of Service. Nothing else.
+DO NOT skip phases. DO NOT take shortcuts. The workflow exists for quality assurance.
+
+After completing ALL phases, your final output should be the complete, court-ready
+motion document with proper formatting, citations, and all required sections.
 
 ################################################################################
-#   CASE DATA BELOW - USE THIS TO WRITE THE MOTION                            #
+#   CASE DATA BELOW - USE THIS THROUGHOUT THE WORKFLOW                        #
 ################################################################################
 
 `;
@@ -567,16 +586,16 @@ ADDITIONAL CONTEXT:
 - All Parties: ${orderData.parties?.map((p: { name: string; role: string }) => `${p.name} (${p.role})`).join(', ') || 'Not specified'}
 
 ================================================================================
-END OF CASE DATA - NOW GENERATE THE MOTION
+END OF CASE DATA - BEGIN WORKFLOW EXECUTION
 ================================================================================
 
-You have received all required Phase I inputs above. Execute the workflow and generate the complete ${orderData.motionType || 'motion'} document.
-Do NOT ask for more information. START WITH THE COURT CAPTION.
+You have received all required inputs above. Execute the COMPLETE workflow as specified
+in the superprompt template. Follow each phase from start to finish.
 
 `;
 
-    // Build context: Critical instruction + Case data FIRST + then superprompt template
-    let context = criticalInstruction + structuredCaseData + '\n\n' + template.template;
+    // Build context: Workflow instruction + Case data + superprompt template
+    let context = workflowInstruction + structuredCaseData + '\n\n' + template.template;
 
     // Replace all placeholders
     const replacements: Record<string, string> = {

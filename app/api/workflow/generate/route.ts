@@ -62,6 +62,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
     }
 
+    // Validate orderId is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(orderId)) {
+      return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 });
+    }
+
     // Get order details
     const { data: order, error: orderError } = await supabase
       .from('orders')
