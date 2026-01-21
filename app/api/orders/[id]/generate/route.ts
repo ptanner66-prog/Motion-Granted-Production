@@ -179,18 +179,39 @@ export async function POST(
 CASE DATA - USE THIS INFORMATION TO GENERATE THE MOTION
 ================================================================================
 
-CASE IDENTIFICATION:
-- Case Number: ${order.case_number || 'Not specified'}
-- Case Caption: ${order.case_caption || 'Not specified'}
-- Court/Jurisdiction: ${order.jurisdiction || 'Not specified'}
-- Court Division: ${order.court_division || 'Not specified'}
-- Order Number: ${order.order_number || 'Not specified'}
-- Today's Date: ${todayDate}
+The following JSON contains all the case information needed for Phase I Input:
 
-MOTION DETAILS:
-- Motion Type: ${order.motion_type || 'Not specified'}
-- Motion Tier: ${order.motion_tier || 'Not specified'}
-- Filing Deadline: ${order.filing_deadline || 'Not specified'}
+\`\`\`json
+{
+  "order_id": "${orderId}",
+  "customer_intake": {
+    "motion_type": "${order.motion_type || ''}",
+    "filing_deadline": "${order.filing_deadline || ''}",
+    "hearing_date": "${order.hearing_date || ''}",
+    "party_represented": "${plaintiffs.length > 0 ? 'plaintiff' : 'defendant'}",
+    "party_name": "${plaintiffs.length > 0 ? plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') : defendants.map((p: { party_name: string }) => p.party_name).join(', ')}",
+    "opposing_party_name": "${plaintiffs.length > 0 ? defendants.map((p: { party_name: string }) => p.party_name).join(', ') : plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ')}",
+    "case_number": "${order.case_number || ''}",
+    "case_caption": "${order.case_caption || ''}",
+    "court": "${order.jurisdiction || ''}",
+    "court_division": "${order.court_division || ''}",
+    "statement_of_facts": ${JSON.stringify(order.statement_of_facts || '')},
+    "procedural_history": ${JSON.stringify(order.procedural_history || '')},
+    "drafting_instructions": ${JSON.stringify(order.instructions || '')},
+    "judge_name": ""
+  },
+  "uploaded_documents": [
+    ${documents?.map((doc: { id: string; file_name: string; document_type: string; parsed_content?: string }) => `{
+      "document_id": "${doc.id}",
+      "filename": "${doc.file_name}",
+      "document_type": "${doc.document_type}",
+      "content_text": ${JSON.stringify(doc.parsed_content || '(no content extracted)')}
+    }`).join(',\n    ') || ''}
+  ]
+}
+\`\`\`
+
+ADDITIONAL CONTEXT (Plain Text):
 
 PARTIES:
 ${parties.length > 0
@@ -199,35 +220,15 @@ ${parties.length > 0
     ).join('\n')
   : '- No parties specified'}
 
-PLAINTIFFS: ${plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') || 'Not specified'}
-DEFENDANTS: ${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || 'Not specified'}
-
-================================================================================
-STATEMENT OF FACTS
-================================================================================
-${order.statement_of_facts || 'No statement of facts provided.'}
-
-================================================================================
-PROCEDURAL HISTORY
-================================================================================
-${order.procedural_history || 'No procedural history provided.'}
-
-================================================================================
-CLIENT INSTRUCTIONS / SPECIAL REQUESTS
-================================================================================
-${order.instructions || 'No special instructions provided.'}
-
-================================================================================
-SUPPORTING DOCUMENTS
-================================================================================
-${documentContent || 'No documents uploaded.'}
+Today's Date: ${todayDate}
+Order Number: ${order.order_number || 'Not specified'}
 
 ================================================================================
 END OF CASE DATA - NOW GENERATE THE MOTION
 ================================================================================
 
-Using ALL the case information above, generate the complete ${order.motion_type || 'motion'} document now.
-Do NOT ask for more information. Do NOT provide a checklist. START WITH THE COURT CAPTION.
+You have received all required Phase I inputs above. Execute the workflow and generate the complete ${order.motion_type || 'motion'} document.
+Do NOT ask for more information. START WITH THE COURT CAPTION.
 `;
 
     // Build replacements for any placeholders that might exist in template
