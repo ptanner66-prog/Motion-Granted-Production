@@ -234,6 +234,14 @@ export async function POST(request: NextRequest) {
       legal_research_provider,
     } = body;
 
+    // Debug: Log what we received (masked for security)
+    const keyPreview = anthropic_api_key
+      ? (anthropic_api_key.startsWith('****')
+          ? '(masked - skipping)'
+          : `${anthropic_api_key.slice(0, 10)}...${anthropic_api_key.slice(-4)} (${anthropic_api_key.length} chars)`)
+      : '(empty)';
+    console.log(`[API-KEYS SAVE] Received anthropic_api_key: ${keyPreview}`);
+
     // Prepare settings to save (encrypt keys, skip if masked/unchanged)
     const settingsToSave: Array<{
       setting_key: string;
@@ -317,6 +325,10 @@ export async function POST(request: NextRequest) {
       updated_by: user.id,
     });
 
+    // Log which settings will be saved
+    const keysBeingSaved = settingsToSave.map(s => s.setting_key);
+    console.log(`[API-KEYS SAVE] Saving ${settingsToSave.length} settings: ${keysBeingSaved.join(', ')}`);
+
     // Save all settings using admin client (bypasses RLS)
     const { error: saveError } = await adminClient
       .from('automation_settings')
@@ -329,8 +341,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save settings: ' + saveError.message }, { status: 500 });
     }
 
+    console.log(`[API-KEYS SAVE] Successfully saved settings to database`);
+
     // Clear the API keys cache so new keys are used immediately
     clearAPIKeysCache();
+    console.log(`[API-KEYS SAVE] Cache cleared`);
 
     // Log the change - use admin client and don't let logging failure break the save
     const { error: logError } = await adminClient.from('automation_logs').insert({
