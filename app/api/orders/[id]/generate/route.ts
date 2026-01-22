@@ -58,14 +58,18 @@ DO NOT skip phases. DO NOT take shortcuts. The workflow exists for quality assur
 
 ################################################################################
 #                                                                              #
-#   CRITICAL OUTPUT REQUIREMENT                                                #
+#   CRITICAL OUTPUT REQUIREMENT - READ CAREFULLY                               #
 #                                                                              #
 ################################################################################
 
 IMPORTANT: Execute all workflow phases INTERNALLY, but your OUTPUT must contain
 ONLY the final court-ready motion document.
 
-DO NOT OUTPUT:
+ABSOLUTELY DO NOT OUTPUT ANY OF THE FOLLOWING:
+- "I'll execute..." or "Let me execute..." or "I'll generate..." statements
+- "MOTION GRANTED WORKFLOW" headers or banners
+- "OUTPUT DOCUMENT" headers
+- Lines of equals signs (================)
 - Phase headers ("PHASE I:", "PHASE II:", etc.)
 - Status updates ("Status: IN PROGRESS", "Status: COMPLETE")
 - Progress tables or element mapping tables

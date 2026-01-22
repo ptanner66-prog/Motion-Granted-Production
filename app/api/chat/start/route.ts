@@ -328,11 +328,18 @@ Do NOT ask for more information. START WITH THE COURT CAPTION.
     });
 
     // Add initial user prompt with pre-filled caption to force motion generation
-    const initialPrompt = `CRITICAL: The case data has already been provided in the system context above. DO NOT ask for more information. DO NOT say "I need" or list requirements. DO NOT output Phase I status updates.
+    const initialPrompt = `CRITICAL OUTPUT RULES:
+1. DO NOT say "I'll execute..." or "Let me generate..." or any preamble
+2. DO NOT output "MOTION GRANTED WORKFLOW" or "OUTPUT DOCUMENT" headers
+3. DO NOT output lines of equals signs (================)
+4. DO NOT ask for more information or list requirements
+5. DO NOT output Phase headers or status updates
+
+START YOUR RESPONSE DIRECTLY WITH THE COURT CAPTION BELOW - no introduction:
 
 Your task: Using the customer_intake JSON provided above, generate the COMPLETE ${orderData.motionType || 'motion'} document NOW.
 
-START YOUR RESPONSE WITH THE COURT CAPTION:
+BEGIN YOUR RESPONSE WITH THIS EXACT CAPTION:
 
 IN THE ${orderData.jurisdiction === 'la_state' ? 'CIVIL DISTRICT COURT' : orderData.jurisdiction?.toUpperCase() || '[COURT]'}
 ${orderData.courtDivision ? `FOR THE ${orderData.courtDivision.toUpperCase()}` : ''}

@@ -223,17 +223,19 @@ export async function POST(request: Request) {
       const orderDataResult = await gatherOrderData(orderId);
       const orderData = orderDataResult.data;
 
-      const initialPrompt = `EXECUTE THE SUPERPROMPT WORKFLOW AND OUTPUT ONLY THE FINAL MOTION.
+      const initialPrompt = `GENERATE THE MOTION DOCUMENT ONLY.
 
-The system context above contains:
-1. A WORKFLOW TEMPLATE that specifies the exact phases you must follow
-2. CASE DATA including customer intake, uploaded documents, and attorney information
+FORBIDDEN - DO NOT INCLUDE IN YOUR RESPONSE:
+- "I'll execute..." or "Let me generate..." or any preamble text
+- "MOTION GRANTED WORKFLOW" or "OUTPUT DOCUMENT" headers
+- Lines of equals signs (================) or dashes
+- Phase headers, status updates, tables, or workflow commentary
+- Introductory or concluding remarks
 
-Your task:
-1. Execute the complete workflow from Phase I through the final phase INTERNALLY
-2. Follow each phase exactly as specified in the workflow template
-3. Use the provided case data at each phase
-4. OUTPUT ONLY THE FINAL COURT-READY MOTION DOCUMENT
+REQUIRED - YOUR RESPONSE MUST:
+- Start DIRECTLY with the court caption (no text before it)
+- End with the signature block and certificate of service
+- Contain ONLY the motion document
 
 Motion Type: ${orderData?.motionType || 'Motion'}
 Case Number: ${orderData?.caseNumber || '[NUMBER]'}
@@ -241,11 +243,7 @@ Court: ${orderData?.jurisdiction === 'la_state' ? 'Civil District Court' : order
 Plaintiffs: ${orderData?.plaintiffNames || '[PLAINTIFF]'}
 Defendants: ${orderData?.defendantNames || '[DEFENDANT]'}
 
-CRITICAL: Your response must contain ONLY the motion document itself.
-- Start with the court caption
-- End with the signature block and certificate of service
-- NO phase headers, status updates, tables, or workflow commentary
-- NO introductory text or concluding remarks
+BEGIN YOUR RESPONSE WITH THE COURT CAPTION NOW:
 
 BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
 
