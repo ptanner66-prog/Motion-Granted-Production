@@ -155,6 +155,8 @@ export async function callClaude<T>(
   const model = options?.model || DEFAULT_MODEL;
   const maxTokens = options?.maxTokens || DEFAULT_MAX_TOKENS;
 
+  console.log('[Claude API - callClaudeWithRetry] Using model:', model);
+
   try {
     const response = await client.messages.create({
       model,
@@ -168,6 +170,8 @@ export async function callClaude<T>(
         },
       ],
     });
+
+    console.log('[Claude API] Response model:', response.model);
 
     // Extract text content from response
     const textContent = response.content.find((block) => block.type === 'text');
@@ -233,6 +237,8 @@ export async function askClaude(options: {
   const model = options.model || DEFAULT_MODEL;
   const maxTokens = options.maxTokens || DEFAULT_MAX_TOKENS;
 
+  console.log('[Claude API] Using model:', model, '| Max tokens:', maxTokens);
+
   try {
     const response = await client.messages.create({
       model,
@@ -246,6 +252,8 @@ export async function askClaude(options: {
         },
       ],
     });
+
+    console.log('[Claude API - askClaude] Response model:', response.model);
 
     // Extract text content from response
     const textContent = response.content.find((block) => block.type === 'text');

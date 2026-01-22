@@ -281,6 +281,7 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
             ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`
             : '(key too short)';
           console.log(`[CHAT] Using API key: ${keyPreview}`);
+          console.log(`[CHAT] Requesting model: claude-opus-4-5-20251101`);
 
           const anthropic = new Anthropic({ apiKey });
 

@@ -371,12 +371,16 @@ ${orderData.defendantNames || '[DEFENDANT]'},
       }
       const anthropic = new Anthropic({ apiKey });
 
+      console.log('[CHAT-START] Requesting model: claude-opus-4-5-20251101');
+
       const response = await anthropic.messages.create({
         model: 'claude-opus-4-5-20251101',
         max_tokens: 64000, // Increased for full motion generation through all phases
         system: context,
         messages: [{ role: 'user', content: initialPrompt }],
       });
+
+      console.log('[CHAT-START] Response model:', response.model);
 
       const generatedMotion = response.content
         .filter((block): block is Anthropic.TextBlock => block.type === 'text')
