@@ -97,10 +97,10 @@ DO NOT show your work. DO NOT output phases. ONLY output the final motion.
 export const generateOrderDraft = inngest.createFunction(
   {
     id: "generate-order-draft",
-    // Process one order at a time for reliability and cost control
-    // Increase to 2-3 once system is proven stable
+    // Process 3 orders concurrently for production scale
+    // Rate limiting handled by lib/redis.ts and lib/rate-limit.ts
     concurrency: {
-      limit: 1,
+      limit: 3,
     },
     // Retry configuration
     retries: 3,
