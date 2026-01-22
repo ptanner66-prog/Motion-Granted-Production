@@ -35,6 +35,7 @@ import { QuickApproveButton } from '@/components/admin/quick-approve-button'
 import { RetryGenerationButton } from '@/components/admin/retry-generation-button'
 import { MotionReview } from '@/components/admin/motion-review'
 import { GenerateNowButton } from '@/components/admin/generate-now-button'
+import { TierBadge } from '@/components/workflow/TierBadge'
 
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
@@ -123,6 +124,9 @@ export default async function AdminOrderDetailPage({
                 {order.order_number}
               </h1>
               <OrderStatusBadge status={order.status as OrderStatus} />
+              {order.motion_tier && (
+                <TierBadge tier={order.motion_tier} showTooltip />
+              )}
             </div>
             <p className="text-lg text-gray-600">{formatMotionType(order.motion_type)}</p>
             <p className="text-sm text-gray-400 mt-1">
