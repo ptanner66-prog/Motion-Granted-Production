@@ -36,6 +36,9 @@ import { RetryGenerationButton } from '@/components/admin/retry-generation-butto
 import { MotionReview } from '@/components/admin/motion-review'
 import { GenerateNowButton } from '@/components/admin/generate-now-button'
 import { TierBadge } from '@/components/workflow/TierBadge'
+import { PhaseProgressTracker } from '@/components/workflow/PhaseProgressTracker'
+import { JudgeSimulationCard } from '@/components/workflow/JudgeSimulationCard'
+import type { WorkflowPhaseCode, PhaseStatus, JudgeSimulationResult } from '@/types/workflow'
 
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
@@ -105,6 +108,59 @@ export default async function AdminOrderDetailPage({
 
   const client = order.profiles
 
+  // Fetch workflow data for PhaseProgressTracker
+  const { data: workflow } = await supabase
+    .from('order_workflows')
+    .select('id, current_phase, status, revision_loop')
+    .eq('order_id', id)
+    .single()
+
+  // Fetch phase executions for status tracking
+  const { data: phaseExecutions } = await supabase
+    .from('workflow_phase_executions')
+    .select('phase_number, status')
+    .eq('order_workflow_id', workflow?.id || '')
+
+  // Build phase statuses map
+  const phaseStatuses: Partial<Record<WorkflowPhaseCode, PhaseStatus>> = {}
+  const phaseNumberToCode: Record<number, WorkflowPhaseCode> = {
+    1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'V.1',
+    7: 'VI', 8: 'VII', 9: 'VII.1', 10: 'VIII', 11: 'VIII.5',
+    12: 'IX', 13: 'IX.1', 14: 'X'
+  }
+
+  phaseExecutions?.forEach((pe: { phase_number: number; status: string }) => {
+    const code = phaseNumberToCode[pe.phase_number]
+    if (code) {
+      phaseStatuses[code] = pe.status as PhaseStatus
+    }
+  })
+
+  // Fetch judge simulation result
+  const { data: judgeResult } = await supabase
+    .from('judge_simulation_results')
+    .select('*')
+    .eq('workflow_id', workflow?.id || '')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  const judgeSimulationResult: JudgeSimulationResult | undefined = judgeResult ? {
+    grade: judgeResult.grade,
+    numericGrade: judgeResult.numeric_grade || 0,
+    passes: judgeResult.passes,
+    strengths: judgeResult.strengths || [],
+    weaknesses: judgeResult.weaknesses || [],
+    specificFeedback: judgeResult.specific_feedback || '',
+    revisionSuggestions: judgeResult.revision_suggestions || [],
+    loopNumber: judgeResult.loop_number || 1,
+  } : undefined
+
+  // Determine current phase code
+  const currentPhaseCode = workflow?.current_phase
+    ? phaseNumberToCode[workflow.current_phase] || 'I'
+    : 'I'
+
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
@@ -137,6 +193,19 @@ export default async function AdminOrderDetailPage({
           </div>
         </div>
       </div>
+
+      {/* Workflow Progress Tracker */}
+      {workflow && (
+        <Card className="mb-6 bg-white border-gray-200">
+          <CardContent className="p-6">
+            <PhaseProgressTracker
+              currentPhase={currentPhaseCode}
+              phaseStatuses={phaseStatuses}
+              revisionLoop={workflow.revision_loop || 0}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Content Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -396,6 +465,14 @@ export default async function AdminOrderDetailPage({
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* Judge Simulation Results */}
+          {workflow && (
+            <JudgeSimulationCard
+              result={judgeSimulationResult}
+              isLoading={workflow.status === 'in_progress' && workflow.current_phase === 8}
+            />
+          )}
+
           {/* Quick Approve - shown when draft needs review */}
           {order.status === 'pending_review' && (
             <QuickApproveButton

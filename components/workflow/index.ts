@@ -8,6 +8,8 @@
 export { TierBadge, getTierColor } from './TierBadge';
 export { PhaseProgressTracker } from './PhaseProgressTracker';
 export { JudgeSimulationCard } from './JudgeSimulationCard';
+export { CheckpointNotificationBanner } from './CheckpointNotificationBanner';
+export { PhaseXApprovalModal } from './PhaseXApprovalModal';
 
 // Existing components
 export { PhaseProgress } from './PhaseProgress';
