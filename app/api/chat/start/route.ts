@@ -371,11 +371,11 @@ ${orderData.defendantNames || '[DEFENDANT]'},
       }
       const anthropic = new Anthropic({ apiKey });
 
-      console.log('[CHAT-START] Requesting model: claude-opus-4-20250514');
+      console.log('[CHAT-START] Requesting model: claude-opus-4-5-20251101');
 
       const response = await anthropic.messages.create({
-        model: 'claude-opus-4-20250514',
-        max_tokens: 32000, // Increased for full motion generation through all phases
+        model: 'claude-opus-4-5-20251101',
+        max_tokens: 16000, // Increased for full motion generation through all phases
         system: context,
         messages: [{ role: 'user', content: initialPrompt }],
       });
@@ -419,7 +419,7 @@ ${orderData.defendantNames || '[DEFENDANT]'},
           conversationId: conversation.id,
           inputTokens: response.usage.input_tokens,
           outputTokens: response.usage.output_tokens,
-          model: 'claude-opus-4-20250514',
+          model: 'claude-opus-4-5-20251101',
         },
       });
 

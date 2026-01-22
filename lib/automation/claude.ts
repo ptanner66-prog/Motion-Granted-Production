@@ -46,13 +46,13 @@ export async function getAnthropicClient(): Promise<Anthropic | null> {
   return anthropic;
 }
 
-// Default model configuration - Use Opus 4.5 for all tasks
-const DEFAULT_MODEL = 'claude-opus-4-20250514';
+// Default model configuration - Use Sonnet 4 for utility tasks (cost-effective)
+const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 const DEFAULT_MAX_TOKENS = 8192;
 
 // For motion generation (use Opus 4.5 for best legal reasoning)
-export const MOTION_MODEL = 'claude-opus-4-20250514';
-export const MOTION_MAX_TOKENS = 32000; // Opus 4 max output limit
+export const MOTION_MODEL = 'claude-opus-4-5-20251101';
+export const MOTION_MAX_TOKENS = 16000; // Conservative limit for Opus 4.5
 export const MAX_CONTEXT_TOKENS = 180000; // Leave buffer from 200K limit
 
 // ============================================================================

@@ -357,8 +357,8 @@ function SettingRow({
             onChange={(e) => onUpdate('model', e.target.value)}
             className="w-56 px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal/50"
           >
-            <option value="claude-opus-4-20250514">Claude Opus 4 (Recommended)</option>
-            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+            <option value="claude-opus-4-5-20251101">Claude Opus 4.5 (Best Quality)</option>
+            <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (Cost-Effective)</option>
           </select>
         )}
 
