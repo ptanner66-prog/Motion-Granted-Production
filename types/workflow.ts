@@ -486,16 +486,16 @@ export function checkCitationRequirement(
 
 export const TIER_DESCRIPTIONS: Record<MotionTier, { name: string; description: string }> = {
   A: {
-    name: 'Complex Strategic',
-    description: 'Complex strategic motions requiring extensive legal analysis and research',
+    name: 'Procedural/Administrative',
+    description: 'Simple procedural motions - Extensions, Continuances, Pro Hac Vice',
   },
   B: {
-    name: 'Standard Procedural',
-    description: 'Standard procedural motions with moderate complexity',
+    name: 'Intermediate',
+    description: 'Standard motions with moderate complexity - Motion to Compel, Demurrer, Motion to Dismiss',
   },
   C: {
-    name: 'Routine',
-    description: 'Routine motions with straightforward requirements',
+    name: 'Complex/Dispositive',
+    description: 'Complex dispositive motions - MSJ, MSA, Preliminary Injunction, TRO',
   },
 };
 

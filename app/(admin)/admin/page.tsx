@@ -75,9 +75,9 @@ interface PhaseRow {
 }
 
 const TIER_COLORS = {
-  A: 'bg-purple-100 text-purple-700',
+  A: 'bg-gray-100 text-gray-700',
   B: 'bg-blue-100 text-blue-700',
-  C: 'bg-green-100 text-green-700',
+  C: 'bg-purple-100 text-purple-700',
 }
 
 export default async function AdminDashboardPage() {
@@ -531,19 +531,19 @@ export default async function AdminDashboardPage() {
               <h3 className="text-sm font-medium text-gray-500 mb-3">Motion Tiers</h3>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Scale className="h-4 w-4 text-purple-600" />
-                  <Badge variant="outline" className="bg-purple-100 text-purple-700">Tier A</Badge>
-                  <span className="text-sm text-gray-600">Complex Strategic</span>
+                  <FileText className="h-4 w-4 text-gray-600" />
+                  <Badge variant="outline" className="bg-gray-100 text-gray-700">Tier A</Badge>
+                  <span className="text-sm text-gray-600">Procedural/Administrative</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-blue-600" />
+                  <Scale className="h-4 w-4 text-blue-600" />
                   <Badge variant="outline" className="bg-blue-100 text-blue-700">Tier B</Badge>
-                  <span className="text-sm text-gray-600">Standard Procedural</span>
+                  <span className="text-sm text-gray-600">Intermediate</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-green-600" />
-                  <Badge variant="outline" className="bg-green-100 text-green-700">Tier C</Badge>
-                  <span className="text-sm text-gray-600">Routine</span>
+                  <Shield className="h-4 w-4 text-purple-600" />
+                  <Badge variant="outline" className="bg-purple-100 text-purple-700">Tier C</Badge>
+                  <span className="text-sm text-gray-600">Complex/Dispositive</span>
                 </div>
               </div>
             </CardContent>

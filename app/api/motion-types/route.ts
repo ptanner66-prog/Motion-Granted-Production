@@ -81,9 +81,9 @@ export async function GET(request: Request) {
       motionTypes,
       grouped,
       tiers: {
-        A: { name: 'Complex Strategic', count: grouped.A.length },
-        B: { name: 'Standard Procedural', count: grouped.B.length },
-        C: { name: 'Routine', count: grouped.C.length },
+        A: { name: 'Procedural/Administrative', count: grouped.A.length },
+        B: { name: 'Intermediate', count: grouped.B.length },
+        C: { name: 'Complex/Dispositive', count: grouped.C.length },
       },
     });
   } catch (error) {
