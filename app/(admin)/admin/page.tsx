@@ -75,9 +75,9 @@ interface PhaseRow {
 }
 
 const TIER_COLORS = {
-  A: 'bg-purple-100 text-purple-700',
+  A: 'bg-gray-100 text-gray-700',
   B: 'bg-blue-100 text-blue-700',
-  C: 'bg-green-100 text-green-700',
+  C: 'bg-purple-100 text-purple-700',
 }
 
 export default async function AdminDashboardPage() {
@@ -281,7 +281,7 @@ export default async function AdminDashboardPage() {
               <div className="flex-1">
                 <h3 className="font-semibold text-navy mb-1">Workflow System Setup Required</h3>
                 <p className="text-sm text-gray-600 mb-3">
-                  The AI workflow system tables have not been created yet. Run the database migration to enable automated document production with 9-phase workflows, citation verification, and quality scoring.
+                  The AI workflow system tables have not been created yet. Run the database migration to enable automated document production with 14-phase workflows, citation verification, and quality scoring.
                 </p>
                 <div className="bg-white/50 rounded-lg p-3 font-mono text-xs text-gray-700 mb-3">
                   <p className="mb-1 text-gray-500">-- Run this in your Supabase SQL Editor:</p>
@@ -411,7 +411,7 @@ export default async function AdminDashboardPage() {
               ) : (
               <div className="divide-y divide-gray-100">
                 {workflows.map((wf) => {
-                  const progress = (wf.current_phase / 9) * 100
+                  const progress = (wf.current_phase / 14) * 100
                   const tierColor = TIER_COLORS[wf.motion_types?.tier as keyof typeof TIER_COLORS] || 'bg-gray-100 text-gray-700'
 
                   return (
@@ -426,7 +426,7 @@ export default async function AdminDashboardPage() {
                           </Badge>
                         </div>
                         <Badge variant={wf.status === 'blocked' ? 'destructive' : 'secondary'}>
-                          Phase {wf.current_phase}/9
+                          Phase {wf.current_phase}/14
                         </Badge>
                       </div>
                       <p className="font-medium text-navy text-sm mb-2 truncate">
@@ -464,7 +464,7 @@ export default async function AdminDashboardPage() {
                 <Workflow className="h-5 w-5 text-blue-500" />
                 AI Document Production
               </CardTitle>
-              <CardDescription className="text-gray-500">Automated 9-phase workflow system</CardDescription>
+              <CardDescription className="text-gray-500">Automated 14-phase workflow system</CardDescription>
             </CardHeader>
             <CardContent className="py-8 text-center">
               <Workflow className="h-12 w-12 mx-auto mb-3 text-gray-300" />
@@ -531,19 +531,19 @@ export default async function AdminDashboardPage() {
               <h3 className="text-sm font-medium text-gray-500 mb-3">Motion Tiers</h3>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Scale className="h-4 w-4 text-purple-600" />
-                  <Badge variant="outline" className="bg-purple-100 text-purple-700">Tier A</Badge>
-                  <span className="text-sm text-gray-600">Complex Strategic</span>
+                  <FileText className="h-4 w-4 text-gray-600" />
+                  <Badge variant="outline" className="bg-gray-100 text-gray-700">Tier A</Badge>
+                  <span className="text-sm text-gray-600">Procedural/Administrative</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-blue-600" />
+                  <Scale className="h-4 w-4 text-blue-600" />
                   <Badge variant="outline" className="bg-blue-100 text-blue-700">Tier B</Badge>
-                  <span className="text-sm text-gray-600">Standard Procedural</span>
+                  <span className="text-sm text-gray-600">Intermediate</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-green-600" />
-                  <Badge variant="outline" className="bg-green-100 text-green-700">Tier C</Badge>
-                  <span className="text-sm text-gray-600">Routine</span>
+                  <Shield className="h-4 w-4 text-purple-600" />
+                  <Badge variant="outline" className="bg-purple-100 text-purple-700">Tier C</Badge>
+                  <span className="text-sm text-gray-600">Complex/Dispositive</span>
                 </div>
               </div>
             </CardContent>

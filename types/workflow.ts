@@ -1,6 +1,6 @@
 /**
- * Motion Granted v5.0 Workflow Types
- * Complete type definitions for motion types, workflow phases, and citations
+ * Motion Granted v7.2 Workflow Types
+ * Complete type definitions for 14-phase workflow, citation verification, and checkpoints
  */
 
 // ============================================================================
@@ -486,16 +486,16 @@ export function checkCitationRequirement(
 
 export const TIER_DESCRIPTIONS: Record<MotionTier, { name: string; description: string }> = {
   A: {
-    name: 'Complex Strategic',
-    description: 'Complex strategic motions requiring extensive legal analysis and research',
+    name: 'Procedural/Administrative',
+    description: 'Simple procedural motions - Extensions, Continuances, Pro Hac Vice',
   },
   B: {
-    name: 'Standard Procedural',
-    description: 'Standard procedural motions with moderate complexity',
+    name: 'Intermediate',
+    description: 'Standard motions with moderate complexity - Motion to Compel, Demurrer, Motion to Dismiss',
   },
   C: {
-    name: 'Routine',
-    description: 'Routine motions with straightforward requirements',
+    name: 'Complex/Dispositive',
+    description: 'Complex dispositive motions - MSJ, MSA, Preliminary Injunction, TRO',
   },
 };
 
@@ -513,3 +513,508 @@ export const PATH_DESCRIPTIONS: Record<WorkflowPath, { name: string; description
     description: 'Responding to or opposing a motion',
   },
 };
+
+// ============================================================================
+// V7.2 WORKFLOW SYSTEM - 14 PHASES
+// ============================================================================
+
+/**
+ * The 14 phases of the v7.2 workflow system
+ *
+ * MAIN FLOW:
+ * I → II → III → [HOLD?] → IV* → V → V.1 → VI† → VII*† → VIII.5 → IX → [IX.1?] → X*
+ *
+ * REVISION LOOP (if Phase VII grade < B+):
+ * VII (< B+) → VIII† → [VII.1 if new citations] → VII (regrade)
+ *            ↑_____________________________________|
+ *            (max 3 loops)
+ *
+ * * = Checkpoint
+ * † = Extended Thinking enabled
+ * ? = Conditional
+ */
+export type WorkflowPhaseCode =
+  | 'I'      // Intake & Classification
+  | 'II'     // Legal Standards / Motion Deconstruction
+  | 'III'    // Evidence Strategy / Issue Identification
+  | 'IV'     // Authority Research (Checkpoint: Notification)
+  | 'V'      // Draft Motion
+  | 'V.1'    // Citation Accuracy Check
+  | 'VI'     // Opposition Anticipation (Extended Thinking)
+  | 'VII'    // Judge Simulation (Checkpoint: Notification, Extended Thinking)
+  | 'VII.1'  // Post-Revision Citation Check
+  | 'VIII'   // Revisions (Extended Thinking for B/C)
+  | 'VIII.5' // Caption Validation
+  | 'IX'     // Supporting Documents
+  | 'IX.1'   // Separate Statement Check (MSJ/MSA only)
+  | 'X';     // Final Assembly (Checkpoint: BLOCKING)
+
+export const WORKFLOW_PHASES: Record<WorkflowPhaseCode, {
+  number: number;
+  name: string;
+  description: string;
+  isCheckpoint: boolean;
+  checkpointType?: 'notification' | 'blocking';
+  hasExtendedThinking: boolean;
+  extendedThinkingBudget?: number;
+  isConditional: boolean;
+  conditionalTrigger?: string;
+}> = {
+  'I': {
+    number: 1,
+    name: 'Intake & Classification',
+    description: 'Classifies tier (A/B/C), path (A/B), validates submission',
+    isCheckpoint: false,
+    hasExtendedThinking: false,
+    isConditional: false,
+  },
+  'II': {
+    number: 2,
+    name: 'Legal Standards / Motion Deconstruction',
+    description: 'PATH A: what standards apply. PATH B: tear apart opponent\'s motion',
+    isCheckpoint: false,
+    hasExtendedThinking: false,
+    isConditional: false,
+  },
+  'III': {
+    number: 3,
+    name: 'Evidence Strategy / Issue Identification',
+    description: 'Maps evidence to elements. May trigger HOLD if gaps',
+    isCheckpoint: false,
+    hasExtendedThinking: false,
+    isConditional: false,
+  },
+  'IV': {
+    number: 4,
+    name: 'Authority Research',
+    description: 'Finds case law, builds Citation Banks',
+    isCheckpoint: true,
+    checkpointType: 'notification',
+    hasExtendedThinking: false,
+    isConditional: false,
+  },
+  'V': {
+    number: 5,
+    name: 'Draft Motion',
+    description: 'Writes the actual motion',
+    isCheckpoint: false,
+    hasExtendedThinking: false,
+    isConditional: false,
+  },
+  'V.1': {
+    number: 5.1,
+    name: 'Citation Accuracy Check',
+    description: 'Verifies every citation via CourtListener + Opus',
+    isCheckpoint: false,
+    hasExtendedThinking: false,
+    isConditional: false,
+  },
+  'VI': {
+    number: 6,
+    name: 'Opposition Anticipation',
+    description: 'Predicts opposing arguments, prepares counters',
+    isCheckpoint: false,
+    hasExtendedThinking: true,
+    extendedThinkingBudget: 8000,
+    isConditional: false,
+  },
+  'VII': {
+    number: 7,
+    name: 'Judge Simulation',
+    description: 'Grades the motion (needs B+ to pass)',
+    isCheckpoint: true,
+    checkpointType: 'notification',
+    hasExtendedThinking: true,
+    extendedThinkingBudget: 10000,
+    isConditional: false,
+  },
+  'VII.1': {
+    number: 7.1,
+    name: 'Post-Revision Citation Check',
+    description: 'If Phase VIII added new citations',
+    isCheckpoint: false,
+    hasExtendedThinking: false,
+    isConditional: true,
+    conditionalTrigger: 'new_citations_in_revision',
+  },
+  'VIII': {
+    number: 8,
+    name: 'Revisions',
+    description: 'Fixes weaknesses from Phase VII (max 3 loops)',
+    isCheckpoint: false,
+    hasExtendedThinking: true,
+    extendedThinkingBudget: 8000,
+    isConditional: true,
+    conditionalTrigger: 'grade_below_b_plus',
+  },
+  'VIII.5': {
+    number: 8.5,
+    name: 'Caption Validation',
+    description: 'Ensures caption consistency across all documents',
+    isCheckpoint: false,
+    hasExtendedThinking: false,
+    isConditional: false,
+  },
+  'IX': {
+    number: 9,
+    name: 'Supporting Documents',
+    description: 'Declarations, proposed order, proof of service',
+    isCheckpoint: false,
+    hasExtendedThinking: false,
+    isConditional: false,
+  },
+  'IX.1': {
+    number: 9.1,
+    name: 'Separate Statement Check',
+    description: 'MSJ/MSA only - verifies Separate Statement citations',
+    isCheckpoint: false,
+    hasExtendedThinking: false,
+    isConditional: true,
+    conditionalTrigger: 'motion_type_msj_or_msa',
+  },
+  'X': {
+    number: 10,
+    name: 'Final Assembly',
+    description: 'Packages everything. Requires admin approval',
+    isCheckpoint: true,
+    checkpointType: 'blocking',
+    hasExtendedThinking: false,
+    isConditional: false,
+  },
+};
+
+export const TOTAL_WORKFLOW_PHASES = 14;
+
+// ============================================================================
+// CHECKPOINT SYSTEM
+// ============================================================================
+
+export type CheckpointType = 'HOLD' | 'CP1' | 'CP2' | 'CP3';
+
+export interface Checkpoint {
+  type: CheckpointType;
+  phase: WorkflowPhaseCode;
+  isBlocking: boolean;
+  description: string;
+  triggeredAt?: string;
+  resolvedAt?: string;
+  resolution?: 'approved' | 'request_changes' | 'cancelled' | 'customer_response';
+}
+
+export const CHECKPOINTS: Record<CheckpointType, {
+  phase: WorkflowPhaseCode;
+  isBlocking: boolean;
+  description: string;
+}> = {
+  'HOLD': {
+    phase: 'III',
+    isBlocking: true,
+    description: 'Critical evidence gaps → workflow pauses until customer responds',
+  },
+  'CP1': {
+    phase: 'IV',
+    isBlocking: false,
+    description: 'Research Complete → continues automatically',
+  },
+  'CP2': {
+    phase: 'VII',
+    isBlocking: false,
+    description: 'Judge Simulation grade → continues automatically',
+  },
+  'CP3': {
+    phase: 'X',
+    isBlocking: true,
+    description: 'Requires admin Approve/Request Changes/Cancel',
+  },
+};
+
+// ============================================================================
+// COURTLISTENER CITATION VERIFICATION
+// ============================================================================
+
+export type CitationVerificationStatus =
+  | 'VERIFIED'              // Citation confirmed accurate
+  | 'VERIFIED_WITH_HISTORY' // Has subsequent treatment - check if still good law
+  | 'VERIFIED_WEB_ONLY'     // API down, verified via web
+  | 'VERIFIED_UNPUBLISHED'  // Unpublished opinion - check citability rules
+  | 'HOLDING_MISMATCH'      // Case doesn't support proposition - Protocol 2: Substitute
+  | 'HOLDING_PARTIAL'       // Only partially supports - Protocol 6: Classify A-D
+  | 'QUOTE_NOT_FOUND'       // Quoted text not in opinion - Protocol 3: Correct or remove
+  | 'NOT_FOUND'             // Citation doesn't exist - possible hallucination
+  | 'OVERRULED'             // Case has been overruled - limited historical use only
+  | 'PENDING'               // Not yet verified
+  | 'SKIPPED';              // Intentionally skipped (e.g., statute)
+
+export type CitationBankType = 'CASE' | 'STATUTORY';
+
+export interface CitationBank {
+  id: string;
+  orderId: string;
+  bankType: CitationBankType;
+  citations: CitationBankEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CitationBankEntry {
+  citationText: string;
+  caseName?: string;
+  reporter?: string;
+  year?: number;
+  court?: string;
+  courtListenerId?: string;
+  verificationStatus: CitationVerificationStatus;
+  holdingVerified: boolean;
+  proposition: string;
+  pageReference?: string;
+  officialSourceUrl?: string; // For statutory citations
+}
+
+export interface CourtListenerVerificationResult {
+  citationText: string;
+  stage1Result: 'found' | 'not_found' | 'error'; // Existence check
+  stage2Result?: 'retrieved' | 'not_retrieved' | 'error'; // Opinion retrieval
+  stage3Result?: 'verified' | 'mismatch' | 'partial' | 'error'; // Holding verification
+  courtListenerId?: string;
+  verificationStatus: CitationVerificationStatus;
+  opinionText?: string;
+  notes?: string;
+}
+
+// ============================================================================
+// JUDGE SIMULATION GRADES
+// ============================================================================
+
+export type LetterGrade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | 'D' | 'F';
+
+export const GRADE_VALUES: Record<LetterGrade, number> = {
+  'A+': 4.3,
+  'A': 4.0,
+  'A-': 3.7,
+  'B+': 3.3,
+  'B': 3.0,
+  'B-': 2.7,
+  'C+': 2.3,
+  'C': 2.0,
+  'D': 1.0,
+  'F': 0.0,
+};
+
+export const MINIMUM_PASSING_GRADE: LetterGrade = 'B+';
+export const MINIMUM_PASSING_VALUE = 3.3;
+export const MAX_REVISION_LOOPS = 3;
+
+export interface JudgeSimulationResult {
+  grade: LetterGrade;
+  numericGrade: number;
+  passes: boolean;
+  strengths: string[];
+  weaknesses: string[];
+  specificFeedback: string;
+  revisionSuggestions?: string[];
+  loopNumber: number;
+}
+
+export function gradeToNumeric(grade: LetterGrade): number {
+  return GRADE_VALUES[grade];
+}
+
+export function numericToGrade(value: number): LetterGrade {
+  if (value >= 4.15) return 'A+';
+  if (value >= 3.85) return 'A';
+  if (value >= 3.5) return 'A-';
+  if (value >= 3.15) return 'B+';
+  if (value >= 2.85) return 'B';
+  if (value >= 2.5) return 'B-';
+  if (value >= 2.15) return 'C+';
+  if (value >= 1.5) return 'C';
+  if (value >= 0.5) return 'D';
+  return 'F';
+}
+
+export function gradePasses(grade: LetterGrade): boolean {
+  return GRADE_VALUES[grade] >= MINIMUM_PASSING_VALUE;
+}
+
+// ============================================================================
+// MODEL ROUTING
+// ============================================================================
+
+export const SONNET_MODEL = 'claude-sonnet-4-5-20250929';
+export const OPUS_MODEL = 'claude-opus-4-5-20251101';
+
+export type ModelType = 'sonnet' | 'opus';
+
+export interface ModelRoutingConfig {
+  phase: WorkflowPhaseCode;
+  tierA: ModelType;
+  tierB: ModelType;
+  tierC: ModelType;
+}
+
+export const MODEL_ROUTING: ModelRoutingConfig[] = [
+  { phase: 'I', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+  { phase: 'II', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+  { phase: 'III', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+  { phase: 'IV', tierA: 'sonnet', tierB: 'opus', tierC: 'opus' },
+  { phase: 'V', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+  { phase: 'V.1', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+  { phase: 'VI', tierA: 'sonnet', tierB: 'opus', tierC: 'opus' },
+  { phase: 'VII', tierA: 'opus', tierB: 'opus', tierC: 'opus' }, // Always Opus
+  { phase: 'VII.1', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+  { phase: 'VIII', tierA: 'sonnet', tierB: 'opus', tierC: 'opus' },
+  { phase: 'VIII.5', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+  { phase: 'IX', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+  { phase: 'IX.1', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+  { phase: 'X', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
+];
+
+export function getModelForPhase(phase: WorkflowPhaseCode, tier: MotionTier): string {
+  const config = MODEL_ROUTING.find(r => r.phase === phase);
+  if (!config) return SONNET_MODEL;
+
+  const modelType = tier === 'A' ? config.tierA : tier === 'B' ? config.tierB : config.tierC;
+  return modelType === 'opus' ? OPUS_MODEL : SONNET_MODEL;
+}
+
+// ============================================================================
+// EXTENDED THINKING CONFIGURATION
+// ============================================================================
+
+export interface ExtendedThinkingConfig {
+  phase: WorkflowPhaseCode;
+  tierA: number | null; // null = no extended thinking
+  tierB: number | null;
+  tierC: number | null;
+}
+
+export const EXTENDED_THINKING_CONFIG: ExtendedThinkingConfig[] = [
+  { phase: 'I', tierA: null, tierB: null, tierC: null },
+  { phase: 'II', tierA: null, tierB: null, tierC: null },
+  { phase: 'III', tierA: null, tierB: null, tierC: null },
+  { phase: 'IV', tierA: null, tierB: null, tierC: null },
+  { phase: 'V', tierA: null, tierB: null, tierC: null },
+  { phase: 'V.1', tierA: null, tierB: null, tierC: null },
+  { phase: 'VI', tierA: null, tierB: 8000, tierC: 8000 },
+  { phase: 'VII', tierA: 10000, tierB: 10000, tierC: 10000 },
+  { phase: 'VII.1', tierA: null, tierB: null, tierC: null },
+  { phase: 'VIII', tierA: null, tierB: 8000, tierC: 8000 },
+  { phase: 'VIII.5', tierA: null, tierB: null, tierC: null },
+  { phase: 'IX', tierA: null, tierB: null, tierC: null },
+  { phase: 'IX.1', tierA: null, tierB: null, tierC: null },
+  { phase: 'X', tierA: null, tierB: null, tierC: null },
+];
+
+export function getExtendedThinkingBudget(phase: WorkflowPhaseCode, tier: MotionTier): number | null {
+  const config = EXTENDED_THINKING_CONFIG.find(c => c.phase === phase);
+  if (!config) return null;
+
+  return tier === 'A' ? config.tierA : tier === 'B' ? config.tierB : config.tierC;
+}
+
+// ============================================================================
+// CITATION BATCH SIZES
+// ============================================================================
+
+export const CITATION_BATCH_SIZES: Record<MotionTier, number> = {
+  A: 5,
+  B: 4,
+  C: 3,
+};
+
+// Phases V.1 and VII.1 always use 2-citation batches for memory management
+export const CITATION_CHECK_BATCH_SIZE = 2;
+
+export function getCitationBatchSize(tier: MotionTier, phase: WorkflowPhaseCode): number {
+  if (phase === 'V.1' || phase === 'VII.1') {
+    return CITATION_CHECK_BATCH_SIZE;
+  }
+  return CITATION_BATCH_SIZES[tier];
+}
+
+// ============================================================================
+// GAP CLOSURE PROTOCOLS
+// ============================================================================
+
+export type GapClosureProtocol =
+  | 1   // Statutory Authority Bank
+  | 2   // HOLDING_MISMATCH - Substitute
+  | 3   // QUOTE_NOT_FOUND - Correct or remove
+  | 4   // Separate Statement Check
+  | 5   // Mini Phase IV - Scoped research
+  | 6   // HOLDING_PARTIAL - Classify A-D
+  | 7   // Failure Threshold - Pause for manual
+  | 8   // HOLD Checkpoint
+  | 9   // Crash Recovery
+  | 10  // Loop 3 Exit
+  | 11  // CourtListener Downtime
+  | 12  // Page Length QC
+  | 13  // Unpublished Opinion
+  | 14  // Caption Consistency
+  | 15  // Pinpoint Accuracy
+  | 16  // Incomplete Submission
+  | 17; // Missing Declarant
+
+export interface GapClosureEvent {
+  id: string;
+  orderId: string;
+  protocolNumber: GapClosureProtocol;
+  protocolName: string;
+  triggerReason: string;
+  resolution?: string;
+  resolvedAt?: string;
+  createdAt: string;
+}
+
+export const GAP_CLOSURE_PROTOCOLS: Record<GapClosureProtocol, {
+  name: string;
+  description: string;
+  autoResolvable: boolean;
+}> = {
+  1: { name: 'Statutory Authority Bank', description: 'Phase IV finds statute/rule - creates separate bank, verifies via official sources', autoResolvable: true },
+  2: { name: 'HOLDING_MISMATCH', description: 'Opus says case doesn\'t support proposition - substitutes from bank or triggers mini-research', autoResolvable: true },
+  3: { name: 'QUOTE_NOT_FOUND', description: 'Quote not in opinion text - corrects to actual text or removes quote', autoResolvable: true },
+  4: { name: 'Separate Statement Check', description: 'MSJ/MSA motion - verifies all SS citations against banks', autoResolvable: true },
+  5: { name: 'Mini Phase IV', description: 'Revisions need new authority - scoped research (2/4/6 citations by tier)', autoResolvable: true },
+  6: { name: 'HOLDING_PARTIAL', description: 'Case only partially supports - classifies A-D, handles accordingly', autoResolvable: true },
+  7: { name: 'Failure Threshold', description: 'Too many verification failures - pauses for manual reassessment', autoResolvable: false },
+  8: { name: 'HOLD Checkpoint', description: 'Critical evidence gaps - blocks workflow until customer responds', autoResolvable: false },
+  9: { name: 'Crash Recovery', description: 'Any interruption - saves checkpoints after each batch', autoResolvable: true },
+  10: { name: 'Loop 3 Exit', description: '3 revision loops, still < B+ - delivers with enhanced disclosure/warning', autoResolvable: true },
+  11: { name: 'CourtListener Downtime', description: 'Rate limit or API outage - exponential backoff, then web search fallback', autoResolvable: true },
+  12: { name: 'Page Length QC', description: 'Motion over/under page limits - triggers revision or blocks delivery', autoResolvable: false },
+  13: { name: 'Unpublished Opinion', description: 'Not in CourtListener - secondary verification via web search', autoResolvable: true },
+  14: { name: 'Caption Consistency', description: 'Mismatched captions - auto-corrects all documents', autoResolvable: true },
+  15: { name: 'Pinpoint Accuracy', description: 'Wrong page citation - auto-corrects within 1-2 pages', autoResolvable: true },
+  16: { name: 'Incomplete Submission', description: 'Missing required intake items - flags and requests from customer', autoResolvable: false },
+  17: { name: 'Missing Declarant', description: 'Unknown declarant information - pauses and requests details', autoResolvable: false },
+};
+
+// ============================================================================
+// PRICING CONSTANTS
+// ============================================================================
+
+export const CA_PRICING_MULTIPLIER = 1.20; // California = Louisiana × 1.20
+
+export interface TierPricing {
+  tier: MotionTier;
+  louisiana: { min: number; max: number };
+  california: { min: number; max: number };
+  turnaroundDays: string;
+}
+
+export const TIER_PRICING: TierPricing[] = [
+  { tier: 'A', louisiana: { min: 150, max: 400 }, california: { min: 180, max: 480 }, turnaroundDays: '2-3' },
+  { tier: 'B', louisiana: { min: 500, max: 1400 }, california: { min: 600, max: 1680 }, turnaroundDays: '3-4' },
+  { tier: 'C', louisiana: { min: 1500, max: 3500 }, california: { min: 1800, max: 4200 }, turnaroundDays: '4-5' },
+];
+
+// ============================================================================
+// COURTLISTENER API CONSTANTS
+// ============================================================================
+
+export const COURTLISTENER_BASE_URL = 'https://www.courtlistener.com/api/rest/v4/';
+export const COURTLISTENER_CITATION_LOOKUP = 'citation-lookup/';
+export const COURTLISTENER_RATE_LIMIT = 60; // per minute
+export const COURTLISTENER_MAX_CITATIONS_PER_REQUEST = 128;
+export const COURTLISTENER_MAX_CHARS_PER_REQUEST = 64000;
