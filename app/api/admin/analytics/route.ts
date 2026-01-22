@@ -78,13 +78,13 @@ async function getOrderSummary(supabase: Awaited<ReturnType<typeof createClient>
 
   // Orders by status
   const ordersByStatus: Record<string, number> = {};
-  orders?.forEach(o => {
+  orders?.forEach((o: OrderRow) => {
     ordersByStatus[o.status] = (ordersByStatus[o.status] || 0) + 1;
   });
 
   // Orders by tier
   const ordersByTier: Record<string, number> = { A: 0, B: 0, C: 0 };
-  orders?.forEach(o => {
+  orders?.forEach((o: OrderRow) => {
     if (o.motion_tier) {
       ordersByTier[o.motion_tier] = (ordersByTier[o.motion_tier] || 0) + 1;
     }
@@ -118,8 +118,10 @@ async function getWorkflowMetrics(supabase: Awaited<ReturnType<typeof createClie
     .eq('status', 'completed')
     .not('completed_at', 'is', null);
 
+  type WorkflowRow = { created_at: string; completed_at: string; revision_loop: number };
+
   const avgDurationMinutes = completedWorkflows && completedWorkflows.length > 0
-    ? completedWorkflows.reduce((sum, w) => {
+    ? completedWorkflows.reduce((sum: number, w: WorkflowRow) => {
         const created = new Date(w.created_at);
         const completed = new Date(w.completed_at);
         return sum + (completed.getTime() - created.getTime()) / (1000 * 60);
@@ -127,7 +129,7 @@ async function getWorkflowMetrics(supabase: Awaited<ReturnType<typeof createClie
     : 0;
 
   const avgRevisionLoops = completedWorkflows && completedWorkflows.length > 0
-    ? completedWorkflows.reduce((sum, w) => sum + (w.revision_loop || 0), 0) / completedWorkflows.length
+    ? completedWorkflows.reduce((sum: number, w: WorkflowRow) => sum + (w.revision_loop || 0), 0) / completedWorkflows.length
     : 0;
 
   // Get judge simulation results
@@ -135,12 +137,13 @@ async function getWorkflowMetrics(supabase: Awaited<ReturnType<typeof createClie
     .from('judge_simulation_results')
     .select('numeric_grade, passes');
 
-  const gradeValues = judgeResults?.map(j => j.numeric_grade).filter(Boolean) || [];
+  type JudgeRow = { numeric_grade: number; passes: boolean };
+  const gradeValues = judgeResults?.map((j: JudgeRow) => j.numeric_grade).filter(Boolean) || [];
   const avgJudgeGrade = gradeValues.length > 0
-    ? gradeValues.reduce((a, b) => a + b, 0) / gradeValues.length
+    ? gradeValues.reduce((a: number, b: number) => a + b, 0) / gradeValues.length
     : 0;
 
-  const passCount = judgeResults?.filter(j => j.passes).length || 0;
+  const passCount = judgeResults?.filter((j: JudgeRow) => j.passes).length || 0;
   const passRate = judgeResults && judgeResults.length > 0
     ? Math.round((passCount / judgeResults.length) * 100)
     : 0;
@@ -171,17 +174,19 @@ async function getCitationStats(supabase: Awaited<ReturnType<typeof createClient
     };
   }
 
+  type CitationRow = { verification_status: string; workflow_id: string };
+
   const totalCitations = citations?.length || 0;
-  const verifiedCount = citations?.filter(c => c.verification_status === 'VERIFIED').length || 0;
+  const verifiedCount = citations?.filter((c: CitationRow) => c.verification_status === 'VERIFIED').length || 0;
 
   // Count by status
   const byStatus: Record<string, number> = {};
-  citations?.forEach(c => {
+  citations?.forEach((c: CitationRow) => {
     byStatus[c.verification_status] = (byStatus[c.verification_status] || 0) + 1;
   });
 
   // Get unique workflows
-  const uniqueWorkflows = new Set(citations?.map(c => c.workflow_id) || []);
+  const uniqueWorkflows = new Set(citations?.map((c: CitationRow) => c.workflow_id) || []);
   const avgPerMotion = uniqueWorkflows.size > 0
     ? Math.round((totalCitations / uniqueWorkflows.size) * 10) / 10
     : 0;
@@ -202,9 +207,10 @@ async function getRevenueByMonth(supabase: Awaited<ReturnType<typeof createClien
     .gte('created_at', new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString())
     .order('created_at', { ascending: true });
 
+  type RevenueRow = { created_at: string; total_price: number };
   const byMonth: Map<string, { revenue: number; count: number }> = new Map();
 
-  orders?.forEach(o => {
+  orders?.forEach((o: RevenueRow) => {
     const date = new Date(o.created_at);
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
@@ -226,9 +232,10 @@ async function getTopMotionTypes(supabase: Awaited<ReturnType<typeof createClien
     .select('motion_type, total_price')
     .not('status', 'in', '("cancelled","refunded")');
 
+  type MotionTypeRow = { motion_type: string; total_price: number };
   const byType: Map<string, { count: number; revenue: number }> = new Map();
 
-  orders?.forEach(o => {
+  orders?.forEach((o: MotionTypeRow) => {
     const existing = byType.get(o.motion_type) || { count: 0, revenue: 0 };
     byType.set(o.motion_type, {
       count: existing.count + 1,
@@ -260,7 +267,7 @@ async function getDailyOrders(supabase: Awaited<ReturnType<typeof createClient>>
     byDay.set(dateKey, 0);
   }
 
-  orders?.forEach(o => {
+  orders?.forEach((o: { created_at: string }) => {
     const dateKey = o.created_at.split('T')[0];
     byDay.set(dateKey, (byDay.get(dateKey) || 0) + 1);
   });

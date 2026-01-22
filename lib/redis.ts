@@ -105,7 +105,7 @@ export async function checkRateLimit(
 
     if (!allowed) {
       // Calculate retry-after
-      const oldestEntry = await client.zrange(redisKey, 0, 0, { withScores: true });
+      const oldestEntry = await client.zrange(redisKey, 0, 0, { withScores: true }) as Array<{ score: number }>;
       const retryAfter = oldestEntry.length > 0
         ? Math.ceil((oldestEntry[0].score + windowSeconds * 1000 - now) / 1000)
         : windowSeconds;

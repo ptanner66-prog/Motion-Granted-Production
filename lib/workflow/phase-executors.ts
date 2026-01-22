@@ -196,9 +196,10 @@ ${phaseIOutput?.proceduralEvents?.join('\n') || input.proceduralHistory}
 
 Provide a JSON response with: legalStandard, elements, proceduralRules, burdenOfProof`;
 
-    const response = await client.messages.create(
-      createMessageParams('II', input.tier, systemPrompt, userMessage)
-    );
+    const response = await client.messages.create({
+      ...createMessageParams('II', input.tier, systemPrompt, userMessage),
+      stream: false,
+    }) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
@@ -279,9 +280,10 @@ Key issues to research:
 
 Generate ${targetCitations} citations.`;
 
-    const response = await client.messages.create(
-      createMessageParams('III', input.tier, systemPrompt, userMessage)
-    );
+    const response = await client.messages.create({
+      ...createMessageParams('III', input.tier, systemPrompt, userMessage),
+      stream: false,
+    }) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
@@ -458,7 +460,10 @@ Provide your judicial evaluation.`;
 
     const params = createMessageParams('VII', input.tier, systemPrompt, userMessage);
 
-    const response = await client.messages.create(params);
+    const response = await client.messages.create({
+      ...params,
+      stream: false,
+    }) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';

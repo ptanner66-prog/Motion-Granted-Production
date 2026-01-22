@@ -49,6 +49,13 @@ export interface UseWorkflowRealtimeOptions {
   onError?: (error: string) => void;
 }
 
+// Supabase Realtime payload type
+interface RealtimePayload {
+  new: Record<string, unknown> | null;
+  old: Record<string, unknown> | null;
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+}
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -227,11 +234,11 @@ export function useWorkflowRealtime(options: UseWorkflowRealtimeOptions) {
           table: 'order_workflows',
           filter: `order_id=eq.${orderId}`,
         },
-        (payload) => {
+        (payload: RealtimePayload) => {
           console.log('[useWorkflowRealtime] Workflow update:', payload);
 
           if (payload.new) {
-            const newData = payload.new as Record<string, unknown>;
+            const newData = payload.new;
             const newPhaseCode = PHASE_NUMBER_TO_CODE[newData.current_phase as number] || 'I';
 
             setState(prev => {
@@ -271,9 +278,9 @@ export function useWorkflowRealtime(options: UseWorkflowRealtimeOptions) {
           schema: 'public',
           table: 'workflow_phase_executions',
         },
-        (payload) => {
+        (payload: RealtimePayload) => {
           if (payload.new) {
-            const newData = payload.new as Record<string, unknown>;
+            const newData = payload.new;
             const phaseNumber = newData.phase_number as number;
             const phaseCode = PHASE_NUMBER_TO_CODE[phaseNumber];
             const status = newData.status as PhaseStatus;
@@ -296,7 +303,7 @@ export function useWorkflowRealtime(options: UseWorkflowRealtimeOptions) {
           }
         }
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         setIsConnected(status === 'SUBSCRIBED');
         console.log('[useWorkflowRealtime] Subscription status:', status);
       });
@@ -415,9 +422,9 @@ export function useMultipleWorkflowsProgress(orderIds: string[]) {
           table: 'order_workflows',
           filter: `order_id=in.(${orderIds.join(',')})`,
         },
-        (payload) => {
+        (payload: RealtimePayload) => {
           if (payload.new) {
-            const newData = payload.new as Record<string, unknown>;
+            const newData = payload.new;
             const orderId = newData.order_id as string;
             const phaseCode = PHASE_NUMBER_TO_CODE[newData.current_phase as number] || 'I';
 

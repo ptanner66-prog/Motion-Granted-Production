@@ -103,7 +103,7 @@ export async function middleware(request: NextRequest) {
 
   // Get client identifier for rate limiting
   const clientId = request.headers.get('x-forwarded-for')?.split(',')[0] ||
-    request.ip ||
+    request.headers.get('x-real-ip') ||
     'unknown';
 
   // ============================================================================
