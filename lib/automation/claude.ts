@@ -52,7 +52,7 @@ const DEFAULT_MAX_TOKENS = 8192;
 
 // For motion generation (use Opus 4.5 for best legal reasoning)
 export const MOTION_MODEL = 'claude-opus-4-20250514';
-export const MOTION_MAX_TOKENS = 64000; // ~50 pages of output
+export const MOTION_MAX_TOKENS = 32000; // Opus 4 max output limit
 export const MAX_CONTEXT_TOKENS = 180000; // Leave buffer from 200K limit
 
 // ============================================================================

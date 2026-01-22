@@ -342,7 +342,7 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
     const response = await createMessageWithRetry(
       {
         model: 'claude-opus-4-20250514',
-        max_tokens: 64000,
+        max_tokens: 32000,
         system: fullContext,
         messages: [{
           role: 'user',
