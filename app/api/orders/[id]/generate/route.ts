@@ -341,8 +341,8 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
 
     const response = await createMessageWithRetry(
       {
-        model: 'claude-opus-4-5-20251101',
-        max_tokens: 64000,
+        model: 'claude-opus-4-20250514',
+        max_tokens: 32000,
         system: fullContext,
         messages: [{
           role: 'user',
@@ -456,7 +456,7 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
         generatedBy: user.id,
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
-        model: 'claude-opus-4-5-20251101',
+        model: 'claude-opus-4-20250514',
       },
     });
 

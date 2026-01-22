@@ -281,12 +281,13 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
             ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`
             : '(key too short)';
           console.log(`[CHAT] Using API key: ${keyPreview}`);
+          console.log(`[CHAT] Requesting model: claude-opus-4-20250514`);
 
           const anthropic = new Anthropic({ apiKey });
 
           const response = await anthropic.messages.create({
-            model: 'claude-opus-4-5-20251101',
-            max_tokens: 64000,
+            model: 'claude-opus-4-20250514',
+            max_tokens: 32000,
             system: systemMessage,
             messages: claudeMessages,
             stream: true,
