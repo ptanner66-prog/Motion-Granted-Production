@@ -10,9 +10,10 @@ import { useRouter } from 'next/navigation';
 interface QuickApproveButtonProps {
   orderId: string;
   orderNumber: string;
+  onApproved?: () => void;
 }
 
-export function QuickApproveButton({ orderId, orderNumber }: QuickApproveButtonProps) {
+export function QuickApproveButton({ orderId, orderNumber, onApproved }: QuickApproveButtonProps) {
   const [isApproving, setIsApproving] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
@@ -37,6 +38,9 @@ export function QuickApproveButton({ orderId, orderNumber }: QuickApproveButtonP
         title: 'Motion Approved & Delivered',
         description: 'The PDF has been generated and the client has been notified.',
       });
+
+      // Call onApproved callback if provided
+      onApproved?.();
 
       // Refresh the page to show updated status
       router.refresh();

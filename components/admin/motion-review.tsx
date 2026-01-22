@@ -14,17 +14,23 @@ interface MotionReviewProps {
   orderStatus: string;
 }
 
-export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReviewProps) {
+export function MotionReview({ orderId, orderNumber, orderStatus: initialOrderStatus }: MotionReviewProps) {
   const [motion, setMotion] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isApproving, setIsApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orderStatus, setOrderStatus] = useState(initialOrderStatus);
   const { toast } = useToast();
   const router = useRouter();
 
   useEffect(() => {
     loadMotion();
   }, [orderId]);
+
+  // Sync status if prop changes
+  useEffect(() => {
+    setOrderStatus(initialOrderStatus);
+  }, [initialOrderStatus]);
 
   const loadMotion = async () => {
     setIsLoading(true);
@@ -67,7 +73,10 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
         description: 'PDF generated, saved as deliverable, and client notified.',
       });
 
-      // Refresh the page to show updated status
+      // Update local state immediately
+      setOrderStatus('draft_delivered');
+
+      // Also refresh the page to update other components
       router.refresh();
     } catch (error) {
       toast({
