@@ -230,7 +230,7 @@ export const generateOrderDraft = inngest.createFunction(
 
       // Build document content - use parsed documents if available
       let documentContent = "";
-      if (parsedDocs.data && parsedDocs.data.length > 0) {
+      if ('data' in parsedDocs && parsedDocs.data && parsedDocs.data.length > 0) {
         // Use AI-parsed documents with extracted facts and issues
         documentContent = parsedDocs.data.map(pd => {
           const keyFactsText = pd.key_facts?.length > 0
@@ -524,13 +524,11 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         const motionContent = conversationData.motion || generatedMotion.motion;
 
         // Run quick validation (no AI, just structural checks)
+        // Only citation_requirements.minimum is actually used by the validator
         const validation = quickValidate(motionContent, {
           motionType: {
-            code: orderData.motion_type || 'GENERIC',
-            name: orderData.motion_type || 'Motion',
-            tier: orderData.motion_tier || 'B',
-            citation_requirements: { minimum: 4 },
-          },
+            citation_requirements: { minimum: 4, hard_stop: false },
+          } as import('@/types/workflow').MotionType,
           jurisdiction: orderData.jurisdiction,
         });
 

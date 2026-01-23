@@ -15,7 +15,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { generatePDF } from '@/lib/workflow/pdf-generator';
+import { generateMotionPDF, savePDFAsDeliverable } from '@/lib/workflow/pdf-generator';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
 
 function getAdminClient() {
@@ -110,57 +110,30 @@ export async function POST(
     let pdfError: string | null = null;
 
     try {
-      // Build attorney info for PDF
-      const attorneyInfo = order.profiles ? {
-        name: order.profiles.full_name || '[Attorney Name]',
-        barNumber: order.profiles.bar_number || '[Bar Number]',
-        firmName: order.profiles.firm_name || '[Law Firm]',
-        firmAddress: order.profiles.firm_address || '[Address]',
-        firmPhone: order.profiles.firm_phone || '[Phone]',
-        email: order.profiles.email || '[Email]',
-      } : undefined;
-
-      const pdfResult = await generatePDF({
+      // Generate PDF with motion content
+      const pdfResult = await generateMotionPDF({
+        title: `${order.motion_type} - ${order.case_caption || order.case_number || 'Motion'}`,
         content: motionContent,
-        orderId,
-        motionType: order.motion_type,
         caseNumber: order.case_number,
-        attorneyInfo,
+        caseCaption: order.case_caption,
+        court: order.jurisdiction,
+        filingDate: new Date().toISOString(),
       });
 
-      if (pdfResult.success && pdfResult.data) {
-        // Upload PDF to storage
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const fileName = `${order.order_number}_${order.motion_type}_${timestamp}.pdf`;
+      if (pdfResult.success && pdfResult.data?.pdfBuffer) {
+        // Use savePDFAsDeliverable for consistent storage
+        const fileName = `${order.order_number}_${order.motion_type}_motion.pdf`;
+        const saveResult = await savePDFAsDeliverable(
+          orderId,
+          pdfResult.data.pdfBuffer,
+          fileName,
+          user.id
+        );
 
-        const { data: uploadData, error: uploadError } = await adminClient.storage
-          .from('documents')
-          .upload(`deliverables/${orderId}/${fileName}`, pdfResult.data.bytes, {
-            contentType: 'application/pdf',
-            cacheControl: '3600',
-          });
-
-        if (uploadError) {
-          pdfError = `PDF upload failed: ${uploadError.message}`;
-          console.error('[Approve] PDF upload error:', uploadError);
+        if (saveResult.success && saveResult.data) {
+          pdfUrl = saveResult.data.fileUrl;
         } else {
-          // Get public URL
-          const { data: urlData } = adminClient.storage
-            .from('documents')
-            .getPublicUrl(uploadData.path);
-
-          pdfUrl = urlData.publicUrl;
-
-          // Save PDF as deliverable document
-          await adminClient.from('documents').insert({
-            order_id: orderId,
-            file_name: fileName,
-            file_type: 'application/pdf',
-            file_url: pdfUrl,
-            document_type: 'deliverable',
-            is_deliverable: true,
-            file_size: pdfResult.data.bytes.length,
-          });
+          pdfError = saveResult.error || 'Failed to save PDF';
         }
       } else {
         pdfError = pdfResult.error || 'PDF generation failed';
