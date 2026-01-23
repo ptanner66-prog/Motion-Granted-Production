@@ -235,18 +235,24 @@ async function handlePaymentSucceeded(
     payload: { triggeredBy: 'payment_success' },
   });
 
-  // Trigger the 14-phase workflow via Inngest (v7.2)
-  // This replaces the old single-call superprompt system
-  await inngest.send({
-    name: "workflow/orchestration.start",
-    data: {
-      orderId,
-      triggeredBy: 'stripe_payment_success',
-      timestamp: new Date().toISOString(),
-    },
-  });
+  // AUTO-GENERATION DISABLED FOR DEVELOPMENT
+  // Set ENABLE_AUTO_GENERATION=true in production to auto-trigger workflow after payment
+  const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION === 'true';
 
-  console.log(`[Stripe Webhook] Order ${order.order_number} - 14-phase workflow triggered`);
+  if (autoGenerationEnabled) {
+    // Trigger the 14-phase workflow via Inngest (v7.2)
+    await inngest.send({
+      name: "workflow/orchestration.start",
+      data: {
+        orderId,
+        triggeredBy: 'stripe_payment_success',
+        timestamp: new Date().toISOString(),
+      },
+    });
+    console.log(`[Stripe Webhook] Order ${order.order_number} - 14-phase workflow triggered`);
+  } else {
+    console.log(`[Stripe Webhook] Order ${order.order_number} - Auto-generation disabled. Use admin "Generate Now" button.`);
+  }
 
   console.log(`[Stripe Webhook] Payment succeeded for order ${order.order_number}`);
 }
@@ -465,17 +471,22 @@ async function handleCheckoutSessionCompleted(
         payload: { triggeredBy: 'checkout_success' },
       });
 
-      // Trigger the 14-phase workflow via Inngest (v7.2)
-      await inngest.send({
-        name: "workflow/orchestration.start",
-        data: {
-          orderId,
-          triggeredBy: 'stripe_checkout_success',
-          timestamp: new Date().toISOString(),
-        },
-      });
+      // AUTO-GENERATION DISABLED FOR DEVELOPMENT
+      const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION === 'true';
 
-      console.log(`[Stripe Webhook] Order ${order.order_number} - 14-phase workflow triggered via checkout`);
+      if (autoGenerationEnabled) {
+        await inngest.send({
+          name: "workflow/orchestration.start",
+          data: {
+            orderId,
+            triggeredBy: 'stripe_checkout_success',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        console.log(`[Stripe Webhook] Order ${order.order_number} - 14-phase workflow triggered via checkout`);
+      } else {
+        console.log(`[Stripe Webhook] Order ${order.order_number} - Auto-generation disabled via checkout.`);
+      }
     }
   }
 }

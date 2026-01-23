@@ -23,9 +23,56 @@ import type {
   MINIMUM_PASSING_VALUE,
 } from '@/types/workflow';
 
+// ============================================================================
+// STRICT WORKFLOW ENFORCEMENT
+// ============================================================================
+// This orchestrator ensures motions are generated ONLY through the 14-phase
+// system. No bypassing, no shortcuts, no direct Claude calls.
+//
+// Each phase MUST complete before the next starts. Phase outputs are
+// accumulated and passed forward. The workflow blocks at checkpoints.
+// ============================================================================
+
 // Constants
 const MAX_LOOPS = 3;
 const MIN_GRADE_VALUE = 3.3; // B+
+
+/**
+ * Handle phase failure - update workflow status and log error
+ */
+async function handlePhaseFailure(
+  supabase: ReturnType<typeof getSupabase>,
+  workflowId: string,
+  orderId: string,
+  phase: WorkflowPhaseCode,
+  error: string
+) {
+  console.error(`[Workflow] Phase ${phase} FAILED for order ${orderId}: ${error}`);
+
+  // Update workflow status
+  await supabase.from('order_workflows').update({
+    status: 'failed',
+    last_error: `Phase ${phase}: ${error}`,
+    error_count: 1, // Increment would require fetch first
+  }).eq('id', workflowId);
+
+  // Update order status
+  await supabase.from('orders').update({
+    status: 'generation_failed',
+    generation_error: `Phase ${phase} failed: ${error}`,
+  }).eq('id', orderId);
+
+  // Log the failure
+  await supabase.from('automation_logs').insert({
+    order_id: orderId,
+    action_type: 'phase_failed',
+    action_details: {
+      workflowId,
+      phase,
+      error,
+    },
+  });
+}
 
 // Initialize Supabase admin client
 function getSupabase() {
