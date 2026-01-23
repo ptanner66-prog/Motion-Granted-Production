@@ -7,7 +7,7 @@ import {
   scheduleTask,
 } from '@/lib/automation';
 import { processRevisionPayment } from '@/lib/workflow/checkpoint-service';
-import { inngest, calculatePriority } from '@/lib/inngest/client';
+import { inngest } from '@/lib/inngest/client';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -235,27 +235,18 @@ async function handlePaymentSucceeded(
     payload: { triggeredBy: 'payment_success' },
   });
 
-  // Get filing deadline for priority calculation
-  const { data: fullOrder } = await supabase
-    .from('orders')
-    .select('filing_deadline')
-    .eq('id', orderId)
-    .single();
+  // Trigger the 14-phase workflow via Inngest (v7.2)
+  // This replaces the old single-call superprompt system
+  await inngest.send({
+    name: "workflow/orchestration.start",
+    data: {
+      orderId,
+      triggeredBy: 'stripe_payment_success',
+      timestamp: new Date().toISOString(),
+    },
+  });
 
-  // Queue order for draft generation via Inngest
-  // This replaces the synchronous Claude API call
-  if (fullOrder?.filing_deadline) {
-    await inngest.send({
-      name: "order/submitted",
-      data: {
-        orderId,
-        priority: calculatePriority(fullOrder.filing_deadline),
-        filingDeadline: fullOrder.filing_deadline,
-      },
-    });
-
-    console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation`);
-  }
+  console.log(`[Stripe Webhook] Order ${order.order_number} - 14-phase workflow triggered`);
 
   console.log(`[Stripe Webhook] Payment succeeded for order ${order.order_number}`);
 }
@@ -474,28 +465,17 @@ async function handleCheckoutSessionCompleted(
         payload: { triggeredBy: 'checkout_success' },
       });
 
-      // Get filing deadline for priority calculation
-      const { data: fullOrder } = await supabase
-        .from('orders')
-        .select('filing_deadline')
-        .eq('id', orderId)
-        .single();
+      // Trigger the 14-phase workflow via Inngest (v7.2)
+      await inngest.send({
+        name: "workflow/orchestration.start",
+        data: {
+          orderId,
+          triggeredBy: 'stripe_checkout_success',
+          timestamp: new Date().toISOString(),
+        },
+      });
 
-      // Queue order for draft generation via Inngest
-      if (fullOrder?.filing_deadline) {
-        await inngest.send({
-          name: "order/submitted",
-          data: {
-            orderId,
-            priority: calculatePriority(fullOrder.filing_deadline),
-            filingDeadline: fullOrder.filing_deadline,
-          },
-        });
-
-        console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
-      }
-
-      console.log(`[Stripe Webhook] Checkout completed for order ${order.order_number}`);
+      console.log(`[Stripe Webhook] Order ${order.order_number} - 14-phase workflow triggered via checkout`);
     }
   }
 }
