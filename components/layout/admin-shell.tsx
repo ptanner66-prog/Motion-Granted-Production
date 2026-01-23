@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Sparkles,
   ListOrdered,
+  Activity,
 } from 'lucide-react'
 import { Logo } from '@/components/shared/logo'
 import { Button } from '@/components/ui/button'
@@ -71,6 +72,12 @@ const mainNavigation = [
     href: '/admin/analytics',
     icon: BarChart3,
     description: 'Business metrics'
+  },
+  {
+    name: 'System Health',
+    href: '/admin/health',
+    icon: Activity,
+    description: 'Monitoring & diagnostics'
   },
 ]
 

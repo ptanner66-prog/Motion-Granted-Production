@@ -10,6 +10,9 @@ import { extractDocumentContent } from "@/lib/workflow/document-extractor";
 import { quickValidate } from "@/lib/workflow/quality-validator";
 import { extractCitations } from "@/lib/workflow/citation-verifier";
 
+// Import the new 14-phase workflow orchestration
+import { generateOrderWorkflow, handleWorkflowFailure, workflowFunctions } from "./workflow-orchestration";
+
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -87,7 +90,10 @@ DO NOT show your work. DO NOT output phases. ONLY output the final motion.
 }
 
 /**
- * Order Draft Generation Function
+ * Order Draft Generation Function (Legacy - Single Claude Call)
+ *
+ * This is the simplified single-call generation for quick turnaround.
+ * For full 14-phase workflow with checkpoints, use generateOrderWorkflow.
  *
  * Processes paid orders through Claude API to generate motion drafts.
  * Features:
@@ -97,6 +103,9 @@ DO NOT show your work. DO NOT output phases. ONLY output the final motion.
  * - Concurrency limit of 5 for Claude rate limit safety
  * - Failure alerting via email
  * - Continuous execution mode (all 9 phases in one shot)
+ *
+ * NOTE: For Tier B/C motions or orders requiring checkpoints,
+ * use the order/workflow-orchestrate event instead.
  */
 export const generateOrderDraft = inngest.createFunction(
   {
@@ -571,9 +580,97 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
       }
     });
 
+    // Step 5.6: Extract citations from generated motion
+    const citationResult = await step.run("extract-citations", async () => {
+      try {
+        const motionContent = conversationData.motion || generatedMotion.motion;
+        const citations = extractCitations(motionContent);
+
+        // Log citation extraction
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "citations_extracted",
+          action_details: {
+            citationCount: citations.length,
+            citationTypes: citations.reduce((acc, c) => {
+              acc[c.type] = (acc[c.type] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+            sampleCitations: citations.slice(0, 5).map(c => c.text),
+          },
+        });
+
+        console.log(`[Inngest] Extracted ${citations.length} citations for order ${orderId}`);
+
+        return {
+          count: citations.length,
+          citations: citations.slice(0, 10), // Keep first 10 for reference
+        };
+      } catch (extractError) {
+        console.error("[Inngest] Citation extraction error:", extractError);
+        // Don't fail the pipeline - citation extraction is informational
+        return { count: 0, error: extractError instanceof Error ? extractError.message : 'Unknown' };
+      }
+    });
+
+    // Step 5.7: Verify citations (NON-BLOCKING - informational only)
+    const citationVerification = await step.run("verify-citations", async () => {
+      try {
+        const citationCount = citationResult.count || 0;
+        const CITATION_MINIMUM = 4;
+
+        // Determine quality status based on citation count
+        const qualityStatus = citationCount >= CITATION_MINIMUM ? 'pass' : 'warning';
+        const qualityMessage = citationCount >= CITATION_MINIMUM
+          ? `Citation count (${citationCount}) meets minimum requirement of ${CITATION_MINIMUM}`
+          : `Citation count (${citationCount}) below recommended minimum of ${CITATION_MINIMUM}`;
+
+        // Log verification result
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "citation_verification",
+          action_details: {
+            citationCount,
+            minimumRequired: CITATION_MINIMUM,
+            qualityStatus,
+            qualityMessage,
+            isBlocking: false, // Non-blocking for now
+          },
+        });
+
+        // If citation count is low, flag for review but don't block
+        if (qualityStatus === 'warning') {
+          console.log(`[Inngest] Citation warning for order ${orderId}: ${qualityMessage}`);
+
+          // Update order with quality warning (non-blocking)
+          await supabase.from("orders").update({
+            quality_notes: `Citation warning: ${qualityMessage}`,
+          }).eq("id", orderId);
+        } else {
+          console.log(`[Inngest] Citation verification passed for order ${orderId}: ${qualityMessage}`);
+        }
+
+        return {
+          citationCount,
+          qualityStatus,
+          qualityMessage,
+          meetsMinimum: citationCount >= CITATION_MINIMUM,
+        };
+      } catch (verifyError) {
+        console.error("[Inngest] Citation verification error:", verifyError);
+        // Don't fail the pipeline - verification is informational
+        return {
+          citationCount: citationResult.count || 0,
+          qualityStatus: 'unknown',
+          qualityMessage: 'Verification failed',
+          error: verifyError instanceof Error ? verifyError.message : 'Unknown',
+        };
+      }
+    });
+
     // Step 6: Send notification to admin
     await step.run("send-notification", async () => {
-      // Queue notification for admin
+      // Queue notification for admin - draft ready
       await supabase.from("notification_queue").insert({
         notification_type: "draft_ready",
         recipient_email: ADMIN_EMAIL,
@@ -587,12 +684,39 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         status: "pending",
       });
 
+      // Queue approval_needed notification with citation count and quality score
+      const citationCount = citationVerification.citationCount || 0;
+      const qualityScore = qualityResult.passes ? 'pass' : 'needs_review';
+      const criticalIssues = 'criticalIssues' in qualityResult ? qualityResult.criticalIssues : 0;
+
+      await supabase.from("notification_queue").insert({
+        notification_type: "approval_needed",
+        recipient_email: ADMIN_EMAIL,
+        order_id: orderId,
+        template_data: {
+          orderNumber: orderData.order_number,
+          motionType: orderData.motion_type,
+          caseCaption: orderData.case_caption,
+          citationCount,
+          citationStatus: citationVerification.qualityStatus || 'unknown',
+          qualityScore,
+          criticalIssues,
+          reviewUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/admin/orders/${orderId}`,
+        },
+        priority: 9, // Higher priority than draft_ready
+        status: "pending",
+      });
+
       // Also log as automation event
       await supabase.from("automation_logs").insert({
         order_id: orderId,
         action_type: "admin_notified",
         action_details: {
           notificationType: "draft_ready",
+          approvalNeeded: true,
+          citationCount,
+          qualityScore,
+          criticalIssues,
         },
       });
     });
@@ -847,10 +971,132 @@ export const updateQueuePositions = inngest.createFunction(
   }
 );
 
+/**
+ * Order Workflow Router
+ *
+ * Routes orders to the appropriate workflow based on motion tier:
+ * - Tier A (simple procedural): Uses simplified single-call generation
+ * - Tier B/C (complex/dispositive): Uses full 14-phase workflow with checkpoints
+ *
+ * This function examines the order and triggers the correct workflow event.
+ */
+export const routeOrderWorkflow = inngest.createFunction(
+  {
+    id: "route-order-workflow",
+    concurrency: {
+      limit: 5,
+    },
+  },
+  { event: "order/route-workflow" },
+  async ({ event, step }) => {
+    const { orderId, priority, filingDeadline } = event.data;
+    const supabase = getSupabase();
+
+    // Determine which workflow to use based on order tier
+    const routingDecision = await step.run("determine-workflow", async () => {
+      const { data: order, error } = await supabase
+        .from("orders")
+        .select("motion_tier, motion_type, use_full_workflow")
+        .eq("id", orderId)
+        .single();
+
+      if (error || !order) {
+        throw new Error(`Order not found: ${error?.message || "No data"}`);
+      }
+
+      // Use full workflow for:
+      // 1. Tier B/C motions (complex/dispositive)
+      // 2. Orders explicitly flagged for full workflow
+      // 3. MSJ/MSA motions (always require full workflow)
+      const motionType = (order.motion_type || "").toLowerCase();
+      const isMSJ = motionType.includes("summary judgment") || motionType.includes("msj") || motionType.includes("msa");
+      const useFullWorkflow =
+        order.motion_tier === "B" ||
+        order.motion_tier === "C" ||
+        order.use_full_workflow === true ||
+        isMSJ;
+
+      // Log routing decision
+      await supabase.from("automation_logs").insert({
+        order_id: orderId,
+        action_type: "workflow_routed",
+        action_details: {
+          tier: order.motion_tier,
+          motionType: order.motion_type,
+          useFullWorkflow,
+          reason: useFullWorkflow
+            ? isMSJ
+              ? "MSJ/MSA requires full workflow"
+              : order.motion_tier !== "A"
+                ? `Tier ${order.motion_tier} requires full workflow`
+                : "Explicitly flagged for full workflow"
+            : "Tier A uses simplified workflow",
+        },
+      });
+
+      return {
+        useFullWorkflow,
+        tier: order.motion_tier,
+        motionType: order.motion_type,
+      };
+    });
+
+    // Trigger the appropriate workflow
+    if (routingDecision.useFullWorkflow) {
+      // Trigger full 14-phase workflow with checkpoints
+      await step.run("trigger-full-workflow", async () => {
+        await inngest.send({
+          name: "order/workflow-orchestrate",
+          data: {
+            orderId,
+            priority,
+            filingDeadline,
+          },
+        });
+      });
+
+      return {
+        orderId,
+        workflow: "full-14-phase",
+        tier: routingDecision.tier,
+        status: "triggered",
+      };
+    } else {
+      // Trigger simplified single-call workflow
+      await step.run("trigger-simple-workflow", async () => {
+        await inngest.send({
+          name: "order/submitted",
+          data: {
+            orderId,
+            priority,
+            filingDeadline,
+          },
+        });
+      });
+
+      return {
+        orderId,
+        workflow: "simplified-single-call",
+        tier: routingDecision.tier,
+        status: "triggered",
+      };
+    }
+  }
+);
+
 // Export all functions for registration
+// Re-export the new workflow orchestration functions
+export { generateOrderWorkflow, handleWorkflowFailure };
+
 export const functions = [
+  // Legacy simplified workflow
   generateOrderDraft,
   handleGenerationFailure,
+  // New 14-phase workflow
+  ...workflowFunctions,
+  // Workflow router
+  routeOrderWorkflow,
+  // Supporting functions
   deadlineCheck,
   updateQueuePositions,
 ];
