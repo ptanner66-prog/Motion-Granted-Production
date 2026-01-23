@@ -391,22 +391,35 @@ export async function orchestrateWorkflow(
     if (existingWorkflow) {
       workflowId = existingWorkflow.id;
     } else {
-      // Step 6: Start the workflow
+      // Step 6: Get admin superprompt and merge with order context
+      const templateResult = await getAdminSuperpromptTemplate();
+      let superprompt: string;
+
+      if (templateResult.success && templateResult.data) {
+        // Use admin-editable superprompt merged with order context
+        superprompt = mergeSuperpromptWithContext(templateResult.data.template, orderContext);
+      } else {
+        // Fall back to built-in superprompt builder
+        superprompt = buildSuperprompt({
+          orderContext,
+          motionTemplate,
+          workflowPath,
+        });
+      }
+
+      // Step 7: Start the workflow
       const startResult = await startWorkflow({
         orderId,
         motionTypeId,
         workflowPath,
         metadata: {
-          superprompt: buildSuperprompt({
-            orderContext,
-            motionTemplate,
-            workflowPath,
-          }),
+          superprompt,
           orderContext: {
             caseNumber: orderContext.caseNumber,
             caseCaption: orderContext.caseCaption,
             jurisdiction: orderContext.jurisdiction,
             motionType: orderContext.motionType,
+            motionTier: orderContext.motionTier,
           },
         },
       });
@@ -630,7 +643,106 @@ function mapMotionTypeToCode(motionType: string, tier: MotionTier): string {
 }
 
 /**
+ * Get the admin-editable superprompt from the database
+ * This is the master template that drives the 14-phase workflow
+ */
+export async function getAdminSuperpromptTemplate(): Promise<OperationResult<{ template: string; systemPrompt: string }>> {
+  const supabase = getAdminClient();
+
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
+
+  const { data, error } = await supabase
+    .from('superprompt_templates')
+    .select('template, system_prompt')
+    .eq('is_default', true)
+    .single();
+
+  if (error || !data) {
+    return { success: false, error: error?.message || 'No default superprompt found. Configure one in Admin > Superprompt.' };
+  }
+
+  return {
+    success: true,
+    data: {
+      template: data.template,
+      systemPrompt: data.system_prompt || 'You are a legal motion generation system.',
+    },
+  };
+}
+
+/**
+ * Merge the admin superprompt template with order context
+ */
+export function mergeSuperpromptWithContext(
+  template: string,
+  orderContext: OrderContext
+): string {
+  // Build party strings
+  const plaintiffs = orderContext.parties.filter(p => p.role === 'plaintiff');
+  const defendants = orderContext.parties.filter(p => p.role === 'defendant');
+  const allPartiesFormatted = orderContext.parties
+    .map(p => `${p.name} (${p.role})`)
+    .join('\n');
+
+  // Build document summaries
+  const documentSummaries = orderContext.documents.parsed
+    .map(d => `[${d.documentType.toUpperCase()}]\n${d.summary}`)
+    .join('\n\n');
+
+  // Extract key facts
+  const keyFactsList = orderContext.documents.parsed
+    .flatMap(d => (d.keyFacts as Array<{ fact: string }>).map(f => f.fact || String(f)))
+    .map(f => `• ${f}`)
+    .join('\n');
+
+  // Extract legal issues
+  const legalIssuesList = orderContext.documents.parsed
+    .flatMap(d => (d.legalIssues as Array<{ issue: string }>).map(i => i.issue || String(i)))
+    .map(i => `• ${i}`)
+    .join('\n');
+
+  // Replacement map
+  const replacements: Record<string, string> = {
+    '{{CASE_NUMBER}}': orderContext.caseNumber || '',
+    '{{CASE_CAPTION}}': orderContext.caseCaption || '',
+    '{{COURT}}': orderContext.jurisdiction || '',
+    '{{JURISDICTION}}': orderContext.jurisdiction || '',
+    '{{COURT_DIVISION}}': orderContext.courtDivision || '',
+    '{{MOTION_TYPE}}': orderContext.motionType || '',
+    '{{MOTION_TIER}}': orderContext.motionTier || 'B',
+    '{{FILING_DEADLINE}}': orderContext.filingDeadline || 'Not specified',
+    '{{ALL_PARTIES}}': allPartiesFormatted || '',
+    '{{PLAINTIFF_NAMES}}': plaintiffs.map(p => p.name).join(', ') || 'N/A',
+    '{{DEFENDANT_NAMES}}': defendants.map(p => p.name).join(', ') || 'N/A',
+    '{{STATEMENT_OF_FACTS}}': orderContext.statementOfFacts || '[No statement of facts provided]',
+    '{{PROCEDURAL_HISTORY}}': orderContext.proceduralHistory || '[No procedural history provided]',
+    '{{CLIENT_INSTRUCTIONS}}': orderContext.instructions || '[No special instructions]',
+    '{{DOCUMENT_CONTENT}}': orderContext.documents.raw || '[No documents uploaded]',
+    '{{DOCUMENT_SUMMARIES}}': documentSummaries || '[No document summaries]',
+    '{{KEY_FACTS}}': keyFactsList || '[No key facts extracted]',
+    '{{LEGAL_ISSUES}}': legalIssuesList || '[No legal issues identified]',
+    '{{ORDER_ID}}': orderContext.orderId || '',
+    '{{ORDER_NUMBER}}': orderContext.orderNumber || '',
+    '{{TODAY_DATE}}': new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }),
+  };
+
+  let result = template;
+  for (const [placeholder, value] of Object.entries(replacements)) {
+    result = result.split(placeholder).join(value);
+  }
+
+  return result;
+}
+
+/**
  * Get current superprompt for a workflow
+ * Uses the admin-editable template merged with order context
  */
 export async function getWorkflowSuperprompt(workflowId: string): Promise<OperationResult<string>> {
   const supabase = await createClient();
@@ -645,28 +757,27 @@ export async function getWorkflowSuperprompt(workflowId: string): Promise<Operat
     return { success: false, error: 'Workflow not found' };
   }
 
-  // Check if superprompt is cached in metadata
-  if (workflow.metadata?.superprompt) {
-    return { success: true, data: workflow.metadata.superprompt as string };
+  // Get the admin superprompt template
+  const templateResult = await getAdminSuperpromptTemplate();
+  if (!templateResult.success || !templateResult.data) {
+    // Fall back to cached or built superprompt
+    if (workflow.metadata?.superprompt) {
+      return { success: true, data: workflow.metadata.superprompt as string };
+    }
+    return { success: false, error: templateResult.error };
   }
 
-  // Build fresh superprompt
+  // Get order context
   const contextResult = await gatherOrderContext(workflow.order_id);
   if (!contextResult.success || !contextResult.data) {
     return { success: false, error: contextResult.error };
   }
 
-  const motionCode = mapMotionTypeToCode(
-    contextResult.data.motionType,
-    contextResult.data.motionTier
+  // Merge template with context
+  const superprompt = mergeSuperpromptWithContext(
+    templateResult.data.template,
+    contextResult.data
   );
-  const motionTemplate = getTemplateForPath(motionCode, workflow.workflow_path);
-
-  const superprompt = buildSuperprompt({
-    orderContext: contextResult.data,
-    motionTemplate,
-    workflowPath: workflow.workflow_path,
-  });
 
   return { success: true, data: superprompt };
 }

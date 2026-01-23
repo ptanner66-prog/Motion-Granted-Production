@@ -66,7 +66,17 @@ export {
   executePhaseWithContext,
   generateDraftWithSuperprompt,
   getWorkflowSuperprompt,
+  getAdminSuperpromptTemplate,
+  mergeSuperpromptWithContext,
 } from './orchestrator';
+
+// Superprompt-Driven Phase Executor (uses admin superprompt for phase execution)
+export {
+  executePhaseWithSuperprompt,
+  getModelForPhase,
+  shouldUseExtendedThinking,
+  getThinkingBudget,
+} from './superprompt-phase-executor';
 
 // PDF Generation
 export {
@@ -157,3 +167,9 @@ export type {
   OrderData,
   GenerationResult,
 } from './superprompt-engine';
+
+export type {
+  OrderContext as SuperpromptOrderContext,
+  PhaseExecutionInput,
+  PhaseExecutionOutput,
+} from './superprompt-phase-executor';

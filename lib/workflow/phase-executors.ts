@@ -617,6 +617,11 @@ export async function executePhaseX(input: PhaseInput): Promise<PhaseOutput> {
 // PHASE EXECUTOR REGISTRY
 // ============================================================================
 
+import {
+  executePhaseWithSuperprompt,
+  type OrderContext,
+} from './superprompt-phase-executor';
+
 export const PHASE_EXECUTORS: Partial<Record<WorkflowPhaseCode, (input: PhaseInput) => Promise<PhaseOutput>>> = {
   'I': executePhaseI,
   'II': executePhaseII,
@@ -624,11 +629,48 @@ export const PHASE_EXECUTORS: Partial<Record<WorkflowPhaseCode, (input: PhaseInp
   'IV': executePhaseIV,
   'VII': executePhaseVII,
   'X': executePhaseX,
-  // Additional phases (V, V.1, VI, VII.1, VIII, VIII.5, IX, IX.1) would follow similar patterns
+  // Additional phases use superprompt-driven executor via executePhase fallback
 };
 
 /**
+ * Convert PhaseInput to OrderContext for superprompt executor
+ */
+function toOrderContext(input: PhaseInput): OrderContext {
+  return {
+    orderId: input.orderId,
+    orderNumber: input.orderId.slice(0, 8), // Fallback if no order number
+    caseNumber: input.caseNumber,
+    caseCaption: input.caseCaption,
+    court: input.jurisdiction,
+    jurisdiction: input.jurisdiction,
+    courtDivision: undefined,
+    motionType: input.motionType,
+    motionTier: input.tier,
+    filingDeadline: undefined,
+    filingPosture: 'FILING', // Default, can be overridden
+    plaintiffNames: '',
+    defendantNames: '',
+    allParties: '',
+    statementOfFacts: input.statementOfFacts,
+    proceduralHistory: input.proceduralHistory,
+    clientInstructions: input.instructions,
+    documentContent: input.documents?.join('\n\n') || '',
+    documentSummaries: '',
+    keyFacts: '',
+    legalIssues: '',
+    attorneyName: '',
+    barNumber: '',
+    firmName: '',
+    firmAddress: '',
+    firmPhone: '',
+  };
+}
+
+/**
  * Execute a specific phase
+ *
+ * Uses hardcoded executors for phases I, II, III, IV, VII, X
+ * Falls back to superprompt-driven executor for other phases (V, V.1, VI, VII.1, VIII, VIII.5, IX, IX.1)
  */
 export async function executePhase(
   phase: WorkflowPhaseCode,
@@ -636,15 +678,34 @@ export async function executePhase(
 ): Promise<PhaseOutput> {
   const executor = PHASE_EXECUTORS[phase];
 
-  if (!executor) {
-    return {
-      success: false,
-      phase,
-      status: 'failed',
-      output: null,
-      error: `No executor found for phase ${phase}`,
-    };
+  // Use specific executor if available
+  if (executor) {
+    return executor(input);
   }
 
-  return executor(input);
+  // Fall back to superprompt-driven executor for phases without specific implementations
+  const log = logger.child({ phase, workflowId: input.workflowId });
+  log.info(`Using superprompt-driven executor for phase ${phase}`);
+
+  const result = await executePhaseWithSuperprompt({
+    workflowId: input.workflowId,
+    orderId: input.orderId,
+    phaseCode: phase,
+    tier: input.tier,
+    orderContext: toOrderContext(input),
+    previousPhaseOutputs: input.previousPhaseOutputs,
+  });
+
+  // Convert superprompt executor result to PhaseOutput format
+  return {
+    success: result.success,
+    phase: result.phaseCode,
+    status: result.status,
+    output: result.output,
+    nextPhase: result.nextPhase,
+    requiresReview: result.requiresReview,
+    tokensUsed: result.tokensUsed,
+    durationMs: result.durationMs,
+    error: result.error,
+  };
 }
