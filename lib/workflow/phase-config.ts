@@ -153,7 +153,7 @@ export const PHASES = {
   'VIII': {
     name: 'Revisions',
     order: 10,
-    model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
+    model: { A: 'SONNET', B: 'OPUS', C: 'OPUS' }, // Opus for B/C to enable extended thinking
     extendedThinking: { A: false, B: true, C: true },
     budget: 8000,
     checkpoint: null,
