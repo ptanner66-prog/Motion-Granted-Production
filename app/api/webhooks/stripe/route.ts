@@ -245,16 +245,42 @@ async function handlePaymentSucceeded(
   // Queue order for draft generation via Inngest
   // This replaces the synchronous Claude API call
   if (fullOrder?.filing_deadline) {
-    await inngest.send({
-      name: "order/submitted",
-      data: {
-        orderId,
-        priority: calculatePriority(fullOrder.filing_deadline),
-        filingDeadline: fullOrder.filing_deadline,
-      },
-    });
+    try {
+      await inngest.send({
+        name: "order/submitted",
+        data: {
+          orderId,
+          priority: calculatePriority(fullOrder.filing_deadline),
+          filingDeadline: fullOrder.filing_deadline,
+        },
+      });
 
-    console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation`);
+      console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation`);
+    } catch (inngestError) {
+      // CRITICAL: Inngest failed - queue to automation_tasks as fallback
+      console.error(`[Stripe Webhook] Inngest send failed, using fallback queue:`, inngestError);
+
+      await supabase.from('automation_tasks').insert({
+        task_type: 'generate_draft',
+        order_id: orderId,
+        priority: 10,
+        status: 'pending',
+        payload: {
+          source: 'webhook_fallback',
+          filingDeadline: fullOrder.filing_deadline,
+          error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
+        },
+      });
+
+      await supabase.from('automation_logs').insert({
+        order_id: orderId,
+        action_type: 'inngest_fallback',
+        action_details: {
+          error: inngestError instanceof Error ? inngestError.message : 'Unknown error',
+          fallbackQueue: 'automation_tasks',
+        },
+      });
+    }
   }
 
   console.log(`[Stripe Webhook] Payment succeeded for order ${order.order_number}`);
@@ -483,16 +509,33 @@ async function handleCheckoutSessionCompleted(
 
       // Queue order for draft generation via Inngest
       if (fullOrder?.filing_deadline) {
-        await inngest.send({
-          name: "order/submitted",
-          data: {
-            orderId,
-            priority: calculatePriority(fullOrder.filing_deadline),
-            filingDeadline: fullOrder.filing_deadline,
-          },
-        });
+        try {
+          await inngest.send({
+            name: "order/submitted",
+            data: {
+              orderId,
+              priority: calculatePriority(fullOrder.filing_deadline),
+              filingDeadline: fullOrder.filing_deadline,
+            },
+          });
 
-        console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
+          console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
+        } catch (inngestError) {
+          // CRITICAL: Inngest failed - queue to automation_tasks as fallback
+          console.error(`[Stripe Webhook] Inngest send failed (checkout), using fallback:`, inngestError);
+
+          await supabase.from('automation_tasks').insert({
+            task_type: 'generate_draft',
+            order_id: orderId,
+            priority: 10,
+            status: 'pending',
+            payload: {
+              source: 'checkout_webhook_fallback',
+              filingDeadline: fullOrder.filing_deadline,
+              error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
+            },
+          });
+        }
       }
 
       console.log(`[Stripe Webhook] Checkout completed for order ${order.order_number}`);
