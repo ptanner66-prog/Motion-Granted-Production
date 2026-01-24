@@ -841,15 +841,15 @@ Analyze potential opposition. Provide as JSON.`;
       messages: [{ role: 'user', content: userMessage }],
     };
 
-    // Add extended thinking if applicable
+    // Add extended thinking if applicable (cast through unknown to satisfy TypeScript)
     if (thinkingBudget) {
-      (requestParams as Record<string, unknown>).thinking = {
+      (requestParams as unknown as Record<string, unknown>).thinking = {
         type: 'enabled',
         budget_tokens: thinkingBudget,
       };
     }
 
-    const response = await client.messages.create(requestParams);
+    const response = await client.messages.create(requestParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
@@ -970,7 +970,7 @@ Provide your judicial evaluation as JSON.`;
         type: 'enabled',
         budget_tokens: 10000,
       },
-    } as Anthropic.MessageCreateParams);
+    } as Anthropic.MessageCreateParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
@@ -1165,14 +1165,15 @@ Address all weaknesses and revision suggestions. Provide as JSON.`;
       messages: [{ role: 'user', content: userMessage }],
     };
 
+    // Add extended thinking if applicable (cast through unknown to satisfy TypeScript)
     if (thinkingBudget) {
-      (requestParams as Record<string, unknown>).thinking = {
+      (requestParams as unknown as Record<string, unknown>).thinking = {
         type: 'enabled',
         budget_tokens: thinkingBudget,
       };
     }
 
-    const response = await client.messages.create(requestParams);
+    const response = await client.messages.create(requestParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
