@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2, Zap, AlertCircle, ListOrdered, PlayCircle } from 'lucide-react';
+import { Loader2, Play, AlertCircle, Workflow } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 
@@ -21,8 +22,9 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
   const { toast } = useToast();
   const router = useRouter();
 
-  // Don't show if already has a motion ready
+  // Don't show if already has a motion ready or in progress
   const alreadyGenerated = ['pending_review', 'draft_delivered', 'completed', 'revision_delivered'].includes(orderStatus);
+  const isInProgress = ['generating', 'in_progress'].includes(orderStatus);
 
   // Show resume button for interrupted workflows
   const canResume = ['in_progress', 'generation_failed'].includes(orderStatus);
@@ -57,10 +59,10 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
 
       router.refresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to generate motion';
+      const message = err instanceof Error ? err.message : 'Failed to start workflow';
       setError(message);
       toast({
-        title: 'Generation Failed',
+        title: 'Workflow Start Failed',
         description: message,
         variant: 'destructive',
       });
@@ -153,25 +155,25 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
     <Card className="bg-amber-50 border-amber-200">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2 text-amber-800">
-          <Zap className="h-5 w-5" />
-          Generate Motion
+          <Workflow className="h-5 w-5" />
+          14-Phase Workflow
         </CardTitle>
         <CardDescription className="text-amber-700">
-          Order {orderNumber} - Choose generation method
+          Order {orderNumber} - v7.2 Workflow Orchestration
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {orderStatus === 'in_progress' && (
+        {isInProgress && (
           <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-100 p-2 rounded">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Generation may already be in progress via queue...
+            Workflow is currently in progress...
           </div>
         )}
 
         {orderStatus === 'generation_failed' && (
           <div className="flex items-center gap-2 text-sm text-red-700 bg-red-100 p-2 rounded">
             <AlertCircle className="h-4 w-4" />
-            Previous generation failed. Try again below.
+            Previous workflow failed. You can retry below.
           </div>
         )}
 
@@ -230,12 +232,12 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
             {isQueuing ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Queuing...
+                Workflow In Progress...
               </>
             ) : (
               <>
-                <ListOrdered className="h-4 w-4 mr-2" />
-                Add to Queue (Background)
+                <Play className="h-4 w-4 mr-2" />
+                Run 14-Phase Workflow
               </>
             )}
           </Button>

@@ -40,10 +40,21 @@ export type DeadlineCheckEvent = {
   };
 };
 
+// v7.2: 14-Phase Workflow Orchestration Event
+export type WorkflowOrchestrationEvent = {
+  name: "workflow/orchestration.start";
+  data: {
+    orderId: string;
+    triggeredBy: string;
+    timestamp: string;
+  };
+};
+
 export type Events = {
   "order/submitted": OrderSubmittedEvent;
   "order/generate-draft": OrderGenerationEvent;
   "deadline/check": DeadlineCheckEvent;
+  "workflow/orchestration.start": WorkflowOrchestrationEvent;
 };
 
 /**

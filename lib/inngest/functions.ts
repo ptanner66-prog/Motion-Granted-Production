@@ -1,6 +1,7 @@
 import { inngest } from "./client";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
+import { workflowOrchestration } from "./workflow-orchestration";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
@@ -731,8 +732,11 @@ export const updateQueuePositions = inngest.createFunction(
 );
 
 // Export all functions for registration
+// Note: workflowOrchestration is the new 14-phase v7.2 workflow (preferred)
+// generateOrderDraft is the legacy single-call system (kept for fallback)
 export const functions = [
-  generateOrderDraft,
+  workflowOrchestration,  // v7.2: 14-phase workflow orchestrator
+  generateOrderDraft,      // Legacy: single-call superprompt
   handleGenerationFailure,
   deadlineCheck,
   updateQueuePositions,
