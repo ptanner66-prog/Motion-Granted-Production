@@ -2,9 +2,11 @@
  * API Keys Settings Route
  *
  * Securely stores and retrieves API keys for:
- * - Anthropic (Claude AI)
- * - Westlaw
- * - LexisNexis
+ * - Anthropic (Claude AI) - Required for motion generation
+ * - CourtListener (Free Law Project) - Required for citation verification
+ * - Case.law (Harvard Law) - Required for citation verification
+ * - Westlaw (Optional Premium)
+ * - LexisNexis (Optional Premium)
  *
  * Keys are stored encrypted in the database and used at runtime.
  * Uses AES-256-GCM encryption with a secret derived from ENCRYPTION_SECRET env var.
@@ -145,6 +147,8 @@ export async function GET() {
       .select('setting_key, setting_value')
       .in('setting_key', [
         'anthropic_api_key',
+        'courtlistener_api_key',
+        'caselaw_api_key',
         'westlaw_api_key',
         'westlaw_client_id',
         'westlaw_enabled',
@@ -163,11 +167,15 @@ export async function GET() {
     };
 
     const anthropicKey = getValue('anthropic_api_key', '') as string;
+    const courtlistenerKey = getValue('courtlistener_api_key', '') as string;
+    const caselawKey = getValue('caselaw_api_key', '') as string;
     const westlawKey = getValue('westlaw_api_key', '') as string;
     const lexisKey = getValue('lexisnexis_api_key', '') as string;
 
     // Also check environment variables as fallback
     const envAnthropicKey = process.env.ANTHROPIC_API_KEY || '';
+    const envCourtlistenerKey = process.env.COURTLISTENER_API_KEY || '';
+    const envCaselawKey = process.env.CASELAW_API_KEY || '';
     const envWestlawKey = process.env.WESTLAW_API_KEY || '';
     const envLexisKey = process.env.LEXISNEXIS_API_KEY || '';
 
@@ -176,12 +184,20 @@ export async function GET() {
       anthropic_api_key: anthropicKey ? maskKey(anthropicKey) : (envAnthropicKey ? maskKey(envAnthropicKey) : ''),
       anthropic_configured: !!(anthropicKey || envAnthropicKey),
 
-      // Westlaw
+      // CourtListener - mask the key, show if configured
+      courtlistener_api_key: courtlistenerKey ? maskKey(courtlistenerKey) : (envCourtlistenerKey ? maskKey(envCourtlistenerKey) : ''),
+      courtlistener_configured: !!(courtlistenerKey || envCourtlistenerKey),
+
+      // Case.law - mask the key, show if configured
+      caselaw_api_key: caselawKey ? maskKey(caselawKey) : (envCaselawKey ? maskKey(envCaselawKey) : ''),
+      caselaw_configured: !!(caselawKey || envCaselawKey),
+
+      // Westlaw (Optional)
       westlaw_api_key: westlawKey ? maskKey(westlawKey) : (envWestlawKey ? maskKey(envWestlawKey) : ''),
       westlaw_client_id: getValue('westlaw_client_id', process.env.WESTLAW_CLIENT_ID || '') as string,
       westlaw_enabled: getValue('westlaw_enabled', false) as boolean,
 
-      // LexisNexis
+      // LexisNexis (Optional)
       lexisnexis_api_key: lexisKey ? maskKey(lexisKey) : (envLexisKey ? maskKey(envLexisKey) : ''),
       lexisnexis_client_id: getValue('lexisnexis_client_id', process.env.LEXISNEXIS_CLIENT_ID || '') as string,
       lexisnexis_enabled: getValue('lexisnexis_enabled', false) as boolean,
@@ -225,6 +241,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       anthropic_api_key,
+      courtlistener_api_key,
+      caselaw_api_key,
       westlaw_api_key,
       westlaw_client_id,
       westlaw_enabled,
@@ -257,6 +275,28 @@ export async function POST(request: NextRequest) {
         setting_key: 'anthropic_api_key',
         setting_value: { value: encryptKey(anthropic_api_key) },
         description: 'Anthropic API key for Claude AI',
+        category: 'general',
+        updated_by: user.id,
+      });
+    }
+
+    // CourtListener API key (for citation verification)
+    if (courtlistener_api_key && !courtlistener_api_key.startsWith('****')) {
+      settingsToSave.push({
+        setting_key: 'courtlistener_api_key',
+        setting_value: { value: encryptKey(courtlistener_api_key) },
+        description: 'CourtListener API token for citation verification',
+        category: 'general',
+        updated_by: user.id,
+      });
+    }
+
+    // Case.law API key (for citation verification)
+    if (caselaw_api_key && !caselaw_api_key.startsWith('****')) {
+      settingsToSave.push({
+        setting_key: 'caselaw_api_key',
+        setting_value: { value: encryptKey(caselaw_api_key) },
+        description: 'Case.law API key for citation verification',
         category: 'general',
         updated_by: user.id,
       });

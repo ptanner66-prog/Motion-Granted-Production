@@ -6,6 +6,13 @@
  *
  * Keys stored in DB take precedence over environment variables,
  * allowing admins to configure keys without redeploying.
+ *
+ * Supported keys:
+ * - Anthropic (Claude AI) - Required for motion generation
+ * - CourtListener - Required for citation verification
+ * - Case.law - Required for citation verification
+ * - Westlaw (Optional Premium)
+ * - LexisNexis (Optional Premium)
  */
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
@@ -90,6 +97,8 @@ const CACHE_TTL = 0; // Disabled - fetch fresh every time
  */
 export async function getAPIKeys(): Promise<{
   anthropic_api_key: string;
+  courtlistener_api_key: string;
+  caselaw_api_key: string;
   westlaw_api_key: string;
   westlaw_client_id: string;
   westlaw_enabled: boolean;
@@ -102,6 +111,8 @@ export async function getAPIKeys(): Promise<{
   if (keyCache && Date.now() - keyCache.timestamp < CACHE_TTL) {
     return {
       anthropic_api_key: keyCache.keys.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
+      courtlistener_api_key: keyCache.keys.courtlistener_api_key || process.env.COURTLISTENER_API_KEY || '',
+      caselaw_api_key: keyCache.keys.caselaw_api_key || process.env.CASELAW_API_KEY || '',
       westlaw_api_key: keyCache.keys.westlaw_api_key || process.env.WESTLAW_API_KEY || '',
       westlaw_client_id: keyCache.keys.westlaw_client_id || process.env.WESTLAW_CLIENT_ID || '',
       westlaw_enabled: keyCache.keys.westlaw_enabled === 'true',
@@ -120,6 +131,8 @@ export async function getAPIKeys(): Promise<{
       console.warn('Supabase not configured, using environment variables for API keys');
       return {
         anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
+        courtlistener_api_key: process.env.COURTLISTENER_API_KEY || '',
+        caselaw_api_key: process.env.CASELAW_API_KEY || '',
         westlaw_api_key: process.env.WESTLAW_API_KEY || '',
         westlaw_client_id: process.env.WESTLAW_CLIENT_ID || '',
         westlaw_enabled: !!process.env.WESTLAW_API_KEY,
@@ -135,6 +148,8 @@ export async function getAPIKeys(): Promise<{
       .select('setting_key, setting_value')
       .in('setting_key', [
         'anthropic_api_key',
+        'courtlistener_api_key',
+        'caselaw_api_key',
         'westlaw_api_key',
         'westlaw_client_id',
         'westlaw_enabled',
@@ -163,6 +178,8 @@ export async function getAPIKeys(): Promise<{
     keyCache = {
       keys: {
         anthropic_api_key: getValue('anthropic_api_key'),
+        courtlistener_api_key: getValue('courtlistener_api_key'),
+        caselaw_api_key: getValue('caselaw_api_key'),
         westlaw_api_key: getValue('westlaw_api_key'),
         westlaw_client_id: getValue('westlaw_client_id'),
         westlaw_enabled: getValue('westlaw_enabled'),
@@ -176,6 +193,8 @@ export async function getAPIKeys(): Promise<{
 
     return {
       anthropic_api_key: keyCache.keys.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
+      courtlistener_api_key: keyCache.keys.courtlistener_api_key || process.env.COURTLISTENER_API_KEY || '',
+      caselaw_api_key: keyCache.keys.caselaw_api_key || process.env.CASELAW_API_KEY || '',
       westlaw_api_key: keyCache.keys.westlaw_api_key || process.env.WESTLAW_API_KEY || '',
       westlaw_client_id: keyCache.keys.westlaw_client_id || process.env.WESTLAW_CLIENT_ID || '',
       westlaw_enabled: keyCache.keys.westlaw_enabled === 'true',
@@ -190,6 +209,8 @@ export async function getAPIKeys(): Promise<{
     // Fall back to environment variables
     return {
       anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
+      courtlistener_api_key: process.env.COURTLISTENER_API_KEY || '',
+      caselaw_api_key: process.env.CASELAW_API_KEY || '',
       westlaw_api_key: process.env.WESTLAW_API_KEY || '',
       westlaw_client_id: process.env.WESTLAW_CLIENT_ID || '',
       westlaw_enabled: !!process.env.WESTLAW_API_KEY,
@@ -219,6 +240,24 @@ export async function getAnthropicAPIKey(): Promise<string> {
   }
 
   return key;
+}
+
+/**
+ * Get CourtListener API key (for citation verification)
+ * Checks database first, falls back to environment variable
+ */
+export async function getCourtListenerAPIKey(): Promise<string> {
+  const keys = await getAPIKeys();
+  return keys.courtlistener_api_key;
+}
+
+/**
+ * Get Case.law API key (for citation verification)
+ * Checks database first, falls back to environment variable
+ */
+export async function getCaseLawAPIKey(): Promise<string> {
+  const keys = await getAPIKeys();
+  return keys.caselaw_api_key;
 }
 
 /**
@@ -255,6 +294,27 @@ export async function getLegalResearchConfig(): Promise<{
     apiKey: '',
     clientId: '',
     enabled: false,
+  };
+}
+
+/**
+ * Get citation verification configuration (CourtListener + Case.law)
+ */
+export async function getCitationVerificationConfig(): Promise<{
+  courtlistener: { apiKey: string; configured: boolean };
+  caselaw: { apiKey: string; configured: boolean };
+}> {
+  const keys = await getAPIKeys();
+
+  return {
+    courtlistener: {
+      apiKey: keys.courtlistener_api_key,
+      configured: !!keys.courtlistener_api_key,
+    },
+    caselaw: {
+      apiKey: keys.caselaw_api_key,
+      configured: !!keys.caselaw_api_key,
+    },
   };
 }
 

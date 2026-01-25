@@ -3,8 +3,10 @@
  *
  * Tests connectivity for API keys:
  * - Anthropic: Makes a simple API call to verify the key works
- * - Westlaw: Attempts a test search
- * - LexisNexis: Attempts a test search
+ * - CourtListener: Tests Free Law Project API connectivity
+ * - Case.law: Tests Harvard Law Case.law API connectivity
+ * - Westlaw: Attempts a test search (optional premium)
+ * - LexisNexis: Attempts a test search (optional premium)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -39,6 +41,12 @@ export async function POST(request: NextRequest) {
     switch (keyType) {
       case 'anthropic': {
         return await testAnthropicKey(settings.anthropic_api_key);
+      }
+      case 'courtlistener': {
+        return await testCourtListenerKey(settings.courtlistener_api_key);
+      }
+      case 'caselaw': {
+        return await testCaseLawKey(settings.caselaw_api_key);
       }
       case 'westlaw': {
         return await testWestlawKey(settings.westlaw_api_key, settings.westlaw_client_id);
@@ -110,6 +118,108 @@ async function testAnthropicKey(apiKey: string): Promise<NextResponse> {
     return NextResponse.json({
       success: false,
       message: errorMessage,
+    });
+  } catch (error) {
+    return NextResponse.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Connection failed',
+    });
+  }
+}
+
+async function testCourtListenerKey(apiKey: string): Promise<NextResponse> {
+  if (!apiKey || apiKey.startsWith('****')) {
+    return NextResponse.json({
+      success: false,
+      message: 'Please enter a valid API token (not masked)',
+    });
+  }
+
+  try {
+    // Test CourtListener API with a simple search
+    const response = await fetch('https://www.courtlistener.com/api/rest/v3/search/?q=test&type=o', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Token ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      return NextResponse.json({
+        success: true,
+        message: 'CourtListener API token is valid!',
+      });
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid API token - authentication failed',
+      });
+    }
+
+    if (response.status === 429) {
+      return NextResponse.json({
+        success: true,
+        message: 'API token valid (rate limited - reduce request frequency)',
+      });
+    }
+
+    return NextResponse.json({
+      success: false,
+      message: `CourtListener API returned status ${response.status}`,
+    });
+  } catch (error) {
+    return NextResponse.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Connection failed',
+    });
+  }
+}
+
+async function testCaseLawKey(apiKey: string): Promise<NextResponse> {
+  if (!apiKey || apiKey.startsWith('****')) {
+    return NextResponse.json({
+      success: false,
+      message: 'Please enter a valid API key (not masked)',
+    });
+  }
+
+  try {
+    // Test Case.law API with a simple search
+    const response = await fetch('https://api.case.law/v1/cases/?page_size=1', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Token ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      return NextResponse.json({
+        success: true,
+        message: 'Case.law API key is valid!',
+      });
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid API key - authentication failed',
+      });
+    }
+
+    if (response.status === 429) {
+      return NextResponse.json({
+        success: true,
+        message: 'API key valid (rate limited - reduce request frequency)',
+      });
+    }
+
+    return NextResponse.json({
+      success: false,
+      message: `Case.law API returned status ${response.status}`,
     });
   } catch (error) {
     return NextResponse.json({
