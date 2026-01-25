@@ -215,7 +215,7 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
                 </>
               ) : (
                 <>
-                  <Zap className="h-4 w-4 mr-2" />
+                  <Play className="h-4 w-4 mr-2" />
                   Generate Now (14-Phase Workflow)
                 </>
               )}
