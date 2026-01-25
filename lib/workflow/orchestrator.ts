@@ -561,9 +561,10 @@ export async function generateDraftWithSuperprompt(
   });
 
   // Generate with Claude
+  // Using 32000 tokens to accommodate Tier C complex motions
   const result = await askClaude({
     prompt: superprompt + '\n\nGenerate the complete motion document now:',
-    maxTokens: 8000,
+    maxTokens: 32000,
     systemPrompt: 'You are an expert legal document drafter. Produce professional, court-ready legal documents.',
   });
 

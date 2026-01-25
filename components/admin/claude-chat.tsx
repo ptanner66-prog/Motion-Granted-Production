@@ -274,20 +274,20 @@ export function ClaudeChat({ orderId, orderNumber, onMotionGenerated }: ClaudeCh
             <div className="flex flex-col items-center justify-center h-full py-12 text-center">
               <MessageSquare className="h-12 w-12 text-gray-300 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No conversation yet
+                No motion generated yet
               </h3>
               <p className="text-gray-500 mb-4 max-w-sm">
-                Start generating the motion by clicking the button below.
-                Claude will use the lawyer&apos;s superprompt and the order details.
+                Use the <strong>&quot;Generate Now&quot;</strong> button in the sidebar to start
+                the 14-phase workflow. This chat is for revisions after the initial
+                draft is complete.
               </p>
-              <Button onClick={handleStartGeneration} disabled={isLoading}>
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Bot className="h-4 w-4 mr-2" />
-                )}
-                Generate Motion
-              </Button>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 max-w-md">
+                <p className="text-sm text-amber-800">
+                  <strong>Why not here?</strong> The sidebar button uses the proper
+                  orchestrator with checkpoints, ensuring large motions complete without
+                  token exhaustion.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-4 pb-4">

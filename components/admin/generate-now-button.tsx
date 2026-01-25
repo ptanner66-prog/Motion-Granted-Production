@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, Zap, AlertCircle, ListOrdered } from 'lucide-react';
+import { Loader2, Zap, AlertCircle, ListOrdered, PlayCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 
@@ -16,6 +16,7 @@ interface GenerateNowButtonProps {
 export function GenerateNowButton({ orderId, orderNumber, orderStatus }: GenerateNowButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isQueuing, setIsQueuing] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
@@ -23,26 +24,35 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
   // Don't show if already has a motion ready
   const alreadyGenerated = ['pending_review', 'draft_delivered', 'completed', 'revision_delivered'].includes(orderStatus);
 
-  // Direct generation (bypasses queue)
+  // Show resume button for interrupted workflows
+  const canResume = ['in_progress', 'generation_failed'].includes(orderStatus);
+
+  // Direct generation via Orchestrator (proper 14-phase workflow)
   const handleGenerate = async () => {
     setIsGenerating(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/orders/${orderId}/generate`, {
+      const response = await fetch('/api/workflow/orchestrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          autoRun: true,
+          workflowPath: 'path_a',
+          skipDocumentParsing: false,
+        }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate motion');
+        throw new Error(data.error || 'Failed to start workflow');
       }
 
       toast({
-        title: 'Motion Generated!',
-        description: 'The motion is ready for review. Switch to the Review Motion tab.',
+        title: 'Workflow Started!',
+        description: 'The 14-phase workflow is now processing. This may take 5-10 minutes.',
       });
 
       router.refresh();
@@ -56,6 +66,43 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
       });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Resume interrupted workflow
+  const handleResume = async () => {
+    setIsResuming(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/automation/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to resume workflow');
+      }
+
+      toast({
+        title: 'Workflow Resumed!',
+        description: 'Continuing from the last checkpoint.',
+      });
+
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to resume workflow';
+      setError(message);
+      toast({
+        title: 'Resume Failed',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsResuming(false);
     }
   };
 
@@ -100,7 +147,7 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
     return null;
   }
 
-  const isLoading = isGenerating || isQueuing;
+  const isLoading = isGenerating || isQueuing || isResuming;
 
   return (
     <Card className="bg-amber-50 border-amber-200">
@@ -136,23 +183,43 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
         )}
 
         <div className="grid gap-2">
-          <Button
-            onClick={handleGenerate}
-            disabled={isLoading}
-            className="w-full bg-amber-600 hover:bg-amber-700 text-white"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Generating... (1-3 minutes)
-              </>
-            ) : (
-              <>
-                <Zap className="h-4 w-4 mr-2" />
-                Generate Now (Direct)
-              </>
-            )}
-          </Button>
+          {canResume ? (
+            <Button
+              onClick={handleResume}
+              disabled={isLoading}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+            >
+              {isResuming ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Resuming Workflow...
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="h-4 w-4 mr-2" />
+                  Resume Workflow
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleGenerate}
+              disabled={isLoading}
+              className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Starting Workflow... (5-10 minutes)
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4 mr-2" />
+                  Generate Now (14-Phase Workflow)
+                </>
+              )}
+            </Button>
+          )}
 
           <Button
             onClick={handleQueue}
@@ -175,7 +242,7 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
         </div>
 
         <p className="text-xs text-amber-600 text-center">
-          Direct: waits on page. Queue: processes in background via Inngest.
+          Uses 14-phase workflow with checkpoints. Queue processes in background via Inngest.
         </p>
       </CardContent>
     </Card>

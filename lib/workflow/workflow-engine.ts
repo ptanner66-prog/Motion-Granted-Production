@@ -1259,7 +1259,7 @@ Maintain the same overall structure and length.`;
 
   const result = await askClaude({
     prompt,
-    maxTokens: 8000,
+    maxTokens: 32000,
     systemPrompt: 'You are an expert legal editor. Apply revisions precisely and professionally.',
   });
 
