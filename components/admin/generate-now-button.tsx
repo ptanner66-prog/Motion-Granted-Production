@@ -197,7 +197,7 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
                 </>
               ) : (
                 <>
-                  <PlayCircle className="h-4 w-4 mr-2" />
+                  <Play className="h-4 w-4 mr-2" />
                   Resume Workflow
                 </>
               )}
