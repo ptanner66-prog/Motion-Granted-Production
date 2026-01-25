@@ -382,6 +382,10 @@ export async function checkVPICache(
     // Log cache hit
     await logCacheHit(data.id);
 
+    // Handle verified_citations as array
+    const citations = data.verified_citations as { citation_string: string }[] | null;
+    const citationString = citations?.[0]?.citation_string || '';
+
     return {
       success: true,
       data: {
@@ -390,7 +394,7 @@ export async function checkVPICache(
           verificationId: data.id,
           result: data.verification_result as HoldingVerificationResult,
           confidence: data.confidence_score,
-          citationString: (data.verified_citations as { citation_string: string }).citation_string,
+          citationString,
           supportingQuote: data.supporting_quote,
           reasoning: data.reasoning,
           verifiedAt: data.verified_at,
