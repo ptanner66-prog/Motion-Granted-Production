@@ -7,14 +7,10 @@
  * Layer 3: Curated Overruled List (manual maintenance)
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicClient } from '@/lib/automation/claude';
 import { getCitationTreatment } from '@/lib/courtlistener/client';
 import { checkCuratedOverruledList, recordGoodLawCheck } from '../database';
 import { DEFAULT_CIV_CONFIG, BAD_LAW_ANALYSIS_PROMPT, type BadLawCheckOutput, type BadLawStatus } from '../types';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
 
 /**
  * Execute Step 5: Bad Law Check
@@ -222,6 +218,11 @@ async function runAIPatternDetection(caseName: string): Promise<{
     .replace('{search_result_snippets}', searchResults.join('\n\n---\n\n'));
 
   try {
+    const anthropic = await getAnthropicClient();
+    if (!anthropic) {
+      throw new Error('Anthropic client not configured');
+    }
+
     const response = await anthropic.messages.create({
       model: config.primaryModel,
       max_tokens: 1500,

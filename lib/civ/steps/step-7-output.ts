@@ -5,7 +5,7 @@
  * for storage, reporting, and downstream use.
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import {
   calculateCompositeConfidence,
   FLAG_SEVERITY_MAP,
@@ -47,7 +47,7 @@ export function compileVerificationOutput(
     apiCallsMade: number;
   }
 ): FinalVerificationOutput {
-  const verificationId = uuidv4();
+  const verificationId = crypto.randomUUID();
   const endTime = Date.now();
 
   // Parse citation for structured data

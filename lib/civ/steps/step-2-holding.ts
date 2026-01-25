@@ -8,7 +8,7 @@
  * This catches mischaracterized holdings - the most dangerous citation error.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicClient } from '@/lib/automation/claude';
 import { getOpinionWithText } from '@/lib/courtlistener/client';
 import { getCaseText } from '@/lib/caselaw/client';
 import {
@@ -19,11 +19,6 @@ import {
   type HoldingVerificationResult,
   type PropositionType,
 } from '../types';
-
-// Initialize Anthropic client
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
 
 /**
  * Execute Step 2: Holding Verification
@@ -214,6 +209,11 @@ async function runStage1Verification(
     .replace('{proposition}', proposition);
 
   try {
+    const anthropic = await getAnthropicClient();
+    if (!anthropic) {
+      throw new Error('Anthropic client not configured');
+    }
+
     const response = await anthropic.messages.create({
       model,
       max_tokens: 2000,
@@ -357,6 +357,11 @@ async function runStage2Verification(
     + `\n\nOPINION EXCERPT:\n${excerpt}`;
 
   try {
+    const anthropic = await getAnthropicClient();
+    if (!anthropic) {
+      throw new Error('Anthropic client not configured');
+    }
+
     const response = await anthropic.messages.create({
       model,
       max_tokens: 2000,

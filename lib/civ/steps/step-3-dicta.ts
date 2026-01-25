@@ -5,12 +5,8 @@
  * Citing dicta as if it were holding is a common error.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicClient } from '@/lib/automation/claude';
 import { DEFAULT_CIV_CONFIG, DICTA_DETECTION_PROMPT, type DictaDetectionOutput, type DictaClassification, type PropositionType } from '../types';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
 
 /**
  * Execute Step 3: Dicta Detection
@@ -40,6 +36,11 @@ export async function executeDictaDetection(
       .replace('{case_name}', caseName)
       .replace('{quoted_or_paraphrased_text}', quotedOrParaphrasedText)
       .replace('{surrounding_paragraphs}', surroundingContext || 'No additional context available.');
+
+    const anthropic = await getAnthropicClient();
+    if (!anthropic) {
+      throw new Error('Anthropic client not configured');
+    }
 
     const response = await anthropic.messages.create({
       model: config.primaryModel,
