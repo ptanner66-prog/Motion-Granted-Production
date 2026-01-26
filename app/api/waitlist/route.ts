@@ -17,8 +17,8 @@ const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 10; // requests per hour
 const RATE_WINDOW = 60 * 60 * 1000; // 1 hour in ms
 
-function getClientIP(request: NextRequest): string {
-  const headersList = headers();
+async function getClientIP(request: NextRequest): Promise<string> {
+  const headersList = await headers();
   const forwardedFor = headersList.get('x-forwarded-for');
   if (forwardedFor) {
     return forwardedFor.split(',')[0].trim();
@@ -60,7 +60,7 @@ function isValidStateCode(code: string): boolean {
 export async function POST(request: NextRequest) {
   try {
     // Rate limiting
-    const clientIP = getClientIP(request);
+    const clientIP = await getClientIP(request);
     const rateLimit = checkRateLimit(clientIP);
 
     if (!rateLimit.allowed) {
