@@ -170,7 +170,7 @@ export function useOrderQueueRealtime(
       // Filter by tier (needs to be done client-side due to nested join)
       let filteredData = data || [];
       if (filters.tier && filters.tier.length > 0) {
-        filteredData = filteredData.filter((order) => {
+        filteredData = filteredData.filter((order: Order) => {
           const tier = order.order_workflow_state?.[0]?.current_tier;
           return tier && filters.tier!.includes(tier as 'A' | 'B' | 'C');
         });
@@ -178,7 +178,7 @@ export function useOrderQueueRealtime(
 
       // Filter by assigned admin
       if (filters.assignedTo) {
-        filteredData = filteredData.filter((order) => {
+        filteredData = filteredData.filter((order: Order) => {
           const assigned = order.order_workflow_state?.[0]?.assigned_to;
           return assigned === filters.assignedTo;
         });
