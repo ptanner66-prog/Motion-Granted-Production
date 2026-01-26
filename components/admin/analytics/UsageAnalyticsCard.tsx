@@ -68,6 +68,15 @@ interface AIUsageRow {
   cost: number | null;
 }
 
+interface ErrorRow {
+  source: string | null;
+  status: string;
+}
+
+interface UserOrderRow {
+  user_id: string;
+}
+
 interface TurnaroundMetrics {
   average: number;
   median: number;
@@ -240,7 +249,7 @@ async function fetchAnalytics(timeRange: TimeRange): Promise<AnalyticsData> {
     .gte('created_at', startDate.toISOString());
 
   const errorsByComponent: Record<string, number> = {};
-  (errorData || []).forEach((e) => {
+  (errorData || []).forEach((e: ErrorRow) => {
     const source = e.source || 'unknown';
     errorsByComponent[source] = (errorsByComponent[source] || 0) + 1;
   });
@@ -275,7 +284,7 @@ async function fetchAnalytics(timeRange: TimeRange): Promise<AnalyticsData> {
     .select('user_id')
     .gte('created_at', startDate.toISOString());
 
-  const activeUserIds = new Set((activeUserOrders || []).map((o) => o.user_id));
+  const activeUserIds = new Set((activeUserOrders || []).map((o: UserOrderRow) => o.user_id));
 
   const userGrowth = (newUsersLastMonth || 0) > 0
     ? (((newUsersThisMonth || 0) - (newUsersLastMonth || 0)) / (newUsersLastMonth || 1)) * 100
