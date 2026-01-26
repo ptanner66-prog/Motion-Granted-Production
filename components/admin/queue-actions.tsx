@@ -55,26 +55,26 @@ export function QueueActions({ pendingReviewCount, failedCount, stuckCount }: Qu
   const hasIssues = failedCount > 0 || stuckCount > 0;
 
   return (
-    <Card className={`border-0 shadow-sm ${hasIssues ? 'bg-amber-50' : 'bg-teal-50'}`}>
+    <Card className={`bg-white border shadow-sm ${hasIssues ? 'border-l-4 border-l-amber-500 border-gray-200' : 'border-gray-200'}`}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {hasIssues ? (
-              <AlertCircle className="h-5 w-5 text-amber-600" />
+              <AlertCircle className="h-5 w-5 text-gray-600" />
             ) : (
-              <CheckCircle className="h-5 w-5 text-teal-600" />
+              <CheckCircle className="h-5 w-5 text-gray-600" />
             )}
-            <CardTitle className="text-lg">
+            <CardTitle className="text-lg text-navy">
               {hasIssues ? 'Queue Actions Needed' : 'Queue Status Good'}
             </CardTitle>
           </div>
         </div>
-        <CardDescription className={hasIssues ? 'text-amber-700' : 'text-teal-700'}>
+        <CardDescription className="text-gray-600">
           {pendingReviewCount > 0 && (
             <span className="font-medium">{pendingReviewCount} motion(s) ready for review. </span>
           )}
           {failedCount > 0 && (
-            <span className="text-red-600 font-medium">{failedCount} failed. </span>
+            <span className="font-medium">{failedCount} failed. </span>
           )}
           {stuckCount > 0 && (
             <span>{stuckCount} may be stuck. </span>
@@ -92,7 +92,6 @@ export function QueueActions({ pendingReviewCount, failedCount, stuckCount }: Qu
               disabled={isResetting}
               variant="outline"
               size="sm"
-              className="border-amber-300 text-amber-700 hover:bg-amber-100"
             >
               {isResetting ? (
                 <>

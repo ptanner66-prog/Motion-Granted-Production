@@ -71,22 +71,22 @@ export function QuickActionsPanel({
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {/* Status Overview */}
-      <Card className={totalActionable > 0 ? 'border-amber-200 bg-amber-50' : 'border-teal-200 bg-teal-50'}>
+      <Card className={`bg-white border shadow-sm ${totalActionable > 0 ? 'border-l-4 border-l-amber-500 border-gray-200' : 'border-gray-200'}`}>
         <CardHeader className="pb-2">
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="text-lg flex items-center gap-2 text-navy">
             {totalActionable > 0 ? (
               <>
-                <AlertTriangle className="h-5 w-5 text-amber-600" />
-                <span className="text-amber-800">Action Required</span>
+                <AlertTriangle className="h-5 w-5 text-gray-600" />
+                <span>Action Required</span>
               </>
             ) : (
               <>
-                <CheckCircle className="h-5 w-5 text-teal-600" />
-                <span className="text-teal-800">All Clear</span>
+                <CheckCircle className="h-5 w-5 text-gray-600" />
+                <span>All Clear</span>
               </>
             )}
           </CardTitle>
-          <CardDescription className={totalActionable > 0 ? 'text-amber-700' : 'text-teal-700'}>
+          <CardDescription className="text-gray-600">
             {pendingReviewCount > 0 && (
               <span className="block">
                 <strong>{pendingReviewCount}</strong> motion(s) ready for review
@@ -103,7 +103,7 @@ export function QuickActionsPanel({
               </span>
             )}
             {failedCount > 0 && (
-              <span className="block text-red-600">
+              <span className="block">
                 <strong>{failedCount}</strong> failed - needs attention
               </span>
             )}
@@ -115,7 +115,7 @@ export function QuickActionsPanel({
         <CardContent className="pt-2">
           <div className="flex flex-wrap gap-2">
             {pendingReviewCount > 0 && (
-              <Button size="sm" className="bg-teal-600 hover:bg-teal-700" asChild>
+              <Button size="sm" asChild>
                 <Link href="/admin/queue">
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Review & Approve ({pendingReviewCount})
@@ -126,7 +126,6 @@ export function QuickActionsPanel({
               <Button
                 size="sm"
                 variant="outline"
-                className="border-amber-300 text-amber-700 hover:bg-amber-100"
                 onClick={handleResetQueue}
                 disabled={isResetting}
               >
@@ -143,10 +142,10 @@ export function QuickActionsPanel({
       </Card>
 
       {/* Recent Orders */}
-      <Card>
+      <Card className="bg-white border border-gray-200 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Clock className="h-5 w-5 text-gray-400" />
+          <CardTitle className="text-lg flex items-center gap-2 text-navy">
+            <Clock className="h-5 w-5 text-gray-500" />
             Recent Orders
           </CardTitle>
           <CardDescription>Latest orders requiring action</CardDescription>
@@ -183,14 +182,14 @@ export function QuickActionsPanel({
 
 function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { color: string; label: string }> = {
-    pending_review: { color: 'bg-teal-100 text-teal-700', label: 'Ready' },
-    in_progress: { color: 'bg-blue-100 text-blue-700', label: 'Generating' },
-    submitted: { color: 'bg-gray-100 text-gray-700', label: 'Queued' },
-    generation_failed: { color: 'bg-red-100 text-red-700', label: 'Failed' },
-    draft_delivered: { color: 'bg-teal-100 text-teal-700', label: 'Delivered' },
+    pending_review: { color: 'bg-gray-100 text-gray-700 border border-gray-300', label: 'Ready' },
+    in_progress: { color: 'bg-gray-100 text-gray-700 border border-gray-300', label: 'Generating' },
+    submitted: { color: 'bg-gray-100 text-gray-700 border border-gray-300', label: 'Queued' },
+    generation_failed: { color: 'bg-gray-100 text-gray-700 border-l-2 border-l-red-500 border border-gray-300', label: 'Failed' },
+    draft_delivered: { color: 'bg-gray-100 text-gray-700 border border-gray-300', label: 'Delivered' },
   };
 
-  const cfg = config[status] || { color: 'bg-gray-100 text-gray-700', label: status };
+  const cfg = config[status] || { color: 'bg-gray-100 text-gray-700 border border-gray-300', label: status };
 
   return (
     <span className={`px-2 py-0.5 rounded text-xs font-medium ${cfg.color}`}>

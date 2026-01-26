@@ -75,9 +75,9 @@ interface PhaseRow {
 }
 
 const TIER_COLORS = {
-  A: 'bg-gray-100 text-gray-700',
-  B: 'bg-blue-100 text-blue-700',
-  C: 'bg-purple-100 text-purple-700',
+  A: 'bg-gray-100 text-gray-700 border-gray-300',
+  B: 'bg-gray-100 text-gray-700 border-gray-300',
+  C: 'bg-gray-100 text-gray-700 border-gray-300',
 }
 
 export default async function AdminDashboardPage() {
@@ -206,10 +206,6 @@ export default async function AdminDashboardPage() {
       label: 'New Orders',
       value: pendingOrders,
       icon: AlertCircle,
-      bgColor: 'bg-gradient-to-br from-orange-50 to-orange-100',
-      iconBg: 'bg-orange-500/10',
-      iconColor: 'text-orange-600',
-      valueColor: 'text-orange-700',
       urgent: pendingOrders > 0,
       href: '/admin/orders?status=submitted'
     },
@@ -217,30 +213,18 @@ export default async function AdminDashboardPage() {
       label: 'In Progress',
       value: inProgressOrders,
       icon: Clock,
-      bgColor: 'bg-gradient-to-br from-blue-50 to-blue-100',
-      iconBg: 'bg-blue-500/10',
-      iconColor: 'text-blue-600',
-      valueColor: 'text-blue-700',
       href: '/admin/orders?status=in_progress'
     },
     {
       label: 'Avg. Turnaround',
       value: avgTurnaroundDays !== null ? `${avgTurnaroundDays} days` : 'N/A',
       icon: CheckCircle,
-      bgColor: 'bg-gradient-to-br from-emerald-50 to-emerald-100',
-      iconBg: 'bg-emerald-500/10',
-      iconColor: 'text-emerald-600',
-      valueColor: 'text-emerald-700',
       href: '/admin/orders?status=completed'
     },
     {
       label: 'Total Revenue',
       value: formatCurrency(totalRevenue),
       icon: DollarSign,
-      bgColor: 'bg-gradient-to-br from-purple-50 to-purple-100',
-      iconBg: 'bg-purple-500/10',
-      iconColor: 'text-purple-600',
-      valueColor: 'text-purple-700',
       isRevenue: true,
       href: '/admin/analytics'
     },
@@ -272,18 +256,18 @@ export default async function AdminDashboardPage() {
 
       {/* Workflow Setup Banner */}
       {!workflowTablesExist && (
-        <Card className="mb-8 bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="mb-8 bg-white border border-gray-200 border-l-4 border-l-amber-500 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
-              <div className="bg-amber-100 p-3 rounded-xl">
-                <AlertTriangle className="h-6 w-6 text-amber-600" />
+              <div className="bg-gray-100 p-3 rounded-lg">
+                <AlertTriangle className="h-6 w-6 text-gray-600" />
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-navy mb-1">Workflow System Setup Required</h3>
                 <p className="text-sm text-gray-600 mb-3">
                   The AI workflow system tables have not been created yet. Run the database migration to enable automated document production with 14-phase workflows, citation verification, and quality scoring.
                 </p>
-                <div className="bg-white/50 rounded-lg p-3 font-mono text-xs text-gray-700 mb-3">
+                <div className="bg-gray-50 rounded-lg p-3 font-mono text-xs text-gray-700 mb-3 border border-gray-200">
                   <p className="mb-1 text-gray-500">-- Run this in your Supabase SQL Editor:</p>
                   <p>supabase/migrations/003_motion_workflow_system.sql</p>
                 </div>
@@ -303,19 +287,19 @@ export default async function AdminDashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         {stats.map((stat) => (
           <Link key={stat.label} href={stat.href} className="group">
-            <Card className={`${stat.bgColor} border-0 overflow-hidden transition-all hover:scale-[1.02] hover:shadow-lg ${stat.urgent ? 'ring-2 ring-orange-400' : ''}`}>
+            <Card className={`bg-white border border-gray-200 shadow-sm overflow-hidden transition-all hover:shadow-md ${stat.urgent ? 'border-l-4 border-l-red-500' : ''}`}>
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600 mb-1">
+                    <p className="text-sm font-medium text-gray-500 mb-1">
                       {stat.label}
                     </p>
-                    <p className={`text-3xl font-bold ${stat.valueColor} ${stat.isRevenue ? '' : 'tabular-nums'}`}>
+                    <p className={`text-3xl font-bold text-navy ${stat.isRevenue ? '' : 'tabular-nums'}`}>
                       {stat.value}
                     </p>
                   </div>
-                  <div className={`${stat.iconBg} p-3 rounded-xl transition-transform duration-300 group-hover:scale-110`}>
-                    <stat.icon className={`h-6 w-6 ${stat.iconColor}`} />
+                  <div className="bg-gray-100 p-3 rounded-lg transition-transform duration-300 group-hover:scale-105">
+                    <stat.icon className="h-6 w-6 text-gray-600" />
                   </div>
                 </div>
               </CardContent>
@@ -330,8 +314,8 @@ export default async function AdminDashboardPage() {
           <Card className="bg-white border border-gray-200 shadow-sm">
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
-                <div className="bg-blue-100 p-3 rounded-xl">
-                  <Workflow className="h-6 w-6 text-blue-600" />
+                <div className="bg-gray-100 p-3 rounded-lg">
+                  <Workflow className="h-6 w-6 text-gray-600" />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Active Workflows</p>
@@ -340,11 +324,11 @@ export default async function AdminDashboardPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-white border border-gray-200 shadow-sm">
+          <Card className={`bg-white border shadow-sm ${reviewCount > 0 ? 'border-l-4 border-l-amber-500 border-gray-200' : 'border-gray-200'}`}>
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
-                <div className="bg-yellow-100 p-3 rounded-xl">
-                  <AlertTriangle className="h-6 w-6 text-yellow-600" />
+                <div className="bg-gray-100 p-3 rounded-lg">
+                  <AlertTriangle className="h-6 w-6 text-gray-600" />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Needs Review</p>
@@ -356,8 +340,8 @@ export default async function AdminDashboardPage() {
           <Card className="bg-white border border-gray-200 shadow-sm">
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
-                <div className="bg-green-100 p-3 rounded-xl">
-                  <BookCheck className="h-6 w-6 text-green-600" />
+                <div className="bg-gray-100 p-3 rounded-lg">
+                  <BookCheck className="h-6 w-6 text-gray-600" />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Completed</p>
@@ -366,11 +350,11 @@ export default async function AdminDashboardPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-white border border-gray-200 shadow-sm">
+          <Card className={`bg-white border shadow-sm ${workflowsBlocked > 0 ? 'border-l-4 border-l-red-500 border-gray-200' : 'border-gray-200'}`}>
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
-                <div className="bg-red-100 p-3 rounded-xl">
-                  <AlertCircle className="h-6 w-6 text-red-600" />
+                <div className="bg-gray-100 p-3 rounded-lg">
+                  <AlertCircle className="h-6 w-6 text-gray-600" />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Blocked</p>
@@ -531,18 +515,18 @@ export default async function AdminDashboardPage() {
               <h3 className="text-sm font-medium text-gray-500 mb-3">Motion Tiers</h3>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-gray-600" />
-                  <Badge variant="outline" className="bg-gray-100 text-gray-700">Tier A</Badge>
+                  <FileText className="h-4 w-4 text-gray-500" />
+                  <Badge variant="outline" className="bg-white border-gray-300 text-gray-700">Tier A</Badge>
                   <span className="text-sm text-gray-600">Procedural/Administrative</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Scale className="h-4 w-4 text-blue-600" />
-                  <Badge variant="outline" className="bg-blue-100 text-blue-700">Tier B</Badge>
+                  <Scale className="h-4 w-4 text-gray-500" />
+                  <Badge variant="outline" className="bg-white border-gray-300 text-gray-700">Tier B</Badge>
                   <span className="text-sm text-gray-600">Intermediate</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-purple-600" />
-                  <Badge variant="outline" className="bg-purple-100 text-purple-700">Tier C</Badge>
+                  <Shield className="h-4 w-4 text-gray-500" />
+                  <Badge variant="outline" className="bg-white border-gray-300 text-gray-700">Tier C</Badge>
                   <span className="text-sm text-gray-600">Complex/Dispositive</span>
                 </div>
               </div>

@@ -123,43 +123,43 @@ export default async function AdminAnalyticsPage() {
 
       {/* Key Metrics */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
+        <Card className="bg-white border border-gray-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500 mb-1">Total Revenue</p>
                 <p className="text-3xl font-bold text-navy">{formatCurrency(totalRevenue)}</p>
-                <div className={`flex items-center gap-1 mt-2 text-sm ${revenueChange >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                <div className={`flex items-center gap-1 mt-2 text-sm ${revenueChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {revenueChange >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
                   <span>{Math.abs(revenueChange).toFixed(1)}% vs last month</span>
                 </div>
               </div>
-              <div className="bg-emerald-200 p-3 rounded-xl">
-                <DollarSign className="h-6 w-6 text-emerald-600" />
+              <div className="bg-gray-100 p-3 rounded-lg">
+                <DollarSign className="h-6 w-6 text-gray-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+        <Card className="bg-white border border-gray-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500 mb-1">Total Orders</p>
                 <p className="text-3xl font-bold text-navy">{activeOrders.length}</p>
-                <div className={`flex items-center gap-1 mt-2 text-sm ${ordersChange >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                <div className={`flex items-center gap-1 mt-2 text-sm ${ordersChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {ordersChange >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
                   <span>{Math.abs(ordersChange).toFixed(1)}% vs last month</span>
                 </div>
               </div>
-              <div className="bg-blue-200 p-3 rounded-xl">
-                <FileText className="h-6 w-6 text-blue-600" />
+              <div className="bg-gray-100 p-3 rounded-lg">
+                <FileText className="h-6 w-6 text-gray-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+        <Card className="bg-white border border-gray-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
@@ -167,14 +167,14 @@ export default async function AdminAnalyticsPage() {
                 <p className="text-3xl font-bold text-navy">{formatCurrency(avgOrderValue)}</p>
                 <p className="text-sm text-gray-400 mt-2">Per order</p>
               </div>
-              <div className="bg-purple-200 p-3 rounded-xl">
-                <TrendingUp className="h-6 w-6 text-purple-600" />
+              <div className="bg-gray-100 p-3 rounded-lg">
+                <TrendingUp className="h-6 w-6 text-gray-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200">
+        <Card className="bg-white border border-gray-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
@@ -182,8 +182,8 @@ export default async function AdminAnalyticsPage() {
                 <p className="text-3xl font-bold text-navy">{totalClients || 0}</p>
                 <p className="text-sm text-gray-400 mt-2">Registered users</p>
               </div>
-              <div className="bg-teal-200 p-3 rounded-xl">
-                <Users className="h-6 w-6 text-teal-600" />
+              <div className="bg-gray-100 p-3 rounded-lg">
+                <Users className="h-6 w-6 text-gray-600" />
               </div>
             </div>
           </CardContent>
@@ -193,7 +193,7 @@ export default async function AdminAnalyticsPage() {
       {/* Secondary Stats */}
       <div className="grid gap-6 lg:grid-cols-2 mb-8">
         {/* Order Status Breakdown */}
-        <Card className="bg-white border-gray-200">
+        <Card className="bg-white border border-gray-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-navy">Order Status</CardTitle>
             <CardDescription className="text-gray-400">Current order pipeline</CardDescription>
@@ -201,15 +201,15 @@ export default async function AdminAnalyticsPage() {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="bg-orange-100 p-2 rounded-lg">
-                  <Clock className="h-4 w-4 text-orange-500" />
+                <div className="bg-gray-100 p-2 rounded-lg">
+                  <Clock className="h-4 w-4 text-gray-500" />
                 </div>
                 <span className="text-gray-700">Pending</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-orange-500 rounded-full"
+                    className="h-full bg-gray-500 rounded-full"
                     style={{ width: `${activeOrders.length > 0 ? (pendingOrders / activeOrders.length) * 100 : 0}%` }}
                   />
                 </div>
@@ -218,15 +218,15 @@ export default async function AdminAnalyticsPage() {
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="bg-blue-100 p-2 rounded-lg">
-                  <BarChart3 className="h-4 w-4 text-blue-500" />
+                <div className="bg-gray-100 p-2 rounded-lg">
+                  <BarChart3 className="h-4 w-4 text-gray-500" />
                 </div>
                 <span className="text-gray-700">In Progress</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-blue-500 rounded-full"
+                    className="h-full bg-gray-600 rounded-full"
                     style={{ width: `${activeOrders.length > 0 ? (inProgressOrders / activeOrders.length) * 100 : 0}%` }}
                   />
                 </div>
@@ -235,15 +235,15 @@ export default async function AdminAnalyticsPage() {
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="bg-emerald-100 p-2 rounded-lg">
-                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                <div className="bg-gray-100 p-2 rounded-lg">
+                  <CheckCircle className="h-4 w-4 text-gray-500" />
                 </div>
                 <span className="text-gray-700">Completed</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-emerald-500 rounded-full"
+                    className="h-full bg-gray-700 rounded-full"
                     style={{ width: `${activeOrders.length > 0 ? (completedOrders / activeOrders.length) * 100 : 0}%` }}
                   />
                 </div>
@@ -254,7 +254,7 @@ export default async function AdminAnalyticsPage() {
         </Card>
 
         {/* Turnaround Distribution */}
-        <Card className="bg-white border-gray-200">
+        <Card className="bg-white border border-gray-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-navy">Turnaround Times</CardTitle>
             <CardDescription className="text-gray-400">Order delivery preferences</CardDescription>
@@ -263,24 +263,15 @@ export default async function AdminAnalyticsPage() {
             {Object.entries(turnaroundTypes).map(([type, count]) => (
               <div key={type} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${
-                    type === 'Standard' ? 'bg-gray-200' :
-                    type === '72-hour Rush' ? 'bg-orange-100' : 'bg-red-100'
-                  }`}>
-                    <Clock className={`h-4 w-4 ${
-                      type === 'Standard' ? 'text-gray-500' :
-                      type === '72-hour Rush' ? 'text-orange-500' : 'text-red-500'
-                    }`} />
+                  <div className="bg-gray-100 p-2 rounded-lg">
+                    <Clock className="h-4 w-4 text-gray-500" />
                   </div>
                   <span className="text-gray-700">{type}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full ${
-                        type === 'Standard' ? 'bg-gray-500' :
-                        type === '72-hour Rush' ? 'bg-orange-500' : 'bg-red-500'
-                      }`}
+                      className="h-full rounded-full bg-gray-600"
                       style={{ width: `${activeOrders.length > 0 ? (count / activeOrders.length) * 100 : 0}%` }}
                     />
                   </div>
@@ -296,7 +287,7 @@ export default async function AdminAnalyticsPage() {
       </div>
 
       {/* Top Motion Types */}
-      <Card className="bg-white border-gray-200">
+      <Card className="bg-white border border-gray-200 shadow-sm">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-navy">Popular Motion Types</CardTitle>
           <CardDescription className="text-gray-400">Most requested motion types</CardDescription>
@@ -315,7 +306,7 @@ export default async function AdminAnalyticsPage() {
                   <div className="flex items-center gap-3">
                     <div className="w-48 h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-teal to-teal-dark rounded-full"
+                        className="h-full bg-gray-600 rounded-full"
                         style={{ width: `${(count / topMotionTypes[0][1]) * 100}%` }}
                       />
                     </div>

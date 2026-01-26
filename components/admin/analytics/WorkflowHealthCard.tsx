@@ -62,10 +62,10 @@ export function WorkflowHealthCard() {
 
   if (loading || !health) {
     return (
-      <Card>
+      <Card className="bg-white border border-gray-200 shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-teal-500" />
+            <Activity className="h-5 w-5 text-gray-600" />
             Workflow Health
           </CardTitle>
         </CardHeader>
@@ -77,43 +77,43 @@ export function WorkflowHealthCard() {
   }
 
   return (
-    <Card>
+    <Card className="bg-white border border-gray-200 shadow-sm">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Activity className="h-5 w-5 text-teal-500" />
+          <Activity className="h-5 w-5 text-gray-600" />
           Workflow Health
           <span className="ml-auto text-xs text-gray-400 font-normal">Live</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-4">
-          <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
+          <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
             <div className="flex items-center gap-2">
-              <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
-              <span className="text-2xl font-bold text-blue-700">{health.in_progress}</span>
+              <Loader2 className="h-5 w-5 text-gray-500 animate-spin" />
+              <span className="text-2xl font-bold text-navy">{health.in_progress}</span>
             </div>
-            <div className="text-sm text-blue-600 mt-1">In Progress</div>
+            <div className="text-sm text-gray-600 mt-1">In Progress</div>
           </div>
-          <div className="p-3 rounded-lg bg-amber-50 border border-amber-100">
+          <div className={`p-3 rounded-lg bg-gray-50 border ${health.in_hold > 0 ? 'border-l-4 border-l-amber-500 border-gray-200' : 'border-gray-200'}`}>
             <div className="flex items-center gap-2">
-              <PauseCircle className="h-5 w-5 text-amber-500" />
-              <span className="text-2xl font-bold text-amber-700">{health.in_hold}</span>
+              <PauseCircle className="h-5 w-5 text-gray-500" />
+              <span className="text-2xl font-bold text-navy">{health.in_hold}</span>
             </div>
-            <div className="text-sm text-amber-600 mt-1">On HOLD</div>
+            <div className="text-sm text-gray-600 mt-1">On HOLD</div>
           </div>
-          <div className="p-3 rounded-lg bg-red-50 border border-red-100">
+          <div className={`p-3 rounded-lg bg-gray-50 border ${health.with_errors > 0 ? 'border-l-4 border-l-red-500 border-gray-200' : 'border-gray-200'}`}>
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-500" />
-              <span className="text-2xl font-bold text-red-700">{health.with_errors}</span>
+              <AlertCircle className="h-5 w-5 text-gray-500" />
+              <span className="text-2xl font-bold text-navy">{health.with_errors}</span>
             </div>
-            <div className="text-sm text-red-600 mt-1">With Errors</div>
+            <div className="text-sm text-gray-600 mt-1">With Errors</div>
           </div>
-          <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+          <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-emerald-500" />
-              <span className="text-2xl font-bold text-emerald-700">${health.weekly_revenue.toLocaleString()}</span>
+              <DollarSign className="h-5 w-5 text-gray-500" />
+              <span className="text-2xl font-bold text-navy">${health.weekly_revenue.toLocaleString()}</span>
             </div>
-            <div className="text-sm text-emerald-600 mt-1">Weekly Revenue</div>
+            <div className="text-sm text-gray-600 mt-1">Weekly Revenue</div>
           </div>
         </div>
       </CardContent>
