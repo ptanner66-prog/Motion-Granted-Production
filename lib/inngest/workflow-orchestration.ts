@@ -574,6 +574,7 @@ async function executeAndLogPhase(
 
 /**
  * Get numeric phase number from phase code
+ * Aligned with PHASES.order in phase-gates.ts
  */
 function getPhaseNumber(phase: WorkflowPhaseCode): number {
   const phaseNumbers: Record<WorkflowPhaseCode, number> = {
@@ -582,15 +583,15 @@ function getPhaseNumber(phase: WorkflowPhaseCode): number {
     'III': 3,
     'IV': 4,
     'V': 5,
-    'V.1': 5,
-    'VI': 6,
-    'VII': 7,
-    'VII.1': 7,
-    'VIII': 8,
-    'VIII.5': 8,
-    'IX': 9,
-    'IX.1': 9,
-    'X': 10,
+    'V.1': 6,
+    'VI': 7,
+    'VII': 8,
+    'VII.1': 9,
+    'VIII': 10,
+    'VIII.5': 11,
+    'IX': 12,
+    'IX.1': 13,
+    'X': 14,
   };
   return phaseNumbers[phase] || 1;
 }
