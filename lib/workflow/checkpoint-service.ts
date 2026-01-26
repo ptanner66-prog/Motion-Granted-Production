@@ -23,7 +23,7 @@ import type { OperationResult } from '@/types/automation';
 // TYPES
 // ============================================================================
 
-export type CheckpointType = 'CP1' | 'CP2' | 'CP3';
+export type CheckpointType = 'CP1' | 'CP2' | 'CP3' | 'HOLD';
 
 export interface CheckpointData {
   checkpoint: CheckpointType;
@@ -68,13 +68,38 @@ const CHECKPOINT_STATUSES: Record<CheckpointType, string> = {
   'CP1': 'awaiting_cp1',
   'CP2': 'awaiting_cp2',
   'CP3': 'awaiting_cp3',
+  'HOLD': 'on_hold',
 };
 
 const CHECKPOINT_PHASES: Record<CheckpointType, number> = {
   'CP1': 4,  // After Authority Research
   'CP2': 8,  // After Judge Simulation
   'CP3': 12, // After Final Assembly
+  'HOLD': 3, // Phase III - when critical evidence missing
 };
+
+// HOLD checkpoint response types (Protocol 8)
+export type HoldResponseType =
+  | 'PROVIDE_ADDITIONAL_EVIDENCE'  // Customer uploads more docs
+  | 'PROCEED_WITH_ACKNOWLEDGMENT'  // Customer confirms risk understood
+  | 'CANCEL_ORDER';                // Full refund issued
+
+export interface HoldCheckpointData extends CheckpointData {
+  holdReason: string;
+  missingEvidence: string[];
+  documentGap: string;
+  riskAssessment: string;
+  holdTriggeredAt: string;
+  reminderSentAt?: string;
+  escalatedAt?: string;
+  autoCancelScheduledAt?: string;
+}
+
+export interface HoldResponse {
+  responseType: HoldResponseType;
+  acknowledgmentText?: string; // Required for PROCEED_WITH_ACKNOWLEDGMENT
+  newDocumentIds?: string[];   // Required for PROVIDE_ADDITIONAL_EVIDENCE
+}
 
 // ============================================================================
 // TRIGGER CHECKPOINT
@@ -686,4 +711,323 @@ export function isCheckpointPhase(phaseNumber: number, workflowPath: string): Ch
   if (phaseNumber === 8) return 'CP2';
   if (phaseNumber === 12) return 'CP3';
   return null;
+}
+
+// ============================================================================
+// HOLD CHECKPOINT (Protocol 8)
+// Triggered at Phase III when critical evidence is missing
+// ============================================================================
+
+/**
+ * Trigger HOLD checkpoint when critical evidence is missing
+ * Customer has 3 options:
+ * 1. PROVIDE_ADDITIONAL_EVIDENCE - Upload more documents
+ * 2. PROCEED_WITH_ACKNOWLEDGMENT - Confirm risk understood
+ * 3. CANCEL_ORDER - Full refund
+ *
+ * Timers:
+ * - 48hr reminder email
+ * - 7-day admin escalation
+ * - 14-day auto-cancel with refund
+ */
+export async function triggerHoldCheckpoint(
+  workflowId: string,
+  reason: string,
+  missingEvidence: string[],
+  documentGap: string,
+  riskAssessment: string
+): Promise<OperationResult> {
+  const supabase = await createClient();
+
+  try {
+    const now = new Date();
+    const reminderAt = new Date(now.getTime() + 48 * 60 * 60 * 1000); // 48 hours
+    const escalationAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const autoCancelAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000); // 14 days
+
+    const holdData: HoldCheckpointData = {
+      checkpoint: 'HOLD',
+      status: 'pending',
+      triggeredAt: now.toISOString(),
+      holdReason: reason,
+      missingEvidence,
+      documentGap,
+      riskAssessment,
+      holdTriggeredAt: now.toISOString(),
+      autoCancelScheduledAt: autoCancelAt.toISOString(),
+    };
+
+    // Update workflow to HOLD status
+    const { error: wfError } = await supabase
+      .from('order_workflows')
+      .update({
+        status: 'on_hold',
+        checkpoint_pending: 'HOLD',
+        checkpoint_data: holdData,
+        hold_triggered_at: now.toISOString(),
+        hold_reason: reason,
+        last_checkpoint_at: now.toISOString(),
+      })
+      .eq('id', workflowId);
+
+    if (wfError) {
+      return { success: false, error: wfError.message };
+    }
+
+    // Get workflow and order info for notifications
+    const { data: workflow } = await supabase
+      .from('order_workflows')
+      .select('order_id, orders(order_number, client_id, profiles!orders_client_id_fkey(email, full_name))')
+      .eq('id', workflowId)
+      .single();
+
+    // Log the HOLD event
+    await supabase.from('automation_logs').insert({
+      order_id: workflow?.order_id,
+      action_type: 'hold_checkpoint_triggered',
+      action_details: {
+        workflowId,
+        reason,
+        missingEvidence,
+        documentGap,
+        riskAssessment,
+        reminderScheduledAt: reminderAt.toISOString(),
+        escalationScheduledAt: escalationAt.toISOString(),
+        autoCancelScheduledAt: autoCancelAt.toISOString(),
+      },
+    });
+
+    // Schedule timers via Inngest
+    try {
+      const { inngest } = await import('@/lib/inngest/client');
+
+      // 48hr reminder
+      await inngest.send({
+        name: 'workflow/hold.reminder',
+        data: {
+          workflowId,
+          orderId: workflow?.order_id,
+          reminderType: '48hr',
+        },
+        ts: reminderAt.getTime(),
+      });
+
+      // 7-day escalation
+      await inngest.send({
+        name: 'workflow/hold.escalation',
+        data: {
+          workflowId,
+          orderId: workflow?.order_id,
+        },
+        ts: escalationAt.getTime(),
+      });
+
+      // 14-day auto-cancel
+      await inngest.send({
+        name: 'workflow/hold.auto-cancel',
+        data: {
+          workflowId,
+          orderId: workflow?.order_id,
+        },
+        ts: autoCancelAt.getTime(),
+      });
+    } catch (inngestError) {
+      console.error('[HOLD] Failed to schedule timers:', inngestError);
+      // Continue - timers are nice-to-have, not critical
+    }
+
+    // Create handoff file
+    await createCheckpointHandoff(workflowId, 'HOLD', holdData);
+
+    console.log(`[HOLD] Triggered for workflow ${workflowId}: ${reason}`);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to trigger HOLD checkpoint',
+    };
+  }
+}
+
+/**
+ * Process customer response to HOLD checkpoint
+ */
+export async function processHoldResponse(
+  workflowId: string,
+  response: HoldResponse
+): Promise<OperationResult<{ nextAction: string; refundInitiated?: boolean }>> {
+  const supabase = await createClient();
+
+  try {
+    const { data: workflow, error: wfError } = await supabase
+      .from('order_workflows')
+      .select('*, orders(id, order_number, total_price, stripe_payment_intent_id)')
+      .eq('id', workflowId)
+      .single();
+
+    if (wfError || !workflow) {
+      return { success: false, error: 'Workflow not found' };
+    }
+
+    if (workflow.checkpoint_pending !== 'HOLD') {
+      return { success: false, error: 'Workflow is not currently on HOLD' };
+    }
+
+    const now = new Date().toISOString();
+    const checkpointData = workflow.checkpoint_data as HoldCheckpointData;
+
+    switch (response.responseType) {
+      case 'PROVIDE_ADDITIONAL_EVIDENCE': {
+        if (!response.newDocumentIds || response.newDocumentIds.length === 0) {
+          return { success: false, error: 'Document IDs required for PROVIDE_ADDITIONAL_EVIDENCE' };
+        }
+
+        // Update workflow - resume from Phase III
+        await supabase
+          .from('order_workflows')
+          .update({
+            status: 'in_progress',
+            checkpoint_pending: null,
+            hold_response: 'PROVIDE_ADDITIONAL_EVIDENCE',
+            hold_response_at: now,
+            checkpoint_data: {
+              ...checkpointData,
+              status: 'approved',
+              respondedAt: now,
+              customerResponse: {
+                action: 'PROVIDE_ADDITIONAL_EVIDENCE',
+                newDocumentIds: response.newDocumentIds,
+                respondedAt: now,
+              },
+            },
+            current_phase: 3, // Resume at Phase III with new evidence
+            last_activity_at: now,
+          })
+          .eq('id', workflowId);
+
+        // Log the response
+        await supabase.from('automation_logs').insert({
+          order_id: workflow.order_id,
+          action_type: 'hold_response_additional_evidence',
+          action_details: {
+            workflowId,
+            newDocumentIds: response.newDocumentIds,
+          },
+        });
+
+        console.log(`[HOLD] Additional evidence provided for workflow ${workflowId}`);
+        return { success: true, data: { nextAction: 'resume_phase_3' } };
+      }
+
+      case 'PROCEED_WITH_ACKNOWLEDGMENT': {
+        if (!response.acknowledgmentText) {
+          return { success: false, error: 'Acknowledgment text required for PROCEED_WITH_ACKNOWLEDGMENT' };
+        }
+
+        // Update workflow - proceed with risk acknowledged
+        await supabase
+          .from('order_workflows')
+          .update({
+            status: 'in_progress',
+            checkpoint_pending: null,
+            hold_response: 'PROCEED_WITH_ACKNOWLEDGMENT',
+            hold_response_at: now,
+            hold_acknowledgment_text: response.acknowledgmentText,
+            checkpoint_data: {
+              ...checkpointData,
+              status: 'approved',
+              respondedAt: now,
+              customerResponse: {
+                action: 'PROCEED_WITH_ACKNOWLEDGMENT',
+                acknowledgmentText: response.acknowledgmentText,
+                respondedAt: now,
+              },
+            },
+            current_phase: 4, // Proceed to Phase IV
+            last_activity_at: now,
+          })
+          .eq('id', workflowId);
+
+        // Log the response
+        await supabase.from('automation_logs').insert({
+          order_id: workflow.order_id,
+          action_type: 'hold_response_proceed_acknowledged',
+          action_details: {
+            workflowId,
+            acknowledgmentText: response.acknowledgmentText,
+            riskAccepted: true,
+          },
+        });
+
+        console.log(`[HOLD] Risk acknowledged for workflow ${workflowId}`);
+        return { success: true, data: { nextAction: 'proceed_phase_4' } };
+      }
+
+      case 'CANCEL_ORDER': {
+        // Initiate full refund
+        const order = workflow.orders as { id: string; order_number: string; total_price: number; stripe_payment_intent_id: string };
+
+        // Update workflow to cancelled
+        await supabase
+          .from('order_workflows')
+          .update({
+            status: 'cancelled',
+            checkpoint_pending: null,
+            hold_response: 'CANCEL_ORDER',
+            hold_response_at: now,
+            checkpoint_data: {
+              ...checkpointData,
+              status: 'cancelled',
+              respondedAt: now,
+              customerResponse: {
+                action: 'CANCEL_ORDER',
+                respondedAt: now,
+              },
+            },
+            completed_at: now,
+          })
+          .eq('id', workflowId);
+
+        // Update order status
+        await supabase
+          .from('orders')
+          .update({
+            status: 'cancelled',
+            updated_at: now,
+          })
+          .eq('id', workflow.order_id);
+
+        // Create refund record
+        await supabase.from('refunds').insert({
+          order_id: workflow.order_id,
+          amount_cents: Math.round(order.total_price * 100),
+          reason: 'HOLD_CHECKPOINT_CANCEL',
+          refund_type: 'FULL',
+          status: 'pending',
+        });
+
+        // Log the cancellation
+        await supabase.from('automation_logs').insert({
+          order_id: workflow.order_id,
+          action_type: 'hold_response_cancelled',
+          action_details: {
+            workflowId,
+            refundAmount: order.total_price,
+            reason: 'Customer cancelled at HOLD checkpoint',
+          },
+        });
+
+        console.log(`[HOLD] Order cancelled at HOLD checkpoint for workflow ${workflowId}`);
+        return { success: true, data: { nextAction: 'cancelled', refundInitiated: true } };
+      }
+
+      default:
+        return { success: false, error: 'Invalid HOLD response type' };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to process HOLD response',
+    };
+  }
 }

@@ -11,10 +11,12 @@ interface GenerateNowButtonProps {
   orderId: string;
   orderNumber: string;
   orderStatus: string;
+  filingType?: 'initiating' | 'opposition';
 }
 
-export function GenerateNowButton({ orderId, orderNumber, orderStatus }: GenerateNowButtonProps) {
+export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingType }: GenerateNowButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
@@ -22,16 +24,26 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
   // Don't show if already has a motion ready or in progress
   const alreadyGenerated = ['pending_review', 'draft_delivered', 'completed', 'revision_delivered'].includes(orderStatus);
   const isInProgress = ['generating', 'in_progress'].includes(orderStatus);
+  const canResume = ['in_progress', 'generation_failed'].includes(orderStatus);
 
-  // Handle starting the 14-phase workflow
+  // Handle starting the 14-phase workflow via orchestrator
   const handleGenerateNow = async () => {
     setIsGenerating(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/orders/${orderId}/generate`, {
+      // Detect workflow path based on filing type (path_a for initiating motions, path_b for oppositions)
+      const workflowPath = filingType === 'opposition' ? 'path_b' : 'path_a';
+
+      const response = await fetch('/api/workflow/orchestrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          autoRun: true,
+          workflowPath,
+          skipDocumentParsing: false,
+        }),
       });
 
       const data = await response.json();
@@ -56,6 +68,43 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
       });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Handle resuming a paused or failed workflow
+  const handleResumeWorkflow = async () => {
+    setIsResuming(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/automation/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to resume workflow');
+      }
+
+      toast({
+        title: 'Workflow Resumed',
+        description: `Order ${orderNumber} workflow has been resumed.`,
+      });
+
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to resume workflow';
+      setError(message);
+      toast({
+        title: 'Resume Failed',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsResuming(false);
     }
   };
 
@@ -99,7 +148,7 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
         <div className="grid gap-2">
           <Button
             onClick={handleGenerateNow}
-            disabled={isGenerating || isInProgress}
+            disabled={isGenerating || isInProgress || isResuming}
             className="w-full bg-amber-600 hover:bg-amber-700 text-white"
           >
             {isGenerating ? (
@@ -119,6 +168,27 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
               </>
             )}
           </Button>
+
+          {canResume && (
+            <Button
+              onClick={handleResumeWorkflow}
+              disabled={isResuming || isGenerating}
+              variant="outline"
+              className="w-full border-amber-600 text-amber-700 hover:bg-amber-50"
+            >
+              {isResuming ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Resuming...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-2" />
+                  Resume Workflow
+                </>
+              )}
+            </Button>
+          )}
         </div>
 
         <div className="text-xs text-amber-600 space-y-1">
