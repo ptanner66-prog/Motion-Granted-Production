@@ -17,6 +17,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { getCachedCredentialStatus, verifyAllCredentials } from '@/lib/startup/credential-verifier';
 
 // ============================================================================
 // TYPES
@@ -313,16 +314,20 @@ async function checkQueue(): Promise<HealthCheckResult> {
 export async function GET() {
   const startTime = Date.now();
 
-  // Run all checks in parallel
-  const checks = await Promise.all([
-    checkDatabase(),
-    checkAnthropic(),
-    checkOpenAI(),
-    checkCourtListener(),
-    checkStripe(),
-    checkResend(),
-    checkStorage(),
-    checkQueue(),
+  // Run all checks in parallel, including credential verification
+  const [checks, credentialStatus] = await Promise.all([
+    Promise.all([
+      checkDatabase(),
+      checkAnthropic(),
+      checkOpenAI(),
+      checkCourtListener(),
+      checkStripe(),
+      checkResend(),
+      checkStorage(),
+      checkQueue(),
+    ]),
+    // Get cached credential status or run fresh verification
+    getCachedCredentialStatus().then((cached) => cached || verifyAllCredentials()),
   ]);
 
   // Determine overall status
@@ -351,6 +356,14 @@ export async function GET() {
       latencyMs: c.latencyMs,
       ...(c.error && { error: c.error }),
     })),
+    credentials: {
+      allValid: credentialStatus.allValid,
+      results: credentialStatus.results.map((r) => ({
+        service: r.service,
+        valid: r.valid,
+        ...(r.error && { error: r.error }),
+      })),
+    },
     summary: {
       total: checks.length,
       healthy: checks.filter((c) => c.status === 'healthy').length,
