@@ -54,7 +54,57 @@ export default function PrivacyPage() {
               <li>Cookies and similar tracking technologies</li>
             </ul>
 
-            <h2>3. How We Use Your Information</h2>
+            <h2>3. Artificial Intelligence Disclosure</h2>
+            <p>
+              <strong>In compliance with ABA Formal Opinion 512 and applicable state bar rules,
+              we disclose the following about our use of artificial intelligence:</strong>
+            </p>
+            <h3>3.1 AI-Assisted Drafting</h3>
+            <p>
+              Motion Granted uses artificial intelligence systems as drafting tools to assist
+              in the preparation of legal documents. AI systems may be used for:
+            </p>
+            <ul>
+              <li>Initial draft generation based on your provided facts and instructions</li>
+              <li>Legal research assistance and citation checking</li>
+              <li>Document formatting and structure optimization</li>
+              <li>Grammar and style review</li>
+            </ul>
+            <h3>3.2 Human Oversight</h3>
+            <p>
+              All AI-generated content is reviewed and supervised by qualified legal professionals
+              before delivery. Our law clerks and supervising attorneys:
+            </p>
+            <ul>
+              <li>Review all AI-generated drafts for accuracy and appropriateness</li>
+              <li>Verify legal citations and authorities</li>
+              <li>Ensure compliance with applicable rules and procedures</li>
+              <li>Make necessary corrections and enhancements</li>
+            </ul>
+            <h3>3.3 Data Processing by AI Systems</h3>
+            <p>
+              When you submit an order, your case information may be processed by AI systems.
+              This processing is subject to:
+            </p>
+            <ul>
+              <li>Strict confidentiality protections (see Section 5)</li>
+              <li>Data encryption in transit and at rest</li>
+              <li>Access controls limiting AI system data exposure</li>
+              <li>Regular security audits of AI integrations</li>
+            </ul>
+            <h3>3.4 Your Supervisory Responsibility</h3>
+            <p>
+              As the ordering attorney, you bear ultimate responsibility for reviewing,
+              approving, and supervising all work product before use or filing. You must:
+            </p>
+            <ul>
+              <li>Review all delivered documents for accuracy and completeness</li>
+              <li>Verify that the work product meets your professional standards</li>
+              <li>Make any necessary modifications before filing</li>
+              <li>Comply with any applicable disclosure requirements in your jurisdiction</li>
+            </ul>
+
+            <h2>4. How We Use Your Information</h2>
             <p>We use collected information to:</p>
             <ul>
               <li>Provide and improve our Services</li>
@@ -68,7 +118,7 @@ export default function PrivacyPage() {
               <li>Protect against fraud and unauthorized access</li>
             </ul>
 
-            <h2>4. How We Share Your Information</h2>
+            <h2>5. How We Share Your Information</h2>
             <p>We may share your information with:</p>
             <ul>
               <li>
@@ -92,7 +142,7 @@ export default function PrivacyPage() {
               We do not sell your personal information to third parties for marketing purposes.
             </p>
 
-            <h2>5. Data Security</h2>
+            <h2>6. Data Security</h2>
             <p>
               We implement appropriate technical and organizational measures to protect your
               information, including:
@@ -109,7 +159,7 @@ export default function PrivacyPage() {
               absolute security.
             </p>
 
-            <h2>6. Data Retention</h2>
+            <h2>7. Data Retention</h2>
             <p>
               We retain your information for as long as necessary to provide our Services and
               fulfill the purposes described in this Privacy Policy. Specifically:
@@ -121,7 +171,7 @@ export default function PrivacyPage() {
               <li>Payment records: Retained as required by law</li>
             </ul>
 
-            <h2>7. Your Rights</h2>
+            <h2>8. Your Rights</h2>
             <p>You have the right to:</p>
             <ul>
               <li>Access your personal information</li>
@@ -135,7 +185,7 @@ export default function PrivacyPage() {
               To exercise these rights, contact us at privacy@motiongranted.com.
             </p>
 
-            <h2>8. Cookies and Tracking</h2>
+            <h2>9. Cookies and Tracking</h2>
             <p>
               We use cookies and similar technologies to enhance your experience. These include:
             </p>
@@ -156,7 +206,7 @@ export default function PrivacyPage() {
               affect functionality.
             </p>
 
-            <h2>9. Third-Party Services</h2>
+            <h2>10. Third-Party Services</h2>
             <p>
               Our Services integrate with third-party services including:
             </p>
@@ -170,20 +220,20 @@ export default function PrivacyPage() {
               These services have their own privacy policies. We encourage you to review them.
             </p>
 
-            <h2>10. Children&apos;s Privacy</h2>
+            <h2>11. Children&apos;s Privacy</h2>
             <p>
               Our Services are not intended for individuals under 18. We do not knowingly
               collect information from children. If we learn we have collected information
               from a child, we will delete it.
             </p>
 
-            <h2>11. International Data Transfers</h2>
+            <h2>12. International Data Transfers</h2>
             <p>
               Your information may be transferred to and processed in countries other than
               your own. We ensure appropriate safeguards are in place for such transfers.
             </p>
 
-            <h2>12. California Privacy Rights</h2>
+            <h2>13. California Privacy Rights</h2>
             <p>
               California residents have additional rights under the CCPA, including the
               right to know what information we collect and how we use it, the right to
@@ -191,14 +241,14 @@ export default function PrivacyPage() {
               sell personal information).
             </p>
 
-            <h2>13. Changes to This Policy</h2>
+            <h2>14. Changes to This Policy</h2>
             <p>
               We may update this Privacy Policy from time to time. We will notify you of
               material changes by email or by posting a notice on our website. Your continued
               use of our Services after changes constitutes acceptance of the updated policy.
             </p>
 
-            <h2>14. Contact Us</h2>
+            <h2>15. Contact Us</h2>
             <p>
               For questions about this Privacy Policy or our data practices, contact:
             </p>

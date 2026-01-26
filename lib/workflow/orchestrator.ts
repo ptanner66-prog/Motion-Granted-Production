@@ -560,10 +560,10 @@ export async function generateDraftWithSuperprompt(
     workflowPath,
   });
 
-  // Generate with Claude
+  // Generate with Claude - using 32000 tokens for Opus 4.5 (required for Tier C motions)
   const result = await askClaude({
     prompt: superprompt + '\n\nGenerate the complete motion document now:',
-    maxTokens: 8000,
+    maxTokens: 32000,
     systemPrompt: 'You are an expert legal document drafter. Produce professional, court-ready legal documents.',
   });
 
