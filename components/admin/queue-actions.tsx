@@ -19,7 +19,7 @@ export function QueueActions({ pendingReviewCount, failedCount, stuckCount }: Qu
   const router = useRouter();
 
   const handleResetQueue = async () => {
-    if (!confirm('This will move all stuck orders to pending_review status. Continue?')) {
+    if (!confirm('This will COMPLETELY RESET all stuck orders:\n\n• Clear all workflow data\n• Delete phase executions and citations\n• Reset orders to "submitted" status\n\nOrders will restart from Phase 1. Continue?')) {
       return;
     }
 
