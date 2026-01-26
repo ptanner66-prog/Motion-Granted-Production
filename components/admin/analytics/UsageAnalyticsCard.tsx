@@ -54,6 +54,15 @@ interface OrderRow {
   amount: number | null;
 }
 
+interface AmountRow {
+  amount: number | null;
+}
+
+interface CompletedOrderRow {
+  created_at: string;
+  completed_at: string;
+}
+
 interface TurnaroundMetrics {
   average: number;
   median: number;
@@ -164,8 +173,8 @@ async function fetchAnalytics(timeRange: TimeRange): Promise<AnalyticsData> {
     .lte('created_at', lastMonthEnd.toISOString())
     .in('status', ['completed', 'delivered']);
 
-  const thisMonthRevenue = (thisMonthOrders || []).reduce((sum, o) => sum + (o.amount || 0), 0);
-  const lastMonthRevenue = (lastMonthOrders || []).reduce((sum, o) => sum + (o.amount || 0), 0);
+  const thisMonthRevenue = (thisMonthOrders || []).reduce((sum: number, o: AmountRow) => sum + (o.amount || 0), 0);
+  const lastMonthRevenue = (lastMonthOrders || []).reduce((sum: number, o: AmountRow) => sum + (o.amount || 0), 0);
   const revenueGrowth = lastMonthRevenue > 0
     ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
     : 0;
@@ -178,7 +187,7 @@ async function fetchAnalytics(timeRange: TimeRange): Promise<AnalyticsData> {
     .gte('created_at', startDate.toISOString());
 
   const turnaroundTimes = (completedOrders || [])
-    .map((o) => {
+    .map((o: CompletedOrderRow) => {
       const created = new Date(o.created_at).getTime();
       const completed = new Date(o.completed_at).getTime();
       return (completed - created) / (1000 * 60 * 60); // Hours
