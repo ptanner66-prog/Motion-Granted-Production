@@ -160,6 +160,8 @@ export async function startWorkflow(
         motion_type_id: request.motionTypeId,
         workflow_path: request.workflowPath,
         current_phase: 1,
+        current_phase_code: 'I',
+        completed_phases: [], // IMPORTANT: Initialize empty for phase gates
         status: 'pending',
         started_at: new Date().toISOString(),
         metadata: request.metadata || {},

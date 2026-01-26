@@ -156,6 +156,8 @@ export const workflowOrchestration = inngest.createFunction(
           .update({
             status: 'in_progress',
             current_phase: 1,
+            current_phase_code: 'I',
+            completed_phases: [], // Reset for fresh start
             started_at: new Date().toISOString(),
             error_count: 0,
             last_error: null,
@@ -169,6 +171,8 @@ export const workflowOrchestration = inngest.createFunction(
             order_id: orderId,
             workflow_path: 'path_a', // Default to initiating motion
             current_phase: 1,
+            current_phase_code: 'I',
+            completed_phases: [], // IMPORTANT: Initialize empty for phase gates
             status: 'in_progress',
             started_at: new Date().toISOString(),
             metadata: {
