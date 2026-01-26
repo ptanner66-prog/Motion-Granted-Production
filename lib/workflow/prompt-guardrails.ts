@@ -105,16 +105,14 @@ export const PHASE_OUTPUT_TYPES: Record<string, string> = {
   'IV': 'Citation research results with verified case law for the citation bank',
   'V': 'Initial draft with structure and arguments (NOT the final motion)',
   'V.1': 'Citation verification results with status for each citation',
-  'VI': 'Internal review feedback with quality scores and revision suggestions',
+  'VI': 'Opposition anticipation analysis and response strategies',
   'VII': 'Judge simulation results with criticism and revision requirements',
-  'VIII': 'Revised draft incorporating required changes',
   'VII.1': 'New citation verification for any citations added in revisions',
-  'IX': 'Separate statement of undisputed facts (if applicable)',
-  'X': 'Final assembled document ready for QA',
-  'XI': 'QA checklist results with formatting verification',
-  'XII': 'Attorney review approval status',
-  'XIII': 'Delivery package preparation confirmation',
-  'XIV': 'Delivery confirmation',
+  'VIII': 'Revised draft incorporating required changes',
+  'VIII.5': 'Caption validation results with formatting verification',
+  'IX': 'Supporting documents prepared and formatted',
+  'IX.1': 'Separate statement of undisputed facts (MSJ/MSA only)',
+  'X': 'Final assembled document ready for delivery',
 };
 
 // ============================================================================
@@ -167,8 +165,8 @@ export function detectOutputViolation(
   phase: string,
   output: string
 ): { violated: boolean; reason?: string } {
-  // Check for signs of generating a complete motion outside of Phase X
-  if (phase !== 'X' && phase !== 'XIV') {
+  // Check for signs of generating a complete motion outside of Phase X (final assembly)
+  if (phase !== 'X') {
     const motionMarkers = [
       /^IN THE\s+.+COURT/i,
       /CERTIFICATE OF SERVICE/i,
@@ -285,7 +283,7 @@ export function detectPhaseSkipAttempt(
   currentPhase: string,
   output: string
 ): { attempted: boolean; targetPhase?: string; reason?: string } {
-  const phaseOrder = ['I', 'II', 'III', 'IV', 'V', 'V.1', 'VI', 'VII', 'VIII', 'VII.1', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV'];
+  const phaseOrder = ['I', 'II', 'III', 'IV', 'V', 'V.1', 'VI', 'VII', 'VII.1', 'VIII', 'VIII.5', 'IX', 'IX.1', 'X'];
   const currentIndex = phaseOrder.indexOf(currentPhase);
 
   // Check for explicit phase references

@@ -16,37 +16,38 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 // PHASE DEFINITIONS — THE LAW
 // ============================================================================
 
+// PHASES aligned with WorkflowPhaseCode from types/workflow.ts
+// These are the actual phases used by the 14-phase workflow orchestration
 export const PHASES = {
   'I': { name: 'Intake & Classification', order: 1, required: true },
-  'II': { name: 'Document Processing', order: 2, required: true },
-  'III': { name: 'Gap Analysis', order: 3, required: true },
-  'IV': { name: 'Citation Research', order: 4, required: true },
-  'V': { name: 'Initial Draft', order: 5, required: true },
-  'V.1': { name: 'Citation Verification', order: 6, required: true },
-  'VI': { name: 'Internal Review', order: 7, required: true },
-  'VII': { name: 'Revision Checkpoint', order: 8, required: true },
-  'VIII': { name: 'Apply Revisions', order: 9, required: false }, // Only if revisions needed
-  'VII.1': { name: 'New Citation Verification', order: 10, required: false }, // Only if new citations
-  'IX': { name: 'Separate Statement', order: 11, required: false }, // Only for certain motion types
-  'X': { name: 'Final Assembly', order: 12, required: true },
-  'XI': { name: 'Quality Assurance', order: 13, required: true },
-  'XII': { name: 'Attorney Review', order: 14, required: true },
-  'XIII': { name: 'Delivery Preparation', order: 15, required: true },
-  'XIV': { name: 'Delivery', order: 16, required: true },
+  'II': { name: 'Legal Standards', order: 2, required: true },
+  'III': { name: 'Evidence Strategy', order: 3, required: true },
+  'IV': { name: 'Authority Research', order: 4, required: true },
+  'V': { name: 'Draft Motion', order: 5, required: true },
+  'V.1': { name: 'Citation Accuracy Check', order: 6, required: true },
+  'VI': { name: 'Opposition Anticipation', order: 7, required: true },
+  'VII': { name: 'Judge Simulation', order: 8, required: true },
+  'VII.1': { name: 'New Citation Verification', order: 9, required: false }, // Only if new citations
+  'VIII': { name: 'Apply Revisions', order: 10, required: false }, // Only if revisions needed
+  'VIII.5': { name: 'Caption Validation', order: 11, required: true },
+  'IX': { name: 'Supporting Documents', order: 12, required: true },
+  'IX.1': { name: 'Separate Statement Check', order: 13, required: false }, // Only for MSJ/MSA
+  'X': { name: 'Final Assembly', order: 14, required: true },
 } as const;
 
 export type PhaseId = keyof typeof PHASES;
 
-// Phase order for iteration
+// Phase order for iteration (matches PHASES above)
 export const PHASE_ORDER: PhaseId[] = [
   'I', 'II', 'III', 'IV', 'V', 'V.1', 'VI', 'VII',
-  'VIII', 'VII.1', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV'
+  'VII.1', 'VIII', 'VIII.5', 'IX', 'IX.1', 'X'
 ];
 
 // ============================================================================
 // PHASE PREREQUISITES — WHAT MUST COMPLETE BEFORE EACH PHASE
 // ============================================================================
 
+// Prerequisites aligned with actual workflow execution order
 export const PHASE_PREREQUISITES: Record<PhaseId, PhaseId[]> = {
   'I': [],
   'II': ['I'],
@@ -56,14 +57,12 @@ export const PHASE_PREREQUISITES: Record<PhaseId, PhaseId[]> = {
   'V.1': ['V'],
   'VI': ['V.1'],
   'VII': ['VI'],
-  'VIII': ['VII'],
-  'VII.1': ['VIII'],
-  'IX': ['V.1'], // Can run after citation verification
-  'X': ['VII'], // Needs revision checkpoint complete (VI review done)
-  'XI': ['X'],
-  'XII': ['XI'],
-  'XIII': ['XII'],
-  'XIV': ['XIII'],
+  'VII.1': ['VIII'], // Only runs if VIII added new citations
+  'VIII': ['VII'], // Revision loop after judge simulation
+  'VIII.5': ['VII'], // Caption validation after judge simulation (may skip VIII if passes)
+  'IX': ['VIII.5'], // Supporting docs after caption validation
+  'IX.1': ['IX'], // Separate statement after supporting docs (MSJ/MSA only)
+  'X': ['IX'], // Final assembly (may skip IX.1 if not MSJ/MSA)
 };
 
 // ============================================================================
@@ -75,28 +74,26 @@ export const PHASE_PREREQUISITES: Record<PhaseId, PhaseId[]> = {
 // The key requirement is that the phase executed successfully (indicated by the phase_X_complete flag)
 export const PHASE_COMPLETION_REQUIREMENTS: Record<PhaseId, string[]> = {
   'I': [], // Intake reads from order data, doesn't need to output specific fields
-  'II': [], // Document parsing success is enough
-  'III': [], // Gap analysis success is enough
-  'IV': [], // Citation research success is enough
+  'II': [], // Legal standards success is enough
+  'III': [], // Evidence strategy success is enough
+  'IV': [], // Authority research success is enough
   'V': [], // Draft generation success is enough
   'V.1': [], // Citation verification success is enough
-  'VI': [], // Internal review success is enough
-  'VII': [], // Revision checkpoint success is enough
-  'VIII': [], // Revisions applied success is enough
+  'VI': [], // Opposition anticipation success is enough
+  'VII': [], // Judge simulation success is enough
   'VII.1': [], // New citation verification success is enough
-  'IX': [], // Separate statement success is enough
+  'VIII': [], // Revisions applied success is enough
+  'VIII.5': [], // Caption validation success is enough
+  'IX': [], // Supporting documents success is enough
+  'IX.1': [], // Separate statement success is enough
   'X': [], // Final assembly success is enough
-  'XI': [], // QA success is enough
-  'XII': [], // Attorney approval tracked separately
-  'XIII': [], // Delivery prep success is enough
-  'XIV': [], // Delivery success is enough
 };
 
 // ============================================================================
 // MOTION TYPES REQUIRING SPECIFIC PHASES
 // ============================================================================
 
-// Motion types that require separate statement (Phase IX)
+// Motion types that require separate statement (Phase IX.1)
 export const MOTION_TYPES_REQUIRING_SEPARATE_STATEMENT = [
   'MSJ', // Motion for Summary Judgment
   'MSA', // Motion for Summary Adjudication
@@ -203,8 +200,8 @@ export async function validatePhaseGate(
   );
 
   const skippedRequiredPhases = requiredPhasesBefore.filter((phase) => {
-    // Phase IX is only required for certain motion types
-    if (phase === 'IX' && !requiresSeparateStatement) return false;
+    // Phase IX.1 is only required for MSJ/MSA motion types
+    if (phase === 'IX.1' && !requiresSeparateStatement) return false;
     // Phase VIII is only required if revisions were requested
     if (phase === 'VIII' && !workflow.requires_revision) return false;
     // Phase VII.1 is only required if new citations added in VIII
@@ -370,7 +367,7 @@ export async function getNextAllowedPhase(
     // Skip optional phases that don't apply
     if (phase === 'VIII' && !workflow.requires_revision) continue;
     if (phase === 'VII.1' && !workflow.has_new_citations) continue;
-    if (phase === 'IX' && !requiresSeparateStatement) continue;
+    if (phase === 'IX.1' && !requiresSeparateStatement) continue;
 
     // Check if prerequisites are met
     const prerequisites = PHASE_PREREQUISITES[phase];
@@ -535,5 +532,5 @@ export async function getCompletedPhases(orderId: string): Promise<PhaseId[]> {
  */
 export async function isWorkflowComplete(orderId: string): Promise<boolean> {
   const completedPhases = await getCompletedPhases(orderId);
-  return completedPhases.includes('XIV');
+  return completedPhases.includes('X'); // Final phase is X (Final Assembly)
 }

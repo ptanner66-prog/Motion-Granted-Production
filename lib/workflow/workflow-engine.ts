@@ -251,10 +251,11 @@ export async function executeCurrentPhase(
     // PHASE GATE ENFORCEMENT
     // =========================================================================
     // Map current_phase number to PhaseId code
+    // Phase number to code mapping aligned with PHASES in phase-gates.ts
     const phaseNumberToCode: Record<number, PhaseId> = {
       1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'V.1',
-      7: 'VI', 8: 'VII', 9: 'VIII', 10: 'VII.1', 11: 'IX',
-      12: 'X', 13: 'XI', 14: 'XII', 15: 'XIII', 16: 'XIV'
+      7: 'VI', 8: 'VII', 9: 'VII.1', 10: 'VIII', 11: 'VIII.5',
+      12: 'IX', 13: 'IX.1', 14: 'X'
     };
     const targetPhaseCode = phaseNumberToCode[workflow.current_phase] || 'I';
 

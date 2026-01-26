@@ -258,7 +258,7 @@ export function validateWorkflowRequest(body: unknown): {
   }
 
   if (data.phase) {
-    const validPhases = ['I', 'II', 'III', 'IV', 'V', 'V.1', 'VI', 'VII', 'VIII', 'VII.1', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV'];
+    const validPhases = ['I', 'II', 'III', 'IV', 'V', 'V.1', 'VI', 'VII', 'VII.1', 'VIII', 'VIII.5', 'IX', 'IX.1', 'X'];
     if (!validPhases.includes(data.phase as string)) {
       return { valid: false, error: 'Invalid phase identifier' };
     }
