@@ -336,12 +336,29 @@ export async function executeCurrentPhase(
       })
       .eq('id', phaseExec.id);
 
+    // =========================================================================
+    // MARK PHASE COMPLETE IN PHASE GATES SYSTEM
+    // =========================================================================
+    if (result.success && !result.requiresReview) {
+      // Mark phase complete in the phase gates tracking system
+      const completionResult = await markPhaseComplete(workflow.order_id, targetPhaseCode, result.outputs || {});
+      if (!completionResult.success) {
+        console.warn(`[WORKFLOW ENGINE] Failed to mark Phase ${targetPhaseCode} complete: ${completionResult.error}`);
+        // Don't fail the workflow - just log the warning
+        // The phase execution was successful, we just couldn't update the tracking
+      } else {
+        console.log(`[WORKFLOW ENGINE] Phase ${targetPhaseCode} marked complete for order ${workflow.order_id}`);
+      }
+    }
+    // =========================================================================
+
     // Update workflow status
     if (result.success && !result.requiresReview) {
       await supabase
         .from('order_workflows')
         .update({
           current_phase: workflow.current_phase + 1,
+          current_phase_code: phaseNumberToCode[workflow.current_phase + 1] || targetPhaseCode,
           last_activity_at: new Date().toISOString(),
         })
         .eq('id', workflowId);
