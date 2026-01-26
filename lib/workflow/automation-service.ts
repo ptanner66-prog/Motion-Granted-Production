@@ -147,10 +147,10 @@ export async function startOrderAutomation(
     });
 
     // Start workflow orchestration
+    // NOTE: skipDocumentParsing has been removed - phases cannot be skipped
     const workflowResult = await orchestrateWorkflow(orderId, {
       autoRun: mergedConfig.autoRun,
       workflowPath: mergedConfig.workflowPath,
-      skipDocumentParsing: false,
     });
 
     if (!workflowResult.success || !workflowResult.data) {

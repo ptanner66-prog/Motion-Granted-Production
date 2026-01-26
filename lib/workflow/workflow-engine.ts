@@ -37,6 +37,14 @@ import {
   CITATION_BATCH_SIZE,
 } from './citation-verifier';
 import { triggerCheckpoint } from './checkpoint-service';
+import {
+  validatePhaseGate,
+  enforcePhaseTransition,
+  markPhaseComplete,
+  type PhaseId,
+  PHASES,
+} from './phase-gates';
+import { alertPhaseViolation } from './violation-alerts';
 
 // ============================================================================
 // v6.3 QUALITY CONSTANTS — DO NOT MODIFY WITHOUT APPROVAL
@@ -209,6 +217,9 @@ export async function startWorkflow(
 
 /**
  * Execute the current phase of a workflow
+ *
+ * PHASE ENFORCEMENT: This function validates phase gates before execution.
+ * If prerequisites are not met, the phase will not execute.
  */
 export async function executeCurrentPhase(
   workflowId: string
@@ -233,6 +244,31 @@ export async function executeCurrentPhase(
     if (wfError || !workflow) {
       return { success: false, error: wfError?.message || 'Workflow not found' };
     }
+
+    // =========================================================================
+    // PHASE GATE ENFORCEMENT
+    // =========================================================================
+    // Map current_phase number to PhaseId code
+    const phaseNumberToCode: Record<number, PhaseId> = {
+      1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'V.1',
+      7: 'VI', 8: 'VII', 9: 'VIII', 10: 'VII.1', 11: 'IX',
+      12: 'X', 13: 'XI', 14: 'XII', 15: 'XIII', 16: 'XIV'
+    };
+    const targetPhaseCode = phaseNumberToCode[workflow.current_phase] || 'I';
+
+    // Validate phase gate
+    const gateResult = await validatePhaseGate(workflow.order_id, targetPhaseCode);
+    if (!gateResult.canProceed) {
+      console.error(`[WORKFLOW ENGINE] Phase gate blocked for order ${workflow.order_id}: ${gateResult.error}`);
+      await alertPhaseViolation(workflow.order_id, targetPhaseCode, gateResult.error || 'Unknown gate violation');
+      return {
+        success: false,
+        error: `PHASE_GATE_VIOLATION: ${gateResult.error}`,
+      };
+    }
+
+    console.log(`[WORKFLOW ENGINE] Phase gate passed for Phase ${targetPhaseCode} (order: ${workflow.order_id})`);
+    // =========================================================================
 
     // Get current phase definition
     const { data: phaseDef, error: phaseDefError } = await supabase

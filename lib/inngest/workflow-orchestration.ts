@@ -15,6 +15,12 @@
 import { inngest } from './client';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { executePhase } from '@/lib/workflow/phase-executors';
+import {
+  validatePhaseGate,
+  markPhaseComplete,
+  type PhaseId,
+} from '@/lib/workflow/phase-gates';
+import { alertPhaseViolation } from '@/lib/workflow/violation-alerts';
 import type {
   WorkflowPhaseCode,
   MotionTier,
@@ -410,6 +416,8 @@ export const workflowOrchestration = inngest.createFunction(
 
 /**
  * Execute a phase and log the execution
+ *
+ * PHASE ENFORCEMENT: Validates phase gates before execution.
  */
 async function executeAndLogPhase(
   phase: WorkflowPhaseCode,
@@ -422,9 +430,44 @@ async function executeAndLogPhase(
 ) {
   const startTime = Date.now();
 
+  // =========================================================================
+  // PHASE GATE ENFORCEMENT
+  // =========================================================================
+  const gateResult = await validatePhaseGate(orderId, phase as PhaseId);
+  if (!gateResult.canProceed) {
+    console.error(`[INNGEST] Phase gate blocked for Phase ${phase}: ${gateResult.error}`);
+    await alertPhaseViolation(orderId, phase, gateResult.error || 'Phase gate blocked');
+
+    // Log the violation
+    await supabase.from('automation_logs').insert({
+      order_id: orderId,
+      action_type: 'phase_gate_violation',
+      action_details: {
+        phase,
+        workflowId,
+        error: gateResult.error,
+        missingPrerequisites: gateResult.missingPrerequisites,
+      },
+    });
+
+    return {
+      success: false,
+      phase,
+      status: 'blocked' as const,
+      output: null,
+      error: `PHASE_GATE_VIOLATION: ${gateResult.error}`,
+      requiresReview: false,
+      gapsDetected: 0,
+    };
+  }
+
+  console.log(`[INNGEST] Phase gate passed for Phase ${phase} (order: ${orderId})`);
+  // =========================================================================
+
   // Update workflow current phase
   await supabase.from('order_workflows').update({
     current_phase: getPhaseNumber(phase),
+    current_phase_code: phase, // Also update the code for phase gates
     last_activity_at: new Date().toISOString(),
   }).eq('id', workflowId);
 
@@ -471,6 +514,25 @@ async function executeAndLogPhase(
       error: result.error,
     },
   });
+
+  // =========================================================================
+  // MARK PHASE COMPLETE IN PHASE GATES SYSTEM
+  // =========================================================================
+  if (result.success) {
+    // Extract outputs for phase gate requirements validation
+    const phaseOutputs: Record<string, unknown> = {};
+
+    // Map phase outputs to expected requirement keys
+    if (result.output && typeof result.output === 'object') {
+      Object.assign(phaseOutputs, result.output);
+    }
+
+    // Add standard completion flags
+    phaseOutputs[`phase_${phase.replace('.', '_')}_complete`] = true;
+
+    await markPhaseComplete(orderId, phase as PhaseId, phaseOutputs);
+  }
+  // =========================================================================
 
   // Insert phase execution record if workflow_phase_executions table exists
   try {
