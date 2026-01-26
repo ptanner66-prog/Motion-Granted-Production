@@ -63,6 +63,11 @@ interface CompletedOrderRow {
   completed_at: string;
 }
 
+interface AIUsageRow {
+  tokens_used: number | null;
+  cost: number | null;
+}
+
 interface TurnaroundMetrics {
   average: number;
   median: number;
@@ -213,10 +218,10 @@ async function fetchAnalytics(timeRange: TimeRange): Promise<AnalyticsData> {
     .gte('created_at', startDate.toISOString());
 
   const aiUsage: AIUsageMetrics = {
-    totalTokens: (aiUsageData || []).reduce((sum, u) => sum + (u.tokens_used || 0), 0),
+    totalTokens: (aiUsageData || []).reduce((sum: number, u: AIUsageRow) => sum + (u.tokens_used || 0), 0),
     totalCalls: (aiUsageData || []).length,
     averageTokensPerCall: 0,
-    costEstimate: (aiUsageData || []).reduce((sum, u) => sum + (u.cost || 0), 0),
+    costEstimate: (aiUsageData || []).reduce((sum: number, u: AIUsageRow) => sum + (u.cost || 0), 0),
   };
   if (aiUsage.totalCalls > 0) {
     aiUsage.averageTokensPerCall = aiUsage.totalTokens / aiUsage.totalCalls;
