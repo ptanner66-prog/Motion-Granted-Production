@@ -28,6 +28,8 @@ import { assessAuthorityStrength, type Step6Result } from './steps/step-6-streng
 import { compileVerificationOutput, type Step7Result, type VerificationSteps } from './steps/step-7-output';
 import { createClient } from '@/lib/supabase/server';
 import type { MotionTier } from '@/types/workflow';
+import FlagManager from './flag-manager';
+import { handleUnverifiable } from './decision-handlers';
 
 // ============================================================================
 // TYPES
@@ -45,11 +47,115 @@ export interface VerificationOptions {
   skipCache?: boolean;
   logToDb?: boolean;
   onProgress?: (step: number, status: string) => void;
+  enableCaching?: boolean;
+  retryConfig?: RetryConfig;
+  flagManager?: FlagManager;
 }
 
 export interface BatchVerificationOptions extends VerificationOptions {
   concurrency?: number;
   onBatchProgress?: (completed: number, total: number) => void;
+}
+
+// ============================================================================
+// RETRY CONFIGURATION (Task 38)
+// ============================================================================
+
+export interface RetryConfig {
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  jitterPercent: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  baseDelayMs: 1000, // 1 second
+  maxDelayMs: 32000, // 32 seconds
+  jitterPercent: 20, // ±20%
+};
+
+// Errors that are transient and should be retried
+const RETRYABLE_ERRORS = [
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'socket hang up',
+  'network timeout',
+  'rate limit',
+  '429',
+  '503',
+  '502',
+  '504',
+];
+
+/**
+ * Calculate delay with exponential backoff and jitter
+ */
+function calculateRetryDelay(
+  attempt: number,
+  config: RetryConfig = DEFAULT_RETRY_CONFIG
+): number {
+  // Exponential backoff: baseDelay * 2^attempt
+  const exponentialDelay = config.baseDelayMs * Math.pow(2, attempt);
+  const cappedDelay = Math.min(exponentialDelay, config.maxDelayMs);
+
+  // Add jitter (±jitterPercent)
+  const jitterMultiplier = 1 + (Math.random() - 0.5) * 2 * (config.jitterPercent / 100);
+  const finalDelay = Math.round(cappedDelay * jitterMultiplier);
+
+  return finalDelay;
+}
+
+/**
+ * Check if error is retryable
+ */
+function isRetryableError(error: unknown): boolean {
+  if (!error) return false;
+
+  const errorMessage = error instanceof Error
+    ? error.message.toLowerCase()
+    : String(error).toLowerCase();
+
+  return RETRYABLE_ERRORS.some(retryable =>
+    errorMessage.includes(retryable.toLowerCase())
+  );
+}
+
+/**
+ * Execute function with retry logic
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  context: string,
+  config: RetryConfig = DEFAULT_RETRY_CONFIG
+): Promise<{ result: T | null; error?: Error; attempts: number }> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+    try {
+      const result = await fn();
+      if (attempt > 0) {
+        console.log(`[Pipeline] ${context} succeeded on attempt ${attempt + 1}`);
+      }
+      return { result, attempts: attempt + 1 };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (!isRetryableError(error) || attempt >= config.maxRetries) {
+        console.error(`[Pipeline] ${context} failed after ${attempt + 1} attempts:`, lastError.message);
+        return { result: null, error: lastError, attempts: attempt + 1 };
+      }
+
+      const delay = calculateRetryDelay(attempt, config);
+      console.warn(`[Pipeline] ${context} failed (attempt ${attempt + 1}/${config.maxRetries + 1}), retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  return { result: null, error: lastError, attempts: config.maxRetries + 1 };
 }
 
 export interface VerificationResult extends Step7Result {
@@ -121,6 +227,8 @@ async function runVerificationPipeline(
 ): Promise<VerificationResult> {
   const startTime = Date.now();
   const progress = options?.onProgress || (() => {});
+  const retryConfig = options?.retryConfig || DEFAULT_RETRY_CONFIG;
+  const flagManager = options?.flagManager || await FlagManager.load(orderId);
 
   console.log(`[Pipeline] Starting verification for: ${citation.slice(0, 50)}...`);
 
@@ -191,25 +299,65 @@ async function runVerificationPipeline(
 
   try {
     // ========================================================================
-    // STEP 1: Existence Check
+    // STEP 1: Existence Check (with retry)
     // ========================================================================
     progress(1, 'Checking citation existence...');
 
     // Check cache first
-    if (!options?.skipCache) {
+    if (!options?.skipCache && options?.enableCaching !== false) {
       const cached = await getCachedExistenceResult(citation);
       if (cached) {
         console.log(`[Pipeline] Cache hit for: ${citation.slice(0, 40)}...`);
         step1Result = cached;
       } else {
-        step1Result = await checkCitationExistence(citation, orderId, { logToDb: options?.logToDb });
-        // Cache successful results
-        if (step1Result.result === 'VERIFIED' || step1Result.result === 'UNPUBLISHED') {
-          await cacheExistenceResult(step1Result, orderId);
+        // Execute with retry logic
+        const { result: step1WithRetry, error: step1Error, attempts: step1Attempts } = await withRetry(
+          () => checkCitationExistence(citation, orderId, { logToDb: options?.logToDb }),
+          'Step 1 (Existence)',
+          retryConfig
+        );
+
+        if (step1WithRetry) {
+          step1Result = step1WithRetry;
+          // Cache successful results
+          if (step1Result.result === 'VERIFIED' || step1Result.result === 'UNPUBLISHED') {
+            await cacheExistenceResult(step1Result, orderId);
+          }
+        } else if (step1Error) {
+          // Handle unverifiable - Decision 7
+          const unverifiableResult = handleUnverifiable({
+            citation,
+            errorType: isRetryableError(step1Error) ? 'TIMEOUT' : 'API_ERROR',
+            errorMessage: step1Error.message,
+            retryCount: step1Attempts,
+            maxRetries: retryConfig.maxRetries + 1,
+          });
+          if (unverifiableResult.flagCode) {
+            flagManager.addFlag(unverifiableResult.flagCode, { citation, step: 1 });
+          }
         }
       }
     } else {
-      step1Result = await checkCitationExistence(citation, orderId, { logToDb: options?.logToDb });
+      const { result: step1WithRetry, error: step1Error, attempts: step1Attempts } = await withRetry(
+        () => checkCitationExistence(citation, orderId, { logToDb: options?.logToDb }),
+        'Step 1 (Existence)',
+        retryConfig
+      );
+
+      if (step1WithRetry) {
+        step1Result = step1WithRetry;
+      } else if (step1Error) {
+        const unverifiableResult = handleUnverifiable({
+          citation,
+          errorType: isRetryableError(step1Error) ? 'TIMEOUT' : 'API_ERROR',
+          errorMessage: step1Error.message,
+          retryCount: step1Attempts,
+          maxRetries: retryConfig.maxRetries + 1,
+        });
+        if (unverifiableResult.flagCode) {
+          flagManager.addFlag(unverifiableResult.flagCode, { citation, step: 1 });
+        }
+      }
     }
 
     // Early termination if citation not found
@@ -235,19 +383,34 @@ async function runVerificationPipeline(
     }
 
     // ========================================================================
-    // STEP 2: Holding Verification
+    // STEP 2: Holding Verification (with retry)
     // ========================================================================
     progress(2, 'Verifying holding supports proposition...');
 
     const opinionText = step1Result.opinion_text || '';
-    step2Result = await verifyHolding(
-      citation,
-      proposition,
-      opinionText,
-      tier,
-      orderId,
-      { highStakes: options?.highStakes, logToDb: options?.logToDb }
+    const { result: step2WithRetry, error: step2Error } = await withRetry(
+      () => verifyHolding(
+        citation,
+        proposition,
+        opinionText,
+        tier,
+        orderId,
+        { highStakes: options?.highStakes, logToDb: options?.logToDb }
+      ),
+      'Step 2 (Holding)',
+      retryConfig
     );
+
+    if (step2WithRetry) {
+      step2Result = step2WithRetry;
+    } else if (step2Error) {
+      console.warn(`[Pipeline] Step 2 failed for ${citation.slice(0, 40)}..., continuing with defaults`);
+      flagManager.addFlag('VERIFICATION_FAILED', {
+        citation,
+        step: 2,
+        details: { error: step2Error.message },
+      });
+    }
 
     // ========================================================================
     // STEP 3: Dicta Detection
@@ -287,19 +450,34 @@ async function runVerificationPipeline(
     }
 
     // ========================================================================
-    // STEP 5: Bad Law Check
+    // STEP 5: Bad Law Check (with retry - critical step)
     // ========================================================================
     progress(5, 'Checking for bad law...');
 
-    step5Result = await checkBadLaw(
-      citation,
-      step1Result.courtlistener_id,
-      step1Result.case_name || null,
-      opinionText,
-      tier,
-      orderId,
-      { logToDb: options?.logToDb }
+    const { result: step5WithRetry, error: step5Error } = await withRetry(
+      () => checkBadLaw(
+        citation,
+        step1Result.courtlistener_id,
+        step1Result.case_name || null,
+        opinionText,
+        tier,
+        orderId,
+        { logToDb: options?.logToDb }
+      ),
+      'Step 5 (Bad Law)',
+      retryConfig
     );
+
+    if (step5WithRetry) {
+      step5Result = step5WithRetry;
+    } else if (step5Error) {
+      console.warn(`[Pipeline] Step 5 failed for ${citation.slice(0, 40)}..., marking for review`);
+      flagManager.addFlag('VERIFICATION_FAILED', {
+        citation,
+        step: 5,
+        details: { error: step5Error.message },
+      });
+    }
 
     // Early termination if overruled
     if (step5Result.status === 'OVERRULED') {
@@ -334,6 +512,18 @@ async function runVerificationPipeline(
     };
 
     const compiled = await compileVerificationOutput(citation, steps, orderId, { logToDb: options?.logToDb });
+
+    // Add flags from verification result to flag manager
+    for (const flag of compiled.flags) {
+      if (!flagManager.hasFlag(flag, citation)) {
+        flagManager.addFlag(flag, { citation });
+      }
+    }
+
+    // Save flag manager state if modified
+    if (flagManager.isModified()) {
+      await flagManager.save();
+    }
 
     const totalDuration = Date.now() - startTime;
     console.log(`[Pipeline] Completed in ${totalDuration}ms: ${citation.slice(0, 40)}... → ${compiled.composite_status}`);
