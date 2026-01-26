@@ -47,6 +47,17 @@ interface AdminNotesPanelProps {
   orderId: string;
 }
 
+interface AdminNoteRow {
+  id: string;
+  order_id: string;
+  note: string;
+  created_by: string;
+  pinned: boolean | null;
+  created_at: string;
+  updated_at: string | null;
+  profiles: { full_name: string } | null;
+}
+
 // ============================================================================
 // API FUNCTIONS
 // ============================================================================
@@ -193,11 +204,11 @@ export async function getNotesForOrder(orderId: string): Promise<AdminNote[]> {
 
   if (error || !data) return [];
 
-  return data.map((row) => ({
+  return data.map((row: AdminNoteRow) => ({
     id: row.id,
     orderId: row.order_id,
     authorId: row.created_by,
-    authorName: (row.profiles as { full_name: string })?.full_name || 'Admin',
+    authorName: row.profiles?.full_name || 'Admin',
     content: row.note,
     pinned: row.pinned || false,
     createdAt: new Date(row.created_at),
