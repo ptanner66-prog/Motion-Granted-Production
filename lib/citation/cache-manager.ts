@@ -285,6 +285,7 @@ export class CacheManager {
     result: VerificationResult
   ): Promise<void> {
     const key = this.getCacheKey(citation, proposition);
+    // Use snake_case property names from VerificationResult
     const ttl = TTL_BY_STATUS[result.composite_status] || this.config.defaultTTLMinutes;
 
     const cached: CachedVerification = {
