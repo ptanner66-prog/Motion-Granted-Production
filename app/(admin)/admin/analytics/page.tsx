@@ -16,6 +16,12 @@ import {
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { formatMotionType } from '@/config/motion-types'
+import {
+  TierPerformanceCard,
+  CitationStatsCard,
+  WorkflowHealthCard,
+  RevisionAnalyticsCard,
+} from '@/components/admin/analytics'
 
 export const metadata: Metadata = {
   title: 'Analytics - Admin',
@@ -321,6 +327,17 @@ export default async function AdminAnalyticsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* v7.2 Workflow Analytics */}
+      <section className="mt-8">
+        <h2 className="text-xl font-semibold text-navy mb-4">Workflow Analytics</h2>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <TierPerformanceCard />
+          <CitationStatsCard />
+          <WorkflowHealthCard />
+          <RevisionAnalyticsCard />
+        </div>
+      </section>
     </div>
   )
 }
