@@ -192,12 +192,12 @@ async function fetchAnalytics(timeRange: TimeRange): Promise<AnalyticsData> {
       const completed = new Date(o.completed_at).getTime();
       return (completed - created) / (1000 * 60 * 60); // Hours
     })
-    .filter((t) => t > 0)
-    .sort((a, b) => a - b);
+    .filter((t: number) => t > 0)
+    .sort((a: number, b: number) => a - b);
 
   const turnaround: TurnaroundMetrics = {
     average: turnaroundTimes.length > 0
-      ? turnaroundTimes.reduce((a, b) => a + b, 0) / turnaroundTimes.length
+      ? turnaroundTimes.reduce((a: number, b: number) => a + b, 0) / turnaroundTimes.length
       : 0,
     median: turnaroundTimes.length > 0
       ? turnaroundTimes[Math.floor(turnaroundTimes.length / 2)]
