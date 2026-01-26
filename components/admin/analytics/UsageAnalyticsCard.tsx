@@ -49,6 +49,11 @@ interface RevenueMetrics {
   growth: number;
 }
 
+interface OrderRow {
+  status: string;
+  amount: number | null;
+}
+
 interface TurnaroundMetrics {
   average: number;
   median: number;
@@ -127,7 +132,7 @@ async function fetchAnalytics(timeRange: TimeRange): Promise<AnalyticsData> {
   };
 
   let totalRevenue = 0;
-  (ordersData || []).forEach((order) => {
+  (ordersData || []).forEach((order: OrderRow) => {
     orders.total++;
     if (order.status === 'pending' || order.status === 'awaiting_payment') {
       orders.pending++;
