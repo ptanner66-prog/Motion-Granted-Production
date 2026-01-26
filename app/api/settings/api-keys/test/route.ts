@@ -5,6 +5,7 @@
  * - Anthropic: Makes a simple API call to verify the key works
  * - OpenAI: Tests GPT API connectivity for cross-vendor CIV
  * - CourtListener: Tests Free Law Project API connectivity
+ * - Resend: Tests email service API connectivity
  * - PACER: Tests federal court records access (~$0.10/lookup)
  * - Westlaw: Attempts a test search (optional premium)
  * - LexisNexis: Attempts a test search (optional premium)
@@ -53,6 +54,9 @@ export async function POST(request: NextRequest) {
       }
       case 'pacer': {
         return await testPACERCredentials(settings.pacer_username, settings.pacer_password);
+      }
+      case 'resend': {
+        return await testResendKey(settings.resend_api_key);
       }
       case 'westlaw': {
         return await testWestlawKey(settings.westlaw_api_key, settings.westlaw_client_id);
@@ -285,6 +289,57 @@ async function testPACERCredentials(username: string, password: string): Promise
     return NextResponse.json({
       success: true,
       message: 'PACER credentials saved. Connectivity will be verified on first lookup.',
+    });
+  }
+}
+
+async function testResendKey(apiKey: string): Promise<NextResponse> {
+  if (!apiKey || apiKey.startsWith('****')) {
+    return NextResponse.json({
+      success: false,
+      message: 'Please enter a valid API key (not masked)',
+    });
+  }
+
+  try {
+    // Test Resend API by getting domains list
+    const response = await fetch('https://api.resend.com/domains', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      return NextResponse.json({
+        success: true,
+        message: 'Resend API key is valid!',
+      });
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid API key - authentication failed',
+      });
+    }
+
+    if (response.status === 429) {
+      return NextResponse.json({
+        success: true,
+        message: 'API key valid (rate limited - reduce request frequency)',
+      });
+    }
+
+    return NextResponse.json({
+      success: false,
+      message: `Resend API returned status ${response.status}`,
+    });
+  } catch (error) {
+    return NextResponse.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Connection failed',
     });
   }
 }

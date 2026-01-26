@@ -3,7 +3,9 @@
  *
  * Securely stores and retrieves API keys for:
  * - Anthropic (Claude AI) - Required for motion generation
+ * - OpenAI (GPT) - Required for cross-vendor citation verification
  * - CourtListener (Free Law Project) - Required for citation verification
+ * - Resend - Required for email notifications
  * - Case.law (Harvard Law) - Required for citation verification
  * - Westlaw (Optional Premium)
  * - LexisNexis (Optional Premium)
@@ -150,6 +152,7 @@ export async function GET() {
         'openai_api_key',
         'courtlistener_api_key',
         'caselaw_api_key',
+        'resend_api_key',
         'westlaw_api_key',
         'westlaw_client_id',
         'westlaw_enabled',
@@ -171,6 +174,7 @@ export async function GET() {
     const openaiKey = getValue('openai_api_key', '') as string;
     const courtlistenerKey = getValue('courtlistener_api_key', '') as string;
     const caselawKey = getValue('caselaw_api_key', '') as string;
+    const resendKey = getValue('resend_api_key', '') as string;
     const westlawKey = getValue('westlaw_api_key', '') as string;
     const lexisKey = getValue('lexisnexis_api_key', '') as string;
 
@@ -179,6 +183,7 @@ export async function GET() {
     const envOpenaiKey = process.env.OPENAI_API_KEY || '';
     const envCourtlistenerKey = process.env.COURTLISTENER_API_KEY || '';
     const envCaselawKey = process.env.CASELAW_API_KEY || '';
+    const envResendKey = process.env.RESEND_API_KEY || '';
     const envWestlawKey = process.env.WESTLAW_API_KEY || '';
     const envLexisKey = process.env.LEXISNEXIS_API_KEY || '';
 
@@ -198,6 +203,10 @@ export async function GET() {
       // Case.law - mask the key, show if configured
       caselaw_api_key: caselawKey ? maskKey(caselawKey) : (envCaselawKey ? maskKey(envCaselawKey) : ''),
       caselaw_configured: !!(caselawKey || envCaselawKey),
+
+      // Resend - mask the key, show if configured
+      resend_api_key: resendKey ? maskKey(resendKey) : (envResendKey ? maskKey(envResendKey) : ''),
+      resend_configured: !!(resendKey || envResendKey),
 
       // Westlaw (Optional)
       westlaw_api_key: westlawKey ? maskKey(westlawKey) : (envWestlawKey ? maskKey(envWestlawKey) : ''),
@@ -251,6 +260,7 @@ export async function POST(request: NextRequest) {
       openai_api_key,
       courtlistener_api_key,
       caselaw_api_key,
+      resend_api_key,
       westlaw_api_key,
       westlaw_client_id,
       westlaw_enabled,
@@ -316,6 +326,17 @@ export async function POST(request: NextRequest) {
         setting_key: 'caselaw_api_key',
         setting_value: { value: encryptKey(caselaw_api_key) },
         description: 'Case.law API key for citation verification',
+        category: 'general',
+        updated_by: user.id,
+      });
+    }
+
+    // Resend API key (for email notifications)
+    if (resend_api_key && !resend_api_key.startsWith('****')) {
+      settingsToSave.push({
+        setting_key: 'resend_api_key',
+        setting_value: { value: encryptKey(resend_api_key) },
+        description: 'Resend API key for email notifications',
         category: 'general',
         updated_by: user.id,
       });

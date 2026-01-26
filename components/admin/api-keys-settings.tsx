@@ -21,6 +21,7 @@ import {
   Shield,
   Search,
   BookOpen,
+  Mail,
 } from 'lucide-react';
 
 interface APIKeysSettings {
@@ -33,6 +34,9 @@ interface APIKeysSettings {
   // CourtListener (Required for CIV)
   courtlistener_api_key: string;
   courtlistener_configured: boolean;
+  // Resend (Required for email notifications)
+  resend_api_key: string;
+  resend_configured: boolean;
   // PACER (Optional - for federal unpublished cases)
   pacer_username: string;
   pacer_password: string;
@@ -57,6 +61,8 @@ export function APIKeysSettings() {
     openai_configured: false,
     courtlistener_api_key: '',
     courtlistener_configured: false,
+    resend_api_key: '',
+    resend_configured: false,
     pacer_username: '',
     pacer_password: '',
     pacer_configured: false,
@@ -128,7 +134,7 @@ export function APIKeysSettings() {
     }
   };
 
-  const handleTestKey = async (keyType: 'anthropic' | 'openai' | 'courtlistener' | 'pacer' | 'westlaw' | 'lexisnexis') => {
+  const handleTestKey = async (keyType: 'anthropic' | 'openai' | 'courtlistener' | 'resend' | 'pacer' | 'westlaw' | 'lexisnexis') => {
     setTestingKey(keyType);
     setTestResults(prev => ({ ...prev, [keyType]: { success: false, message: '' } }));
 
@@ -459,6 +465,86 @@ export function APIKeysSettings() {
                   {testResults['courtlistener'] && (
                     <span className={`text-xs ${testResults['courtlistener'].success ? 'text-green-600' : 'text-red-600'}`}>
                       {testResults['courtlistener'].message}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Resend API Key Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
+              <Mail className="h-5 w-5 text-violet-500" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-navy">Resend (Email Service)</h3>
+                <p className="text-sm text-gray-500">Powers all email notifications and client communications</p>
+              </div>
+              {settings.resend_configured ? (
+                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Active
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-red-500/20 text-red-600 rounded">
+                  <XCircle className="h-3.5 w-3.5" />
+                  Required
+                </span>
+              )}
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="resend-key">Resend API Key</Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="resend-key"
+                      type={showKeys['resend'] ? 'text' : 'password'}
+                      value={settings.resend_api_key}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, resend_api_key: e.target.value }))
+                      }
+                      placeholder="re_..."
+                      className="pl-10 pr-10 font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => toggleShowKey('resend')}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showKeys['resend'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleTestKey('resend')}
+                    disabled={!settings.resend_api_key || testingKey === 'resend'}
+                  >
+                    {testingKey === 'resend' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Test'
+                    )}
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500">
+                    Get your API key from{' '}
+                    <a
+                      href="https://resend.com/api-keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-teal hover:underline inline-flex items-center gap-1"
+                    >
+                      Resend Dashboard <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </p>
+                  {testResults['resend'] && (
+                    <span className={`text-xs ${testResults['resend'].success ? 'text-green-600' : 'text-red-600'}`}>
+                      {testResults['resend'].message}
                     </span>
                   )}
                 </div>
