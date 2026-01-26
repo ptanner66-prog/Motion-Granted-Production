@@ -47,6 +47,18 @@ interface ServiceHealth {
   message?: string;
 }
 
+interface IncidentRow {
+  id: string;
+  title: string;
+  status: string;
+  severity: string;
+  affected_services: string[] | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  updates: { timestamp: string; message: string }[] | null;
+}
+
 interface Incident {
   id: string;
   title: string;
@@ -198,11 +210,11 @@ async function getRecentIncidents(): Promise<Incident[]> {
       return [];
     }
 
-    return data.map((row) => ({
+    return data.map((row: IncidentRow) => ({
       id: row.id,
       title: row.title,
-      status: row.status,
-      severity: row.severity,
+      status: row.status as Incident['status'],
+      severity: row.severity as Incident['severity'],
       affectedServices: row.affected_services || [],
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
