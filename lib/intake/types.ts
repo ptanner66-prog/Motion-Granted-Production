@@ -2,10 +2,12 @@
  * Intake Form Types
  *
  * v6.3: Type definitions for the multi-step intake wizard.
+ * v11.0: Added state/court selection for 50-state expansion (Task 83).
  */
 
 export type WorkflowPath = 'A' | 'B';
 export type Tier = 'A' | 'B' | 'C';
+export type CourtType = 'state' | 'federal';
 export type TonePreference = 'aggressive' | 'measured' | 'conciliatory';
 export type ServiceMethod = 'electronic' | 'mail' | 'personal' | 'overnight';
 
@@ -55,7 +57,11 @@ export interface IntakeFormData {
   // Step 1: Path Selection
   path: WorkflowPath | null;
 
-  // Step 2: Case Information
+  // Step 2: State & Court Selection (Task 83 - 50-State Expansion)
+  stateCode: string;
+  courtType: CourtType | null;
+
+  // Step 3: Case Information
   caseCaption: string;
   caseNumber: string;
   jurisdiction: string;
@@ -64,9 +70,16 @@ export interface IntakeFormData {
   department?: string;
   filingDeadline: Date | null;
 
-  // Step 3: Motion Type
+  // Step 4: Motion Type (now filtered by state/court)
   tier: Tier | null;
   motionType: string;
+  motionMetadata?: {
+    id: string;
+    display_name: string;
+    tier: Tier;
+    base_price_min: number;
+    base_price_max: number;
+  };
 
   // Step 4: Statement of Facts
   statementOfFacts: string;
@@ -105,6 +118,7 @@ export interface IntakeContextValue {
 
 export const STEP_NAMES = [
   'Path Selection',
+  'State & Court',
   'Case Information',
   'Motion Type',
   'Statement of Facts',
