@@ -233,7 +233,8 @@ export async function verifyCitation(
     parsed.caseName || citation.caseName || 'Unknown Case',
     step2.stage1.supportingQuote || citation.proposition,
     surroundingContext,
-    citation.propositionType
+    citation.propositionType,
+    citation.motionTypeContext || 'motion_to_compel' // Pass motion type for tier-based model selection
   );
   apiCallsMade++;
 
@@ -246,7 +247,8 @@ export async function verifyCitation(
     citation.citationString,
     parsed.caseName || citation.caseName || 'Unknown Case',
     step1.courtlistenerId,
-    citationDbId
+    citationDbId,
+    citation.motionTypeContext || 'motion_to_compel' // Pass motion type for tier-based model selection
   );
   apiCallsMade += step5.layer2.searchesRun > 0 ? 1 : 0;
 
