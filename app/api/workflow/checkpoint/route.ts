@@ -24,6 +24,7 @@ const VALID_ACTIONS: Record<CheckpointType, string[]> = {
   CP1: ['continue', 'request_changes'],
   CP2: ['approve', 'request_revisions'],
   CP3: ['confirm_receipt'],
+  HOLD: ['resume', 'cancel'],
 };
 
 /**
@@ -144,9 +145,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate checkpoint type
-  if (!['CP1', 'CP2', 'CP3'].includes(checkpoint)) {
+  if (!['CP1', 'CP2', 'CP3', 'HOLD'].includes(checkpoint)) {
     return NextResponse.json(
-      { error: 'Invalid checkpoint type. Must be CP1, CP2, or CP3' },
+      { error: 'Invalid checkpoint type. Must be CP1, CP2, CP3, or HOLD' },
       { status: 400 }
     );
   }
