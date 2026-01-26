@@ -6,11 +6,16 @@
  *
  * API Documentation: https://www.courtlistener.com/api/rest-info/
  * Coverage: 10M+ cases, all federal courts, most state appellate
+ *
+ * IMPORTANT: For citation verification (hallucination detection), use the
+ * v3 citation-lookup endpoint, NOT the v4 search endpoint.
  */
 
+import { getCourtListenerAPIKey } from '@/lib/api-keys';
 import { CourtListenerOpinion, CourtListenerSearchResult, CourtListenerCitingOpinion } from './types';
 
 const COURTLISTENER_BASE_URL = 'https://www.courtlistener.com/api/rest/v4';
+const COURTLISTENER_V3_URL = 'https://www.courtlistener.com/api/rest/v3';
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000; // 1s, 2s, 4s exponential backoff
@@ -21,12 +26,17 @@ interface RequestOptions {
 }
 
 /**
- * Get API token from environment (optional but recommended for higher rate limits)
+ * Get API token from database or environment
  */
-function getAuthHeader(): Record<string, string> {
-  const token = process.env.COURTLISTENER_API_TOKEN;
+async function getAuthHeader(): Promise<Record<string, string>> {
+  const token = await getCourtListenerAPIKey();
   if (token) {
     return { Authorization: `Token ${token}` };
+  }
+  // Fallback to env var for backwards compatibility
+  const envToken = process.env.COURTLISTENER_API_TOKEN;
+  if (envToken) {
+    return { Authorization: `Token ${envToken}` };
   }
   return {};
 }
@@ -39,6 +49,7 @@ async function makeRequest<T>(
   options: RequestOptions = {}
 ): Promise<{ success: boolean; data?: T; error?: string }> {
   const { timeout = DEFAULT_TIMEOUT, retries = MAX_RETRIES } = options;
+  const authHeader = await getAuthHeader();
 
   let lastError: Error | null = null;
 
@@ -51,7 +62,7 @@ async function makeRequest<T>(
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeader(),
+          ...authHeader,
         },
         signal: controller.signal,
       });
@@ -93,6 +104,109 @@ async function makeRequest<T>(
   return {
     success: false,
     error: lastError?.message || 'Request failed after retries',
+  };
+}
+
+/**
+ * Citation Lookup - PRIMARY METHOD FOR HALLUCINATION DETECTION
+ *
+ * Uses the v3 citation-lookup endpoint specifically designed to verify
+ * citations and catch AI hallucinations. This is the correct endpoint
+ * for CIV Step 1 existence verification.
+ *
+ * POST to /api/rest/v3/citation-lookup/
+ * Content-Type: application/x-www-form-urlencoded
+ * Body: text=<citation>
+ */
+export async function lookupCitation(
+  citationText: string
+): Promise<{
+  success: boolean;
+  data?: {
+    found: boolean;
+    citations: Array<{
+      citation: string;
+      normalized_citations: string[];
+      match_url?: string;
+      match_id?: number;
+      reporter?: string;
+      volume?: string;
+      page?: string;
+      year?: string;
+    }>;
+  };
+  error?: string;
+}> {
+  const authHeader = await getAuthHeader();
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
+
+      const response = await fetch(`${COURTLISTENER_V3_URL}/citation-lookup/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          ...authHeader,
+        },
+        body: `text=${encodeURIComponent(citationText)}`,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          const waitTime = BACKOFF_BASE_MS * Math.pow(2, attempt);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+
+        throw new Error(`CourtListener citation-lookup error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // The API returns an array of citation matches
+      const citations = Array.isArray(data) ? data : [];
+      const hasMatches = citations.some((c: { match_url?: string }) => c.match_url);
+
+      return {
+        success: true,
+        data: {
+          found: hasMatches,
+          citations: citations.map((c: Record<string, unknown>) => ({
+            citation: String(c.citation || ''),
+            normalized_citations: Array.isArray(c.normalized_citations) ? c.normalized_citations : [],
+            match_url: c.match_url ? String(c.match_url) : undefined,
+            match_id: typeof c.match_id === 'number' ? c.match_id : undefined,
+            reporter: c.reporter ? String(c.reporter) : undefined,
+            volume: c.volume ? String(c.volume) : undefined,
+            page: c.page ? String(c.page) : undefined,
+            year: c.year ? String(c.year) : undefined,
+          })),
+        },
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        lastError = new Error('Request timeout');
+      }
+
+      if (attempt < MAX_RETRIES) {
+        const waitTime = BACKOFF_BASE_MS * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+  }
+
+  return {
+    success: false,
+    error: lastError?.message || 'Citation lookup failed after retries',
   };
 }
 
@@ -361,6 +475,9 @@ export async function getCitationTreatment(
 /**
  * Check if a citation exists in CourtListener
  * Returns normalized data for VPI storage
+ *
+ * IMPORTANT: Uses the v3 citation-lookup endpoint as primary method.
+ * This endpoint is specifically designed for hallucination detection.
  */
 export async function verifyCitationExists(
   citation: string,
@@ -380,7 +497,34 @@ export async function verifyCitationExists(
   };
   error?: string;
 }> {
-  // First try citation search
+  // PRIMARY METHOD: Use v3 citation-lookup endpoint (designed for hallucination detection)
+  const lookupResult = await lookupCitation(citation);
+
+  if (lookupResult.success && lookupResult.data?.found) {
+    // Find the first citation with a match
+    const matchedCitation = lookupResult.data.citations.find(c => c.match_url);
+
+    if (matchedCitation) {
+      // Extract opinion ID from match_url if available
+      const opinionId = matchedCitation.match_id
+        ? String(matchedCitation.match_id)
+        : matchedCitation.match_url?.match(/\/opinion\/(\d+)\//)?.[1];
+
+      return {
+        success: true,
+        data: {
+          exists: true,
+          courtlistenerId: opinionId,
+          courtlistenerUrl: matchedCitation.match_url
+            ? `https://www.courtlistener.com${matchedCitation.match_url}`
+            : undefined,
+          year: matchedCitation.year ? parseInt(matchedCitation.year, 10) : undefined,
+        },
+      };
+    }
+  }
+
+  // FALLBACK 1: Try v4 opinions search by citation
   const citationResult = await searchByCitation(citation);
 
   if (citationResult.success && citationResult.data?.found && citationResult.data.opinions.length > 0) {
@@ -401,7 +545,7 @@ export async function verifyCitationExists(
     };
   }
 
-  // Fallback: try case name search if provided
+  // FALLBACK 2: Try case name search if provided
   if (caseName) {
     const nameResult = await searchByCaseName(caseName);
 
@@ -424,7 +568,7 @@ export async function verifyCitationExists(
     }
   }
 
-  // Not found
+  // Not found in any source
   return {
     success: true,
     data: {
