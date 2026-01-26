@@ -283,7 +283,7 @@ class OpenAIClient {
         // Add reasoning effort for o1 models
         if (model.startsWith('o1') && reasoningEffort) {
           // o1 models use reasoning_effort parameter
-          (requestParams as Record<string, unknown>).reasoning_effort = reasoningEffort;
+          (requestParams as unknown as Record<string, unknown>).reasoning_effort = reasoningEffort;
         }
 
         const response = await client.chat.completions.create(requestParams);
