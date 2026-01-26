@@ -147,6 +147,7 @@ export async function GET() {
       .select('setting_key, setting_value')
       .in('setting_key', [
         'anthropic_api_key',
+        'openai_api_key',
         'courtlistener_api_key',
         'caselaw_api_key',
         'westlaw_api_key',
@@ -167,6 +168,7 @@ export async function GET() {
     };
 
     const anthropicKey = getValue('anthropic_api_key', '') as string;
+    const openaiKey = getValue('openai_api_key', '') as string;
     const courtlistenerKey = getValue('courtlistener_api_key', '') as string;
     const caselawKey = getValue('caselaw_api_key', '') as string;
     const westlawKey = getValue('westlaw_api_key', '') as string;
@@ -174,6 +176,7 @@ export async function GET() {
 
     // Also check environment variables as fallback
     const envAnthropicKey = process.env.ANTHROPIC_API_KEY || '';
+    const envOpenaiKey = process.env.OPENAI_API_KEY || '';
     const envCourtlistenerKey = process.env.COURTLISTENER_API_KEY || '';
     const envCaselawKey = process.env.CASELAW_API_KEY || '';
     const envWestlawKey = process.env.WESTLAW_API_KEY || '';
@@ -183,6 +186,10 @@ export async function GET() {
       // Anthropic - mask the key, show if configured
       anthropic_api_key: anthropicKey ? maskKey(anthropicKey) : (envAnthropicKey ? maskKey(envAnthropicKey) : ''),
       anthropic_configured: !!(anthropicKey || envAnthropicKey),
+
+      // OpenAI - mask the key, show if configured
+      openai_api_key: openaiKey ? maskKey(openaiKey) : (envOpenaiKey ? maskKey(envOpenaiKey) : ''),
+      openai_configured: !!(openaiKey || envOpenaiKey),
 
       // CourtListener - mask the key, show if configured
       courtlistener_api_key: courtlistenerKey ? maskKey(courtlistenerKey) : (envCourtlistenerKey ? maskKey(envCourtlistenerKey) : ''),
@@ -241,6 +248,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       anthropic_api_key,
+      openai_api_key,
       courtlistener_api_key,
       caselaw_api_key,
       westlaw_api_key,
@@ -275,6 +283,17 @@ export async function POST(request: NextRequest) {
         setting_key: 'anthropic_api_key',
         setting_value: { value: encryptKey(anthropic_api_key) },
         description: 'Anthropic API key for Claude AI',
+        category: 'general',
+        updated_by: user.id,
+      });
+    }
+
+    // OpenAI API key (for cross-vendor CIV)
+    if (openai_api_key && !openai_api_key.startsWith('****')) {
+      settingsToSave.push({
+        setting_key: 'openai_api_key',
+        setting_value: { value: encryptKey(openai_api_key) },
+        description: 'OpenAI API key for GPT models (cross-vendor CIV)',
         category: 'general',
         updated_by: user.id,
       });

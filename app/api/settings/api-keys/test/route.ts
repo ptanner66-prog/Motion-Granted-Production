@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
       case 'anthropic': {
         return await testAnthropicKey(settings.anthropic_api_key);
       }
+      case 'openai': {
+        return await testOpenAIKey(settings.openai_api_key);
+      }
       case 'courtlistener': {
         return await testCourtListenerKey(settings.courtlistener_api_key);
       }
@@ -123,6 +126,54 @@ async function testAnthropicKey(apiKey: string): Promise<NextResponse> {
     return NextResponse.json({
       success: false,
       message: error instanceof Error ? error.message : 'Connection failed',
+    });
+  }
+}
+
+async function testOpenAIKey(apiKey: string): Promise<NextResponse> {
+  if (!apiKey || apiKey.startsWith('****')) {
+    return NextResponse.json({
+      success: false,
+      message: 'Please enter a valid API key (not masked)',
+    });
+  }
+
+  try {
+    // Import OpenAI and make a minimal API call
+    const OpenAI = (await import('openai')).default;
+    const openai = new OpenAI({ apiKey });
+
+    await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'test' }],
+      max_tokens: 5,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'OpenAI API key is valid!',
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    // Check for specific error types
+    if (errorMessage.includes('401') || errorMessage.includes('Incorrect API key')) {
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid API key - authentication failed',
+      });
+    }
+
+    if (errorMessage.includes('429')) {
+      return NextResponse.json({
+        success: true,
+        message: 'API key valid (rate limited - reduce request frequency)',
+      });
+    }
+
+    return NextResponse.json({
+      success: false,
+      message: errorMessage,
     });
   }
 }

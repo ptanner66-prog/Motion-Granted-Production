@@ -3,21 +3,25 @@
  *
  * Distinguish between HOLDING (binding precedent) and DICTA (judicial commentary).
  * Citing dicta as if it were holding is a common error.
+ *
+ * Uses tier-based model selection for cross-vendor CIV.
  */
 
-import { getAnthropicClient } from '@/lib/automation/claude';
+import { callAnthropic, getModelForTask, getTierFromMotionType } from '../model-router';
 import { DEFAULT_CIV_CONFIG, DICTA_DETECTION_PROMPT, type DictaDetectionOutput, type DictaClassification, type PropositionType } from '../types';
 
 /**
  * Execute Step 3: Dicta Detection
  *
  * Classifies the cited statement as HOLDING, DICTA, or UNCLEAR
+ * Uses tier-based model selection for cross-vendor CIV
  */
 export async function executeDictaDetection(
   caseName: string,
   quotedOrParaphrasedText: string,
   surroundingContext: string,
-  propositionType: PropositionType
+  propositionType: PropositionType,
+  motionType: string = 'motion_to_compel' // Default to Tier B
 ): Promise<DictaDetectionOutput> {
   const config = DEFAULT_CIV_CONFIG;
 
@@ -37,28 +41,13 @@ export async function executeDictaDetection(
       .replace('{quoted_or_paraphrased_text}', quotedOrParaphrasedText)
       .replace('{surrounding_paragraphs}', surroundingContext || 'No additional context available.');
 
-    const anthropic = await getAnthropicClient();
-    if (!anthropic) {
-      throw new Error('Anthropic client not configured');
-    }
+    // Use tier-based model selection
+    const tier = getTierFromMotionType(motionType);
+    const model = getModelForTask('steps_3_5', tier);
 
-    const response = await anthropic.messages.create({
-      model: config.primaryModel,
-      max_tokens: 1500,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
+    const responseText = await callAnthropic(model, prompt, 1500);
 
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
-
-    const parsed = parseDictaResponse(content.text);
+    const parsed = parseDictaResponse(responseText);
 
     result.classification = parsed.classification;
     result.confidence = parsed.confidence;

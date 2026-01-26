@@ -5,9 +5,11 @@
  * Layer 1: CourtListener Treatment API (deterministic)
  * Layer 2: AI Pattern Detection (LLM evaluation of search results)
  * Layer 3: Curated Overruled List (manual maintenance)
+ *
+ * Uses tier-based model selection for cross-vendor CIV.
  */
 
-import { getAnthropicClient } from '@/lib/automation/claude';
+import { callAnthropic, getModelForTask, getTierFromMotionType } from '../model-router';
 import { getCitationTreatment } from '@/lib/courtlistener/client';
 import { checkCuratedOverruledList, recordGoodLawCheck } from '../database';
 import { DEFAULT_CIV_CONFIG, BAD_LAW_ANALYSIS_PROMPT, type BadLawCheckOutput, type BadLawStatus } from '../types';
@@ -20,12 +22,15 @@ import { DEFAULT_CIV_CONFIG, BAD_LAW_ANALYSIS_PROMPT, type BadLawCheckOutput, ty
  * 2. Query CourtListener treatment (Layer 1)
  * 3. If Layer 1 returns good law, run AI pattern detection (Layer 2)
  * 4. Combine results for composite status
+ *
+ * Uses tier-based model selection for cross-vendor CIV
  */
 export async function executeBadLawCheck(
   citation: string,
   caseName: string,
   courtlistenerId?: string,
-  citationDbId?: string
+  citationDbId?: string,
+  motionType: string = 'motion_to_compel' // Default to Tier B
 ): Promise<BadLawCheckOutput> {
   const config = DEFAULT_CIV_CONFIG;
 
@@ -132,7 +137,7 @@ export async function executeBadLawCheck(
     }
 
     // Layer 2: AI pattern detection for additional assurance
-    const layer2Result = await runAIPatternDetection(caseName);
+    const layer2Result = await runAIPatternDetection(caseName, motionType);
 
     result.layer2 = layer2Result;
 
@@ -182,15 +187,17 @@ export async function executeBadLawCheck(
 
 /**
  * Run AI pattern detection (Layer 2)
+ * Uses tier-based model selection for cross-vendor CIV
  */
-async function runAIPatternDetection(caseName: string): Promise<{
+async function runAIPatternDetection(
+  caseName: string,
+  motionType: string = 'motion_to_compel'
+): Promise<{
   searchesRun: number;
   status: BadLawStatus;
   confidence: number;
   concerns: string[];
 }> {
-  const config = DEFAULT_CIV_CONFIG;
-
   // Define search patterns
   const searchPatterns = [
     `"${caseName}" overruled`,
@@ -218,28 +225,13 @@ async function runAIPatternDetection(caseName: string): Promise<{
     .replace('{search_result_snippets}', searchResults.join('\n\n---\n\n'));
 
   try {
-    const anthropic = await getAnthropicClient();
-    if (!anthropic) {
-      throw new Error('Anthropic client not configured');
-    }
+    // Use tier-based model selection
+    const tier = getTierFromMotionType(motionType);
+    const model = getModelForTask('steps_3_5', tier);
 
-    const response = await anthropic.messages.create({
-      model: config.primaryModel,
-      max_tokens: 1500,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
+    const responseText = await callAnthropic(model, prompt, 1500);
 
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
-
-    return parseLayer2Response(content.text, searchPatterns.length);
+    return parseLayer2Response(responseText, searchPatterns.length);
   } catch (error) {
     console.error('Layer 2 AI analysis error:', error);
     return {

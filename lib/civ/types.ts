@@ -25,6 +25,11 @@ export type VerificationStatus = 'VERIFIED' | 'FLAGGED' | 'REJECTED' | 'BLOCKED'
 export type HoldingVerificationResult = 'VERIFIED' | 'PARTIAL' | 'REJECTED' | 'DICTA_ONLY';
 
 /**
+ * Alias for cross-vendor model router compatibility
+ */
+export type VerificationResult = HoldingVerificationResult;
+
+/**
  * Step 3 dicta classification
  */
 export type DictaClassification = 'HOLDING' | 'DICTA' | 'UNCLEAR';
@@ -127,6 +132,34 @@ export interface HoldingVerificationOutput {
   finalResult: HoldingVerificationResult;
   finalConfidence: number;
   proceedToStep3: boolean;
+}
+
+/**
+ * Step 2 Result for cross-vendor implementation
+ * Uses snake_case for consistency with model router
+ */
+export interface Step2Result {
+  step: 2;
+  name: 'holding_verification';
+  proposition: string;
+  proposition_type: PropositionType;
+  stage_1: {
+    model: string;
+    result: VerificationResult;
+    confidence: number;
+    supporting_quote?: string;
+    reasoning?: string;
+  };
+  stage_2: {
+    triggered: boolean;
+    model?: string;
+    result?: 'UPHELD' | 'WEAKENED' | 'REJECTED';
+    challenge_strength?: number;
+    challenge_reasoning?: string;
+  };
+  final_result: VerificationResult;
+  final_confidence: number;
+  proceed_to_step_3: boolean;
 }
 
 /**

@@ -223,6 +223,36 @@ export async function getAPIKeys(): Promise<{
 }
 
 /**
+ * Get OpenAI API key (for GPT models in cross-vendor CIV)
+ * Checks database first, falls back to environment variable
+ */
+export async function getOpenAIAPIKey(): Promise<string> {
+  const supabase = getAdminClient();
+
+  if (supabase) {
+    const { data } = await supabase
+      .from('automation_settings')
+      .select('setting_value')
+      .eq('setting_key', 'openai_api_key')
+      .single();
+
+    if (data?.setting_value?.value) {
+      const decrypted = decryptKey(data.setting_value.value as string);
+      if (decrypted) {
+        return decrypted;
+      }
+    }
+  }
+
+  const envKey = process.env.OPENAI_API_KEY;
+  if (envKey) {
+    return envKey;
+  }
+
+  throw new Error('OpenAI API key not configured. Add it in Admin Settings or set OPENAI_API_KEY environment variable.');
+}
+
+/**
  * Get Anthropic API key (for Claude)
  * Checks database first, falls back to environment variable
  */

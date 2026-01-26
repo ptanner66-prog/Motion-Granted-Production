@@ -27,6 +27,9 @@ interface APIKeysSettings {
   // Anthropic (Required)
   anthropic_api_key: string;
   anthropic_configured: boolean;
+  // OpenAI (Required for cross-vendor CIV)
+  openai_api_key: string;
+  openai_configured: boolean;
   // CourtListener (Required for CIV)
   courtlistener_api_key: string;
   courtlistener_configured: boolean;
@@ -49,6 +52,8 @@ export function APIKeysSettings() {
   const [settings, setSettings] = useState<APIKeysSettings>({
     anthropic_api_key: '',
     anthropic_configured: false,
+    openai_api_key: '',
+    openai_configured: false,
     courtlistener_api_key: '',
     courtlistener_configured: false,
     caselaw_api_key: '',
@@ -121,7 +126,7 @@ export function APIKeysSettings() {
     }
   };
 
-  const handleTestKey = async (keyType: 'anthropic' | 'courtlistener' | 'caselaw' | 'westlaw' | 'lexisnexis') => {
+  const handleTestKey = async (keyType: 'anthropic' | 'openai' | 'courtlistener' | 'caselaw' | 'westlaw' | 'lexisnexis') => {
     setTestingKey(keyType);
     setTestResults(prev => ({ ...prev, [keyType]: { success: false, message: '' } }));
 
@@ -292,6 +297,86 @@ export function APIKeysSettings() {
                   {testResults['anthropic'] && (
                     <span className={`text-xs ${testResults['anthropic'].success ? 'text-green-600' : 'text-red-600'}`}>
                       {testResults['anthropic'].message}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* OpenAI API Key Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
+              <Sparkles className="h-5 w-5 text-green-500" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-navy">OpenAI (GPT)</h3>
+                <p className="text-sm text-gray-500">Powers Stage 1 cross-vendor citation verification</p>
+              </div>
+              {settings.openai_configured ? (
+                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Active
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-red-500/20 text-red-600 rounded">
+                  <XCircle className="h-3.5 w-3.5" />
+                  Required
+                </span>
+              )}
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="openai-key">OpenAI API Key</Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="openai-key"
+                      type={showKeys['openai'] ? 'text' : 'password'}
+                      value={settings.openai_api_key}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, openai_api_key: e.target.value }))
+                      }
+                      placeholder="sk-..."
+                      className="pl-10 pr-10 font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => toggleShowKey('openai')}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showKeys['openai'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleTestKey('openai')}
+                    disabled={!settings.openai_api_key || testingKey === 'openai'}
+                  >
+                    {testingKey === 'openai' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Test'
+                    )}
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500">
+                    Get your API key from{' '}
+                    <a
+                      href="https://platform.openai.com/api-keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-teal hover:underline inline-flex items-center gap-1"
+                    >
+                      OpenAI Platform <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </p>
+                  {testResults['openai'] && (
+                    <span className={`text-xs ${testResults['openai'].success ? 'text-green-600' : 'text-red-600'}`}>
+                      {testResults['openai'].message}
                     </span>
                   )}
                 </div>
