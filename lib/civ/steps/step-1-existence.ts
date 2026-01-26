@@ -4,14 +4,18 @@
  * Multi-source triangulation to verify citation exists in legal databases.
  * Catches hallucinated citations before any further processing.
  *
+ * UPDATED FLOW (January 2026):
+ * - Case.law (Harvard) was SUNSET on September 5, 2024 - REMOVED
+ * - New flow: CourtListener (PRIMARY) → PACER (FALLBACK for unpublished federal only)
+ *
  * Sources:
- * 1. CourtListener (PRIMARY) - 10M+ cases
- * 2. Case.law (FALLBACK) - Harvard Law School collection
- * 3. RECAP (UNPUBLISHED) - Federal PACER documents
+ * 1. CourtListener (PRIMARY) - 10M+ cases via RECAP and scrapers
+ * 2. PACER (FALLBACK) - Federal unpublished cases only (~$0.10/lookup)
  */
 
 import { verifyCitationExists as courtListenerVerify, searchRECAP } from '@/lib/courtlistener/client';
-import { verifyCitationExists as caseLawVerify } from '@/lib/caselaw/client';
+import { lookupPACER, isPACERConfigured } from '@/lib/pacer/client';
+import { waitForToken } from '@/lib/rate-limiter';
 import { normalizeCitation, parseCitation, createOrUpdateCitation } from '../database';
 import type { ExistenceCheckOutput, NormalizedCitation } from '../types';
 
@@ -41,18 +45,19 @@ export function normalizeAndParseCitation(citationString: string): NormalizedCit
  *
  * Flow:
  * 1. Normalize citation
- * 2. Query CourtListener (primary)
- * 3. If found in CourtListener, validate with Case.law
- * 4. If not in CourtListener, try Case.law
- * 5. If federal and not found, check RECAP for unpublished
- * 6. Return verification result
+ * 2. Query CourtListener (primary) with rate limiting
+ * 3. If federal and not found, check RECAP for unpublished
+ * 4. If still not found and federal, check PACER (costs ~$0.10)
+ * 5. Return verification result
+ *
+ * NOTE: Case.law removed - API was sunset September 5, 2024
  */
 export async function executeExistenceCheck(
   citationString: string,
   caseName?: string
 ): Promise<ExistenceCheckOutput> {
   const startTime = Date.now();
-  const sourcesChecked: Array<'courtlistener' | 'caselaw' | 'recap'> = [];
+  const sourcesChecked: Array<'courtlistener' | 'pacer' | 'recap'> = [];
 
   // Step 1: Normalize citation
   const normalizedCitation = normalizeAndParseCitation(citationString);
@@ -71,7 +76,19 @@ export async function executeExistenceCheck(
   };
 
   try {
-    // Step 2: Query CourtListener (PRIMARY)
+    // =========================================================================
+    // STEP 1A: CourtListener (PRIMARY)
+    // Rate limited: 60/minute, 5,000/hour
+    // =========================================================================
+    const hasToken = await waitForToken('courtlistener', 10000);
+    if (!hasToken) {
+      console.warn('[CIV Step 1] CourtListener rate limit hit, waiting...');
+      await waitForToken('courtlistener', 30000);
+    }
+
+    // Also check hourly limit
+    await waitForToken('courtlistener_hourly', 1000);
+
     const courtListenerResult = await courtListenerVerify(
       normalizedCitation.normalized,
       caseName || normalizedCitation.caseName
@@ -91,54 +108,17 @@ export async function executeExistenceCheck(
         proceedToStep2: courtListenerResult.data.isPublished ?? true,
       };
 
-      // Step 3: Validate with Case.law for additional confidence
-      const caseLawResult = await caseLawVerify(
-        normalizedCitation.normalized,
-        caseName || normalizedCitation.caseName
-      );
-      sourcesChecked.push('caselaw');
-
-      if (caseLawResult.success && caseLawResult.data?.exists) {
-        result.caselawId = caseLawResult.data.caselawId;
-        result.caselawUrl = caseLawResult.data.caselawUrl;
-        // Both sources agree - highest confidence
-        result.confidence = 1.0;
-      }
-
       // Store in VPI cache
       await storeCitationInVPI(citationString, normalizedCitation, result, courtListenerResult.data);
 
       result.sourcesChecked = sourcesChecked;
+      result.durationMs = Date.now() - startTime;
       return result;
     }
 
-    // Step 4: Not in CourtListener - try Case.law
-    const caseLawResult = await caseLawVerify(
-      normalizedCitation.normalized,
-      caseName || normalizedCitation.caseName
-    );
-    sourcesChecked.push('caselaw');
-
-    if (caseLawResult.success && caseLawResult.data?.exists) {
-      // Found in Case.law but not CourtListener (CourtListener may have lag)
-      result = {
-        ...result,
-        result: 'VERIFIED',
-        caselawId: caseLawResult.data.caselawId,
-        caselawUrl: caseLawResult.data.caselawUrl,
-        isPublished: true, // Case.law primarily has published opinions
-        confidence: 0.95, // Slightly lower confidence since only one source
-        proceedToStep2: true,
-      };
-
-      // Store in VPI cache
-      await storeCitationInVPI(citationString, normalizedCitation, result, caseLawResult.data);
-
-      result.sourcesChecked = sourcesChecked;
-      return result;
-    }
-
-    // Step 5: Check if federal court - try RECAP for unpublished
+    // =========================================================================
+    // STEP 1B: Check RECAP (part of CourtListener) for unpublished federal
+    // =========================================================================
     const isFederal = isFederalCitation(normalizedCitation.reporter || '', normalizedCitation.court);
 
     if (isFederal) {
@@ -158,22 +138,65 @@ export async function executeExistenceCheck(
         };
 
         result.sourcesChecked = sourcesChecked;
+        result.durationMs = Date.now() - startTime;
         return result;
       }
     }
 
-    // Step 6: Not found anywhere
+    // =========================================================================
+    // STEP 1C: PACER (FALLBACK - Unpublished Federal Only)
+    // Only attempt PACER if:
+    // 1. CourtListener didn't find it
+    // 2. It looks like a federal citation
+    // 3. PACER is configured
+    // COST: ~$0.10 per lookup
+    // =========================================================================
+    if (isFederal && isPACERConfigured()) {
+      console.log('[CIV Step 1] Citation not in CourtListener, checking PACER (federal unpublished)...');
+
+      // Rate limit PACER to control costs
+      const hasPacerToken = await waitForToken('pacer', 5000);
+      if (!hasPacerToken) {
+        console.warn('[CIV Step 1] PACER rate limit hit, skipping PACER lookup');
+      } else {
+        const pacerResult = await lookupPACER(citationString);
+        sourcesChecked.push('pacer');
+
+        if (pacerResult.found) {
+          result = {
+            ...result,
+            result: 'UNPUBLISHED',
+            isPublished: false,
+            precedentialStatus: 'Unpublished',
+            confidence: 0.9,
+            proceedToStep2: false, // Per binding decision #4: Refuse all unpublished
+            pacerCaseId: pacerResult.caseId,
+            pacerUrl: pacerResult.url,
+            pacerCost: pacerResult.cost,
+          };
+
+          result.sourcesChecked = sourcesChecked;
+          result.durationMs = Date.now() - startTime;
+          return result;
+        }
+      }
+    }
+
+    // =========================================================================
+    // EXISTENCE FAILED - Citation not found in any source
+    // =========================================================================
     result = {
       ...result,
       result: 'NOT_FOUND',
       sourcesChecked,
       confidence: 0,
       proceedToStep2: false,
+      durationMs: Date.now() - startTime,
     };
 
     return result;
   } catch (error) {
-    console.error('Existence check error:', error);
+    console.error('[CIV Step 1] Existence check error:', error);
 
     return {
       ...result,
@@ -181,6 +204,8 @@ export async function executeExistenceCheck(
       sourcesChecked,
       confidence: 0,
       proceedToStep2: false,
+      durationMs: Date.now() - startTime,
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }
@@ -206,6 +231,7 @@ function isFederalCitation(reporter: string, court?: string): boolean {
     'B.R.',
     'Fed. Cl.',
     'Fed.Cl.',
+    'Fed. Appx.', // Federal Appendix (unpublished)
   ];
 
   const federalCourts = [
@@ -256,8 +282,6 @@ async function storeCitationInVPI(
     dateDecided?: string;
     courtlistenerId?: string;
     courtlistenerUrl?: string;
-    caselawId?: string;
-    caselawUrl?: string;
     isPublished?: boolean;
     precedentialStatus?: string;
   }
@@ -274,14 +298,12 @@ async function storeCitationInVPI(
       decisionDate: sourceData.dateDecided,
       courtlistenerId: result.courtlistenerId || sourceData.courtlistenerId,
       courtlistenerUrl: result.courtlistenerUrl || sourceData.courtlistenerUrl,
-      caselawId: result.caselawId || sourceData.caselawId,
-      caselawUrl: result.caselawUrl || sourceData.caselawUrl,
       isPublished: result.isPublished,
       precedentialStatus: result.precedentialStatus || sourceData.precedentialStatus,
     });
   } catch (error) {
     // Non-fatal - log but continue
-    console.error('Failed to store citation in VPI:', error);
+    console.error('[CIV Step 1] Failed to store citation in VPI:', error);
   }
 }
 
@@ -295,7 +317,7 @@ export async function batchExistenceCheck(
 ): Promise<ExistenceCheckOutput[]> {
   const results: ExistenceCheckOutput[] = [];
 
-  // Process in batches
+  // Process in batches to respect rate limits
   for (let i = 0; i < citations.length; i += concurrencyLimit) {
     const batch = citations.slice(i, i + concurrencyLimit);
 
@@ -304,6 +326,11 @@ export async function batchExistenceCheck(
     );
 
     results.push(...batchResults);
+
+    // Brief pause between batches to avoid rate limit issues
+    if (i + concurrencyLimit < citations.length) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
   }
 
   return results;

@@ -204,7 +204,7 @@ export async function executeHoldingVerification(
   proposition: string,
   propositionType: PropositionType,
   courtlistenerId?: string,
-  caselawId?: string,
+  _caselawId?: string, // @deprecated Case.law API sunset September 5, 2024
   isTierC: boolean = false
 ): Promise<{
   step: 2;
@@ -231,9 +231,10 @@ export async function executeHoldingVerification(
 }> {
   // Import opinion text retrieval functions
   const { getOpinionWithText } = await import('@/lib/courtlistener/client');
-  const { getCaseText } = await import('@/lib/caselaw/client');
+  // NOTE: Case.law API was sunset September 5, 2024
+  // const { getCaseText } = await import('@/lib/caselaw/client');
 
-  // Get opinion text
+  // Get opinion text (CourtListener only - Case.law sunset)
   let opinionText: string | undefined;
 
   if (courtlistenerId) {
@@ -243,14 +244,7 @@ export async function executeHoldingVerification(
     }
   }
 
-  if (!opinionText && caselawId) {
-    const caseLawResult = await getCaseText(caselawId);
-    if (caseLawResult.success && caseLawResult.data?.opinions?.length) {
-      opinionText = caseLawResult.data.opinions
-        .map(op => `[${op.type || 'OPINION'}${op.author ? ` by ${op.author}` : ''}]\n${op.text}`)
-        .join('\n\n---\n\n');
-    }
-  }
+  // NOTE: Case.law fallback removed - API sunset September 5, 2024
 
   // Extract case name from citation
   const caseNameMatch = citation.match(/^([^,]+)/);
@@ -305,7 +299,7 @@ export async function retryHoldingVerification(
   proposition: string,
   propositionType: PropositionType,
   courtlistenerId?: string,
-  caselawId?: string,
+  _caselawId?: string, // @deprecated Case.law API sunset September 5, 2024
   maxRetries: number = 2
 ): Promise<ReturnType<typeof executeHoldingVerification>> {
   let lastResult = await executeHoldingVerification(
@@ -313,7 +307,7 @@ export async function retryHoldingVerification(
     proposition,
     propositionType,
     courtlistenerId,
-    caselawId
+    undefined // caselawId deprecated
   );
 
   let retryCount = 0;
@@ -340,7 +334,7 @@ export async function retryHoldingVerification(
       reframedProposition,
       propositionType,
       courtlistenerId,
-      caselawId,
+      undefined, // caselawId deprecated
       true // Force Tier C on retry
     );
 

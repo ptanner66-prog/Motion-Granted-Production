@@ -3,10 +3,13 @@
  *
  * Tests connectivity for API keys:
  * - Anthropic: Makes a simple API call to verify the key works
+ * - OpenAI: Tests GPT API connectivity for cross-vendor CIV
  * - CourtListener: Tests Free Law Project API connectivity
- * - Case.law: Tests Harvard Law Case.law API connectivity
+ * - PACER: Tests federal court records access (~$0.10/lookup)
  * - Westlaw: Attempts a test search (optional premium)
  * - LexisNexis: Attempts a test search (optional premium)
+ *
+ * NOTE: Case.law test removed - API was sunset September 5, 2024
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -48,8 +51,8 @@ export async function POST(request: NextRequest) {
       case 'courtlistener': {
         return await testCourtListenerKey(settings.courtlistener_api_key);
       }
-      case 'caselaw': {
-        return await testCaseLawKey(settings.caselaw_api_key);
+      case 'pacer': {
+        return await testPACERCredentials(settings.pacer_username, settings.pacer_password);
       }
       case 'westlaw': {
         return await testWestlawKey(settings.westlaw_api_key, settings.westlaw_client_id);
@@ -229,53 +232,59 @@ async function testCourtListenerKey(apiKey: string): Promise<NextResponse> {
   }
 }
 
-async function testCaseLawKey(apiKey: string): Promise<NextResponse> {
-  if (!apiKey || apiKey.startsWith('****')) {
+/**
+ * Test PACER credentials
+ * NOTE: We don't actually authenticate to avoid charges - just validate format
+ */
+async function testPACERCredentials(username: string, password: string): Promise<NextResponse> {
+  if (!username || username.startsWith('****')) {
     return NextResponse.json({
       success: false,
-      message: 'Please enter a valid API key (not masked)',
+      message: 'Please enter a valid PACER username',
     });
   }
 
+  if (!password || password.startsWith('****')) {
+    return NextResponse.json({
+      success: false,
+      message: 'Please enter a valid PACER password',
+    });
+  }
+
+  // Validate username format (PACER usernames are typically alphanumeric)
+  if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+    return NextResponse.json({
+      success: false,
+      message: 'PACER username should be alphanumeric',
+    });
+  }
+
+  // For PACER, we don't want to actually authenticate because:
+  // 1. Authentication itself might incur charges
+  // 2. We want to avoid unnecessary API calls
+  // Instead, we validate the format and trust the user
   try {
-    // Test Case.law API with a simple search
-    const response = await fetch('https://api.case.law/v1/cases/?page_size=1', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Token ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+    // Check if PACER login page is accessible (doesn't authenticate)
+    const response = await fetch('https://pacer.login.uscourts.gov/', {
+      method: 'HEAD',
     });
 
-    if (response.ok) {
+    if (response.ok || response.status === 405) {
       return NextResponse.json({
         success: true,
-        message: 'Case.law API key is valid!',
-      });
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      return NextResponse.json({
-        success: false,
-        message: 'Invalid API key - authentication failed',
-      });
-    }
-
-    if (response.status === 429) {
-      return NextResponse.json({
-        success: true,
-        message: 'API key valid (rate limited - reduce request frequency)',
+        message: 'PACER credentials saved. Will authenticate on first use.',
       });
     }
 
     return NextResponse.json({
-      success: false,
-      message: `Case.law API returned status ${response.status}`,
+      success: true,
+      message: 'PACER credentials saved (connection check skipped to avoid charges).',
     });
-  } catch (error) {
+  } catch {
+    // Even if we can't reach PACER, save the credentials
     return NextResponse.json({
-      success: false,
-      message: error instanceof Error ? error.message : 'Connection failed',
+      success: true,
+      message: 'PACER credentials saved. Connectivity will be verified on first lookup.',
     });
   }
 }

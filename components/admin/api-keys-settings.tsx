@@ -33,9 +33,10 @@ interface APIKeysSettings {
   // CourtListener (Required for CIV)
   courtlistener_api_key: string;
   courtlistener_configured: boolean;
-  // Case.law (Required for CIV)
-  caselaw_api_key: string;
-  caselaw_configured: boolean;
+  // PACER (Optional - for federal unpublished cases)
+  pacer_username: string;
+  pacer_password: string;
+  pacer_configured: boolean;
   // Westlaw (Optional Premium)
   westlaw_api_key: string;
   westlaw_client_id: string;
@@ -56,8 +57,9 @@ export function APIKeysSettings() {
     openai_configured: false,
     courtlistener_api_key: '',
     courtlistener_configured: false,
-    caselaw_api_key: '',
-    caselaw_configured: false,
+    pacer_username: '',
+    pacer_password: '',
+    pacer_configured: false,
     westlaw_api_key: '',
     westlaw_client_id: '',
     westlaw_enabled: false,
@@ -126,7 +128,7 @@ export function APIKeysSettings() {
     }
   };
 
-  const handleTestKey = async (keyType: 'anthropic' | 'openai' | 'courtlistener' | 'caselaw' | 'westlaw' | 'lexisnexis') => {
+  const handleTestKey = async (keyType: 'anthropic' | 'openai' | 'courtlistener' | 'pacer' | 'westlaw' | 'lexisnexis') => {
     setTestingKey(keyType);
     setTestResults(prev => ({ ...prev, [keyType]: { success: false, message: '' } }));
 
@@ -464,83 +466,109 @@ export function APIKeysSettings() {
             </div>
           </div>
 
-          {/* Case.law API Key Section */}
+          {/* PACER Section (Optional - Federal Unpublished Cases) */}
           <div className="space-y-4">
             <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
-              <BookOpen className="h-5 w-5 text-green-500" />
+              <BookOpen className="h-5 w-5 text-amber-500" />
               <div className="flex-1">
-                <h3 className="font-semibold text-navy">Case.law (Harvard Law)</h3>
-                <p className="text-sm text-gray-500">Secondary source for citation verification (CIV fallback)</p>
+                <h3 className="font-semibold text-navy">PACER (Federal Courts)</h3>
+                <p className="text-sm text-gray-500">Fallback for federal unpublished cases (~$0.10/lookup)</p>
               </div>
-              {settings.caselaw_configured ? (
+              {settings.pacer_configured ? (
                 <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   Active
                 </span>
               ) : (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-red-500/20 text-red-600 rounded">
-                  <XCircle className="h-3.5 w-3.5" />
-                  Required
+                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  Optional
                 </span>
               )}
             </div>
 
             <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="caselaw-key">Case.law API Key</Label>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <div className="flex gap-2">
-                  <div className="relative flex-1">
+                  <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-700">
+                    <p className="font-medium">Cost Warning</p>
+                    <p className="mt-1">PACER charges ~$0.10 per lookup. Only used when CourtListener doesn&apos;t find a federal case.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="pacer-username">PACER Username</Label>
+                  <div className="relative">
                     <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
-                      id="caselaw-key"
-                      type={showKeys['caselaw'] ? 'text' : 'password'}
-                      value={settings.caselaw_api_key}
+                      id="pacer-username"
+                      type="text"
+                      value={settings.pacer_username}
                       onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, caselaw_api_key: e.target.value }))
+                        setSettings((prev) => ({ ...prev, pacer_username: e.target.value }))
                       }
-                      placeholder="Enter Case.law API key"
-                      className="pl-10 pr-10 font-mono text-sm"
+                      placeholder="Enter PACER username"
+                      className="pl-10 font-mono text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pacer-password">PACER Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="pacer-password"
+                      type={showKeys['pacer'] ? 'text' : 'password'}
+                      value={settings.pacer_password}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, pacer_password: e.target.value }))
+                      }
+                      placeholder="Enter PACER password"
+                      className="pr-10 font-mono text-sm"
                     />
                     <button
                       type="button"
-                      onClick={() => toggleShowKey('caselaw')}
+                      onClick={() => toggleShowKey('pacer')}
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
-                      {showKeys['caselaw'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showKeys['pacer'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleTestKey('caselaw')}
-                    disabled={!settings.caselaw_api_key || testingKey === 'caselaw'}
-                  >
-                    {testingKey === 'caselaw' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Test'
-                    )}
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">
-                    Get your free API key from{' '}
-                    <a
-                      href="https://case.law/user/register/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-teal hover:underline inline-flex items-center gap-1"
-                    >
-                      Case.law <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </p>
-                  {testResults['caselaw'] && (
-                    <span className={`text-xs ${testResults['caselaw'].success ? 'text-green-600' : 'text-red-600'}`}>
-                      {testResults['caselaw'].message}
-                    </span>
-                  )}
                 </div>
               </div>
+
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  Register at{' '}
+                  <a
+                    href="https://pacer.uscourts.gov"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-teal hover:underline inline-flex items-center gap-1"
+                  >
+                    PACER.uscourts.gov <ExternalLink className="h-3 w-3" />
+                  </a>
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleTestKey('pacer')}
+                  disabled={!settings.pacer_username || !settings.pacer_password || testingKey === 'pacer'}
+                >
+                  {testingKey === 'pacer' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Test Connection'
+                  )}
+                </Button>
+              </div>
+              {testResults['pacer'] && (
+                <span className={`text-xs ${testResults['pacer'].success ? 'text-green-600' : 'text-red-600'}`}>
+                  {testResults['pacer'].message}
+                </span>
+              )}
             </div>
           </div>
         </div>

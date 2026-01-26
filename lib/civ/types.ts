@@ -96,15 +96,18 @@ export interface ExistenceCheckOutput {
   citationInput: string;
   citationNormalized: string;
   result: 'VERIFIED' | 'NOT_FOUND' | 'UNPUBLISHED';
-  sourcesChecked: Array<'courtlistener' | 'caselaw' | 'recap'>;
+  sourcesChecked: Array<'courtlistener' | 'pacer' | 'recap'>;
   courtlistenerId?: string;
   courtlistenerUrl?: string;
-  caselawId?: string;
-  caselawUrl?: string;
+  pacerCaseId?: string;
+  pacerUrl?: string;
+  pacerCost?: number;
   isPublished: boolean;
   precedentialStatus?: string;
   confidence: number;
   proceedToStep2: boolean;
+  durationMs?: number;
+  error?: string;
 }
 
 /**

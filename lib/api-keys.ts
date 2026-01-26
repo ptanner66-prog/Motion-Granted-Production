@@ -9,10 +9,14 @@
  *
  * Supported keys:
  * - Anthropic (Claude AI) - Required for motion generation
- * - CourtListener - Required for citation verification
- * - Case.law - Required for citation verification
+ * - OpenAI (GPT) - Required for cross-vendor CIV
+ * - CourtListener - Required for citation verification (PRIMARY)
+ * - PACER - Optional for federal unpublished cases (~$0.10/lookup)
  * - Westlaw (Optional Premium)
  * - LexisNexis (Optional Premium)
+ *
+ * DEPRECATED (September 5, 2024):
+ * - Case.law (Harvard) - API was sunset
  */
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
@@ -98,7 +102,8 @@ const CACHE_TTL = 0; // Disabled - fetch fresh every time
 export async function getAPIKeys(): Promise<{
   anthropic_api_key: string;
   courtlistener_api_key: string;
-  caselaw_api_key: string;
+  pacer_username: string;
+  pacer_password: string;
   westlaw_api_key: string;
   westlaw_client_id: string;
   westlaw_enabled: boolean;
@@ -112,7 +117,8 @@ export async function getAPIKeys(): Promise<{
     return {
       anthropic_api_key: keyCache.keys.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
       courtlistener_api_key: keyCache.keys.courtlistener_api_key || process.env.COURTLISTENER_API_KEY || '',
-      caselaw_api_key: keyCache.keys.caselaw_api_key || process.env.CASELAW_API_KEY || '',
+      pacer_username: keyCache.keys.pacer_username || process.env.PACER_USERNAME || '',
+      pacer_password: keyCache.keys.pacer_password || process.env.PACER_PASSWORD || '',
       westlaw_api_key: keyCache.keys.westlaw_api_key || process.env.WESTLAW_API_KEY || '',
       westlaw_client_id: keyCache.keys.westlaw_client_id || process.env.WESTLAW_CLIENT_ID || '',
       westlaw_enabled: keyCache.keys.westlaw_enabled === 'true',
@@ -132,7 +138,8 @@ export async function getAPIKeys(): Promise<{
       return {
         anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
         courtlistener_api_key: process.env.COURTLISTENER_API_KEY || '',
-        caselaw_api_key: process.env.CASELAW_API_KEY || '',
+        pacer_username: process.env.PACER_USERNAME || '',
+        pacer_password: process.env.PACER_PASSWORD || '',
         westlaw_api_key: process.env.WESTLAW_API_KEY || '',
         westlaw_client_id: process.env.WESTLAW_CLIENT_ID || '',
         westlaw_enabled: !!process.env.WESTLAW_API_KEY,
@@ -149,7 +156,8 @@ export async function getAPIKeys(): Promise<{
       .in('setting_key', [
         'anthropic_api_key',
         'courtlistener_api_key',
-        'caselaw_api_key',
+        'pacer_username',
+        'pacer_password',
         'westlaw_api_key',
         'westlaw_client_id',
         'westlaw_enabled',
@@ -179,7 +187,8 @@ export async function getAPIKeys(): Promise<{
       keys: {
         anthropic_api_key: getValue('anthropic_api_key'),
         courtlistener_api_key: getValue('courtlistener_api_key'),
-        caselaw_api_key: getValue('caselaw_api_key'),
+        pacer_username: getValue('pacer_username'),
+        pacer_password: getValue('pacer_password'),
         westlaw_api_key: getValue('westlaw_api_key'),
         westlaw_client_id: getValue('westlaw_client_id'),
         westlaw_enabled: getValue('westlaw_enabled'),
@@ -194,7 +203,8 @@ export async function getAPIKeys(): Promise<{
     return {
       anthropic_api_key: keyCache.keys.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
       courtlistener_api_key: keyCache.keys.courtlistener_api_key || process.env.COURTLISTENER_API_KEY || '',
-      caselaw_api_key: keyCache.keys.caselaw_api_key || process.env.CASELAW_API_KEY || '',
+      pacer_username: keyCache.keys.pacer_username || process.env.PACER_USERNAME || '',
+      pacer_password: keyCache.keys.pacer_password || process.env.PACER_PASSWORD || '',
       westlaw_api_key: keyCache.keys.westlaw_api_key || process.env.WESTLAW_API_KEY || '',
       westlaw_client_id: keyCache.keys.westlaw_client_id || process.env.WESTLAW_CLIENT_ID || '',
       westlaw_enabled: keyCache.keys.westlaw_enabled === 'true',
@@ -210,7 +220,8 @@ export async function getAPIKeys(): Promise<{
     return {
       anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
       courtlistener_api_key: process.env.COURTLISTENER_API_KEY || '',
-      caselaw_api_key: process.env.CASELAW_API_KEY || '',
+      pacer_username: process.env.PACER_USERNAME || '',
+      pacer_password: process.env.PACER_PASSWORD || '',
       westlaw_api_key: process.env.WESTLAW_API_KEY || '',
       westlaw_client_id: process.env.WESTLAW_CLIENT_ID || '',
       westlaw_enabled: !!process.env.WESTLAW_API_KEY,
@@ -283,11 +294,28 @@ export async function getCourtListenerAPIKey(): Promise<string> {
 
 /**
  * Get Case.law API key (for citation verification)
- * Checks database first, falls back to environment variable
+ * @deprecated Case.law API was sunset on September 5, 2024. Use CourtListener or PACER instead.
  */
 export async function getCaseLawAPIKey(): Promise<string> {
+  console.warn('[DEPRECATED] getCaseLawAPIKey() - Case.law API was sunset September 5, 2024');
+  return '';
+}
+
+/**
+ * Get PACER credentials (for federal unpublished cases)
+ * COST: ~$0.10 per lookup
+ */
+export async function getPACERCredentials(): Promise<{
+  username: string;
+  password: string;
+  configured: boolean;
+}> {
   const keys = await getAPIKeys();
-  return keys.caselaw_api_key;
+  return {
+    username: keys.pacer_username,
+    password: keys.pacer_password,
+    configured: !!(keys.pacer_username && keys.pacer_password),
+  };
 }
 
 /**
@@ -328,11 +356,17 @@ export async function getLegalResearchConfig(): Promise<{
 }
 
 /**
- * Get citation verification configuration (CourtListener + Case.law)
+ * Get citation verification configuration (CourtListener + PACER)
+ *
+ * Flow (January 2026):
+ * 1. CourtListener (PRIMARY) - Free, 10M+ cases
+ * 2. PACER (FALLBACK) - Federal unpublished only, ~$0.10/lookup
+ *
+ * NOTE: Case.law was sunset September 5, 2024
  */
 export async function getCitationVerificationConfig(): Promise<{
   courtlistener: { apiKey: string; configured: boolean };
-  caselaw: { apiKey: string; configured: boolean };
+  pacer: { username: string; password: string; configured: boolean };
 }> {
   const keys = await getAPIKeys();
 
@@ -341,9 +375,10 @@ export async function getCitationVerificationConfig(): Promise<{
       apiKey: keys.courtlistener_api_key,
       configured: !!keys.courtlistener_api_key,
     },
-    caselaw: {
-      apiKey: keys.caselaw_api_key,
-      configured: !!keys.caselaw_api_key,
+    pacer: {
+      username: keys.pacer_username,
+      password: keys.pacer_password,
+      configured: !!(keys.pacer_username && keys.pacer_password),
     },
   };
 }

@@ -12,7 +12,8 @@
  */
 
 import { getCitingOpinions } from '@/lib/courtlistener/client';
-import { getCitingCases } from '@/lib/caselaw/client';
+// NOTE: Case.law API was sunset September 5, 2024
+// import { getCitingCases } from '@/lib/caselaw/client';
 import { recordStrengthAssessment } from '../database';
 import type {
   AuthorityStrengthOutput,
@@ -56,16 +57,12 @@ export async function executeAuthorityStrength(
   };
 
   try {
-    // Get citation data from CourtListener
+    // Get citation data from CourtListener (primary source)
+    // NOTE: Case.law fallback removed - API sunset September 5, 2024
     let citingData: CitingData | null = null;
 
     if (courtlistenerId) {
       citingData = await getCourtListenerCitingData(courtlistenerId);
-    }
-
-    // Fallback to Case.law if needed
-    if (!citingData && caselawId) {
-      citingData = await getCaseLawCitingData(caselawId);
     }
 
     if (citingData) {
@@ -199,43 +196,14 @@ async function getCourtListenerCitingData(opinionId: string): Promise<CitingData
 
 /**
  * Get citing data from Case.law
+ * @deprecated Case.law API was sunset September 5, 2024
  */
-async function getCaseLawCitingData(caseId: string): Promise<CitingData | null> {
-  const citingResult = await getCitingCases(caseId, 200);
-
-  if (!citingResult.success || !citingResult.data) {
-    return null;
-  }
-
-  const currentYear = new Date().getFullYear();
-  const fiveYearsAgo = currentYear - 5;
-  const tenYearsAgo = currentYear - 10;
-
-  let total = citingResult.data.count;
-  let last5Years = 0;
-  let last10Years = 0;
-
-  for (const citing of citingResult.data.citingCases) {
-    if (citing.decision_date) {
-      const citingYear = new Date(citing.decision_date).getFullYear();
-
-      if (citingYear >= fiveYearsAgo) {
-        last5Years++;
-      }
-      if (citingYear >= tenYearsAgo) {
-        last10Years++;
-      }
-    }
-  }
-
-  // Case.law doesn't provide treatment data
-  return {
-    total,
-    last5Years,
-    last10Years,
-    distinguishCount: 0,
-    criticismCount: 0,
-  };
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function getCaseLawCitingData(_caseId: string): Promise<CitingData | null> {
+  // Case.law API was sunset September 5, 2024
+  // This function is kept for reference but always returns null
+  console.warn('[DEPRECATED] getCaseLawCitingData - Case.law API sunset September 5, 2024');
+  return null;
 }
 
 /**

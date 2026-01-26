@@ -9,7 +9,8 @@
  */
 
 import { getOpinionWithText } from '@/lib/courtlistener/client';
-import { getCaseText } from '@/lib/caselaw/client';
+// NOTE: Case.law API was sunset September 5, 2024
+// import { getCaseText } from '@/lib/caselaw/client';
 import {
   checkVPICache,
   getCitationByNormalized,
@@ -155,6 +156,7 @@ export async function verifyCitation(
   }
 
   // Get opinion text for subsequent steps
+  // Primary source: CourtListener (Case.law API was sunset September 5, 2024)
   let opinionText: string | null = null;
 
   if (step1.courtlistenerId) {
@@ -165,13 +167,8 @@ export async function verifyCitation(
     }
   }
 
-  if (!opinionText && step1.caselawId) {
-    const caseLawResult = await getCaseText(step1.caselawId);
-    apiCallsMade++;
-    if (caseLawResult.success && caseLawResult.data?.opinions?.length) {
-      opinionText = caseLawResult.data.opinions.map(op => op.text).join('\n\n');
-    }
-  }
+  // NOTE: Case.law fallback removed - API sunset September 5, 2024
+  // PACER does not provide full text, only document access
 
   // Get citation DB ID for recording
   let citationDbId: string | undefined;
@@ -184,13 +181,14 @@ export async function verifyCitation(
   const parsed = normalizeAndParseCitation(citation.citationString);
 
   // Step 2: Holding Verification
+  // NOTE: caselawId parameter removed - Case.law API sunset September 5, 2024
   modelsUsed.push(config.primaryModel);
   const step2 = await executeHoldingVerification(
     citation.citationString,
     citation.proposition,
     citation.propositionType,
     step1.courtlistenerId,
-    step1.caselawId,
+    undefined, // caselawId deprecated
     false // TODO: Pass tier info
   );
   apiCallsMade++;
@@ -295,11 +293,12 @@ export async function verifyCitation(
   }
 
   // Step 6: Authority Strength
+  // NOTE: caselawId parameter removed - Case.law API sunset September 5, 2024
   const step6 = await executeAuthorityStrength(
     citation.citationString,
     parsed.year || new Date().getFullYear(),
     step1.courtlistenerId,
-    step1.caselawId,
+    undefined, // caselawId deprecated
     citationDbId
   );
   apiCallsMade++;
