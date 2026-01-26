@@ -86,6 +86,55 @@ const MODELS = {
 };
 
 // ============================================================================
+// STAGE 2 TRIGGER LOGIC
+// ============================================================================
+
+/**
+ * Determine if Stage 2 verification should be triggered
+ *
+ * Stage 2 triggers if ANY condition is true:
+ * - confidence >= 70 && confidence < 95 (uncertain zone)
+ * - confidence < 70 (low confidence)
+ * - isHighStakes === true (high stakes flag)
+ *
+ * @param stage1Confidence - Confidence score from Stage 1 (0-1)
+ * @param isHighStakes - Whether citation is marked as HIGH_STAKES
+ * @returns true if Stage 2 should be triggered
+ */
+export function shouldTriggerStage2(
+  stage1Confidence: number,
+  isHighStakes: boolean
+): boolean {
+  // HIGH_STAKES always triggers Stage 2
+  if (isHighStakes) return true;
+
+  // Low confidence (<70%) triggers Stage 2
+  if (stage1Confidence < STAGE_2_CONFIDENCE_LOW_THRESHOLD) return true;
+
+  // Uncertain zone (70-94%) triggers Stage 2
+  if (stage1Confidence >= STAGE_2_CONFIDENCE_LOW_THRESHOLD &&
+      stage1Confidence < STAGE_2_CONFIDENCE_HIGH_THRESHOLD) return true;
+
+  // High confidence (>=95%) does not trigger Stage 2
+  return false;
+}
+
+/**
+ * Get the reason why Stage 2 was triggered
+ */
+export function getStage2TriggerReason(
+  stage1Confidence: number,
+  isHighStakes: boolean,
+  forceStage2: boolean
+): string {
+  if (forceStage2) return 'forced';
+  if (isHighStakes) return 'high_stakes';
+  if (stage1Confidence < STAGE_2_CONFIDENCE_LOW_THRESHOLD) return 'low_confidence';
+  if (stage1Confidence < STAGE_2_CONFIDENCE_HIGH_THRESHOLD) return 'medium_confidence';
+  return 'not_triggered';
+}
+
+// ============================================================================
 // STAGE 1: INITIAL VERIFICATION
 // ============================================================================
 

@@ -557,4 +557,148 @@ export function getPACERCostTracking(): PACERCostTracking {
   return pacerClient.getCostTracking();
 }
 
+// ============================================================================
+// DATABASE-BACKED COST TRACKING
+// ============================================================================
+
+/**
+ * Get current month's PACER spend from database
+ * More accurate than in-memory tracking across server restarts
+ */
+export async function getPACERMonthlySpend(): Promise<number> {
+  try {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase.rpc('get_pacer_monthly_spend');
+
+    if (error) {
+      console.error('[PACER] Error getting monthly spend:', error);
+      // Fall back to in-memory tracking
+      return pacerClient.getCostTracking().totalCostCents / 100;
+    }
+
+    if (data && data.length > 0) {
+      return data[0].total_cost_dollars || 0;
+    }
+
+    return 0;
+  } catch (error) {
+    console.error('[PACER] Error getting monthly spend:', error);
+    return pacerClient.getCostTracking().totalCostCents / 100;
+  }
+}
+
+/**
+ * Check if PACER can be used (budget not exceeded)
+ * Uses database function for accurate cross-server tracking
+ */
+export async function canUsePACER(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase.rpc('can_use_pacer');
+
+    if (error) {
+      console.error('[PACER] Error checking budget:', error);
+      // Fall back to in-memory tracking
+      return pacerClient.getCostTracking().budgetRemaining > 10;
+    }
+
+    return data === true;
+  } catch (error) {
+    console.error('[PACER] Error checking budget:', error);
+    return pacerClient.getCostTracking().budgetRemaining > 10;
+  }
+}
+
+/**
+ * Log PACER usage to database for accurate tracking
+ */
+export async function logPACERUsage(
+  orderId: string | null,
+  citation: string,
+  found: boolean,
+  options?: {
+    normalizedCitation?: string;
+    source?: 'PACER' | 'RECAP' | 'NONE';
+    costCents?: number;
+    caseNumber?: string;
+    court?: string;
+    error?: string;
+  }
+): Promise<void> {
+  try {
+    const supabase = await createClient();
+
+    await supabase.from('pacer_usage').insert({
+      order_id: orderId,
+      citation_searched: citation,
+      normalized_citation: options?.normalizedCitation,
+      result_found: found,
+      source: options?.source || (found ? 'PACER' : 'NONE'),
+      cost_cents: options?.costCents ?? 10,
+      case_number: options?.caseNumber,
+      court: options?.court,
+      error_message: options?.error,
+    });
+  } catch (error) {
+    console.error('[PACER] Error logging usage:', error);
+    // Don't throw - logging failure shouldn't break the pipeline
+  }
+}
+
+/**
+ * Get PACER budget status
+ */
+export async function getPACERBudgetStatus(): Promise<{
+  totalSpentCents: number;
+  totalSpentDollars: number;
+  budgetRemainingCents: number;
+  budgetRemainingDollars: number;
+  searchCount: number;
+  budgetExceeded: boolean;
+  percentUsed: number;
+}> {
+  try {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase.rpc('get_pacer_monthly_spend');
+
+    if (error || !data || data.length === 0) {
+      // Return defaults if no data
+      return {
+        totalSpentCents: 0,
+        totalSpentDollars: 0,
+        budgetRemainingCents: 5000,
+        budgetRemainingDollars: 50,
+        searchCount: 0,
+        budgetExceeded: false,
+        percentUsed: 0,
+      };
+    }
+
+    const row = data[0];
+    return {
+      totalSpentCents: row.total_cost_cents || 0,
+      totalSpentDollars: row.total_cost_dollars || 0,
+      budgetRemainingCents: row.budget_remaining_cents || 5000,
+      budgetRemainingDollars: (row.budget_remaining_cents || 5000) / 100,
+      searchCount: row.search_count || 0,
+      budgetExceeded: row.budget_exceeded || false,
+      percentUsed: ((row.total_cost_cents || 0) / 5000) * 100,
+    };
+  } catch (error) {
+    console.error('[PACER] Error getting budget status:', error);
+    return {
+      totalSpentCents: 0,
+      totalSpentDollars: 0,
+      budgetRemainingCents: 5000,
+      budgetRemainingDollars: 50,
+      searchCount: 0,
+      budgetExceeded: false,
+      percentUsed: 0,
+    };
+  }
+}
+
 export default pacerClient;
