@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     // Get current workflow
     const { data: workflow, error: wfError } = await supabase
       .from('order_workflows')
-      .select('id')
+      .select('id, workflow_path')
       .eq('order_id', orderId)
       .single();
 
@@ -84,6 +84,35 @@ export async function POST(request: NextRequest) {
     if (updateWfError) {
       console.error('[Workflow Restart] Error updating workflow:', updateWfError);
       return NextResponse.json({ error: 'Failed to reset workflow' }, { status: 500 });
+    }
+
+    // Recreate phase execution records
+    const { data: phases, error: phasesError } = await supabase
+      .from('workflow_phase_definitions')
+      .select('id, phase_number')
+      .eq('workflow_path', workflow.workflow_path)
+      .order('phase_number', { ascending: true });
+
+    if (phasesError || !phases) {
+      console.error('[Workflow Restart] Error fetching phase definitions:', phasesError);
+      return NextResponse.json({ error: 'Failed to fetch phase definitions' }, { status: 500 });
+    }
+
+    // Create phase execution records
+    const phaseExecutions = phases.map((phase: { id: string; phase_number: number }) => ({
+      order_workflow_id: workflow.id,
+      phase_definition_id: phase.id,
+      phase_number: phase.phase_number,
+      status: 'pending',
+    }));
+
+    const { error: execError } = await supabase
+      .from('workflow_phase_executions')
+      .insert(phaseExecutions);
+
+    if (execError) {
+      console.error('[Workflow Restart] Error creating phase executions:', execError);
+      return NextResponse.json({ error: 'Failed to create phase executions' }, { status: 500 });
     }
 
     // Reset order status to submitted (ready to start)
