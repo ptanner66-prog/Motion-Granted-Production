@@ -58,14 +58,20 @@ export async function POST(request: NextRequest) {
       console.error('[Workflow Restart] Error deleting phase executions:', deletePhaseError);
     }
 
-    // Delete judge simulation results
-    const { error: deleteJudgeError } = await supabase
-      .from('judge_simulation_results')
-      .delete()
-      .eq('order_workflow_id', workflow.id);
+    // Delete judge simulation results (if table exists)
+    try {
+      const { error: deleteJudgeError } = await supabase
+        .from('judge_simulation_results')
+        .delete()
+        .eq('order_workflow_id', workflow.id);
 
-    if (deleteJudgeError) {
-      console.error('[Workflow Restart] Error deleting judge results:', deleteJudgeError);
+      if (deleteJudgeError && deleteJudgeError.code !== 'PGRST205') {
+        // Ignore "table not found" errors (PGRST205), log other errors
+        console.error('[Workflow Restart] Error deleting judge results:', deleteJudgeError);
+      }
+    } catch (err) {
+      // Table might not exist yet - that's okay
+      console.log('[Workflow Restart] Judge simulation results table not found - skipping cleanup');
     }
 
     // Reset workflow to initial state
