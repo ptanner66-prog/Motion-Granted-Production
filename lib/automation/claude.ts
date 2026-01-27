@@ -26,7 +26,8 @@ export const anthropic = envApiKey && !envApiKey.includes('xxxxx')
   ? new Anthropic({ apiKey: envApiKey })
   : null;
 
-export const isClaudeConfigured = !!anthropic || !!envApiKey;
+// Check if Claude is properly configured (API key must be valid, not a placeholder)
+export const isClaudeConfigured = !!anthropic || (!!envApiKey && !envApiKey.includes('xxxxx'));
 
 /**
  * Get an Anthropic client with the current API key
