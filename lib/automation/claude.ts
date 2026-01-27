@@ -237,7 +237,7 @@ export async function askClaude(options: {
 
   const model = options.model || DEFAULT_MODEL;
   const maxTokens = options.maxTokens || DEFAULT_MAX_TOKENS;
-  const useStreaming = maxTokens >= 64000; // Use streaming for high-token operations
+  const useStreaming = maxTokens >= 16000; // LOWERED: Streaming required for 10+ min operations
 
   console.log('[Claude API] Using model:', model, '| Max tokens:', maxTokens, '| Streaming:', useStreaming);
 
@@ -651,7 +651,7 @@ export async function createMessageWithStreaming(
   params: Anthropic.MessageCreateParams
 ): Promise<Anthropic.Message> {
   const maxTokens = params.max_tokens;
-  const useStreaming = maxTokens >= 64000;
+  const useStreaming = maxTokens >= 16000; // LOWERED: Streaming required for 10+ min operations
 
   if (useStreaming) {
     console.log(`[Streaming] Starting stream for ${maxTokens} tokens`);

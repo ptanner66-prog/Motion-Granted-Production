@@ -186,7 +186,7 @@ ${input.documents?.join('\n') || 'None provided'}
 
 Provide your Phase I analysis as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('I', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -296,7 +296,7 @@ JURISDICTION: ${input.jurisdiction}
 
 Provide your Phase II legal framework analysis as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('II', input.tier),
       max_tokens: 32000, // MAXED OUT - full document processing
       system: systemPrompt,
@@ -1271,7 +1271,7 @@ JURISDICTION: ${input.jurisdiction}
 
 Validate captions. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('VIII.5', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -1464,7 +1464,7 @@ ${JSON.stringify(phaseVOutput, null, 2)}
 
 Verify Separate Statement. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IX.1', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
