@@ -375,7 +375,7 @@ Analyze the document and respond with JSON:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 2000,
+    maxTokens: 32000, // MAXED OUT - comprehensive quality review
     systemPrompt: 'You are an expert legal document reviewer. Provide thorough, constructive feedback.',
   });
 

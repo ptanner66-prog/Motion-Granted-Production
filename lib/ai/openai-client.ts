@@ -243,7 +243,7 @@ class OpenAIClient {
 
     const {
       model = DEFAULT_MODEL,
-      maxTokens = 4096,
+      maxTokens = 32000, // Increased for complex analysis
       temperature = 0.7,
       reasoningEffort = 'medium',
       systemPrompt,

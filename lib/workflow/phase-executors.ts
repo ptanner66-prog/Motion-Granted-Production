@@ -297,7 +297,7 @@ Provide your Phase II legal framework analysis as JSON.`;
 
     const response = await client.messages.create({
       model: getModelForPhase('II', input.tier),
-      max_tokens: 12000,
+      max_tokens: 32000, // MAXED OUT - full document processing
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -406,7 +406,7 @@ Provide your Phase III evidence strategy as JSON.`;
 
     const response = await client.messages.create({
       model: getModelForPhase('III', input.tier),
-      max_tokens: 12000,
+      max_tokens: 64000, // MAXED OUT - deep issue analysis & argument mapping
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -525,7 +525,7 @@ Find at least ${citationTarget} relevant authorities. Provide as JSON.`;
 
     const response = await client.messages.create({
       model: getModelForPhase('IV', input.tier),
-      max_tokens: 40000,
+      max_tokens: 80000, // MAXED OUT - comprehensive authority research
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -645,7 +645,7 @@ Draft the complete motion. Provide as JSON.`;
 
     const response = await client.messages.create({
       model: getModelForPhase('V', input.tier),
-      max_tokens: 32000,
+      max_tokens: 128000, // MAXED OUT - full motion drafting, NO TRUNCATION
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -740,7 +740,7 @@ Verify all citations. Provide audit as JSON.`;
 
     const response = await client.messages.create({
       model: getModelForPhase('V.1', input.tier),
-      max_tokens: 32000,
+      max_tokens: 64000, // MAXED OUT - full revision with context
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -836,7 +836,7 @@ Analyze potential opposition. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModelForPhase('VI', input.tier),
-      max_tokens: thinkingBudget ? 16000 : 8000,
+      max_tokens: 80000, // MAXED OUT - anticipate every counterargument
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     };
@@ -963,12 +963,12 @@ Provide your judicial evaluation as JSON.`;
 
     const response = await client.messages.create({
       model: getModelForPhase('VII', input.tier), // Always Opus
-      max_tokens: 32000,
+      max_tokens: 80000, // MAXED OUT - full judicial analysis
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       thinking: {
         type: 'enabled',
-        budget_tokens: 10000,
+        budget_tokens: 50000, // MAXED OUT - deep reasoning
       },
     } as Anthropic.MessageCreateParams) as Anthropic.Message;
 
@@ -1059,7 +1059,7 @@ Verify any new citations. Provide as JSON.`;
 
     const response = await client.messages.create({
       model: getModelForPhase('VII.1', input.tier),
-      max_tokens: 32000,
+      max_tokens: 64000, // MAXED OUT - full revision loop
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1160,7 +1160,7 @@ Address all weaknesses and revision suggestions. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModelForPhase('VIII', input.tier),
-      max_tokens: 32000,
+      max_tokens: 80000, // MAXED OUT - comprehensive revision
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     };
@@ -1374,7 +1374,7 @@ Generate supporting documents. Provide as JSON.`;
 
     const response = await client.messages.create({
       model: getModelForPhase('IX', input.tier),
-      max_tokens: 32000,
+      max_tokens: 80000, // MAXED OUT - complete MSJ separate statements
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1579,7 +1579,7 @@ Assemble and check. Provide as JSON.`;
 
     const response = await client.messages.create({
       model: getModelForPhase('X', input.tier),
-      max_tokens: 40000,
+      max_tokens: 128000, // MAXED OUT - complete final assembly
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });

@@ -555,7 +555,7 @@ Provide a comprehensive legal analysis in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 3000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal analyst. Always respond with valid JSON.',
   });
 
@@ -672,7 +672,7 @@ Ensure citations are:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal researcher. Always respond with valid JSON and accurate citations.',
   });
 
@@ -875,7 +875,7 @@ Create a comprehensive argument outline in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 3000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal writer. Create clear, organized argument structures.',
   });
 
@@ -1064,7 +1064,7 @@ Respond with JSON:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 2000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal editor. Provide thorough, constructive reviews.',
   });
 
@@ -1198,7 +1198,7 @@ Maintain the same overall structure and length.`;
 
   const result = await askClaude({
     prompt,
-    maxTokens: 8000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal editor. Apply revisions precisely and professionally.',
   });
 
@@ -1278,7 +1278,7 @@ Court: ${order?.court_type || 'United States District Court'}
 
 The proposed order should grant the relief requested in the motion.
 Format as a proper court order with signature lines for the judge.`,
-      maxTokens: 1000,
+      maxTokens: 32000, // MAXED OUT
       systemPrompt: 'You are a legal document drafter. Create concise, proper proposed orders.',
     });
 
@@ -1386,7 +1386,7 @@ Provide analysis in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 3000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal strategist. Identify weaknesses and opportunities.',
   });
 
@@ -1504,7 +1504,7 @@ Provide a comprehensive evidence mapping in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal evidence analyst. Map evidence to elements thoroughly.',
   });
 
@@ -1620,7 +1620,7 @@ Provide a comprehensive anticipation analysis in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal strategist specializing in motion practice.',
   });
 
@@ -1813,7 +1813,7 @@ The proposed order should:
 6. Include date line
 
 Generate a complete, court-ready proposed order.`,
-      maxTokens: 1500,
+      maxTokens: 32000, // MAXED OUT
       systemPrompt: 'You are a legal document drafter. Create formal court documents.',
     });
 
@@ -1872,7 +1872,7 @@ Create a declaration template with:
 5. Signature block with date
 
 Include [FILL IN] markers for information the declarant must provide.`,
-        maxTokens: 2000,
+        maxTokens: 32000, // MAXED OUT
         systemPrompt: 'You are a legal document drafter specializing in declarations.',
       });
 
@@ -1900,7 +1900,7 @@ FACT NO. [X]: [Statement of undisputed fact]
 SUPPORTING EVIDENCE: [Citation to evidence with exhibit letter/number]
 
 Include at least the key undisputed facts that support each element of the motion.`,
-      maxTokens: 3000,
+      maxTokens: 32000, // MAXED OUT
       systemPrompt: 'You are a legal document drafter. Create properly formatted separate statements.',
     });
 
@@ -1922,7 +1922,7 @@ For each fact the moving party claims is undisputed, either:
 Use the format:
 FACT NO. [X]: [Moving party's statement]
 RESPONSE: [UNDISPUTED/DISPUTED] [Explanation with evidence citation]`,
-      maxTokens: 3000,
+      maxTokens: 32000, // MAXED OUT
       systemPrompt: 'You are a legal document drafter. Create properly formatted response statements.',
     });
 
@@ -2160,7 +2160,7 @@ Provide a comprehensive deconstruction in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal analyst. Deconstruct arguments thoroughly.',
   });
 
@@ -2280,7 +2280,7 @@ Provide analysis in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal analyst. Identify issues comprehensively.',
   });
 

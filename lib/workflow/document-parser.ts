@@ -356,7 +356,7 @@ Extract up to 10 key facts and up to 5 legal issues.`;
 
   const result = await askClaude({
     prompt,
-    maxTokens: 2000,
+    maxTokens: 32000, // MAXED OUT - comprehensive document analysis
     systemPrompt: 'You are a legal document analysis expert. Always respond with valid JSON.',
   });
 
