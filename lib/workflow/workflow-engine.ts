@@ -307,6 +307,16 @@ export async function executeCurrentPhase(
           last_activity_at: new Date().toISOString(),
         })
         .eq('id', workflowId);
+    } else if (result.success && result.requiresReview) {
+      // Phase completed but requires admin review before continuing
+      await supabase
+        .from('order_workflows')
+        .update({
+          status: 'blocked',
+          last_error: result.error || 'Phase requires review before continuing',
+          last_activity_at: new Date().toISOString(),
+        })
+        .eq('id', workflowId);
     } else if (!result.success) {
       await supabase
         .from('order_workflows')
