@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     const { error: deleteJudgeError } = await supabase
       .from('judge_simulation_results')
       .delete()
-      .eq('workflow_id', workflow.id);
+      .eq('order_workflow_id', workflow.id);
 
     if (deleteJudgeError) {
       console.error('[Workflow Restart] Error deleting judge results:', deleteJudgeError);
@@ -74,7 +74,6 @@ export async function POST(request: NextRequest) {
       .update({
         status: 'pending',
         current_phase: 1,
-        revision_loop: 0,
         last_error: null,
         started_at: null,
         completed_at: null,
