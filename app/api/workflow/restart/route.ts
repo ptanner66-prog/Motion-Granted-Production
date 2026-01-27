@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         current_phase: 1,
         revision_loop: 0,
-        error_message: null,
+        last_error: null,
         started_at: null,
         completed_at: null,
         updated_at: new Date().toISOString(),
