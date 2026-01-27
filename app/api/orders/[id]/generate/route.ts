@@ -101,14 +101,65 @@ export async function POST(
     }
 
     // Trigger the 14-phase workflow via Inngest
-    await inngest.send({
-      name: 'workflow/orchestration.start',
-      data: {
-        orderId,
-        triggeredBy: 'admin_generate_now',
-        timestamp: new Date().toISOString(),
-      },
-    });
+    // If INNGEST_EVENT_KEY is not configured, fall back to direct execution
+    const inngestConfigured = process.env.INNGEST_EVENT_KEY && process.env.INNGEST_SIGNING_KEY;
+
+    if (inngestConfigured) {
+      await inngest.send({
+        name: 'workflow/orchestration.start',
+        data: {
+          orderId,
+          triggeredBy: 'admin_generate_now',
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } else {
+      // Fallback: Execute workflow directly without Inngest
+      console.log('[Generate] Inngest not configured, executing workflow directly');
+
+      // Import and execute workflow engine directly
+      const { executeCurrentPhase } = await import('@/lib/workflow/workflow-engine');
+
+      // Execute phases in background (non-blocking)
+      (async () => {
+        try {
+          // Get workflow ID
+          const { data: workflow } = await supabase
+            .from('order_workflows')
+            .select('id')
+            .eq('order_id', orderId)
+            .single();
+
+          if (!workflow) {
+            throw new Error('Workflow not found');
+          }
+
+          // Execute phases sequentially
+          for (let i = 0; i < 14; i++) {
+            const result = await executeCurrentPhase(workflow.id);
+
+            if (!result.success) {
+              console.error(`[Generate] Phase execution failed:`, result.error);
+              break;
+            }
+
+            // Check if workflow is blocked (requires review)
+            const { data: wf } = await supabase
+              .from('order_workflows')
+              .select('status')
+              .eq('id', workflow.id)
+              .single();
+
+            if (wf?.status === 'blocked') {
+              console.log('[Generate] Workflow blocked, stopping execution');
+              break;
+            }
+          }
+        } catch (error) {
+          console.error('[Generate] Direct workflow execution error:', error);
+        }
+      })();
+    }
 
     // Log the workflow trigger
     await supabase.from('automation_logs').insert({
