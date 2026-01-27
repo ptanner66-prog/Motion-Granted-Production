@@ -12,6 +12,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
+import { createMessageWithStreaming } from '@/lib/automation/claude';
 import type {
   WorkflowPhaseCode,
   MotionTier,
@@ -404,9 +405,9 @@ ${JSON.stringify(phaseIIOutput, null, 2)}
 
 Provide your Phase III evidence strategy as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('III', input.tier),
-      max_tokens: 64000, // MAXED OUT - deep issue analysis & argument mapping
+      max_tokens: 64000, // MAXED OUT - deep issue analysis & argument mapping (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -523,9 +524,9 @@ MOTION TYPE: ${input.motionType}
 
 Find at least ${citationTarget} relevant authorities. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IV', input.tier),
-      max_tokens: 80000, // MAXED OUT - comprehensive authority research
+      max_tokens: 80000, // MAXED OUT - comprehensive authority research (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -643,9 +644,9 @@ JURISDICTION: ${input.jurisdiction}
 
 Draft the complete motion. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('V', input.tier),
-      max_tokens: 128000, // MAXED OUT - full motion drafting, NO TRUNCATION
+      max_tokens: 128000, // MAXED OUT - full motion drafting, NO TRUNCATION (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -738,9 +739,9 @@ ${JSON.stringify(phaseVOutput, null, 2)}
 
 Verify all citations. Provide audit as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('V.1', input.tier),
-      max_tokens: 64000, // MAXED OUT - full revision with context
+      max_tokens: 64000, // MAXED OUT - full revision with context (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -836,7 +837,7 @@ Analyze potential opposition. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModelForPhase('VI', input.tier),
-      max_tokens: 80000, // MAXED OUT - anticipate every counterargument
+      max_tokens: 80000, // MAXED OUT - anticipate every counterargument (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     };
@@ -849,7 +850,7 @@ Analyze potential opposition. Provide as JSON.`;
       };
     }
 
-    const response = await client.messages.create(requestParams) as Anthropic.Message;
+    const response = await createMessageWithStreaming(client, requestParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
@@ -961,9 +962,9 @@ JURISDICTION: ${input.jurisdiction}
 
 Provide your judicial evaluation as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('VII', input.tier), // Always Opus
-      max_tokens: 80000, // MAXED OUT - full judicial analysis
+      max_tokens: 80000, // MAXED OUT - full judicial analysis (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       thinking: {
@@ -1057,9 +1058,9 @@ ${JSON.stringify(phaseVIIIOutput, null, 2)}
 
 Verify any new citations. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('VII.1', input.tier),
-      max_tokens: 64000, // MAXED OUT - full revision loop
+      max_tokens: 64000, // MAXED OUT - full revision loop (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1160,7 +1161,7 @@ Address all weaknesses and revision suggestions. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModelForPhase('VIII', input.tier),
-      max_tokens: 80000, // MAXED OUT - comprehensive revision
+      max_tokens: 80000, // MAXED OUT - comprehensive revision (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     };
@@ -1173,7 +1174,7 @@ Address all weaknesses and revision suggestions. Provide as JSON.`;
       };
     }
 
-    const response = await client.messages.create(requestParams) as Anthropic.Message;
+    const response = await createMessageWithStreaming(client, requestParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
@@ -1372,9 +1373,9 @@ MOTION TYPE: ${input.motionType}
 
 Generate supporting documents. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IX', input.tier),
-      max_tokens: 80000, // MAXED OUT - complete MSJ separate statements
+      max_tokens: 80000, // MAXED OUT - complete MSJ separate statements (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1577,9 +1578,9 @@ ${JSON.stringify(phaseIXOutput, null, 2)}
 
 Assemble and check. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('X', input.tier),
-      max_tokens: 128000, // MAXED OUT - complete final assembly
+      max_tokens: 128000, // MAXED OUT - complete final assembly (auto-streaming)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });

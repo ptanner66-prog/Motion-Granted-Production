@@ -237,10 +237,56 @@ export async function askClaude(options: {
 
   const model = options.model || DEFAULT_MODEL;
   const maxTokens = options.maxTokens || DEFAULT_MAX_TOKENS;
+  const useStreaming = maxTokens >= 64000; // Use streaming for high-token operations
 
-  console.log('[Claude API] Using model:', model, '| Max tokens:', maxTokens);
+  console.log('[Claude API] Using model:', model, '| Max tokens:', maxTokens, '| Streaming:', useStreaming);
 
   try {
+    // Use STREAMING for high-token operations (64K+) to prevent timeouts
+    if (useStreaming) {
+      let fullContent = '';
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
+
+      const stream = await client.messages.stream({
+        model,
+        max_tokens: maxTokens,
+        temperature: options.temperature ?? 0.2,
+        system: options.systemPrompt || 'You are a helpful assistant.',
+        messages: [
+          {
+            role: 'user',
+            content: options.prompt,
+          },
+        ],
+      });
+
+      // Process stream events
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta') {
+          if (event.delta.type === 'text_delta') {
+            fullContent += event.delta.text;
+          }
+        }
+      }
+
+      // Get final message with complete usage stats
+      const finalMessage = await stream.finalMessage();
+      totalInputTokens = finalMessage.usage.input_tokens;
+      totalOutputTokens = finalMessage.usage.output_tokens;
+
+      console.log('[Claude API - askClaude] STREAMING complete - Input:', totalInputTokens, 'Output:', totalOutputTokens);
+
+      return {
+        success: true,
+        result: {
+          content: fullContent,
+          tokensUsed: totalInputTokens + totalOutputTokens,
+        },
+      };
+    }
+
+    // Standard non-streaming request for smaller operations
     const response = await client.messages.create({
       model,
       max_tokens: maxTokens,
@@ -593,6 +639,33 @@ export async function runAnalysis(
 }
 
 // ============================================================================
+// STREAMING HELPER FOR PHASE EXECUTORS
+// ============================================================================
+
+/**
+ * Create a message with automatic streaming for high-token operations
+ * Use this in phase executors for 64K+ token operations to prevent timeouts
+ */
+export async function createMessageWithStreaming(
+  client: Anthropic,
+  params: Anthropic.MessageCreateParams
+): Promise<Anthropic.Message> {
+  const maxTokens = params.max_tokens;
+  const useStreaming = maxTokens >= 64000;
+
+  if (useStreaming) {
+    console.log(`[Streaming] Starting stream for ${maxTokens} tokens`);
+    const stream = client.messages.stream(params);
+    const finalMessage = await stream.finalMessage();
+    console.log(`[Streaming] Complete - ${finalMessage.usage.output_tokens} tokens generated`);
+    return finalMessage as Anthropic.Message;
+  }
+
+  // Standard non-streaming for smaller operations
+  return await client.messages.create(params) as Anthropic.Message;
+}
+
+// ============================================================================
 // MOTION GENERATION (Opus + Max Tokens)
 // ============================================================================
 
@@ -623,48 +696,46 @@ export async function generateMotion(options: {
 
   const maxTokens = options.maxOutputTokens || MOTION_MAX_TOKENS;
 
+  console.log(`[Motion Generation] Starting STREAMING generation with ${maxTokens} max tokens`);
+
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const messages: any[] = [
-      { role: 'user', content: options.userPrompt },
-    ];
     let fullContent = '';
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
-    let continueLoop = true;
 
-    // Agentic loop - continue until Claude is done or max iterations
-    const maxIterations = 20; // Prevent infinite loops
-    let iteration = 0;
+    // Use STREAMING API for long-running operations (required for 128K tokens)
+    const stream = await client.messages.stream({
+      model: MOTION_MODEL,
+      max_tokens: maxTokens,
+      temperature: 0.3,
+      system: options.systemPrompt,
+      messages: [
+        { role: 'user', content: options.userPrompt },
+      ],
+    });
 
-    while (continueLoop && iteration < maxIterations) {
-      iteration++;
-
-      const response = await client.messages.create({
-        model: MOTION_MODEL,
-        max_tokens: maxTokens,
-        temperature: 0.3,
-        system: options.systemPrompt,
-        messages,
-      });
-
-      totalInputTokens += response.usage.input_tokens;
-      totalOutputTokens += response.usage.output_tokens;
-
-      // Collect text content from response
-      const textBlocks = response.content.filter((block) => block.type === 'text');
-      for (const block of textBlocks) {
-        if (block.type === 'text') {
-          fullContent += block.text;
+    // Process stream events
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta') {
+        if (event.delta.type === 'text_delta') {
+          fullContent += event.delta.text;
           if (options.onProgress) {
             options.onProgress(fullContent);
           }
         }
+      } else if (event.type === 'message_start') {
+        totalInputTokens = event.message.usage.input_tokens;
+      } else if (event.type === 'message_delta') {
+        totalOutputTokens = event.usage.output_tokens;
       }
-
-      // We're done after one response (no tool calls)
-      continueLoop = false;
     }
+
+    // Get final message with complete usage stats
+    const finalMessage = await stream.finalMessage();
+    totalInputTokens = finalMessage.usage.input_tokens;
+    totalOutputTokens = finalMessage.usage.output_tokens;
+
+    console.log(`[Motion Generation] COMPLETE - Input: ${totalInputTokens}, Output: ${totalOutputTokens} tokens`);
 
     return {
       success: true,
