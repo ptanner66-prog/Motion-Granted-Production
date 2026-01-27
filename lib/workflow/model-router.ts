@@ -47,8 +47,8 @@ export interface PhaseExecutionConfig extends ModelConfig {
 // DEFAULT CONFIGURATIONS
 // ============================================================================
 
-const DEFAULT_MAX_TOKENS = 4096;
-const EXTENDED_THINKING_MAX_TOKENS = 16000;
+const DEFAULT_MAX_TOKENS = 8192; // Doubled for complex workflows
+const EXTENDED_THINKING_MAX_TOKENS = 32000; // Doubled for extended thinking
 
 // ============================================================================
 // MODEL ROUTER
