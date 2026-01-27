@@ -235,7 +235,7 @@ export async function executeMiniPhaseIV(
     );
 
     // Check if verification passed
-    const passed = verificationResult.finalStatus === 'VERIFIED';
+    const passed = verificationResult.composite_status === 'VERIFIED';
     const hasBlockingFlags = verificationResult.flags.some(f =>
       f === 'NOT_FOUND' ||
       f === 'BAD_LAW' ||
@@ -251,8 +251,8 @@ export async function executeMiniPhaseIV(
         addedToBank: false,
         blockingFlag: true,
         verificationResult: {
-          confidence: verificationResult.compositeConfidence,
-          status: verificationResult.finalStatus,
+          confidence: verificationResult.composite_confidence,
+          status: verificationResult.composite_status,
           flags: verificationResult.flags,
         },
         error: `Citation failed verification: ${verificationResult.flags.join(', ')}`,
@@ -274,8 +274,8 @@ export async function executeMiniPhaseIV(
       addedToBank,
       blockingFlag: false,
       verificationResult: {
-        confidence: verificationResult.compositeConfidence,
-        status: verificationResult.finalStatus,
+        confidence: verificationResult.composite_confidence,
+        status: verificationResult.composite_status,
         flags: verificationResult.flags,
       },
     };
@@ -298,7 +298,7 @@ async function addCitationToBank(
   citation: string,
   proposition: string,
   orderId: string,
-  verificationResult: { compositeConfidence: number; finalStatus: string }
+  verificationResult: { composite_confidence: number; composite_status: string }
 ): Promise<boolean> {
   try {
     const supabase = await createClient();
@@ -329,7 +329,7 @@ async function addCitationToBank(
       verificationStatus: 'verified',
       addedAt: new Date().toISOString(),
       source: 'mini_phase_iv',
-      miniPhaseIVConfidence: verificationResult.compositeConfidence,
+      miniPhaseIVConfidence: verificationResult.composite_confidence,
     });
 
     // Update phase outputs

@@ -789,7 +789,7 @@ export const dataRetentionReminder = inngest.createFunction(
 
       for (const order of expiringOrders) {
         try {
-          const profile = order.profiles as { email: string; full_name: string } | null;
+          const profile = order.profiles as unknown as { email: string; full_name: string } | null;
           if (!profile?.email) continue;
 
           const expiresAt = new Date(order.retention_expires_at);
