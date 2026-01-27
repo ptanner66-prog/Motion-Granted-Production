@@ -12,7 +12,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude } from '@/lib/automation/claude';
 import { extractOrderDocuments, getCombinedDocumentText } from './document-extractor';
 import { parseOrderDocuments, getOrderParsedDocuments } from './document-parser';
 import { startWorkflow, runWorkflow, getWorkflowProgress, executeCurrentPhase } from './workflow-engine';
@@ -537,10 +537,6 @@ export async function generateDraftWithSuperprompt(
   orderId: string,
   workflowPath: WorkflowPath = 'path_a'
 ): Promise<OperationResult<{ draft: string; tokensUsed?: number }>> {
-  if (!isClaudeConfigured) {
-    return { success: false, error: 'Claude API not configured' };
-  }
-
   // Gather full context
   const contextResult = await gatherOrderContext(orderId);
   if (!contextResult.success || !contextResult.data) {

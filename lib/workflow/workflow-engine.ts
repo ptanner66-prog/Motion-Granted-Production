@@ -13,7 +13,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude } from '@/lib/automation/claude';
 import { parseDocument, parseOrderDocuments } from './document-parser';
 
 // Create admin client with service role key (bypasses RLS for server-side operations)
@@ -513,17 +513,6 @@ async function executeDocumentParsingPhase(
 async function executeLegalAnalysisPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured for legal analysis',
-    };
-  }
-
   const { previousOutputs, motionType } = context;
 
   const prompt = `You are a legal analyst. Analyze the following case information and provide a structured legal analysis.
@@ -618,16 +607,6 @@ Provide a comprehensive legal analysis in JSON format:
 async function executeLegalResearchPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured for legal research',
-    };
-  }
 
   const { previousOutputs, motionType, workflow } = context;
   const supabase = getAdminClient();
@@ -854,16 +833,6 @@ async function executeCitationVerificationPhase(
 async function executeArgumentStructuringPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
 
@@ -958,16 +927,6 @@ Create a comprehensive argument outline in JSON format:
 async function executeDocumentGenerationPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { motionType, workflow } = context;
 
@@ -1050,16 +1009,6 @@ async function executeDocumentGenerationPhase(
 async function executeQualityReviewPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
   const draftDocument = previousOutputs.draft_document as string;
@@ -1200,16 +1149,6 @@ Respond with JSON:
 async function executeDocumentRevisionPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
   const draftDocument = previousOutputs.draft_document as string;
@@ -1330,7 +1269,7 @@ async function executeDocumentAssemblyPhase(
 
   // Generate proposed order if required
   let proposedOrder = '';
-  if (motionType.requires_proposed_order && isClaudeConfigured) {
+  if (motionType.requires_proposed_order) {
     const orderResult = await askClaude({
       prompt: `Generate a proposed order for this ${motionType.name} motion.
 
@@ -1404,16 +1343,6 @@ _______________________________
 async function executeArgumentAnalysisPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs } = context;
 
@@ -1515,16 +1444,6 @@ Provide analysis in JSON format:
 async function executeEvidenceMappingPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured for evidence mapping',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
 
@@ -1642,16 +1561,6 @@ Provide a comprehensive evidence mapping in JSON format:
 async function executeOppositionAnticipationPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType, workflow } = context;
   const isOpposition = workflow.workflow_path === 'path_b';
@@ -1874,16 +1783,6 @@ async function executeSupportingDocumentsPhase(
     };
   }
 
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   // Get order details
   const { data: order } = await supabase
@@ -2214,16 +2113,6 @@ END OF ATTORNEY INSTRUCTION SHEET
 async function executeMotionDeconstructionPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs } = context;
 
@@ -2326,16 +2215,6 @@ Provide a comprehensive deconstruction in JSON format:
 async function executeIssueIdentificationPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
   const isMSJOpposition = motionType.code === 'OPP_MSJ';
