@@ -6,7 +6,7 @@
  */
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude } from '@/lib/automation/claude';
 import { extractCitations } from './citation-verifier';
 import { extractDocumentContent } from './document-extractor';
 import type {
@@ -320,13 +320,6 @@ async function extractWithAI(
   text: string,
   documentType: string
 ): Promise<OperationResult<AIExtractionResult>> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      error: 'Claude API not configured',
-    };
-  }
-
   // Truncate text if too long (keep first 15000 chars)
   const truncatedText = text.length > 15000
     ? text.substring(0, 15000) + '\n\n[Document truncated for analysis...]'

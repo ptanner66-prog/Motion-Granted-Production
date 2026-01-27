@@ -5,7 +5,7 @@
  * Provides comprehensive quality scoring and issue detection.
  */
 
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude } from '@/lib/automation/claude';
 import { extractCitations } from './citation-verifier';
 import { getMotionTemplate, validateAgainstTemplate } from './motion-templates';
 import type { MotionType } from '@/types/workflow';
@@ -328,10 +328,6 @@ async function runAIValidation(
   document: string,
   context: ValidationContext
 ): Promise<OperationResult<Partial<QualityReport>>> {
-  if (!isClaudeConfigured) {
-    return { success: false, error: 'AI not configured' };
-  }
-
   const truncatedDoc = document.length > 12000
     ? document.substring(0, 12000) + '\n\n[Document truncated...]'
     : document;

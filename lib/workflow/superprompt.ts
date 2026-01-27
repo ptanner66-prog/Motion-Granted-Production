@@ -12,7 +12,7 @@
  * Designed for hands-off production use by lawyers.
  */
 
-import { askClaude, isClaudeConfigured, MOTION_MODEL } from '@/lib/automation/claude';
+import { askClaude, MOTION_MODEL } from '@/lib/automation/claude';
 import type { OperationResult } from '@/types/automation';
 
 // ============================================================================
@@ -781,10 +781,6 @@ function getMotionName(type: MotionType): string {
 export async function generateMotion(
   request: MotionRequest
 ): Promise<OperationResult<GeneratedMotion>> {
-  if (!isClaudeConfigured) {
-    return { success: false, error: 'Claude API is not configured' };
-  }
-
   const superprompt = generateSuperprompt(request);
 
   // Call Claude with the superprompt using Opus 4.5 for best legal reasoning
