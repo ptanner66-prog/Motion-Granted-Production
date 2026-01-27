@@ -56,10 +56,28 @@ export async function POST(
     }
 
     // Don't re-generate if already processing or complete
-    const blockedStatuses = ['generating', 'pending_review', 'draft_delivered', 'completed'];
+    // BUT allow restarting if workflow is blocked or failed
+    const { data: workflow } = await supabase
+      .from('order_workflows')
+      .select('status')
+      .eq('order_id', orderId)
+      .single();
+
+    const workflowIsStuck = workflow && ['blocked', 'failed'].includes(workflow.status);
+    const blockedStatuses = ['pending_review', 'draft_delivered', 'completed'];
+
+    // Block if order is in a final/review state, unless workflow is stuck
     if (blockedStatuses.includes(order.status)) {
       return NextResponse.json(
         { error: `Order already in status: ${order.status}. Cannot restart workflow.` },
+        { status: 400 }
+      );
+    }
+
+    // Block if currently generating AND workflow is not stuck
+    if (order.status === 'generating' && !workflowIsStuck) {
+      return NextResponse.json(
+        { error: `Workflow is currently running. Please wait or use the restart button.` },
         { status: 400 }
       );
     }
