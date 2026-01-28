@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/hooks/use-toast'
 import {
   LayoutDashboard,
   FileText,
@@ -117,6 +118,7 @@ export function AdminShell({ children, user, breadcrumbLabel }: AdminShellProps)
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const { toast } = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Helper to format breadcrumb segments
@@ -160,6 +162,13 @@ export function AdminShell({ children, user, breadcrumbLabel }: AdminShellProps)
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
+  }
+
+  const handleNotificationsClick = () => {
+    toast({
+      title: 'Notifications',
+      description: 'Real-time notifications panel coming soon. You\'ll be notified of new orders, status changes, and important updates.',
+    })
   }
 
   const initials = user?.name
