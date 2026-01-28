@@ -1,0 +1,6 @@
+# Motion Granted Python Dependencies
+# Task E-1 | Version 1.0
+
+# Eyecite - Citation extraction from Free Law Project
+# Requires Python 3.10+
+eyecite>=2.6.0
