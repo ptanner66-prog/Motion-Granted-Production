@@ -1,24 +1,27 @@
 export const MOTION_TIERS = {
-  tier1: {
-    name: "Tier 1 — Procedural / Routine",
-    turnaround: "3-5 business days",
+  tierA: {
+    name: "Tier A — Procedural / Routine",
+    turnaround: "2-3 business days",
     motions: [
       { id: "continue", name: "Motion to Continue", price: 350 },
       { id: "extend_deadline", name: "Motion to Extend Deadline", price: 350 },
       { id: "withdraw_counsel", name: "Motion to Withdraw as Counsel", price: 400 },
-      { id: "pro_hac_vice", name: "Motion for Admission Pro Hac Vice", price: 450 },
-      { id: "consolidate", name: "Motion to Consolidate", price: 450 },
-      { id: "sever", name: "Motion to Sever", price: 450 },
-      { id: "substitution", name: "Motion for Substitution of Parties", price: 450 },
-      { id: "compel_discovery", name: "Motion to Compel Discovery", price: 600 },
-      { id: "protective_order", name: "Motion for Protective Order", price: 650 },
-      { id: "quash_subpoena", name: "Motion to Quash Subpoena", price: 600 },
+      { id: "pro_hac_vice", name: "Motion for Admission Pro Hac Vice", price: 400 },
+      { id: "consolidate", name: "Motion to Consolidate", price: 400 },
+      { id: "sever", name: "Motion to Sever", price: 400 },
+      { id: "substitution", name: "Motion for Substitution of Parties", price: 400 },
+      { id: "seal", name: "Motion to Seal", price: 350 },
+      { id: "relate_cases", name: "Motion to Relate Cases", price: 300 },
+      { id: "set_trial", name: "Motion to Set for Trial", price: 300 },
     ]
   },
-  tier2: {
-    name: "Tier 2 — Exceptions & Substantive",
-    turnaround: "5-7 business days",
+  tierB: {
+    name: "Tier B — Exceptions & Substantive",
+    turnaround: "3-4 business days",
     motions: [
+      { id: "compel_discovery", name: "Motion to Compel Discovery", price: 700 },
+      { id: "protective_order", name: "Motion for Protective Order", price: 800 },
+      { id: "quash_subpoena", name: "Motion to Quash Subpoena", price: 700 },
       { id: "declinatory", name: "Declinatory Exception", price: 750, description: "jurisdiction, venue, lis pendens" },
       { id: "dilatory", name: "Dilatory Exception", price: 750, description: "prematurity, vagueness, want of amicable demand" },
       { id: "peremptory_cause", name: "Peremptory Exception — No Cause of Action", price: 850 },
@@ -27,23 +30,23 @@ export const MOTION_TIERS = {
       { id: "peremptory_res_judicata", name: "Peremptory Exception — Res Judicata", price: 1000 },
       { id: "opposition_exception", name: "Opposition to Exception", price: null, description: "Priced same as corresponding exception" },
       { id: "in_limine_single", name: "Motion in Limine (single issue)", price: 700 },
-      { id: "in_limine_complex", name: "Motion in Limine (multiple/complex)", price: 1000 },
       { id: "recuse", name: "Motion to Recuse", price: 800 },
-      { id: "preliminary_injunction", name: "Motion for Preliminary Injunction", price: 1400 },
-      { id: "tro", name: "Motion for Temporary Restraining Order", price: 1000 },
     ]
   },
-  tier3: {
-    name: "Tier 3 — Heavy Lift",
-    turnaround: "7-14 business days",
+  tierC: {
+    name: "Tier C — Complex / Dispositive",
+    turnaround: "4-5 business days",
     motions: [
+      { id: "in_limine_complex", name: "Motion in Limine (multiple/complex)", price: 1500 },
+      { id: "preliminary_injunction", name: "Motion for Preliminary Injunction", price: 2500 },
+      { id: "tro", name: "Motion for Temporary Restraining Order", price: 2000 },
       { id: "msj_simple", name: "Motion for Summary Judgment (straightforward)", price: 2000 },
       { id: "msj_complex", name: "Motion for Summary Judgment (complex/multi-issue)", price: 3200 },
       { id: "opp_msj", name: "Opposition to Motion for Summary Judgment", price: 2200, priceMax: 3400 },
       { id: "partial_sj", name: "Motion for Partial Summary Judgment", price: 1700 },
       { id: "jnov", name: "Motion for JNOV", price: 2500 },
       { id: "new_trial", name: "Motion for New Trial", price: 1700 },
-      { id: "remittitur", name: "Motion for Remittitur/Additur", price: 1400 },
+      { id: "remittitur", name: "Motion for Remittitur/Additur", price: 1500 },
       { id: "post_trial_brief", name: "Post-Trial Brief", price: 2800, requiresQuote: true },
     ]
   },
@@ -112,11 +115,11 @@ export function getMotionById(id: string) {
   return null;
 }
 
-export function getTierForMotion(motionId: string): number {
-  if (MOTION_TIERS.tier1.motions.some(m => m.id === motionId)) return 1;
-  if (MOTION_TIERS.tier2.motions.some(m => m.id === motionId)) return 2;
-  if (MOTION_TIERS.tier3.motions.some(m => m.id === motionId)) return 3;
-  return 0;
+export function getTierForMotion(motionId: string): 'A' | 'B' | 'C' | null {
+  if (MOTION_TIERS.tierA.motions.some(m => m.id === motionId)) return 'A';
+  if (MOTION_TIERS.tierB.motions.some(m => m.id === motionId)) return 'B';
+  if (MOTION_TIERS.tierC.motions.some(m => m.id === motionId)) return 'C';
+  return null;
 }
 
 export function calculatePrice(basePrice: number | null, rushMultiplier: number): number | null {

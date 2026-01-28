@@ -1,10 +1,13 @@
 /**
- * Motion Types Master List (Task 81)
+ * Motion Types Master List
  *
- * Comprehensive list of all 84 motion types with complete metadata.
+ * Comprehensive list of all motion types with complete metadata.
  * Organized by tier (A, B, C) and category.
  *
- * Source: Chunk 11, Task 81 - MOTION_TYPES_BY_STATE_SPEC_v2_EXPANDED.md
+ * Count: 20 Tier A + 51 Tier B + 20 Tier C = 91 total
+ * (Exceeds v6.3 spec minimum of 88)
+ *
+ * Source: Clay's v6.3 specification
  */
 
 // ============================================================================
@@ -71,8 +74,14 @@ export const TIER_LABELS: Record<'A' | 'B' | 'C', string> = {
   C: 'TIER C — Complex/Dispositive ($1,500-$3,500)',
 };
 
+export const TIER_TURNAROUND: Record<'A' | 'B' | 'C', string> = {
+  A: '2-3 business days',
+  B: '3-4 business days',
+  C: '4-5 business days',
+};
+
 // ============================================================================
-// MOTION TYPES - ALL 84 MOTIONS
+// MOTION TYPES - ALL 91 MOTIONS (20 A + 51 B + 20 C)
 // ============================================================================
 
 export const MOTION_TYPES: MotionType[] = [
@@ -280,6 +289,17 @@ export const MOTION_TYPES: MotionType[] = [
     ccp_reference: 'CRC 3.400',
     base_price_min: 25000,
     base_price_max: 40000,
+  },
+  {
+    id: 'motion_for_telephonic_appearance',
+    display_name: 'Motion for Telephonic/Video Appearance',
+    tier: 'A',
+    category: 'general',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request to appear remotely at hearing',
+    base_price_min: 15000,
+    base_price_max: 25000,
   },
 
   // ============================================================================
@@ -810,6 +830,145 @@ export const MOTION_TYPES: MotionType[] = [
     description: 'Louisiana dispositive pleading challenge',
     base_price_min: 70000,
     base_price_max: 120000,
+  },
+
+  // Additional Tier B Motions
+  {
+    id: 'motion_for_default_judgment',
+    display_name: 'Motion for Default Judgment',
+    tier: 'B',
+    category: 'post_judgment',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request for judgment against non-appearing defendant',
+    ccp_reference: 'CCP § 585',
+    frcp_reference: 'FRCP 55(b)',
+    base_price_min: 50000,
+    base_price_max: 85000,
+  },
+  {
+    id: 'motion_to_amend_answer',
+    display_name: 'Motion for Leave to Amend Answer',
+    tier: 'B',
+    category: 'pleading',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request to modify answer or affirmative defenses',
+    frcp_reference: 'FRCP 15(a)(2)',
+    base_price_min: 50000,
+    base_price_max: 85000,
+  },
+  {
+    id: 'motion_for_reconsideration',
+    display_name: 'Motion for Reconsideration',
+    tier: 'B',
+    category: 'post_judgment',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request to revisit previous court order',
+    ccp_reference: 'CCP § 1008',
+    base_price_min: 60000,
+    base_price_max: 100000,
+  },
+  {
+    id: 'motion_to_compel_ime',
+    display_name: 'Motion to Compel Independent Medical Exam',
+    tier: 'B',
+    category: 'discovery',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request to require physical/mental examination',
+    ccp_reference: 'CCP § 2032.310',
+    frcp_reference: 'FRCP 35',
+    base_price_min: 60000,
+    base_price_max: 100000,
+  },
+  {
+    id: 'motion_to_extend_discovery',
+    display_name: 'Motion to Extend Discovery Deadlines',
+    tier: 'B',
+    category: 'discovery',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request for additional time to complete discovery',
+    base_price_min: 45000,
+    base_price_max: 75000,
+  },
+  {
+    id: 'motion_to_withdraw_admission',
+    display_name: 'Motion to Withdraw/Amend Admission',
+    tier: 'B',
+    category: 'discovery',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request to withdraw or modify response to RFA',
+    ccp_reference: 'CCP § 2033.300',
+    frcp_reference: 'FRCP 36(b)',
+    base_price_min: 50000,
+    base_price_max: 85000,
+  },
+  {
+    id: 'motion_for_costs',
+    display_name: 'Motion for Costs',
+    tier: 'B',
+    category: 'post_judgment',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request for litigation costs after judgment',
+    ccp_reference: 'CCP § 1032',
+    frcp_reference: 'FRCP 54(d)',
+    base_price_min: 45000,
+    base_price_max: 75000,
+  },
+  {
+    id: 'motion_for_stay_execution',
+    display_name: 'Motion for Stay of Execution',
+    tier: 'B',
+    category: 'post_judgment',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request to delay enforcement of judgment',
+    ccp_reference: 'CCP § 918',
+    frcp_reference: 'FRCP 62',
+    base_price_min: 60000,
+    base_price_max: 100000,
+  },
+  {
+    id: 'motion_for_leave_amicus',
+    display_name: 'Motion for Leave to File Amicus Brief',
+    tier: 'B',
+    category: 'general',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request for non-party to submit friend of court brief',
+    frcp_reference: 'FRAP 29',
+    base_price_min: 50000,
+    base_price_max: 90000,
+  },
+  {
+    id: 'motion_correct_clerical_error',
+    display_name: 'Motion to Correct Clerical Error',
+    tier: 'B',
+    category: 'post_judgment',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Request to fix clerical mistakes in judgment',
+    ccp_reference: 'CCP § 473(d)',
+    frcp_reference: 'FRCP 60(a)',
+    base_price_min: 45000,
+    base_price_max: 75000,
+  },
+  {
+    id: 'motion_to_dismiss_simple',
+    display_name: 'Motion to Dismiss (Simple/Procedural)',
+    tier: 'B',
+    category: 'pleading',
+    availability: 'universal',
+    court_types: ['state', 'federal'],
+    description: 'Motion to dismiss on single straightforward ground',
+    frcp_reference: 'FRCP 12(b)',
+    base_price_min: 60000,
+    base_price_max: 100000,
   },
 
   // ============================================================================

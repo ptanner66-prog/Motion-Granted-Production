@@ -5,7 +5,7 @@
  * Handles document production workflow from intake to final assembly.
  *
  * v6.3 UPDATES:
- * - 12 phases (was 9)
+ * - 14 phases (I, II, III, IV, V, V.1, VI, VII, VII.1, VIII, VIII.5, IX, IX.1, X)
  * - B+ (87%) minimum quality threshold (was 70%)
  * - 3 customer checkpoints (CP1, CP2, CP3)
  * - Max 3 revision loops before escalation
@@ -65,8 +65,9 @@ export const MAX_REVISION_LOOPS = 3;
 
 /**
  * Total phases in v6.3 workflow
+ * Phases: I, II, III, IV, V, V.1, VI, VII, VII.1, VIII, VIII.5, IX, IX.1, X
  */
-export const TOTAL_PHASES = 12;
+export const TOTAL_PHASES = 14;
 
 /**
  * Convert numeric score (0.00-1.00) to letter grade

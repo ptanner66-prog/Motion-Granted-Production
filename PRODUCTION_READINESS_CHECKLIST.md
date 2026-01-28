@@ -15,13 +15,10 @@
 
 - [ ] **CourtListener API Token** - Primary citation verification
   - Get from: https://www.courtlistener.com/help/api/rest/#permissions
-  - Free tier available, token recommended for rate limits
+  - Free tier available (5000 requests/day), token recommended for rate limits
   - Test: Click "Test" button in admin settings
 
-- [ ] **Case.law API Key** - Secondary citation verification
-  - Get from: https://case.law/user/register/
-  - Free tier available
-  - Test: Click "Test" button in admin settings
+  **NOTE:** Case.law API was sunset September 5, 2024. Use CourtListener or PACER only.
 
 ### Environment Variables (.env.local / Vercel)
 ```bash
@@ -45,7 +42,7 @@ INNGEST_SIGNING_KEY=
 # Optional - can be set in Admin Settings instead
 ANTHROPIC_API_KEY=
 COURTLISTENER_API_KEY=
-CASELAW_API_KEY=
+# NOTE: CASELAW_API_KEY removed - API sunset September 5, 2024
 ```
 
 ---
@@ -209,8 +206,10 @@ curl -X POST http://localhost:3000/api/civ/verify \
 | Service | Limit | Notes |
 |---------|-------|-------|
 | CourtListener | 5000/day free | Token increases limit |
-| Case.law | 500/hour | Authenticated |
+| PACER | Per document | ~$0.10/document |
 | Anthropic | Per plan | Monitor usage |
+
+**NOTE:** Case.law API was sunset September 5, 2024 and is no longer available.
 
 ### Recommended Settings:
 ```typescript
