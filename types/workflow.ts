@@ -891,13 +891,13 @@ export interface ExtendedThinkingConfig {
 export const EXTENDED_THINKING_CONFIG: ExtendedThinkingConfig[] = [
   { phase: 'I', tierA: null, tierB: null, tierC: null },
   { phase: 'II', tierA: null, tierB: null, tierC: null },
-  { phase: 'III', tierA: null, tierB: null, tierC: null },
+  { phase: 'III', tierA: null, tierB: null, tierC: 10000 },  // Legal strategy (Tier C only)
   { phase: 'IV', tierA: null, tierB: null, tierC: null },
-  { phase: 'V', tierA: null, tierB: null, tierC: null },
+  { phase: 'V', tierA: null, tierB: null, tierC: 10000 },    // Complex drafting (Tier C only)
   { phase: 'V.1', tierA: null, tierB: null, tierC: null },
   { phase: 'VI', tierA: null, tierB: 8000, tierC: 8000 },
-  { phase: 'VII', tierA: 10000, tierB: 10000, tierC: 10000 },
-  { phase: 'VII.1', tierA: null, tierB: null, tierC: null },
+  { phase: 'VII', tierA: 5000, tierB: 5000, tierC: 10000 },  // Quality grading (all tiers)
+  { phase: 'VII.1', tierA: 5000, tierB: 5000, tierC: 10000 }, // Revision thinking (all tiers)
   { phase: 'VIII', tierA: null, tierB: 8000, tierC: 8000 },
   { phase: 'VIII.5', tierA: null, tierB: null, tierC: null },
   { phase: 'IX', tierA: null, tierB: null, tierC: null },

@@ -6,7 +6,7 @@
  */
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude } from '@/lib/automation/claude';
 import { extractCitations } from './citation-verifier';
 import { extractDocumentContent } from './document-extractor';
 import type {
@@ -320,13 +320,6 @@ async function extractWithAI(
   text: string,
   documentType: string
 ): Promise<OperationResult<AIExtractionResult>> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      error: 'Claude API not configured',
-    };
-  }
-
   // Truncate text if too long (keep first 15000 chars)
   const truncatedText = text.length > 15000
     ? text.substring(0, 15000) + '\n\n[Document truncated for analysis...]'
@@ -363,7 +356,7 @@ Extract up to 10 key facts and up to 5 legal issues.`;
 
   const result = await askClaude({
     prompt,
-    maxTokens: 2000,
+    maxTokens: 32000, // MAXED OUT - comprehensive document analysis
     systemPrompt: 'You are a legal document analysis expert. Always respond with valid JSON.',
   });
 
