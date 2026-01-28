@@ -553,7 +553,17 @@ export async function getDisclosureAcceptances(
     return [];
   }
 
-  return data.map((row) => ({
+  return data.map((row: {
+    id: string;
+    disclosure_id: string;
+    order_id: string;
+    user_id: string;
+    accepted_at?: string;
+    created_at: string;
+    ip_address?: string;
+    user_agent?: string;
+    signature_method: string;
+  }) => ({
     id: row.id,
     disclosureId: row.disclosure_id,
     orderId: row.order_id,
