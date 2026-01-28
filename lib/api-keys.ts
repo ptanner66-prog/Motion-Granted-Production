@@ -152,13 +152,23 @@ export async function getAnthropicAPIKey(): Promise<string> {
 }
 
 /**
- * Get citation verification configuration (CourtListener + PACER)
- *
- * Flow (January 2026):
- * 1. CourtListener (PRIMARY) - Free, 10M+ cases
- * 2. PACER (FALLBACK) - Federal unpublished only, ~$0.10/lookup
- *
- * NOTE: Case.law was sunset September 5, 2024
+ * Get OpenAI API key
+ * Falls back to environment variable
+ */
+export async function getOpenAIAPIKey(): Promise<string> {
+  return process.env.OPENAI_API_KEY || '';
+}
+
+/**
+ * Get CourtListener API key
+ * Falls back to environment variable
+ */
+export async function getCourtListenerAPIKey(): Promise<string> {
+  return process.env.COURTLISTENER_API_KEY || '';
+}
+
+/**
+ * Get legal research configuration
  */
 export async function getCitationVerificationConfig(): Promise<{
   courtlistener: { apiKey: string; configured: boolean };
