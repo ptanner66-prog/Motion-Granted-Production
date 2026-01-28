@@ -12,7 +12,6 @@ import {
   AlertCircle,
   ArrowRight,
   Calendar,
-  TrendingUp,
   DollarSign,
   ChevronRight,
   ExternalLink,
@@ -338,30 +337,6 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Help Banner */}
-      <Card className="mt-8 border-0 shadow-sm bg-gradient-to-r from-navy to-navy-light text-white overflow-hidden">
-        <CardContent className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10">
-              <TrendingUp className="h-6 w-6" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-lg">Need help getting started?</h3>
-              <p className="text-white/70 text-sm">Our team is ready to assist with your first order</p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            className="border-white/30 text-white hover:bg-white/10 hover:text-white whitespace-nowrap"
-            asChild
-          >
-            <a href="mailto:support@motiongranted.com">
-              Contact Support
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </a>
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   )
 }

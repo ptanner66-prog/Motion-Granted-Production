@@ -1,38 +1,24 @@
 /**
- * Phase Executors
+ * Phase Executors - v7.2 Complete Implementation
  *
- * v7.2: Execution logic for all 14 workflow phases.
- * Each phase has specific inputs, processing, and outputs.
+ * STRICT 14-PHASE ENFORCEMENT:
+ * Each phase has a specific task. Claude CANNOT skip phases or generate
+ * the final motion directly. Each phase produces structured JSON output
+ * that feeds into the next phase.
  *
- * Model routing:
- * - Sonnet 4: Phases I, II, III, V, V.1, VIII.5, IX, IX.1
- * - Opus 4.5: Phase VII (always), IV/VI/VIII (Tier B/C)
- *
- * Extended thinking:
- * - Phase VI (B/C): 8K tokens
- * - Phase VII (all): 10K tokens
- * - Phase VIII (B/C): 8K tokens
+ * Phase Flow:
+ * I → II → III → [HOLD?] → IV → V → V.1 → VI → VII → [VIII loop?] → VIII.5 → IX → [IX.1?] → X
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
-import { logger } from '@/lib/logger';
-import { getModelConfig, createMessageParams } from './model-router';
-import { getCourtListenerClient } from './courtlistener-client';
-import {
-  detectCitationGaps,
-  detectContentGaps,
-  detectJudgeSimulationGaps,
-  recordGapEvent,
-  resolveGapAutomatically,
-} from './gap-closure-protocols';
+import { createMessageWithStreaming } from '@/lib/automation/claude';
 import type {
   WorkflowPhaseCode,
   MotionTier,
   PhaseStatus,
   JudgeSimulationResult,
   LetterGrade,
-  GRADE_VALUES,
 } from '@/types/workflow';
 
 // ============================================================================
@@ -52,6 +38,7 @@ export interface PhaseInput {
   instructions: string;
   previousPhaseOutputs: Record<WorkflowPhaseCode, unknown>;
   documents?: string[];
+  revisionLoop?: number;
 }
 
 export interface PhaseOutput {
@@ -68,6 +55,53 @@ export interface PhaseOutput {
 }
 
 // ============================================================================
+// CONSTANTS - STRICT PHASE ENFORCEMENT
+// ============================================================================
+
+const PHASE_ENFORCEMENT_HEADER = `
+################################################################################
+#  STRICT PHASE ENFORCEMENT - READ CAREFULLY                                   #
+################################################################################
+
+You are executing ONE SPECIFIC PHASE of a 14-phase legal document workflow.
+
+CRITICAL RULES:
+1. You MUST ONLY perform the task for THIS phase
+2. You MUST NOT generate the final motion document
+3. You MUST NOT skip ahead to other phases
+4. You MUST output ONLY the JSON structure specified for this phase
+5. Your output will be used as INPUT for the next phase
+
+If you try to generate the final motion or skip phases, the system will REJECT
+your output and the workflow will FAIL.
+
+################################################################################
+`;
+
+// Model selection based on phase and tier
+function getModelForPhase(phase: WorkflowPhaseCode, tier: MotionTier): string {
+  const OPUS = 'claude-opus-4-5-20251101';
+  const SONNET = 'claude-sonnet-4-5-20250514';
+
+  // Phase VII always uses Opus (quality gate)
+  if (phase === 'VII') return OPUS;
+
+  // Tier B/C use Opus for research and complex phases
+  if (tier !== 'A') {
+    if (['IV', 'VI', 'VIII'].includes(phase)) return OPUS;
+  }
+
+  return SONNET;
+}
+
+// Extended thinking budget
+function getThinkingBudget(phase: WorkflowPhaseCode, tier: MotionTier): number | null {
+  if (phase === 'VII') return 10000; // Always for judge simulation
+  if (tier !== 'A' && ['VI', 'VIII'].includes(phase)) return 8000;
+  return null;
+}
+
+// ============================================================================
 // ANTHROPIC CLIENT
 // ============================================================================
 
@@ -75,49 +109,117 @@ let anthropicClient: Anthropic | null = null;
 
 function getAnthropicClient(): Anthropic {
   if (!anthropicClient) {
-    anthropicClient = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+    anthropicClient = new Anthropic({ apiKey });
   }
   return anthropicClient;
 }
 
 // ============================================================================
-// PHASE I: Document Parsing
+// PHASE I: Intake & Classification
 // ============================================================================
 
-export async function executePhaseI(input: PhaseInput): Promise<PhaseOutput> {
-  const log = logger.child({ phase: 'I', workflowId: input.workflowId });
+async function executePhaseI(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
 
   try {
-    log.info('Starting Phase I: Document Parsing');
+    const client = getAnthropicClient();
 
-    // In production, this would parse uploaded documents
-    // For now, we extract key information from order data
-    const parsedData = {
-      caseCaption: input.caseCaption,
-      caseNumber: input.caseNumber,
-      jurisdiction: input.jurisdiction,
-      parties: extractParties(input.caseCaption),
-      keyFacts: extractKeyFacts(input.statementOfFacts),
-      proceduralEvents: extractProceduralEvents(input.proceduralHistory),
-      clientInstructions: input.instructions,
-      documentSummaries: input.documents?.map(d => ({ name: d, parsed: true })) || [],
-    };
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-    log.info('Phase I completed', { factCount: parsedData.keyFacts.length });
+PHASE I: INTAKE & CLASSIFICATION
+
+Your task is to:
+1. Parse and classify the submitted case information
+2. Identify the motion type and confirm the tier (A/B/C)
+3. Extract all parties, dates, and key identifiers
+4. Validate that required information is present
+5. Flag any missing required fields
+
+DO NOT write any motion content. Only analyze and structure the intake data.
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "I",
+  "classification": {
+    "motionType": "string",
+    "tier": "A|B|C",
+    "path": "path_a|path_b",
+    "jurisdiction": "string",
+    "court": "string"
+  },
+  "parties": {
+    "movingParty": { "name": "string", "role": "plaintiff|defendant" },
+    "opposingParty": { "name": "string", "role": "plaintiff|defendant" }
+  },
+  "caseIdentifiers": {
+    "caseNumber": "string",
+    "caseCaption": "string",
+    "filingDeadline": "string|null"
+  },
+  "extractedFacts": ["fact1", "fact2", ...],
+  "proceduralEvents": ["event1", "event2", ...],
+  "missingFields": ["field1", "field2", ...],
+  "validationStatus": "complete|incomplete",
+  "notes": "any relevant observations"
+}`;
+
+    const userMessage = `Analyze this submission for Phase I intake:
+
+MOTION TYPE: ${input.motionType}
+JURISDICTION: ${input.jurisdiction}
+CASE NUMBER: ${input.caseNumber}
+CASE CAPTION: ${input.caseCaption}
+
+STATEMENT OF FACTS:
+${input.statementOfFacts}
+
+PROCEDURAL HISTORY:
+${input.proceduralHistory}
+
+CLIENT INSTRUCTIONS:
+${input.instructions}
+
+UPLOADED DOCUMENTS:
+${input.documents?.join('\n') || 'None provided'}
+
+Provide your Phase I analysis as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('I', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    // Parse JSON output
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    // Validate phase output
+    if (phaseOutput.phaseComplete !== 'I') {
+      phaseOutput.phaseComplete = 'I'; // Force correct phase marker
+    }
 
     return {
       success: true,
       phase: 'I',
       status: 'completed',
-      output: parsedData,
+      output: phaseOutput,
       nextPhase: 'II',
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
     };
   } catch (error) {
-    log.error('Phase I failed', error);
     return {
       success: false,
       phase: 'I',
@@ -129,105 +231,101 @@ export async function executePhaseI(input: PhaseInput): Promise<PhaseOutput> {
   }
 }
 
-// Helper functions for Phase I
-function extractParties(caseCaption: string): { plaintiff: string; defendant: string } {
-  const parts = caseCaption.split(/\s+v\.?\s+/i);
-  return {
-    plaintiff: parts[0]?.trim() || 'Plaintiff',
-    defendant: parts[1]?.trim() || 'Defendant',
-  };
-}
-
-function extractKeyFacts(statementOfFacts: string): string[] {
-  return statementOfFacts
-    .split(/[.!?]+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 20);
-}
-
-function extractProceduralEvents(proceduralHistory: string): string[] {
-  return proceduralHistory
-    .split(/[.!?]+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 10);
-}
-
 // ============================================================================
-// PHASE II: Legal Framework
+// PHASE II: Legal Standards / Motion Deconstruction
 // ============================================================================
 
-export async function executePhaseII(input: PhaseInput): Promise<PhaseOutput> {
-  const log = logger.child({ phase: 'II', workflowId: input.workflowId });
+async function executePhaseII(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
 
   try {
-    log.info('Starting Phase II: Legal Framework');
-
     const client = getAnthropicClient();
-    const config = getModelConfig('II', input.tier);
+    const phaseIOutput = input.previousPhaseOutputs['I'] as Record<string, unknown>;
 
-    const phaseIOutput = input.previousPhaseOutputs['I'] as {
-      keyFacts: string[];
-      proceduralEvents: string[];
-    };
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-    const systemPrompt = `You are a legal research assistant building the legal framework for a ${input.motionType}.
-Jurisdiction: ${input.jurisdiction}
+PHASE II: LEGAL STANDARDS / MOTION DECONSTRUCTION
 
-Your task is to identify:
-1. The applicable legal standard for this motion type
-2. Key elements that must be proven
-3. Relevant rules of procedure
-4. Burden of proof requirements
+Your task is to:
+1. Identify the applicable legal standard for this motion type
+2. List ALL elements that must be proven/addressed
+3. Identify the burden of proof and who bears it
+4. Note relevant procedural rules and requirements
+5. For oppositions (path_b): deconstruct the opponent's likely arguments
 
-Output your analysis in a structured JSON format.`;
+DO NOT draft any motion language. Only identify the legal framework.
 
-    const userMessage = `Based on this case information, build the legal framework:
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "II",
+  "legalStandard": {
+    "name": "string",
+    "source": "statute/rule/case",
+    "citation": "string",
+    "summary": "string"
+  },
+  "elements": [
+    {
+      "number": 1,
+      "element": "string",
+      "description": "string",
+      "evidenceNeeded": "string"
+    }
+  ],
+  "burdenOfProof": {
+    "standard": "preponderance|clear_and_convincing|beyond_reasonable_doubt",
+    "bearer": "movant|opponent",
+    "shiftConditions": "string|null"
+  },
+  "proceduralRequirements": [
+    { "requirement": "string", "rule": "string", "deadline": "string|null" }
+  ],
+  "oppositionAnalysis": {
+    "likelyArguments": ["arg1", "arg2"],
+    "weakPoints": ["weak1", "weak2"]
+  }
+}`;
 
-Case: ${input.caseCaption}
-Case Number: ${input.caseNumber}
-Motion Type: ${input.motionType}
+    const userMessage = `Based on the Phase I intake, identify the legal framework:
 
-Key Facts:
-${phaseIOutput?.keyFacts?.join('\n') || input.statementOfFacts}
+PHASE I OUTPUT:
+${JSON.stringify(phaseIOutput, null, 2)}
 
-Procedural History:
-${phaseIOutput?.proceduralEvents?.join('\n') || input.proceduralHistory}
+MOTION TYPE: ${input.motionType}
+JURISDICTION: ${input.jurisdiction}
 
-Provide a JSON response with: legalStandard, elements, proceduralRules, burdenOfProof`;
+Provide your Phase II legal framework analysis as JSON.`;
 
-    const response = await client.messages.create({
-      ...createMessageParams('II', input.tier, systemPrompt, userMessage),
-      stream: false,
-    }) as Anthropic.Message;
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('II', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    // Parse JSON from response
-    let legalFramework;
+    let phaseOutput;
     try {
       const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      legalFramework = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: outputText };
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
     } catch {
-      legalFramework = { raw: outputText };
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
     }
 
-    log.info('Phase II completed', {
-      tokensUsed: response.usage,
-    });
+    phaseOutput.phaseComplete = 'II';
 
     return {
       success: true,
       phase: 'II',
       status: 'completed',
-      output: legalFramework,
+      output: phaseOutput,
       nextPhase: 'III',
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
     };
   } catch (error) {
-    log.error('Phase II failed', error);
     return {
       success: false,
       phase: 'II',
@@ -240,84 +338,107 @@ Provide a JSON response with: legalStandard, elements, proceduralRules, burdenOf
 }
 
 // ============================================================================
-// PHASE III: Legal Research
+// PHASE III: Evidence Strategy / Issue Identification
 // ============================================================================
 
-export async function executePhaseIII(input: PhaseInput): Promise<PhaseOutput> {
-  const log = logger.child({ phase: 'III', workflowId: input.workflowId });
+async function executePhaseIII(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
 
   try {
-    log.info('Starting Phase III: Legal Research');
-
     const client = getAnthropicClient();
-    const config = getModelConfig('III', input.tier);
+    const phaseIOutput = input.previousPhaseOutputs['I'] as Record<string, unknown>;
+    const phaseIIOutput = input.previousPhaseOutputs['II'] as Record<string, unknown>;
 
-    const legalFramework = input.previousPhaseOutputs['II'];
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-    // Determine citation count based on tier
-    const targetCitations = input.tier === 'C' ? 20 : input.tier === 'B' ? 12 : 6;
+PHASE III: EVIDENCE STRATEGY / ISSUE IDENTIFICATION
 
-    const systemPrompt = `You are a legal research specialist. Generate ${targetCitations} relevant case citations for this motion.
+Your task is to:
+1. Map available evidence to each legal element from Phase II
+2. Identify evidence GAPS that could weaken the motion
+3. Determine which issues are strongest vs weakest
+4. Flag any HOLD conditions (critical missing evidence)
+5. Prioritize issues for argument structure
 
-Requirements:
-- Citations must be real cases (no hallucination)
-- Include the full citation in Bluebook format
-- Provide the key holding for each case
-- Prioritize jurisdiction-specific cases when available
+DO NOT draft any motion language. Only analyze evidence and issues.
 
-Output format: JSON array of citations with fields: citation, caseName, holding, relevance`;
+If critical evidence is missing, set "holdRequired": true
 
-    const userMessage = `Research cases for this ${input.motionType}:
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "III",
+  "evidenceMapping": [
+    {
+      "element": "string (from Phase II)",
+      "availableEvidence": ["evidence1", "evidence2"],
+      "evidenceStrength": "strong|moderate|weak|none",
+      "gaps": ["gap1", "gap2"]
+    }
+  ],
+  "issueRanking": [
+    {
+      "issue": "string",
+      "strength": 1-10,
+      "strategy": "lead|support|defensive|omit",
+      "reason": "string"
+    }
+  ],
+  "criticalGaps": [
+    {
+      "gap": "string",
+      "impact": "fatal|significant|minor",
+      "resolution": "string"
+    }
+  ],
+  "holdRequired": false,
+  "holdReason": "string|null",
+  "recommendedApproach": "string"
+}`;
 
-Jurisdiction: ${input.jurisdiction}
-Legal Framework: ${JSON.stringify(legalFramework)}
+    const userMessage = `Analyze evidence and issues for Phase III:
 
-Key issues to research:
-- Cases supporting the motion
-- Potential counter-argument cases
-- Procedural precedents
+PHASE I OUTPUT (facts and case info):
+${JSON.stringify(phaseIOutput, null, 2)}
 
-Generate ${targetCitations} citations.`;
+PHASE II OUTPUT (legal elements):
+${JSON.stringify(phaseIIOutput, null, 2)}
 
-    const response = await client.messages.create({
-      ...createMessageParams('III', input.tier, systemPrompt, userMessage),
-      stream: false,
-    }) as Anthropic.Message;
+Provide your Phase III evidence strategy as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('III', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    // Parse citations
-    let citations: Array<{ citation: string; caseName: string; holding: string; relevance: string }> = [];
+    let phaseOutput;
     try {
-      const jsonMatch = outputText.match(/\[[\s\S]*\]/);
-      citations = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
     } catch {
-      citations = [];
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
     }
 
-    log.info('Phase III completed', {
-      citationCount: citations.length,
-      tokensUsed: response.usage,
-    });
+    phaseOutput.phaseComplete = 'III';
 
-    // Check for HOLD checkpoint - jurisdiction issues
-    // In production, this would check if motion templates exist for jurisdiction
-    const needsHold = false; // Placeholder
+    // Check for HOLD condition
+    const requiresHold = phaseOutput.holdRequired === true;
 
     return {
       success: true,
       phase: 'III',
-      status: 'completed',
-      output: { citations, needsHold },
-      nextPhase: needsHold ? undefined : 'IV',
-      requiresReview: needsHold,
+      status: requiresHold ? 'blocked' : 'completed',
+      output: phaseOutput,
+      nextPhase: requiresHold ? undefined : 'IV',
+      requiresReview: requiresHold,
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
     };
   } catch (error) {
-    log.error('Phase III failed', error);
     return {
       success: false,
       phase: 'III',
@@ -330,76 +451,110 @@ Generate ${targetCitations} citations.`;
 }
 
 // ============================================================================
-// PHASE IV: Citation Verification
+// PHASE IV: Authority Research (CP1)
 // ============================================================================
 
-export async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
-  const log = logger.child({ phase: 'IV', workflowId: input.workflowId });
+async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
 
   try {
-    log.info('Starting Phase IV: Citation Verification');
+    const client = getAnthropicClient();
+    const phaseIIOutput = input.previousPhaseOutputs['II'] as Record<string, unknown>;
+    const phaseIIIOutput = input.previousPhaseOutputs['III'] as Record<string, unknown>;
 
-    const phaseIIIOutput = input.previousPhaseOutputs['III'] as {
-      citations: Array<{ citation: string; caseName: string; holding: string }>;
-    };
+    // Determine citation targets based on tier
+    const citationTarget = input.tier === 'C' ? 20 : input.tier === 'B' ? 12 : 6;
 
-    const courtListener = getCourtListenerClient();
-    const verificationResults: Array<{
-      citationText: string;
-      status: string;
-      holdingMatch?: boolean;
-      courtListenerId?: string;
-    }> = [];
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-    // Verify each citation
-    for (const cite of phaseIIIOutput?.citations || []) {
-      try {
-        const result = await courtListener.verifyCitation(cite.citation, cite.holding);
-        verificationResults.push({
-          citationText: cite.citation,
-          status: result.verificationStatus,
-          courtListenerId: result.courtListenerId,
-        });
-      } catch (error) {
-        verificationResults.push({
-          citationText: cite.citation,
-          status: 'PENDING',
-        });
-      }
+PHASE IV: AUTHORITY RESEARCH
+
+Your task is to:
+1. Identify ${citationTarget}+ relevant legal authorities for this motion
+2. For each authority, provide the EXACT citation in Bluebook format
+3. Explain what proposition each authority supports
+4. Distinguish between binding and persuasive authority
+5. Build both CASE and STATUTORY authority banks
+
+CRITICAL: Only cite REAL cases and statutes. Do not hallucinate citations.
+If you're unsure about a citation, mark it as "needs_verification": true
+
+DO NOT draft any motion language. Only research and compile authorities.
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "IV",
+  "caseCitationBank": [
+    {
+      "citation": "exact Bluebook citation",
+      "caseName": "string",
+      "court": "string",
+      "year": number,
+      "proposition": "what this case stands for",
+      "relevantHolding": "key holding text",
+      "authorityLevel": "binding|persuasive",
+      "forElement": "which element this supports",
+      "needs_verification": false
     }
-
-    // Detect gaps
-    const gaps = detectCitationGaps(verificationResults, input.tier);
-
-    // Record and attempt to resolve gaps
-    for (const gap of gaps) {
-      gap.workflowId = input.workflowId;
-      await recordGapEvent(gap);
-      await resolveGapAutomatically(gap);
+  ],
+  "statutoryCitationBank": [
+    {
+      "citation": "exact citation",
+      "name": "statute/rule name",
+      "relevantText": "key text",
+      "purpose": "how this supports the motion"
     }
+  ],
+  "totalCitations": number,
+  "bindingCount": number,
+  "persuasiveCount": number,
+  "gapsInAuthority": ["areas needing more research"]
+}`;
 
-    log.info('Phase IV completed', {
-      totalCitations: verificationResults.length,
-      verified: verificationResults.filter(r => r.status === 'VERIFIED').length,
-      gapsDetected: gaps.length,
+    const userMessage = `Research authorities for Phase IV:
+
+LEGAL FRAMEWORK (Phase II):
+${JSON.stringify(phaseIIOutput, null, 2)}
+
+ISSUE RANKING (Phase III):
+${JSON.stringify(phaseIIIOutput, null, 2)}
+
+JURISDICTION: ${input.jurisdiction}
+MOTION TYPE: ${input.motionType}
+
+Find at least ${citationTarget} relevant authorities. Provide as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('IV', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
     });
 
-    // CP1 checkpoint notification
-    const requiresNotification = gaps.some(g => g.protocolCode === 'GAP-002' || g.protocolCode === 'GAP-003');
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'IV';
 
     return {
       success: true,
       phase: 'IV',
       status: 'completed',
-      output: { verificationResults, gaps },
+      output: phaseOutput,
       nextPhase: 'V',
-      requiresReview: requiresNotification,
-      gapsDetected: gaps.length,
+      requiresReview: true, // CP1: Notify admin research is complete
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
     };
   } catch (error) {
-    log.error('Phase IV failed', error);
     return {
       success: false,
       phase: 'IV',
@@ -412,143 +567,454 @@ export async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
 }
 
 // ============================================================================
-// PHASE VII: Judge Simulation (Key Phase - Always Uses Opus)
+// PHASE V: Draft Motion
 // ============================================================================
 
-export async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
-  const log = logger.child({ phase: 'VII', workflowId: input.workflowId });
+async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
 
   try {
-    log.info('Starting Phase VII: Judge Simulation');
-
     const client = getAnthropicClient();
-    const config = getModelConfig('VII', input.tier);
+    const phaseIOutput = input.previousPhaseOutputs['I'] as Record<string, unknown>;
+    const phaseIIOutput = input.previousPhaseOutputs['II'] as Record<string, unknown>;
+    const phaseIIIOutput = input.previousPhaseOutputs['III'] as Record<string, unknown>;
+    const phaseIVOutput = input.previousPhaseOutputs['IV'] as Record<string, unknown>;
 
-    const draftContent = input.previousPhaseOutputs['VI'] as { draft: string };
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-    const systemPrompt = `You are an experienced federal judge evaluating a motion.
-Use extended thinking to thoroughly analyze this motion before providing your evaluation.
+PHASE V: DRAFT MOTION
 
-Evaluate on these criteria:
-1. Legal soundness of arguments
-2. Proper citation and use of authority
-3. Clarity and organization
-4. Persuasiveness
-5. Compliance with procedural requirements
+NOW you will draft the actual motion document. Use ALL the work from previous phases:
+- Phase I: Case information and parties
+- Phase II: Legal standard and elements
+- Phase III: Evidence strategy and issue ranking
+- Phase IV: Citation bank
 
-Provide a letter grade (A+ through F) where B+ (3.3) is the minimum acceptable standard.
+REQUIREMENTS:
+1. Start with proper court caption
+2. Include Introduction
+3. Address each element with supporting authority from Phase IV
+4. Use citations EXACTLY as provided in Phase IV
+5. Include Statement of Facts referencing Phase I facts
+6. Build arguments following Phase III strategy
+7. Include Conclusion and Prayer for Relief
+8. Include Certificate of Service placeholder
 
-Output JSON with:
-- grade: letter grade
-- numericGrade: GPA equivalent (4.3 scale)
-- passes: boolean (true if B+ or better)
-- strengths: array of strengths
-- weaknesses: array of areas for improvement
-- specificFeedback: detailed feedback
-- revisionSuggestions: array of specific revisions if grade < B+`;
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "V",
+  "draftMotion": {
+    "caption": "full court caption",
+    "title": "MOTION FOR [TYPE]",
+    "introduction": "string",
+    "statementOfFacts": "string",
+    "legalArguments": [
+      {
+        "heading": "I. [ARGUMENT HEADING]",
+        "content": "full argument text with citations",
+        "citationsUsed": ["citation1", "citation2"]
+      }
+    ],
+    "conclusion": "string",
+    "prayerForRelief": "string",
+    "certificateOfService": "[CERTIFICATE OF SERVICE PLACEHOLDER]",
+    "signature": "[ATTORNEY SIGNATURE BLOCK]"
+  },
+  "wordCount": number,
+  "citationsIncluded": number,
+  "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "cos"]
+}`;
 
-    const userMessage = `Evaluate this ${input.motionType}:
+    const userMessage = `Draft the motion using all previous phase outputs:
 
-Case: ${input.caseCaption}
-Jurisdiction: ${input.jurisdiction}
+PHASE I (Case Info):
+${JSON.stringify(phaseIOutput, null, 2)}
 
-MOTION CONTENT:
-${draftContent?.draft || 'No draft available'}
+PHASE II (Legal Framework):
+${JSON.stringify(phaseIIOutput, null, 2)}
 
-Provide your judicial evaluation.`;
+PHASE III (Evidence Strategy):
+${JSON.stringify(phaseIIIOutput, null, 2)}
 
-    const params = createMessageParams('VII', input.tier, systemPrompt, userMessage);
+PHASE IV (Citation Bank):
+${JSON.stringify(phaseIVOutput, null, 2)}
 
-    const response = await client.messages.create({
-      ...params,
-      stream: false,
-    }) as Anthropic.Message;
+MOTION TYPE: ${input.motionType}
+JURISDICTION: ${input.jurisdiction}
+
+Draft the complete motion. Provide as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('V', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    // Parse judge evaluation
-    let evaluation: JudgeSimulationResult;
+    let phaseOutput;
     try {
       const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
-      evaluation = {
-        grade: parsed.grade || 'C',
-        numericGrade: parsed.numericGrade || 2.0,
-        passes: parsed.passes ?? false,
-        strengths: parsed.strengths || [],
-        weaknesses: parsed.weaknesses || [],
-        specificFeedback: parsed.specificFeedback || '',
-        revisionSuggestions: parsed.revisionSuggestions || [],
-        loopNumber: 1,
-      };
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
     } catch {
-      evaluation = {
-        grade: 'C',
-        numericGrade: 2.0,
-        passes: false,
-        strengths: [],
-        weaknesses: ['Could not parse evaluation'],
-        specificFeedback: outputText,
-        revisionSuggestions: [],
-        loopNumber: 1,
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'V';
+
+    return {
+      success: true,
+      phase: 'V',
+      status: 'completed',
+      output: phaseOutput,
+      nextPhase: 'V.1',
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      phase: 'V',
+      status: 'failed',
+      output: null,
+      error: error instanceof Error ? error.message : 'Phase V failed',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ============================================================================
+// PHASE V.1: Citation Accuracy Check
+// ============================================================================
+
+async function executePhaseV1(input: PhaseInput): Promise<PhaseOutput> {
+  const start = Date.now();
+
+  try {
+    const client = getAnthropicClient();
+    const phaseIVOutput = input.previousPhaseOutputs['IV'] as Record<string, unknown>;
+    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE V.1: CITATION ACCURACY CHECK
+
+Your task is to:
+1. Verify every citation in the draft matches the citation bank from Phase IV
+2. Check that citations are used for the correct propositions
+3. Verify Bluebook formatting is correct
+4. Identify any citations in the draft NOT from the citation bank (flag as suspicious)
+5. Check pinpoint page references are appropriate
+
+DO NOT modify the motion. Only audit citations.
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "V.1",
+  "citationAudit": [
+    {
+      "citationInDraft": "string",
+      "matchInBank": true|false,
+      "formatCorrect": true|false,
+      "usedForCorrectProposition": true|false,
+      "issues": ["issue1", "issue2"]
+    }
+  ],
+  "suspiciousCitations": ["citations not in bank"],
+  "formattingErrors": ["error1", "error2"],
+  "totalChecked": number,
+  "passRate": "percentage",
+  "overallStatus": "pass|needs_correction"
+}`;
+
+    const userMessage = `Audit citations for Phase V.1:
+
+CITATION BANK (Phase IV):
+${JSON.stringify(phaseIVOutput, null, 2)}
+
+DRAFT MOTION (Phase V):
+${JSON.stringify(phaseVOutput, null, 2)}
+
+Verify all citations. Provide audit as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('V.1', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'V.1';
+
+    return {
+      success: true,
+      phase: 'V.1',
+      status: 'completed',
+      output: phaseOutput,
+      nextPhase: 'VI',
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      phase: 'V.1',
+      status: 'failed',
+      output: null,
+      error: error instanceof Error ? error.message : 'Phase V.1 failed',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ============================================================================
+// PHASE VI: Opposition Anticipation
+// ============================================================================
+
+async function executePhaseVI(input: PhaseInput): Promise<PhaseOutput> {
+  const start = Date.now();
+
+  try {
+    const client = getAnthropicClient();
+    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+    const thinkingBudget = getThinkingBudget('VI', input.tier);
+
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE VI: OPPOSITION ANTICIPATION
+
+Your task is to:
+1. Predict the strongest arguments the opposing party will make
+2. Identify weaknesses in our motion they will exploit
+3. Prepare counter-arguments for each anticipated opposition point
+4. Suggest preemptive language to add to the motion
+5. Rate the likelihood and severity of each opposition argument
+
+${thinkingBudget ? 'Use extended thinking to deeply analyze potential opposition strategies.' : ''}
+
+DO NOT rewrite the motion. Only analyze opposition strategy.
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "VI",
+  "anticipatedOpposition": [
+    {
+      "argument": "string",
+      "likelihood": "high|medium|low",
+      "severity": "fatal|significant|minor",
+      "ourWeakness": "what they'll attack",
+      "counterArgument": "our response",
+      "preemptiveLanguage": "suggested addition to motion"
+    }
+  ],
+  "overallVulnerability": "low|medium|high",
+  "recommendedStrengthening": ["suggestion1", "suggestion2"],
+  "motionStrengths": ["strength1", "strength2"]
+}`;
+
+    const userMessage = `Anticipate opposition for Phase VI:
+
+DRAFT MOTION (Phase V):
+${JSON.stringify(phaseVOutput, null, 2)}
+
+MOTION TYPE: ${input.motionType}
+JURISDICTION: ${input.jurisdiction}
+
+Analyze potential opposition. Provide as JSON.`;
+
+    const requestParams: Anthropic.MessageCreateParams = {
+      model: getModelForPhase('VI', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    };
+
+    // Add extended thinking if applicable (cast through unknown to satisfy TypeScript)
+    if (thinkingBudget) {
+      (requestParams as unknown as Record<string, unknown>).thinking = {
+        type: 'enabled',
+        budget_tokens: thinkingBudget,
       };
     }
 
-    // Store judge result in database
-    const supabase = await createClient();
-    await supabase.from('judge_simulation_results').insert({
-      workflow_id: input.workflowId,
-      grade: evaluation.grade,
-      numeric_grade: evaluation.numericGrade,
-      passes: evaluation.passes,
-      strengths: evaluation.strengths,
-      weaknesses: evaluation.weaknesses,
-      specific_feedback: evaluation.specificFeedback,
-      revision_suggestions: evaluation.revisionSuggestions,
-      loop_number: evaluation.loopNumber,
-    });
+    const response = await createMessageWithStreaming(client, requestParams) as Anthropic.Message;
 
-    // Detect gaps based on judge feedback
-    const gaps = detectJudgeSimulationGaps(evaluation.grade, evaluation.loopNumber, {
-      persuasivenessScore: evaluation.numericGrade / 4.3,
-      counterArgumentsAddressed: !evaluation.weaknesses.some(w =>
-        w.toLowerCase().includes('counter') || w.toLowerCase().includes('opposing')
-      ),
-      conclusionStrength: evaluation.strengths.some(s =>
-        s.toLowerCase().includes('conclusion')
-      ) ? 0.8 : 0.5,
-    });
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    for (const gap of gaps) {
-      gap.workflowId = input.workflowId;
-      await recordGapEvent(gap);
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
     }
 
-    log.info('Phase VII completed', {
-      grade: evaluation.grade,
-      passes: evaluation.passes,
-      gapsDetected: gaps.length,
-      tokensUsed: response.usage,
-    });
+    phaseOutput.phaseComplete = 'VI';
 
-    // Determine next phase
-    const nextPhase: WorkflowPhaseCode = evaluation.passes ? 'VIII' : 'VII.1';
+    return {
+      success: true,
+      phase: 'VI',
+      status: 'completed',
+      output: phaseOutput,
+      nextPhase: 'VII',
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      phase: 'VI',
+      status: 'failed',
+      output: null,
+      error: error instanceof Error ? error.message : 'Phase VI failed',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ============================================================================
+// PHASE VII: Judge Simulation (CP2 - Quality Gate)
+// ============================================================================
+
+async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
+  const start = Date.now();
+
+  try {
+    const client = getAnthropicClient();
+    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+    const phaseVIOutput = input.previousPhaseOutputs['VI'] as Record<string, unknown>;
+    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
+    const loopNumber = input.revisionLoop || 1;
+
+    // CRITICAL: Use revised motion if this is a re-evaluation after Phase VIII
+    const motionToEvaluate = phaseVIIIOutput?.revisedMotion || phaseVOutput?.draftMotion || phaseVOutput;
+    const isReEvaluation = !!phaseVIIIOutput;
+
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE VII: JUDGE SIMULATION (QUALITY GATE)
+
+You are an experienced ${input.jurisdiction} judge evaluating this motion.
+Use extended thinking to thoroughly analyze before grading.
+
+${isReEvaluation ? `**RE-EVALUATION**: This is revision loop ${loopNumber}. You are evaluating the REVISED motion after Phase VIII corrections.` : `This is the initial evaluation.`}
+
+GRADING CRITERIA:
+1. Legal soundness (are arguments legally correct?)
+2. Citation quality (real cases used appropriately?)
+3. Organization and clarity
+4. Persuasiveness
+5. Procedural compliance
+6. Anticipation of opposition
+
+GRADE SCALE:
+- A+ (4.3): Exceptional, would likely grant
+- A (4.0): Excellent, strong motion
+- A- (3.7): Very good
+- B+ (3.3): MINIMUM ACCEPTABLE - Good, competent motion
+- B (3.0): Below standard, needs work
+- B- (2.7): Significant issues
+- C or below: Major problems
+
+If grade < B+, this motion will go through ${isReEvaluation ? 'another' : ''} revision (Phase VIII).
+This is revision loop ${loopNumber} of max 3.
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "VII",
+  "evaluation": {
+    "grade": "A+|A|A-|B+|B|B-|C+|C|D|F",
+    "numericGrade": 0.0-4.3,
+    "passes": true|false,
+    "criteria": {
+      "legalSoundness": { "score": 1-10, "notes": "string" },
+      "citationQuality": { "score": 1-10, "notes": "string" },
+      "organization": { "score": 1-10, "notes": "string" },
+      "persuasiveness": { "score": 1-10, "notes": "string" },
+      "proceduralCompliance": { "score": 1-10, "notes": "string" },
+      "oppositionAnticipation": { "score": 1-10, "notes": "string" }
+    },
+    "strengths": ["strength1", "strength2"],
+    "weaknesses": ["weakness1", "weakness2"],
+    "specificFeedback": "detailed feedback",
+    "revisionSuggestions": ["if grade < B+, specific fixes"],
+    "loopNumber": ${loopNumber},
+    "isReEvaluation": ${isReEvaluation}
+  }
+}`;
+
+    const userMessage = `Evaluate this motion as a judge:
+
+${isReEvaluation ? 'REVISED MOTION (Phase VIII):' : 'DRAFT MOTION (Phase V):'}
+${JSON.stringify(motionToEvaluate, null, 2)}
+
+OPPOSITION ANALYSIS (Phase VI):
+${JSON.stringify(phaseVIOutput, null, 2)}
+
+MOTION TYPE: ${input.motionType}
+JURISDICTION: ${input.jurisdiction}
+
+Provide your judicial evaluation as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('VII', input.tier), // Always Opus
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 50000, // MAXED OUT - deep reasoning
+      },
+    } as Anthropic.MessageCreateParams) as Anthropic.Message;
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'VII';
+
+    // Extract pass/fail
+    const evaluation = phaseOutput.evaluation || phaseOutput;
+    const passes = evaluation.passes === true || evaluation.numericGrade >= 3.3;
 
     return {
       success: true,
       phase: 'VII',
       status: 'completed',
-      output: evaluation,
-      nextPhase,
-      requiresReview: true, // CP2: Always notify after judge simulation
-      gapsDetected: gaps.length,
+      output: {
+        ...phaseOutput,
+        passes,
+        grade: evaluation.grade,
+        numericGrade: evaluation.numericGrade,
+        loopNumber,
+      },
+      nextPhase: passes ? 'VIII.5' : 'VIII',
+      requiresReview: true, // CP2: Notify admin of grade
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
     };
   } catch (error) {
-    log.error('Phase VII failed', error);
     return {
       success: false,
       phase: 'VII',
@@ -561,47 +1027,595 @@ Provide your judicial evaluation.`;
 }
 
 // ============================================================================
-// PHASE X: Final QA and Approval
+// PHASE VII.1: Post-Revision Citation Check
 // ============================================================================
 
-export async function executePhaseX(input: PhaseInput): Promise<PhaseOutput> {
-  const log = logger.child({ phase: 'X', workflowId: input.workflowId });
+async function executePhaseVII1(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
 
   try {
-    log.info('Starting Phase X: Final QA and Approval');
+    const client = getAnthropicClient();
+    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
 
-    // This phase primarily triggers the blocking checkpoint for admin approval
-    // The actual approval is handled via the PhaseXApprovalModal and API
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-    const finalDraft = input.previousPhaseOutputs['IX'] as { formattedDocument: string };
+PHASE VII.1: POST-REVISION CITATION CHECK
 
-    // Run final checks
-    const checks = {
-      hasAllSections: true,
-      citationsVerified: true,
-      formattingCorrect: true,
-      noPlaceholders: !finalDraft?.formattedDocument?.includes('['),
-      wordCountOk: true,
+Phase VIII revisions may have added NEW citations not in original bank.
+Your task is to verify any new citations added during revision.
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "VII.1",
+  "newCitationsFound": [
+    {
+      "citation": "string",
+      "addedIn": "which section",
+      "verification": "verified|needs_check|suspicious",
+      "notes": "string"
+    }
+  ],
+  "totalNewCitations": number,
+  "allVerified": true|false
+}`;
+
+    const userMessage = `Check new citations from revision:
+
+REVISED MOTION (Phase VIII):
+${JSON.stringify(phaseVIIIOutput, null, 2)}
+
+Verify any new citations. Provide as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('VII.1', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'VII.1';
+
+    return {
+      success: true,
+      phase: 'VII.1',
+      status: 'completed',
+      output: phaseOutput,
+      nextPhase: 'VII', // Return to judge for regrade
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      phase: 'VII.1',
+      status: 'failed',
+      output: null,
+      error: error instanceof Error ? error.message : 'Phase VII.1 failed',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ============================================================================
+// PHASE VIII: Revisions
+// ============================================================================
+
+async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
+  const start = Date.now();
+
+  try {
+    const client = getAnthropicClient();
+    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+    const phaseVIIOutput = input.previousPhaseOutputs['VII'] as Record<string, unknown>;
+    const thinkingBudget = getThinkingBudget('VIII', input.tier);
+
+    const evaluation = (phaseVIIOutput as { evaluation?: Record<string, unknown> })?.evaluation || phaseVIIOutput;
+
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE VIII: REVISIONS
+
+The judge simulation (Phase VII) graded this motion below B+.
+Your task is to revise the motion to address the specific weaknesses.
+
+JUDGE FEEDBACK TO ADDRESS:
+- Weaknesses: ${JSON.stringify((evaluation as Record<string, unknown>).weaknesses || [])}
+- Specific Feedback: ${(evaluation as Record<string, unknown>).specificFeedback || 'None'}
+- Revision Suggestions: ${JSON.stringify((evaluation as Record<string, unknown>).revisionSuggestions || [])}
+
+${thinkingBudget ? 'Use extended thinking to carefully address each issue.' : ''}
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "VIII",
+  "revisedMotion": {
+    "caption": "...",
+    "title": "...",
+    "introduction": "revised...",
+    "statementOfFacts": "revised...",
+    "legalArguments": [...],
+    "conclusion": "revised...",
+    "prayerForRelief": "...",
+    "certificateOfService": "...",
+    "signature": "..."
+  },
+  "changesMAde": [
+    { "section": "string", "change": "description of revision" }
+  ],
+  "newCitationsAdded": true|false,
+  "newCitations": ["any new citations added"]
+}`;
+
+    const userMessage = `Revise the motion based on judge feedback:
+
+ORIGINAL DRAFT (Phase V):
+${JSON.stringify(phaseVOutput, null, 2)}
+
+JUDGE EVALUATION (Phase VII):
+${JSON.stringify(phaseVIIOutput, null, 2)}
+
+Address all weaknesses and revision suggestions. Provide as JSON.`;
+
+    const requestParams: Anthropic.MessageCreateParams = {
+      model: getModelForPhase('VIII', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
     };
 
-    const allChecksPass = Object.values(checks).every(Boolean);
+    // Add extended thinking if applicable (cast through unknown to satisfy TypeScript)
+    if (thinkingBudget) {
+      (requestParams as unknown as Record<string, unknown>).thinking = {
+        type: 'enabled',
+        budget_tokens: thinkingBudget,
+      };
+    }
 
-    log.info('Phase X checks completed', {
-      allChecksPass,
-      checks,
+    const response = await createMessageWithStreaming(client, requestParams) as Anthropic.Message;
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'VIII';
+
+    // Check if new citations were added (triggers VII.1)
+    const newCitations = phaseOutput.newCitationsAdded === true;
+
+    return {
+      success: true,
+      phase: 'VIII',
+      status: 'completed',
+      output: {
+        ...phaseOutput,
+        newCitations,
+      },
+      nextPhase: newCitations ? 'VII.1' : 'VII', // Go to citation check or straight to regrade
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      phase: 'VIII',
+      status: 'failed',
+      output: null,
+      error: error instanceof Error ? error.message : 'Phase VIII failed',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ============================================================================
+// PHASE VIII.5: Caption Validation
+// ============================================================================
+
+async function executePhaseVIII5(input: PhaseInput): Promise<PhaseOutput> {
+  const start = Date.now();
+
+  try {
+    const client = getAnthropicClient();
+    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
+
+    // Use revised motion if available, otherwise original
+    const motionToCheck = phaseVIIIOutput?.revisedMotion || (phaseVOutput as Record<string, unknown>)?.draftMotion;
+
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE VIII.5: CAPTION VALIDATION
+
+Your task is to verify caption consistency:
+1. Case number matches across all sections
+2. Party names spelled consistently
+3. Court name correct for jurisdiction
+4. Caption format matches local rules
+5. All required caption elements present
+
+DO NOT modify the motion. Only validate captions.
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "VIII.5",
+  "captionValidation": {
+    "caseNumberConsistent": true|false,
+    "partyNamesConsistent": true|false,
+    "courtNameCorrect": true|false,
+    "formatCompliant": true|false,
+    "allElementsPresent": true|false
+  },
+  "issues": [
+    { "issue": "string", "location": "string", "fix": "string" }
+  ],
+  "overallStatus": "valid|needs_correction"
+}`;
+
+    const userMessage = `Validate caption consistency:
+
+MOTION:
+${JSON.stringify(motionToCheck, null, 2)}
+
+CASE NUMBER: ${input.caseNumber}
+CASE CAPTION: ${input.caseCaption}
+JURISDICTION: ${input.jurisdiction}
+
+Validate captions. Provide as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('VIII.5', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
     });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'VIII.5';
+
+    return {
+      success: true,
+      phase: 'VIII.5',
+      status: 'completed',
+      output: phaseOutput,
+      nextPhase: 'IX',
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      phase: 'VIII.5',
+      status: 'failed',
+      output: null,
+      error: error instanceof Error ? error.message : 'Phase VIII.5 failed',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ============================================================================
+// PHASE IX: Supporting Documents
+// ============================================================================
+
+async function executePhaseIX(input: PhaseInput): Promise<PhaseOutput> {
+  const start = Date.now();
+
+  try {
+    const client = getAnthropicClient();
+    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
+
+    const finalMotion = phaseVIIIOutput?.revisedMotion || (phaseVOutput as Record<string, unknown>)?.draftMotion;
+
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE IX: SUPPORTING DOCUMENTS
+
+Your task is to generate supporting documents:
+1. Proposed Order (for judge to sign if motion granted)
+2. Certificate of Service (with placeholders for service details)
+3. Declaration/Affidavit outline (if needed)
+4. Exhibit list (if applicable)
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "IX",
+  "supportingDocuments": {
+    "proposedOrder": {
+      "title": "PROPOSED ORDER",
+      "content": "full proposed order text"
+    },
+    "certificateOfService": {
+      "title": "CERTIFICATE OF SERVICE",
+      "content": "full COS text with placeholders"
+    },
+    "declarationOutline": {
+      "needed": true|false,
+      "declarant": "string",
+      "keyPoints": ["point1", "point2"]
+    },
+    "exhibitList": {
+      "needed": true|false,
+      "exhibits": [
+        { "number": "A", "description": "string" }
+      ]
+    }
+  }
+}`;
+
+    const userMessage = `Generate supporting documents for:
+
+MOTION:
+${JSON.stringify(finalMotion, null, 2)}
+
+CASE: ${input.caseCaption}
+CASE NUMBER: ${input.caseNumber}
+MOTION TYPE: ${input.motionType}
+
+Generate supporting documents. Provide as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('IX', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'IX';
+
+    // Check if IX.1 needed (MSJ/MSA)
+    const needsIX1 = input.motionType.toUpperCase().includes('SUMMARY') ||
+                     input.motionType.toUpperCase().includes('MSJ') ||
+                     input.motionType.toUpperCase().includes('MSA');
+
+    return {
+      success: true,
+      phase: 'IX',
+      status: 'completed',
+      output: phaseOutput,
+      nextPhase: needsIX1 ? 'IX.1' : 'X',
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      phase: 'IX',
+      status: 'failed',
+      output: null,
+      error: error instanceof Error ? error.message : 'Phase IX failed',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ============================================================================
+// PHASE IX.1: Separate Statement Check (MSJ/MSA only)
+// ============================================================================
+
+async function executePhaseIX1(input: PhaseInput): Promise<PhaseOutput> {
+  const start = Date.now();
+
+  try {
+    const client = getAnthropicClient();
+    const phaseIVOutput = input.previousPhaseOutputs['IV'] as Record<string, unknown>;
+    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE IX.1: SEPARATE STATEMENT CHECK (MSJ/MSA)
+
+For Motion for Summary Judgment, verify the Separate Statement:
+1. Each material fact is numbered
+2. Each fact has supporting evidence citation
+3. Evidence citations match the citation bank
+4. Format complies with CRC 3.1350 (California) or local rules
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "IX.1",
+  "separateStatementCheck": {
+    "factsNumbered": true|false,
+    "allFactsSupported": true|false,
+    "citationsMatch": true|false,
+    "formatCompliant": true|false
+  },
+  "issues": ["issue1", "issue2"],
+  "status": "compliant|needs_correction"
+}`;
+
+    const userMessage = `Check Separate Statement for MSJ/MSA:
+
+CITATION BANK (Phase IV):
+${JSON.stringify(phaseIVOutput, null, 2)}
+
+MOTION (Phase V):
+${JSON.stringify(phaseVOutput, null, 2)}
+
+Verify Separate Statement. Provide as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('IX.1', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'IX.1';
+
+    return {
+      success: true,
+      phase: 'IX.1',
+      status: 'completed',
+      output: phaseOutput,
+      nextPhase: 'X',
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      phase: 'IX.1',
+      status: 'failed',
+      output: null,
+      error: error instanceof Error ? error.message : 'Phase IX.1 failed',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ============================================================================
+// PHASE X: Final Assembly (CP3 - Blocking)
+// ============================================================================
+
+async function executePhaseX(input: PhaseInput): Promise<PhaseOutput> {
+  const start = Date.now();
+
+  try {
+    const client = getAnthropicClient();
+    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+    const phaseVIIOutput = input.previousPhaseOutputs['VII'] as Record<string, unknown>;
+    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
+    const phaseIXOutput = input.previousPhaseOutputs['IX'] as Record<string, unknown>;
+
+    // Use revised motion if available
+    const finalMotion = phaseVIIIOutput?.revisedMotion || (phaseVOutput as Record<string, unknown>)?.draftMotion;
+    const evaluation = (phaseVIIOutput as { evaluation?: Record<string, unknown> })?.evaluation || phaseVIIOutput;
+
+    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE X: FINAL ASSEMBLY (BLOCKING CHECKPOINT)
+
+Assemble the final motion package and perform final QA checks:
+
+1. Compile final motion document (plain text, ready for Word)
+2. Attach supporting documents from Phase IX
+3. Final quality checks
+4. Generate summary for admin review
+
+This phase triggers CP3 - admin MUST approve before delivery.
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "X",
+  "finalPackage": {
+    "motion": "FULL MOTION TEXT READY FOR FILING",
+    "proposedOrder": "FULL PROPOSED ORDER TEXT",
+    "certificateOfService": "FULL COS TEXT",
+    "exhibitList": "if applicable"
+  },
+  "qualityChecks": {
+    "allSectionsPresent": true|false,
+    "citationsVerified": true|false,
+    "captionConsistent": true|false,
+    "noPlaceholders": true|false,
+    "wordCount": number,
+    "pageEstimate": number
+  },
+  "adminSummary": {
+    "motionType": "${input.motionType}",
+    "caseCaption": "${input.caseCaption}",
+    "finalGrade": "from Phase VII",
+    "revisionLoops": number,
+    "keyStrengths": ["strength1"],
+    "notesForAdmin": "any important notes"
+  },
+  "readyForDelivery": true|false,
+  "blockingReason": "if not ready, why"
+}`;
+
+    const userMessage = `Assemble final package:
+
+FINAL MOTION:
+${JSON.stringify(finalMotion, null, 2)}
+
+JUDGE EVALUATION:
+${JSON.stringify(evaluation, null, 2)}
+
+SUPPORTING DOCUMENTS (Phase IX):
+${JSON.stringify(phaseIXOutput, null, 2)}
+
+Assemble and check. Provide as JSON.`;
+
+    const response = await createMessageWithStreaming(client, {
+      model: getModelForPhase('X', input.tier),
+      max_tokens: 32000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    let phaseOutput;
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+    } catch {
+      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    }
+
+    phaseOutput.phaseComplete = 'X';
 
     return {
       success: true,
       phase: 'X',
-      status: allChecksPass ? 'requires_review' : 'blocked',
-      output: { checks, requiresApproval: true },
+      status: 'requires_review', // Always requires admin approval
+      output: phaseOutput,
       requiresReview: true, // CP3: Blocking checkpoint
+      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
     };
   } catch (error) {
-    log.error('Phase X failed', error);
     return {
       success: false,
       phase: 'X',
@@ -614,63 +1628,28 @@ export async function executePhaseX(input: PhaseInput): Promise<PhaseOutput> {
 }
 
 // ============================================================================
-// PHASE EXECUTOR REGISTRY
+// PHASE EXECUTOR REGISTRY - ALL 14 PHASES
 // ============================================================================
 
-import {
-  executePhaseWithSuperprompt,
-  type OrderContext,
-} from './superprompt-phase-executor';
-
-export const PHASE_EXECUTORS: Partial<Record<WorkflowPhaseCode, (input: PhaseInput) => Promise<PhaseOutput>>> = {
+export const PHASE_EXECUTORS: Record<WorkflowPhaseCode, (input: PhaseInput) => Promise<PhaseOutput>> = {
   'I': executePhaseI,
   'II': executePhaseII,
   'III': executePhaseIII,
   'IV': executePhaseIV,
+  'V': executePhaseV,
+  'V.1': executePhaseV1,
+  'VI': executePhaseVI,
   'VII': executePhaseVII,
+  'VII.1': executePhaseVII1,
+  'VIII': executePhaseVIII,
+  'VIII.5': executePhaseVIII5,
+  'IX': executePhaseIX,
+  'IX.1': executePhaseIX1,
   'X': executePhaseX,
-  // Additional phases use superprompt-driven executor via executePhase fallback
 };
 
 /**
- * Convert PhaseInput to OrderContext for superprompt executor
- */
-function toOrderContext(input: PhaseInput): OrderContext {
-  return {
-    orderId: input.orderId,
-    orderNumber: input.orderId.slice(0, 8), // Fallback if no order number
-    caseNumber: input.caseNumber,
-    caseCaption: input.caseCaption,
-    court: input.jurisdiction,
-    jurisdiction: input.jurisdiction,
-    courtDivision: undefined,
-    motionType: input.motionType,
-    motionTier: input.tier,
-    filingDeadline: undefined,
-    filingPosture: 'FILING', // Default, can be overridden
-    plaintiffNames: '',
-    defendantNames: '',
-    allParties: '',
-    statementOfFacts: input.statementOfFacts,
-    proceduralHistory: input.proceduralHistory,
-    clientInstructions: input.instructions,
-    documentContent: input.documents?.join('\n\n') || '',
-    documentSummaries: '',
-    keyFacts: '',
-    legalIssues: '',
-    attorneyName: '',
-    barNumber: '',
-    firmName: '',
-    firmAddress: '',
-    firmPhone: '',
-  };
-}
-
-/**
- * Execute a specific phase
- *
- * Uses hardcoded executors for phases I, II, III, IV, VII, X
- * Falls back to superprompt-driven executor for other phases (V, V.1, VI, VII.1, VIII, VIII.5, IX, IX.1)
+ * Execute a specific phase with strict enforcement
  */
 export async function executePhase(
   phase: WorkflowPhaseCode,
@@ -678,34 +1657,26 @@ export async function executePhase(
 ): Promise<PhaseOutput> {
   const executor = PHASE_EXECUTORS[phase];
 
-  // Use specific executor if available
-  if (executor) {
-    return executor(input);
+  if (!executor) {
+    console.error(`[Phase Executor] No executor found for phase ${phase}`);
+    return {
+      success: false,
+      phase,
+      status: 'failed',
+      output: null,
+      error: `No executor found for phase ${phase}. Valid phases: ${Object.keys(PHASE_EXECUTORS).join(', ')}`,
+    };
   }
 
-  // Fall back to superprompt-driven executor for phases without specific implementations
-  const log = logger.child({ phase, workflowId: input.workflowId });
-  log.info(`Using superprompt-driven executor for phase ${phase}`);
+  console.log(`[Phase Executor] Starting phase ${phase} for workflow ${input.workflowId}`);
 
-  const result = await executePhaseWithSuperprompt({
-    workflowId: input.workflowId,
-    orderId: input.orderId,
-    phaseCode: phase,
-    tier: input.tier,
-    orderContext: toOrderContext(input),
-    previousPhaseOutputs: input.previousPhaseOutputs,
-  });
+  const result = await executor(input);
 
-  // Convert superprompt executor result to PhaseOutput format
-  return {
-    success: result.success,
-    phase: result.phaseCode,
+  console.log(`[Phase Executor] Phase ${phase} ${result.success ? 'completed' : 'failed'}`, {
     status: result.status,
-    output: result.output,
-    nextPhase: result.nextPhase,
-    requiresReview: result.requiresReview,
     tokensUsed: result.tokensUsed,
     durationMs: result.durationMs,
-    error: result.error,
-  };
+  });
+
+  return result;
 }

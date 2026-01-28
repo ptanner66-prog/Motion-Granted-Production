@@ -12,11 +12,19 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude } from '@/lib/automation/claude';
 import { extractOrderDocuments, getCombinedDocumentText } from './document-extractor';
 import { parseOrderDocuments, getOrderParsedDocuments } from './document-parser';
 import { startWorkflow, runWorkflow, getWorkflowProgress, executeCurrentPhase } from './workflow-engine';
 import { getTemplateForPath, generateSectionPrompt, MOTION_TEMPLATES } from './motion-templates';
+import {
+  validatePhaseGate,
+  enforcePhaseTransition,
+  markPhaseComplete,
+  getNextAllowedPhase,
+  type PhaseId
+} from './phase-gates';
+import { alertBypassAttempt } from './violation-alerts';
 import type { OperationResult } from '@/types/automation';
 import type { WorkflowPath, MotionTier } from '@/types/workflow';
 
@@ -304,16 +312,21 @@ CRITICAL REQUIREMENTS:
 /**
  * Start and optionally run the complete workflow for an order
  * This is the main orchestration entry point
+ *
+ * PHASE ENFORCEMENT: This function enforces strict phase ordering.
+ * Phases cannot be skipped. All required phases must complete in order.
  */
 export async function orchestrateWorkflow(
   orderId: string,
   options: {
     autoRun?: boolean; // If true, runs all phases automatically
     workflowPath?: WorkflowPath;
-    skipDocumentParsing?: boolean;
+    // NOTE: skipDocumentParsing has been REMOVED - phases cannot be skipped
   } = {}
 ): Promise<OperationResult<OrchestrationResult>> {
   const supabase = await createClient();
+
+  console.log(`[ORCHESTRATOR] Starting workflow for order ${orderId}`);
 
   try {
     // Step 1: Gather all order context
@@ -327,20 +340,19 @@ export async function orchestrateWorkflow(
 
     const orderContext = contextResult.data;
 
-    // Step 2: Parse documents if not already done
-    if (!options.skipDocumentParsing) {
-      await parseOrderDocuments(orderId);
-      // Refresh parsed docs in context
-      const refreshedParsed = await getOrderParsedDocuments(orderId);
-      if (refreshedParsed.success && refreshedParsed.data) {
-        orderContext.documents.parsed = refreshedParsed.data.map(d => ({
-          fileName: d.document_id,
-          documentType: d.document_type || 'unknown',
-          summary: d.summary || '',
-          keyFacts: d.key_facts || [],
-          legalIssues: d.legal_issues || [],
-        }));
-      }
+    // Step 2: Parse documents - ALWAYS REQUIRED (no skip option)
+    // Document parsing is part of Phase II and cannot be bypassed
+    await parseOrderDocuments(orderId);
+    // Refresh parsed docs in context
+    const refreshedParsed = await getOrderParsedDocuments(orderId);
+    if (refreshedParsed.success && refreshedParsed.data) {
+      orderContext.documents.parsed = refreshedParsed.data.map(d => ({
+        fileName: d.document_id,
+        documentType: d.document_type || 'unknown',
+        summary: d.summary || '',
+        keyFacts: d.key_facts || [],
+        legalIssues: d.legal_issues || [],
+      }));
     }
 
     // Step 3: Determine motion type and get template
@@ -544,16 +556,19 @@ export async function executePhaseWithContext(
 }
 
 /**
- * Generate draft using superprompt (for use in Phase 6)
+ * Generate draft using superprompt
+ *
+ * @deprecated This function bypasses the 14-phase workflow and should NOT be used directly.
+ * Use orchestrateWorkflow() with autoRun: true instead.
+ *
+ * PHASE ENFORCEMENT: This function now validates that prerequisites are met.
+ * It will fail if called outside of proper workflow context.
  */
 export async function generateDraftWithSuperprompt(
   orderId: string,
-  workflowPath: WorkflowPath = 'path_a'
+  workflowPath: WorkflowPath = 'path_a',
+  options: { calledFromPhase?: string } = {}
 ): Promise<OperationResult<{ draft: string; tokensUsed?: number }>> {
-  if (!isClaudeConfigured) {
-    return { success: false, error: 'Claude API not configured' };
-  }
-
   // Gather full context
   const contextResult = await gatherOrderContext(orderId);
   if (!contextResult.success || !contextResult.data) {
@@ -573,16 +588,18 @@ export async function generateDraftWithSuperprompt(
     workflowPath,
   });
 
-  // Generate with Claude
+  // Generate with Claude - MAXED OUT 128000 tokens for Opus 4.5
   const result = await askClaude({
     prompt: superprompt + '\n\nGenerate the complete motion document now:',
-    maxTokens: 8000,
+    maxTokens: 128000, // MAXED OUT - full motion, no truncation
     systemPrompt: 'You are an expert legal document drafter. Produce professional, court-ready legal documents.',
   });
 
   if (!result.success || !result.result) {
     return { success: false, error: result.error };
   }
+
+  console.log(`[ORCHESTRATOR] Phase V draft generated for order ${orderId}`);
 
   return {
     success: true,

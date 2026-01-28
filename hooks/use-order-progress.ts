@@ -2,13 +2,14 @@
  * Order Progress Hook
  *
  * Real-time progress tracking for lawyers to monitor their orders.
- * Polls the automation service for updates and provides
- * user-friendly status information.
+ * Uses Supabase Realtime for instant updates + polling fallback.
+ * Provides user-friendly status information.
  */
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
 
 interface OrderProgress {
   orderId: string;
@@ -45,10 +46,12 @@ const STATUS_MESSAGES: Record<string, string> = {
   under_review: 'Your order is being prepared',
   assigned: 'A clerk has been assigned to your order',
   in_progress: 'Your motion is being drafted',
+  pending_review: 'Draft complete - undergoing final review',
   draft_delivered: 'Your draft is ready for download',
   revision_requested: 'Revision in progress',
   revision_delivered: 'Revised draft is ready',
   completed: 'Order complete',
+  generation_failed: 'An issue occurred - our team is notified',
 };
 
 // Activity to user-friendly message mapping
@@ -113,7 +116,63 @@ export function useOrderProgress(
     fetchProgress();
   }, [fetchProgress]);
 
-  // Polling for updates
+  // Supabase Realtime subscription for instant updates
+  const channelRef = useRef<ReturnType<ReturnType<typeof createBrowserClient>['channel']> | null>(null);
+
+  useEffect(() => {
+    if (!orderId) return;
+
+    // Create Supabase client
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    // Subscribe to order updates
+    const channel = supabase
+      .channel(`order-progress-${orderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `id=eq.${orderId}`,
+        },
+        (payload) => {
+          console.log('[Realtime] Order updated:', payload.new);
+          // Refetch progress when order changes
+          fetchProgress();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'automation_logs',
+          filter: `order_id=eq.${orderId}`,
+        },
+        (payload) => {
+          console.log('[Realtime] Automation log:', payload.new);
+          // Refetch on automation activity
+          fetchProgress();
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Subscription status:', status);
+      });
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
+  }, [orderId, fetchProgress]);
+
+  // Polling fallback for updates (less frequent when realtime is active)
   useEffect(() => {
     if (!enablePolling || !orderId) return;
 
@@ -122,7 +181,8 @@ export function useOrderProgress(
       return;
     }
 
-    const interval = setInterval(fetchProgress, pollInterval);
+    // Poll less frequently since we have realtime
+    const interval = setInterval(fetchProgress, pollInterval * 2);
 
     return () => clearInterval(interval);
   }, [enablePolling, orderId, pollInterval, fetchProgress, progress?.status]);
