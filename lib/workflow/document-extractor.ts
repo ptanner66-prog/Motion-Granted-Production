@@ -53,19 +53,34 @@ export interface DocumentExtractionResult {
 // ============================================================================
 
 /**
- * Extract text from a PDF file using pdf-parse
- * Falls back to basic text extraction if pdf-parse not available
+ * Extract text from a PDF file using pdfjs-dist
+ * Falls back to basic text extraction if pdfjs-dist not available
  */
 async function extractFromPdf(buffer: ArrayBuffer): Promise<{ text: string; pages?: number }> {
   try {
-    // Dynamic import for pdf-parse (may not be installed)
-    const pdfParse = await import('pdf-parse').catch(() => null);
+    // Dynamic import for pdfjs-dist
+    const pdfjsLib = await import('pdfjs-dist').catch(() => null);
 
-    if (pdfParse) {
-      const data = await pdfParse.default(Buffer.from(buffer));
+    if (pdfjsLib) {
+      // Load the PDF document from the buffer
+      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
+      const pdf = await loadingTask.promise;
+
+      const textParts: string[] = [];
+
+      // Extract text from each page
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item) => ('str' in item ? item.str : ''))
+          .join(' ');
+        textParts.push(pageText);
+      }
+
       return {
-        text: data.text,
-        pages: data.numpages,
+        text: textParts.join('\n\n'),
+        pages: pdf.numPages,
       };
     }
 
@@ -80,7 +95,7 @@ async function extractFromPdf(buffer: ArrayBuffer): Promise<{ text: string; page
       .filter(t => t.length > 2 && !/^[\\\/\d\s]+$/.test(t))
       .join(' ');
 
-    return { text: extractedText || '[PDF content - install pdf-parse for better extraction]' };
+    return { text: extractedText || '[PDF content - install pdfjs-dist for better extraction]' };
   } catch {
     return { text: '[Failed to extract PDF content]' };
   }
