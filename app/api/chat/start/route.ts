@@ -382,7 +382,7 @@ ${orderData.defendantNames || '[DEFENDANT]'},
 
       const response = await anthropic.messages.create({
         model: 'claude-opus-4-5-20251101',
-        max_tokens: 16000, // Increased for full motion generation through all phases
+        max_tokens: 64000, // Increased for full motion generation through all phases
         system: context,
         messages: [{ role: 'user', content: initialPrompt }],
       });

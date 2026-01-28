@@ -52,10 +52,10 @@ export async function getAnthropicClient(): Promise<Anthropic | null> {
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 const DEFAULT_MAX_TOKENS = 64000; // MAXED OUT - cost is irrelevant at $700/motion
 
-// For motion generation (use Opus 4.5 for best legal reasoning)
+// For motion generation (use Opus for best legal reasoning)
 export const MOTION_MODEL = 'claude-opus-4-5-20251101';
-export const MOTION_MAX_TOKENS = 128000; // MAXED OUT - Opus 4.5 supports 128K output
-export const MAX_CONTEXT_TOKENS = 200000; // MAXED OUT - full 200K context window
+export const MOTION_MAX_TOKENS = 64000; // ~50 pages of output
+export const MAX_CONTEXT_TOKENS = 180000; // Leave buffer from 200K limit
 
 // ============================================================================
 // SYSTEM PROMPTS

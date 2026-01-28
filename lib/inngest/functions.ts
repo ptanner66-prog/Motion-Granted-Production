@@ -413,7 +413,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
       const response = await createMessageWithRetry(
         {
           model: "claude-opus-4-5-20251101",
-          max_tokens: 128000, // MAXED OUT - full motion generation
+          max_tokens: 64000,
           system: context,
           messages: [{ role: "user", content: userMessage }],
         },
