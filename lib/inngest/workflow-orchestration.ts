@@ -15,6 +15,12 @@
 import { inngest } from './client';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { executePhase } from '@/lib/workflow/phase-executors';
+import {
+  validatePhaseGate,
+  markPhaseComplete,
+  type PhaseId,
+} from '@/lib/workflow/phase-gates';
+import { alertPhaseViolation } from '@/lib/workflow/violation-alerts';
 import type {
   WorkflowPhaseCode,
   MotionTier,
@@ -150,6 +156,8 @@ export const workflowOrchestration = inngest.createFunction(
           .update({
             status: 'in_progress',
             current_phase: 1,
+            current_phase_code: 'I',
+            completed_phases: [], // Reset for fresh start
             started_at: new Date().toISOString(),
             error_count: 0,
             last_error: null,
@@ -163,6 +171,8 @@ export const workflowOrchestration = inngest.createFunction(
             order_id: orderId,
             workflow_path: 'path_a', // Default to initiating motion
             current_phase: 1,
+            current_phase_code: 'I',
+            completed_phases: [], // IMPORTANT: Initialize empty for phase gates
             status: 'in_progress',
             started_at: new Date().toISOString(),
             metadata: {
@@ -410,6 +420,8 @@ export const workflowOrchestration = inngest.createFunction(
 
 /**
  * Execute a phase and log the execution
+ *
+ * PHASE ENFORCEMENT: Validates phase gates before execution.
  */
 async function executeAndLogPhase(
   phase: WorkflowPhaseCode,
@@ -422,9 +434,44 @@ async function executeAndLogPhase(
 ) {
   const startTime = Date.now();
 
+  // =========================================================================
+  // PHASE GATE ENFORCEMENT
+  // =========================================================================
+  const gateResult = await validatePhaseGate(orderId, phase as PhaseId);
+  if (!gateResult.canProceed) {
+    console.error(`[INNGEST] Phase gate blocked for Phase ${phase}: ${gateResult.error}`);
+    await alertPhaseViolation(orderId, phase, gateResult.error || 'Phase gate blocked');
+
+    // Log the violation
+    await supabase.from('automation_logs').insert({
+      order_id: orderId,
+      action_type: 'phase_gate_violation',
+      action_details: {
+        phase,
+        workflowId,
+        error: gateResult.error,
+        missingPrerequisites: gateResult.missingPrerequisites,
+      },
+    });
+
+    return {
+      success: false,
+      phase,
+      status: 'blocked' as const,
+      output: null,
+      error: `PHASE_GATE_VIOLATION: ${gateResult.error}`,
+      requiresReview: false,
+      gapsDetected: 0,
+    };
+  }
+
+  console.log(`[INNGEST] Phase gate passed for Phase ${phase} (order: ${orderId})`);
+  // =========================================================================
+
   // Update workflow current phase
   await supabase.from('order_workflows').update({
     current_phase: getPhaseNumber(phase),
+    current_phase_code: phase, // Also update the code for phase gates
     last_activity_at: new Date().toISOString(),
   }).eq('id', workflowId);
 
@@ -472,6 +519,25 @@ async function executeAndLogPhase(
     },
   });
 
+  // =========================================================================
+  // MARK PHASE COMPLETE IN PHASE GATES SYSTEM
+  // =========================================================================
+  if (result.success) {
+    // Extract outputs for phase gate requirements validation
+    const phaseOutputs: Record<string, unknown> = {};
+
+    // Map phase outputs to expected requirement keys
+    if (result.output && typeof result.output === 'object') {
+      Object.assign(phaseOutputs, result.output);
+    }
+
+    // Add standard completion flags
+    phaseOutputs[`phase_${phase.replace('.', '_')}_complete`] = true;
+
+    await markPhaseComplete(orderId, phase as PhaseId, phaseOutputs);
+  }
+  // =========================================================================
+
   // Insert phase execution record if workflow_phase_executions table exists
   try {
     // Get phase definition ID
@@ -508,6 +574,7 @@ async function executeAndLogPhase(
 
 /**
  * Get numeric phase number from phase code
+ * Aligned with PHASES.order in phase-gates.ts
  */
 function getPhaseNumber(phase: WorkflowPhaseCode): number {
   const phaseNumbers: Record<WorkflowPhaseCode, number> = {
@@ -516,15 +583,15 @@ function getPhaseNumber(phase: WorkflowPhaseCode): number {
     'III': 3,
     'IV': 4,
     'V': 5,
-    'V.1': 5,
-    'VI': 6,
-    'VII': 7,
-    'VII.1': 7,
-    'VIII': 8,
-    'VIII.5': 8,
-    'IX': 9,
-    'IX.1': 9,
-    'X': 10,
+    'V.1': 6,
+    'VI': 7,
+    'VII': 8,
+    'VII.1': 9,
+    'VIII': 10,
+    'VIII.5': 11,
+    'IX': 12,
+    'IX.1': 13,
+    'X': 14,
   };
   return phaseNumbers[phase] || 1;
 }

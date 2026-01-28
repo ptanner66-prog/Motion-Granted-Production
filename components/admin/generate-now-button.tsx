@@ -36,6 +36,12 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
       const response = await fetch(`/api/orders/${orderId}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          autoRun: true,
+          workflowPath: 'path_a',
+          skipDocumentParsing: false,
+        }),
       });
 
       const data = await response.json();
@@ -45,8 +51,8 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
       }
 
       toast({
-        title: '14-Phase Workflow Started',
-        description: `Order ${orderNumber} is now processing through all 14 phases. Check the progress in the workflow tracker.`,
+        title: 'Workflow Started!',
+        description: 'The 14-phase workflow is now processing. This may take 5-10 minutes.',
       });
 
       router.refresh();
@@ -104,6 +110,8 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
     return null;
   }
 
+  const isLoading = isGenerating || isQueuing || isResuming;
+
   return (
     <Card className="bg-amber-50 border-amber-200">
       <CardHeader className="pb-3">
@@ -138,17 +146,50 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
         )}
 
         <div className="grid gap-2">
+          {canResume ? (
+            <Button
+              onClick={handleResume}
+              disabled={isLoading}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+            >
+              {isResuming ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Resuming Workflow...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-2" />
+                  Resume Workflow
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleGenerate}
+              disabled={isLoading}
+              className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Starting Workflow... (5-10 minutes)
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-2" />
+                  Generate Now (14-Phase Workflow)
+                </>
+              )}
+            </Button>
+          )}
+
           <Button
             onClick={handleGenerateNow}
             disabled={isGenerating || isInProgress || isResuming}
             className="w-full bg-amber-600 hover:bg-amber-700 text-white"
           >
-            {isGenerating ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Starting Workflow...
-              </>
-            ) : isInProgress ? (
+            {isQueuing ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 Workflow In Progress...
@@ -183,13 +224,9 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
           )}
         </div>
 
-        <div className="text-xs text-amber-600 space-y-1">
-          <p className="font-medium">Workflow phases:</p>
-          <p>I → II → III → IV (CP1) → V → V.1 → VI → VII (CP2) → VIII.5 → IX → X (CP3)</p>
-          <p className="mt-1">
-            Estimated time: Tier A ~5 min, Tier B ~15 min, Tier C ~30 min
-          </p>
-        </div>
+        <p className="text-xs text-amber-600 text-center">
+          Uses 14-phase workflow with checkpoints. Queue processes in background via Inngest.
+        </p>
       </CardContent>
     </Card>
   );

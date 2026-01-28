@@ -45,6 +45,21 @@ export async function POST(request: NextRequest) {
       }
       case 'openai': {
         return await testOpenAIKey(settings.openai_api_key);
+<<<<<<< claude/citation-integrity-system-6DUP6
+      }
+      case 'courtlistener': {
+        return await testCourtListenerKey(settings.courtlistener_api_key);
+      }
+      case 'pacer': {
+        return await testPACERCredentials(settings.pacer_username, settings.pacer_password);
+      }
+      case 'resend': {
+        return await testResendKey(settings.resend_api_key);
+      }
+      case 'westlaw': {
+        return await testWestlawKey(settings.westlaw_api_key, settings.westlaw_client_id);
+=======
+>>>>>>> main
       }
       case 'courtlistener': {
         return await testCourtListenerKey(settings.courtlistener_api_key);

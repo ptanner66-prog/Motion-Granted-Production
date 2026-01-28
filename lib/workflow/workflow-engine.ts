@@ -37,6 +37,14 @@ import {
   CITATION_BATCH_SIZE,
 } from './citation-verifier';
 import { triggerCheckpoint } from './checkpoint-service';
+import {
+  validatePhaseGate,
+  enforcePhaseTransition,
+  markPhaseComplete,
+  type PhaseId,
+  PHASES,
+} from './phase-gates';
+import { alertPhaseViolation } from './violation-alerts';
 
 // ============================================================================
 // v6.3 QUALITY CONSTANTS — DO NOT MODIFY WITHOUT APPROVAL
@@ -152,6 +160,8 @@ export async function startWorkflow(
         motion_type_id: request.motionTypeId,
         workflow_path: request.workflowPath,
         current_phase: 1,
+        current_phase_code: 'I',
+        completed_phases: [], // IMPORTANT: Initialize empty for phase gates
         status: 'pending',
         started_at: new Date().toISOString(),
         metadata: request.metadata || {},
@@ -209,6 +219,9 @@ export async function startWorkflow(
 
 /**
  * Execute the current phase of a workflow
+ *
+ * PHASE ENFORCEMENT: This function validates phase gates before execution.
+ * If prerequisites are not met, the phase will not execute.
  */
 export async function executeCurrentPhase(
   workflowId: string
@@ -233,6 +246,32 @@ export async function executeCurrentPhase(
     if (wfError || !workflow) {
       return { success: false, error: wfError?.message || 'Workflow not found' };
     }
+
+    // =========================================================================
+    // PHASE GATE ENFORCEMENT
+    // =========================================================================
+    // Map current_phase number to PhaseId code
+    // Phase number to code mapping aligned with PHASES in phase-gates.ts
+    const phaseNumberToCode: Record<number, PhaseId> = {
+      1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'V.1',
+      7: 'VI', 8: 'VII', 9: 'VII.1', 10: 'VIII', 11: 'VIII.5',
+      12: 'IX', 13: 'IX.1', 14: 'X'
+    };
+    const targetPhaseCode = phaseNumberToCode[workflow.current_phase] || 'I';
+
+    // Validate phase gate
+    const gateResult = await validatePhaseGate(workflow.order_id, targetPhaseCode);
+    if (!gateResult.canProceed) {
+      console.error(`[WORKFLOW ENGINE] Phase gate blocked for order ${workflow.order_id}: ${gateResult.error}`);
+      await alertPhaseViolation(workflow.order_id, targetPhaseCode, gateResult.error || 'Unknown gate violation');
+      return {
+        success: false,
+        error: `PHASE_GATE_VIOLATION: ${gateResult.error}`,
+      };
+    }
+
+    console.log(`[WORKFLOW ENGINE] Phase gate passed for Phase ${targetPhaseCode} (order: ${workflow.order_id})`);
+    // =========================================================================
 
     // Get current phase definition
     const { data: phaseDef, error: phaseDefError } = await supabase
@@ -298,12 +337,29 @@ export async function executeCurrentPhase(
       })
       .eq('id', phaseExec.id);
 
+    // =========================================================================
+    // MARK PHASE COMPLETE IN PHASE GATES SYSTEM
+    // =========================================================================
+    if (result.success && !result.requiresReview) {
+      // Mark phase complete in the phase gates tracking system
+      const completionResult = await markPhaseComplete(workflow.order_id, targetPhaseCode, result.outputs || {});
+      if (!completionResult.success) {
+        console.warn(`[WORKFLOW ENGINE] Failed to mark Phase ${targetPhaseCode} complete: ${completionResult.error}`);
+        // Don't fail the workflow - just log the warning
+        // The phase execution was successful, we just couldn't update the tracking
+      } else {
+        console.log(`[WORKFLOW ENGINE] Phase ${targetPhaseCode} marked complete for order ${workflow.order_id}`);
+      }
+    }
+    // =========================================================================
+
     // Update workflow status
     if (result.success && !result.requiresReview) {
       await supabase
         .from('order_workflows')
         .update({
           current_phase: workflow.current_phase + 1,
+          current_phase_code: phaseNumberToCode[workflow.current_phase + 1] || targetPhaseCode,
           last_activity_at: new Date().toISOString(),
         })
         .eq('id', workflowId);
