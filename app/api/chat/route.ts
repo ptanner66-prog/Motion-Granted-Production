@@ -543,70 +543,8 @@ END OF EXISTING HANDOFF
 `;
     }
 
-    // Workflow enforcement instruction header
-    const workflowInstruction = `
-################################################################################
-#                                                                              #
-#   MANDATORY INSTRUCTION - FOLLOW THE SUPERPROMPT WORKFLOW EXACTLY           #
-#                                                                              #
-################################################################################
-
-You are being provided with a SUPERPROMPT WORKFLOW TEMPLATE that contains a
-structured, multi-phase legal motion drafting process.
-
-CRITICAL REQUIREMENTS:
-1. FOLLOW the workflow phases EXACTLY as specified in the superprompt template
-2. Execute EACH phase completely before moving to the next phase
-3. Use the case data provided to inform your analysis at each phase
-4. Apply the legal standards, citation requirements, and quality checks specified
-5. The superprompt contains your lawyer's proven methodology - follow it precisely
-
-The workflow template will guide you through:
-- Phase I: Intake & Document Processing
-- Phase II: Legal Standards Research
-- Phase III: Evidence Strategy
-- Phase IV: Authority Research
-- Phase V: Drafting
-- Phase V.1: Citation Accuracy Check
-- Phase VI: Opposition Anticipation
-- Phase VII: Quality Review
-- And subsequent phases as defined in the template
-
-DO NOT skip phases. DO NOT take shortcuts. The workflow exists for quality assurance.
-
-################################################################################
-#                                                                              #
-#   CRITICAL OUTPUT REQUIREMENT                                                #
-#                                                                              #
-################################################################################
-
-IMPORTANT: Execute all workflow phases INTERNALLY, but your OUTPUT must contain
-ONLY the final court-ready motion document.
-
-DO NOT OUTPUT:
-- Phase headers ("PHASE I:", "PHASE II:", etc.)
-- Status updates ("Status: IN PROGRESS", "Status: COMPLETE")
-- Progress tables or element mapping tables
-- Completion markers ("### PHASE X COMPLETE")
-- Workflow summaries or checklists
-- "Next Phase:" indicators
-- Research notes or citation verification reports
-- Attorney instruction sheets (generate separately if needed)
-- Introductory sentences ("I'll generate...", "Let me execute...")
-- Concluding commentary ("Workflow Complete", "Ready for Delivery")
-
-YOUR OUTPUT MUST BE:
-The complete, court-ready motion document only, starting with the court caption
-and ending with the signature block and certificate of service.
-
-Think of it this way: Execute the full workflow in your reasoning, but only
-deliver the final product - the motion itself - in your response.
-
-################################################################################
-#   CASE DATA BELOW - USE THIS THROUGHOUT THE WORKFLOW                        #
-################################################################################
-
-`;
+    // Minimal instruction - let the superprompt template drive everything
+    const workflowInstruction = '';
 
     // Build structured JSON case data matching superprompt schema
     const todayDate = new Date().toLocaleDateString('en-US', {
@@ -661,13 +599,8 @@ ADDITIONAL CONTEXT:
 - All Parties: ${orderData.parties?.map((p: { name: string; role: string }) => `${p.name} (${p.role})`).join(', ') || 'Not specified'}
 
 ================================================================================
-END OF CASE DATA - BEGIN WORKFLOW EXECUTION
+END OF CASE DATA
 ================================================================================
-
-You have received all required inputs above. Execute the COMPLETE workflow as specified
-in the superprompt template. Follow each phase INTERNALLY, then OUTPUT ONLY the final
-court-ready motion document. Do not include phase headers, status updates, or workflow
-commentary in your response.
 
 `;
 

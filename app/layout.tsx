@@ -5,8 +5,8 @@ import { siteConfig } from "@/config/site";
 import { logEnvironmentCheck } from "@/lib/utils/env-check";
 import "./globals.css";
 
-// Validate environment variables at startup (runs once during build/startup)
-if (typeof window === 'undefined') {
+// Validate environment variables at startup (only in development, not during build)
+if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
   logEnvironmentCheck();
 }
 

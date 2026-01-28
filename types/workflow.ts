@@ -862,7 +862,7 @@ export const MODEL_ROUTING: ModelRoutingConfig[] = [
   { phase: 'VI', tierA: 'sonnet', tierB: 'opus', tierC: 'opus' },
   { phase: 'VII', tierA: 'opus', tierB: 'opus', tierC: 'opus' }, // Always Opus
   { phase: 'VII.1', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'VIII', tierA: 'sonnet', tierB: 'opus', tierC: 'opus' },
+  { phase: 'VIII', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' }, // Sonnet with extended thinking for B/C
   { phase: 'VIII.5', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
   { phase: 'IX', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
   { phase: 'IX.1', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },

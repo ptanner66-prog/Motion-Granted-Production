@@ -22,7 +22,8 @@ export function RetryGenerationButton({ orderId, orderNumber, errorMessage }: Re
     setIsRetrying(true);
 
     try {
-      const response = await fetch('/api/automation/start', {
+      // Use restart endpoint to completely clear and restart from Phase 1
+      const response = await fetch('/api/automation/restart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
@@ -31,12 +32,12 @@ export function RetryGenerationButton({ orderId, orderNumber, errorMessage }: Re
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to retry generation');
+        throw new Error(data.error || 'Failed to restart generation');
       }
 
       toast({
         title: 'Generation Restarted',
-        description: `Order ${orderNumber} has been re-queued for processing.`,
+        description: `Order ${orderNumber} has been completely restarted from Phase 1.`,
       });
 
       // Refresh the page to show updated status
@@ -44,7 +45,7 @@ export function RetryGenerationButton({ orderId, orderNumber, errorMessage }: Re
     } catch (error) {
       toast({
         title: 'Retry Failed',
-        description: error instanceof Error ? error.message : 'Failed to retry generation',
+        description: error instanceof Error ? error.message : 'Failed to restart generation',
         variant: 'destructive',
       });
     } finally {
@@ -90,7 +91,7 @@ export function RetryGenerationButton({ orderId, orderNumber, errorMessage }: Re
           )}
         </Button>
         <p className="text-xs text-red-600 text-center">
-          This will reset the order status and re-attempt motion generation.
+          This will clear all previous workflow data and restart from Phase 1.
         </p>
       </CardContent>
     </Card>

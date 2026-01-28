@@ -47,8 +47,8 @@ export interface PhaseExecutionConfig extends ModelConfig {
 // DEFAULT CONFIGURATIONS
 // ============================================================================
 
-const DEFAULT_MAX_TOKENS = 4096;
-const EXTENDED_THINKING_MAX_TOKENS = 16000;
+const DEFAULT_MAX_TOKENS = 64000; // MAXED OUT - full reasoning capacity
+const EXTENDED_THINKING_MAX_TOKENS = 128000; // MAXED OUT - Opus 4.5 max output
 
 // ============================================================================
 // MODEL ROUTER
