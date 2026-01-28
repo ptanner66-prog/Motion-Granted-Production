@@ -48,7 +48,7 @@ const faqCategories = [
       },
       {
         q: 'How long does it take?',
-        a: 'Standard turnaround varies by motion complexity: Tier 1 (procedural) motions typically take 3-5 business days, Tier 2 (substantive) motions take 5-7 business days, and Tier 3 (complex) motions take 7-14 business days. Rush delivery is available for most orders at an additional charge.',
+        a: 'Standard turnaround varies by motion complexity: Tier A (procedural) motions typically take 2-3 business days, Tier B (substantive) motions take 3-4 business days, and Tier C (complex/dispositive) motions take 4-5 business days. Rush delivery is available for most orders at an additional charge.',
       },
       {
         q: 'Can I request rush delivery?',

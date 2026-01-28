@@ -153,6 +153,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
+  // NULL CHECK 2: Event data object
+  if (!event.data?.object) {
+    console.error('[Stripe Webhook] Missing event.data.object');
+    return NextResponse.json({ error: 'Invalid event structure' }, { status: 400 });
+  }
+
   try {
     // Handle the event
     switch (event.type) {
@@ -535,6 +541,12 @@ async function handleCheckoutSessionCompleted(
     });
 
     console.log(`[Stripe Webhook] Revision payment processed: workflow=${workflowId}, revision=${revisionId}`);
+    return;
+  }
+
+  // NULL CHECK 5: Payment status
+  if (session.payment_status !== 'paid') {
+    console.log(`[Stripe Webhook] Checkout session payment not completed: ${session.payment_status}`);
     return;
   }
 

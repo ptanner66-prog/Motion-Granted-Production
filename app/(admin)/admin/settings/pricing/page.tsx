@@ -122,7 +122,7 @@ export default function PricingSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Tier 1 Motions */}
+        {/* Tier A Motions */}
         <Card className="bg-white border-gray-200">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -130,14 +130,14 @@ export default function PricingSettingsPage() {
                 <FileText className="h-5 w-5 text-emerald-500" />
               </div>
               <div>
-                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.tier1.name}</CardTitle>
-                <CardDescription className="text-gray-400">{MOTION_TIERS.tier1.turnaround}</CardDescription>
+                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.tierA.name}</CardTitle>
+                <CardDescription className="text-gray-400">{MOTION_TIERS.tierA.turnaround}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
-              {MOTION_TIERS.tier1.motions.map((motion) => (
+              {MOTION_TIERS.tierA.motions.map((motion) => (
                 <div key={motion.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="text-navy font-medium">{motion.name}</span>
                   <div className="flex items-center gap-2">
@@ -155,7 +155,7 @@ export default function PricingSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Tier 2 Motions */}
+        {/* Tier B Motions */}
         <Card className="bg-white border-gray-200">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -163,14 +163,14 @@ export default function PricingSettingsPage() {
                 <FileText className="h-5 w-5 text-blue-500" />
               </div>
               <div>
-                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.tier2.name}</CardTitle>
-                <CardDescription className="text-gray-400">{MOTION_TIERS.tier2.turnaround}</CardDescription>
+                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.tierB.name}</CardTitle>
+                <CardDescription className="text-gray-400">{MOTION_TIERS.tierB.turnaround}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
-              {MOTION_TIERS.tier2.motions.map((motion) => (
+              {MOTION_TIERS.tierB.motions.map((motion) => (
                 <div key={motion.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div>
                     <span className="text-navy font-medium">{motion.name}</span>
@@ -193,7 +193,7 @@ export default function PricingSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Tier 3 Motions */}
+        {/* Tier C Motions */}
         <Card className="bg-white border-gray-200">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -201,14 +201,14 @@ export default function PricingSettingsPage() {
                 <FileText className="h-5 w-5 text-purple-500" />
               </div>
               <div>
-                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.tier3.name}</CardTitle>
-                <CardDescription className="text-gray-400">{MOTION_TIERS.tier3.turnaround}</CardDescription>
+                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.tierC.name}</CardTitle>
+                <CardDescription className="text-gray-400">{MOTION_TIERS.tierC.turnaround}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
-              {MOTION_TIERS.tier3.motions.map((motion) => (
+              {MOTION_TIERS.tierC.motions.map((motion) => (
                 <div key={motion.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="text-navy font-medium">{motion.name}</span>
                   <div className="flex items-center gap-2">
