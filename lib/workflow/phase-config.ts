@@ -307,7 +307,7 @@ export function getAllPhasesInOrder(): Array<{ id: PhaseId; config: PhaseConfig 
  */
 export function getCitationBatchSize(phase: PhaseId): number {
   const config = PHASES[phase];
-  return config.citationBatchSize ?? 5;
+  return (config as { citationBatchSize?: number }).citationBatchSize ?? 5;
 }
 
 /**

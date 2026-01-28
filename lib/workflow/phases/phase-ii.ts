@@ -63,9 +63,11 @@ export interface PhaseIIOutput {
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
     // Dynamic import to handle server-side only module
-    const pdfParse = (await import('pdf-parse')).default;
+    // @ts-ignore - pdf-parse has type issues with ESM imports
+    const { PDFParse } = await import('pdf-parse');
 
-    const data = await pdfParse(buffer);
+    // @ts-ignore - pdf-parse constructor signature varies
+    const data = await new PDFParse().parse(buffer);
     return data.text;
   } catch (error) {
     console.error('[Phase II] PDF extraction error:', error);
@@ -78,8 +80,10 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
  */
 export async function getPDFPageCount(buffer: Buffer): Promise<number> {
   try {
-    const pdfParse = (await import('pdf-parse')).default;
-    const data = await pdfParse(buffer);
+    // @ts-ignore - pdf-parse has type issues with ESM imports
+    const { PDFParse } = await import('pdf-parse');
+    // @ts-ignore - pdf-parse constructor signature varies
+    const data = await new PDFParse().parse(buffer);
     return data.numpages;
   } catch (error) {
     console.error('[Phase II] PDF page count error:', error);

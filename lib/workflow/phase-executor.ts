@@ -126,7 +126,7 @@ Return ONLY valid JSON as specified in your instructions. Do not include markdow
 
     // Add extended thinking if enabled
     if (useExtendedThinking && thinkingBudget > 0) {
-      (apiParams as Record<string, unknown>).thinking = {
+      (apiParams as unknown as Record<string, unknown>).thinking = {
         type: 'enabled',
         budget_tokens: thinkingBudget,
       };
