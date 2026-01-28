@@ -294,7 +294,12 @@ export async function getOrdersNearingExpiration(
     return [];
   }
 
-  return (orders || []).map((order: any) => {
+  return (orders || []).map((order: {
+    id: string;
+    order_number: string;
+    retention_expires_at: string;
+    email?: string;
+  }) => {
     const expiresAt = new Date(order.retention_expires_at);
     const daysUntil = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 

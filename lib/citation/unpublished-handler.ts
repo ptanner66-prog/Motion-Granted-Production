@@ -13,18 +13,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import { getCourtListenerClient } from '@/lib/workflow/courtlistener-client';
-
-// Stub for searchCitations - not yet implemented in courtlistener-client
-// Returns empty result as alternative citation search is not critical
-async function searchCitations(
-  _query: string,
-  _options?: { maxResults?: number }
-): Promise<{ success: boolean; citations?: Array<{ citation: string; caseName?: string }> }> {
-  // TODO: Implement citation search in CourtListenerClient
-  // For now, return empty result - alternative finding is optional
-  return { success: true, citations: [] };
-}
+// import { searchCitations } from '@/lib/workflow/courtlistener-client'; // TODO: Function not yet implemented
 
 // ============================================================================
 // TYPES
@@ -404,8 +393,7 @@ async function findPublishedAlternatives(citation: string): Promise<AlternativeC
     const caseNameMatch = citation.match(/^([^,]+?\s+v\.\s+[^,]+)/i);
     const caseName = caseNameMatch ? caseNameMatch[1] : citation.split(',')[0];
 
-    // TODO: Implement searchCitations in courtlistener-client or use alternative method
-    // Search CourtListener for similar cases
+    // TODO: searchCitations function not yet implemented in courtlistener-client
     // const searchResult = await searchCitations(caseName, { maxResults: 5 });
 
     // if (searchResult.success && searchResult.citations) {
@@ -424,8 +412,7 @@ async function findPublishedAlternatives(citation: string): Promise<AlternativeC
     //     });
     //   }
     // }
-
-    console.warn('[UnpublishedHandler] searchCitations not implemented, cannot find alternatives');
+    console.log(`[UnpublishedHandler] Alternative search not yet implemented for: ${caseName}`);
   } catch (error) {
     console.warn('[UnpublishedHandler] Error finding alternatives:', error);
   }

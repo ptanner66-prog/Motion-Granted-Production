@@ -13,7 +13,7 @@
  * Source: Chunk 6, Task 45 - Code Mode Spec Section 7
  */
 
-import { Document, Packer, Paragraph, TextRun, NumberFormat, AlignmentType, convertInchesToTwip, Header, Footer, PageNumber, LineNumberRestartFormat } from 'docx';
+import { Document, Packer, Paragraph, TextRun, NumberFormat, AlignmentType, convertInchesToTwip, Header, Footer, PageNumber } from 'docx';
 import { createClient } from '@/lib/supabase/server';
 
 // ============================================================================
@@ -250,7 +250,7 @@ export async function applyFormatting(
         },
         lineNumbers: rules.lineNumbers ? {
           countBy: 1,
-          restart: LineNumberRestartFormat.NEW_PAGE,
+          restart: 'newPage' as const,
         } : undefined,
       },
       headers: rules.headerFormat ? {
