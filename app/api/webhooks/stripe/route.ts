@@ -307,19 +307,45 @@ async function handlePaymentSucceeded(
   // Set ENABLE_AUTO_GENERATION=true in production to auto-trigger workflow after payment
   const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION === 'true';
 
-  if (autoGenerationEnabled) {
-    // Trigger the 14-phase workflow via Inngest (v7.2)
-    await inngest.send({
-      name: "workflow/orchestration.start",
-      data: {
-        orderId,
-        triggeredBy: 'stripe_payment_success',
-        timestamp: new Date().toISOString(),
-      },
-    });
-    console.log(`[Stripe Webhook] Order ${order.order_number} - 14-phase workflow triggered`);
-  } else {
-    console.log(`[Stripe Webhook] Order ${order.order_number} - Auto-generation disabled. Use admin "Generate Now" button.`);
+  // Queue order for draft generation via Inngest
+  // This replaces the synchronous Claude API call
+  if (fullOrder?.filing_deadline) {
+    try {
+      await inngest.send({
+        name: "order/submitted",
+        data: {
+          orderId,
+          priority: calculatePriority(fullOrder.filing_deadline),
+          filingDeadline: fullOrder.filing_deadline,
+        },
+      });
+
+      console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation`);
+    } catch (inngestError) {
+      // CRITICAL: Inngest failed - queue to automation_tasks as fallback
+      console.error(`[Stripe Webhook] Inngest send failed, using fallback queue:`, inngestError);
+
+      await supabase.from('automation_tasks').insert({
+        task_type: 'generate_draft',
+        order_id: orderId,
+        priority: 10,
+        status: 'pending',
+        payload: {
+          source: 'webhook_fallback',
+          filingDeadline: fullOrder.filing_deadline,
+          error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
+        },
+      });
+
+      await supabase.from('automation_logs').insert({
+        order_id: orderId,
+        action_type: 'inngest_fallback',
+        action_details: {
+          error: inngestError instanceof Error ? inngestError.message : 'Unknown error',
+          fallbackQueue: 'automation_tasks',
+        },
+      });
+    }
   }
 
   console.log(`[Stripe Webhook] Payment succeeded for order ${order.order_number}`);
@@ -542,18 +568,35 @@ async function handleCheckoutSessionCompleted(
       // AUTO-GENERATION DISABLED FOR DEVELOPMENT
       const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION === 'true';
 
-      if (autoGenerationEnabled) {
-        await inngest.send({
-          name: "workflow/orchestration.start",
-          data: {
-            orderId,
-            triggeredBy: 'stripe_checkout_success',
-            timestamp: new Date().toISOString(),
-          },
-        });
-        console.log(`[Stripe Webhook] Order ${order.order_number} - 14-phase workflow triggered via checkout`);
-      } else {
-        console.log(`[Stripe Webhook] Order ${order.order_number} - Auto-generation disabled via checkout.`);
+      // Queue order for draft generation via Inngest
+      if (fullOrder?.filing_deadline) {
+        try {
+          await inngest.send({
+            name: "order/submitted",
+            data: {
+              orderId,
+              priority: calculatePriority(fullOrder.filing_deadline),
+              filingDeadline: fullOrder.filing_deadline,
+            },
+          });
+
+          console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
+        } catch (inngestError) {
+          // CRITICAL: Inngest failed - queue to automation_tasks as fallback
+          console.error(`[Stripe Webhook] Inngest send failed (checkout), using fallback:`, inngestError);
+
+          await supabase.from('automation_tasks').insert({
+            task_type: 'generate_draft',
+            order_id: orderId,
+            priority: 10,
+            status: 'pending',
+            payload: {
+              source: 'checkout_webhook_fallback',
+              filingDeadline: fullOrder.filing_deadline,
+              error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
+            },
+          });
+        }
       }
     }
   }

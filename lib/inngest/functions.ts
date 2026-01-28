@@ -6,6 +6,10 @@ import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
 import { createMessageWithRetry } from "@/lib/claude-client";
+import { parseOrderDocuments, getOrderParsedDocuments } from "@/lib/workflow/document-parser";
+import { extractDocumentContent } from "@/lib/workflow/document-extractor";
+import { quickValidate } from "@/lib/workflow/quality-validator";
+import { extractCitations } from "@/lib/workflow/citation-verifier";
 
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
@@ -159,6 +163,51 @@ export const generateOrderDraft = inngest.createFunction(
       }
     });
 
+    // Step 2.5: Parse documents if not already parsed
+    // This extracts text content, key facts, legal issues from uploaded PDFs/DOCXs
+    const parsedDocs = await step.run("parse-documents", async () => {
+      try {
+        // Check if documents are already parsed
+        const existingParsed = await getOrderParsedDocuments(orderId);
+        if (existingParsed.success && existingParsed.data && existingParsed.data.length > 0) {
+          console.log(`[Inngest] Found ${existingParsed.data.length} pre-parsed documents for order ${orderId}`);
+          return { parsed: existingParsed.data.length, fromCache: true, data: existingParsed.data };
+        }
+
+        // Parse all documents for this order
+        console.log(`[Inngest] Parsing documents for order ${orderId}`);
+        const parseResult = await parseOrderDocuments(orderId);
+
+        if (!parseResult.success) {
+          console.warn(`[Inngest] Document parsing failed: ${parseResult.error}`);
+          // Don't fail the generation - proceed with raw document content
+          return { parsed: 0, failed: true, error: parseResult.error };
+        }
+
+        // Log document parsing to automation_logs
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "documents_parsed",
+          action_details: {
+            parsed: parseResult.data?.parsed || 0,
+            failed: parseResult.data?.failed || 0,
+          },
+        });
+
+        // Fetch the newly parsed documents
+        const newParsed = await getOrderParsedDocuments(orderId);
+        return {
+          parsed: parseResult.data?.parsed || 0,
+          failed: parseResult.data?.failed || 0,
+          data: newParsed.data || []
+        };
+      } catch (parseError) {
+        console.error(`[Inngest] Document parsing error:`, parseError);
+        // Don't fail the generation - proceed without parsed content
+        return { parsed: 0, failed: true, error: parseError instanceof Error ? parseError.message : 'Unknown' };
+      }
+    });
+
     // Step 3: Gather order data and build context with web adapter
     const context = await step.run("build-context", async () => {
       // Get superprompt template (prefer is_default, fall back to most recent)
@@ -180,10 +229,25 @@ export const generateOrderDraft = inngest.createFunction(
         .select("*")
         .eq("order_id", orderId);
 
-      // Build document content
-      const documentContent = documents
-        ?.map((doc) => `[${doc.document_type}] ${doc.file_name}:\n${doc.parsed_content || ""}`)
-        .join("\n\n---\n\n") || "";
+      // Build document content - use parsed documents if available
+      let documentContent = "";
+      if (parsedDocs.data && parsedDocs.data.length > 0) {
+        // Use AI-parsed documents with extracted facts and issues
+        documentContent = parsedDocs.data.map(pd => {
+          const keyFactsText = pd.key_facts?.length > 0
+            ? `\nKey Facts:\n${pd.key_facts.map((f: { fact: string; importance: string }) => `- [${f.importance}] ${f.fact}`).join('\n')}`
+            : '';
+          const legalIssuesText = pd.legal_issues?.length > 0
+            ? `\nLegal Issues:\n${pd.legal_issues.map((i: { issue: string; relevance: string }) => `- ${i.issue}: ${i.relevance}`).join('\n')}`
+            : '';
+          return `[${pd.document_type || 'document'}] ${pd.summary || '(No summary)'}\n${pd.full_text?.slice(0, 10000) || '(No content)'}${keyFactsText}${legalIssuesText}`;
+        }).join("\n\n---\n\n");
+      } else {
+        // Fallback to raw document content
+        documentContent = documents
+          ?.map((doc) => `[${doc.document_type}] ${doc.file_name}:\n${doc.parsed_content || ""}`)
+          .join("\n\n---\n\n") || "";
+      }
 
       // Get parties
       const { data: parties } = await supabase
@@ -426,12 +490,12 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         ]);
       }
 
-      // Update order status to draft_delivered so admin can approve
-      // Using 'draft_delivered' as it's valid in all database constraint versions
+      // Update order status to pending_review so admin can approve before delivery
+      // This ensures the motion goes through admin review before being visible to client
       await supabase
         .from("orders")
         .update({
-          status: "draft_delivered",
+          status: "pending_review",
           generation_completed_at: new Date().toISOString(),
           generation_error: null,
         })
@@ -452,7 +516,62 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         },
       });
 
-      return { conversationId: conversation?.id };
+      return { conversationId: conversation?.id, motion: cleanedResponse };
+    });
+
+    // Step 5.5: Quick quality check (non-blocking but logged)
+    const qualityResult = await step.run("quality-check", async () => {
+      try {
+        const motionContent = conversationData.motion || generatedMotion.motion;
+
+        // Run quick validation (no AI, just structural checks)
+        const validation = quickValidate(motionContent, {
+          motionType: {
+            code: orderData.motion_type || 'GENERIC',
+            name: orderData.motion_type || 'Motion',
+            tier: orderData.motion_tier || 'B',
+            citation_requirements: { minimum: 4 },
+          },
+          jurisdiction: orderData.jurisdiction,
+        });
+
+        // Extract citations for logging
+        const citations = extractCitations(motionContent);
+
+        // Log quality metrics
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "quality_check",
+          action_details: {
+            passes: validation.passes,
+            issueCount: validation.issues.length,
+            citationCount: citations.length,
+            criticalIssues: validation.issues.filter(i => i.severity === 'critical').length,
+            majorIssues: validation.issues.filter(i => i.severity === 'major').length,
+            issues: validation.issues.slice(0, 5).map(i => ({ title: i.title, severity: i.severity })),
+          },
+        });
+
+        // If critical issues, flag for manual review
+        const criticalIssues = validation.issues.filter(i => i.severity === 'critical');
+        if (criticalIssues.length > 0) {
+          await supabase.from("orders").update({
+            needs_manual_review: true,
+            quality_notes: `Quality check found ${criticalIssues.length} critical issue(s): ${criticalIssues.map(i => i.title).join(', ')}`,
+          }).eq("id", orderId);
+        }
+
+        return {
+          passes: validation.passes,
+          citationCount: citations.length,
+          issueCount: validation.issues.length,
+          criticalIssues: criticalIssues.length,
+        };
+      } catch (qcError) {
+        console.error("[Inngest] Quality check error:", qcError);
+        // Don't fail the pipeline - quality check is informational
+        return { passes: true, error: qcError instanceof Error ? qcError.message : 'Unknown' };
+      }
     });
 
     // Step 6: Send notification to admin
@@ -485,7 +604,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
       success: true,
       orderId,
       conversationId: conversationData.conversationId,
-      status: "draft_delivered",
+      status: "pending_review",
     };
   }
 );
