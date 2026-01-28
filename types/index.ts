@@ -30,6 +30,7 @@ export interface Order {
   clerk_id: string | null;
   motion_type: string;
   motion_tier: number;
+  tier?: 'A' | 'B' | 'C';  // v6.3: Tier A/B/C format (synced from motion_tier)
   base_price: number;
   turnaround: 'standard' | 'rush_72' | 'rush_48';
   rush_surcharge: number;
@@ -52,6 +53,21 @@ export interface Order {
   conflict_notes: string | null;
   created_at: string;
   updated_at: string;
+
+  // HOLD tracking (v6.3)
+  hold_triggered_at?: string | null;
+  hold_reason?: string | null;
+
+  // Revision tracking - Protocol 10 (v6.3)
+  revision_count?: number;
+  protocol_10_triggered?: boolean;
+  protocol_10_disclosure?: string | null;
+
+  // Phase tracking (v6.3)
+  current_phase?: string;
+
+  // For Phase IX.1 skip logic (v6.3)
+  judge_ordered_separate_statement?: boolean;
 }
 
 export type OrderStatus =
@@ -59,12 +75,15 @@ export type OrderStatus =
   | 'under_review'
   | 'assigned'
   | 'in_progress'
+  | 'processing'
   | 'draft_delivered'
   | 'revision_requested'
+  | 'revision_in_progress'
   | 'revision_delivered'
   | 'completed'
   | 'on_hold'
-  | 'cancelled';
+  | 'cancelled'
+  | 'refunded';
 
 export interface Party {
   id: string;

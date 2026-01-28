@@ -57,11 +57,15 @@ export interface ValidationContext {
 // QUALITY THRESHOLDS
 // ============================================================================
 
+/**
+ * Quality thresholds per v6.3 specification
+ * IMPORTANT: B+ = 0.87 is the PASSING grade threshold
+ */
 const QUALITY_THRESHOLDS = {
-  minimum: 0.6,           // Below this fails quality check
-  acceptable: 0.7,        // Passes but with warnings
-  good: 0.8,              // Good quality
-  excellent: 0.9,         // Excellent quality
+  minimum: 0.70,          // D+ — absolute floor, fails if below
+  acceptable: 0.87,       // B+ — this is the PASSING grade per v6.3
+  good: 0.93,             // A  — high quality
+  excellent: 0.97,        // A+ — exceptional
 };
 
 const CATEGORY_WEIGHTS: Record<keyof CategoryScores, number> = {
@@ -555,4 +559,52 @@ export function getRecommendedActions(report: QualityReport): string[] {
   }
 
   return actions;
+}
+
+// ============================================================================
+// EXPORTED QUALITY HELPERS (v6.3)
+// ============================================================================
+
+/**
+ * Export thresholds for use in other modules
+ */
+export { QUALITY_THRESHOLDS };
+
+/**
+ * Convert numeric score to letter grade
+ */
+export function scoreToGrade(score: number): string {
+  if (score >= 0.97) return 'A+';
+  if (score >= 0.93) return 'A';
+  if (score >= 0.90) return 'A-';
+  if (score >= 0.87) return 'B+';
+  if (score >= 0.83) return 'B';
+  if (score >= 0.80) return 'B-';
+  if (score >= 0.77) return 'C+';
+  if (score >= 0.73) return 'C';
+  if (score >= 0.70) return 'C-';
+  if (score >= 0.67) return 'D+';
+  if (score >= 0.63) return 'D';
+  if (score >= 0.60) return 'D-';
+  return 'F';
+}
+
+/**
+ * Check if score meets B+ passing threshold
+ */
+export function isPassingGrade(score: number): boolean {
+  return score >= QUALITY_THRESHOLDS.acceptable; // B+ = 0.87
+}
+
+/**
+ * Get failure threshold by tier
+ * Returns the maximum allowed citation failure rate
+ */
+export function getFailureThreshold(tier: 'A' | 'B' | 'C'): number {
+  const thresholds = {
+    A: 0.20, // 20% citation failure allowed (procedural)
+    B: 0.15, // 15% citation failure allowed (intermediate)
+    C: 0.10, // 10% citation failure allowed (dispositive)
+  };
+  return thresholds[tier];
 }
