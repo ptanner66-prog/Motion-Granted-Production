@@ -12,9 +12,22 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseAdmin } from '@supabase/supabase-js';
 import { inngest } from '@/lib/inngest/client';
 
 export const maxDuration = 30; // Just enough to trigger the workflow
+
+// Create admin client with service role key (bypasses RLS)
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+
+  return createSupabaseAdmin(supabaseUrl, supabaseServiceKey);
+}
 
 export async function POST(
   request: NextRequest,
@@ -22,6 +35,11 @@ export async function POST(
 ) {
   const { id: orderId } = await params;
   const supabase = await createClient();
+  const adminClient = getAdminClient();
+
+  if (!adminClient) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+  }
 
   // Verify auth
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -82,8 +100,8 @@ export async function POST(
       );
     }
 
-    // Update status to generating
-    const { error: updateError } = await supabase
+    // Update status to generating (use admin client to bypass RLS)
+    const { error: updateError } = await adminClient
       .from('orders')
       .update({
         status: 'generating',
@@ -119,16 +137,10 @@ export async function POST(
 
       // Import v7.2 phase executors
       const { executePhase } = await import('@/lib/workflow/phase-executors');
-      const { createClient: createSupabaseAdmin } = await import('@supabase/supabase-js');
 
       // Execute phases in background (non-blocking)
       (async () => {
         try {
-          // Create admin client
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-          const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-          const adminClient = createSupabaseAdmin(supabaseUrl, supabaseServiceKey);
-
           // Get workflow ID and order details
           const { data: workflow } = await adminClient
             .from('order_workflows')
@@ -305,14 +317,16 @@ export async function POST(
   } catch (error) {
     console.error('[Generate] Failed to start workflow:', error);
 
-    // Revert status on error
-    await supabase
-      .from('orders')
-      .update({
-        status: 'paid',
-        generation_error: error instanceof Error ? error.message : 'Failed to start workflow',
-      })
-      .eq('id', orderId);
+    // Revert status on error (use admin client)
+    if (adminClient) {
+      await adminClient
+        .from('orders')
+        .update({
+          status: 'paid',
+          generation_error: error instanceof Error ? error.message : 'Failed to start workflow',
+        })
+        .eq('id', orderId);
+    }
 
     return NextResponse.json(
       { error: 'Failed to start workflow' },
