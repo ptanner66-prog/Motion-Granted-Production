@@ -157,3 +157,63 @@ export type {
   OrderData,
   GenerationResult,
 } from './superprompt-engine';
+
+// Phase Gate Enforcement
+export {
+  validatePhaseGate,
+  enforcePhaseTransition,
+  markPhaseComplete,
+  getNextAllowedPhase,
+  canEnterPhase,
+  getCompletedPhases,
+  isWorkflowComplete,
+  executePhaseWithGates,
+  PHASES,
+  PHASE_ORDER,
+  PHASE_PREREQUISITES,
+  PHASE_COMPLETION_REQUIREMENTS,
+} from './phase-gates';
+
+export type {
+  PhaseId,
+  PhaseGateResult,
+} from './phase-gates';
+
+// Prompt Guardrails
+export {
+  buildPhasePrompt,
+  detectOutputViolation,
+  extractCitationsFromOutput,
+  validateCitationsAgainstBank,
+  detectPhaseSkipAttempt,
+  PHASE_OUTPUT_TYPES,
+} from './prompt-guardrails';
+
+// API Guards
+export {
+  requirePhaseGate,
+  requireWorkflowCanProceed,
+  blockDirectGeneration,
+  validateWorkflowSource,
+  blockPhaseSkip,
+  checkGenerationRateLimit,
+  rateLimitResponse,
+  validateWorkflowRequest,
+  runWorkflowGuards,
+} from './api-guards';
+
+// Violation Alerts
+export {
+  alertPhaseViolation,
+  alertCitationViolation,
+  alertOutputViolation,
+  alertBypassAttempt,
+  getUnresolvedViolations,
+  getAllCriticalViolations,
+  resolveViolation,
+} from './violation-alerts';
+
+export type {
+  ViolationSeverity,
+  ViolationDetails,
+} from './violation-alerts';

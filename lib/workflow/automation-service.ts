@@ -147,10 +147,10 @@ export async function startOrderAutomation(
     });
 
     // Start workflow orchestration
+    // NOTE: skipDocumentParsing has been removed - phases cannot be skipped
     const workflowResult = await orchestrateWorkflow(orderId, {
       autoRun: mergedConfig.autoRun,
       workflowPath: mergedConfig.workflowPath,
-      skipDocumentParsing: false,
     });
 
     if (!workflowResult.success || !workflowResult.data) {
@@ -205,7 +205,7 @@ export async function startOrderAutomation(
         workflowId: resolvedWorkflowId,
         status: 'in_progress',
         currentPhase: workflowResult.data.currentPhase || 1,
-        totalPhases: 9,
+        totalPhases: 14,
         pdfGenerated: false,
         notificationSent: false,
       },
@@ -312,7 +312,7 @@ async function finalizeOrder(
         orderNumber,
         workflowId,
         status: 'completed',
-        totalPhases: 9,
+        totalPhases: 14,
         pdfGenerated,
         deliverableId,
         notificationSent,

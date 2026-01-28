@@ -40,29 +40,37 @@ export type DeadlineCheckEvent = {
   };
 };
 
-/**
- * New event type for full 14-phase workflow orchestration
- * Used for Tier B/C motions and complex cases
- */
-export type OrderWorkflowOrchestrateEvent = {
-  name: "order/workflow-orchestrate";
+// v7.2 Workflow Events
+export type WorkflowExecutePhaseEvent = {
+  name: "workflow/execute-phase";
   data: {
     orderId: string;
-    priority: number;
-    filingDeadline?: string;
+    workflowId: string;
+    phase: string;
   };
 };
 
-/**
- * Event type for workflow routing
- * Routes to either simplified or full workflow based on order tier
- */
-export type OrderRouteWorkflowEvent = {
-  name: "order/route-workflow";
+export type WorkflowCheckpointReachedEvent = {
+  name: "workflow/checkpoint-reached";
   data: {
     orderId: string;
-    priority: number;
-    filingDeadline?: string;
+    workflowId: string;
+    checkpoint: {
+      type: string;
+      phase: string;
+      actions?: string[];
+      data?: Record<string, unknown>;
+    };
+  };
+};
+
+export type WorkflowCheckpointApprovedEvent = {
+  name: "workflow/checkpoint-approved";
+  data: {
+    orderId: string;
+    workflowId: string;
+    action: "APPROVE" | "REQUEST_CHANGES" | "CANCEL";
+    nextPhase?: string;
   };
 };
 
@@ -70,8 +78,9 @@ export type Events = {
   "order/submitted": OrderSubmittedEvent;
   "order/generate-draft": OrderGenerationEvent;
   "deadline/check": DeadlineCheckEvent;
-  "order/workflow-orchestrate": OrderWorkflowOrchestrateEvent;
-  "order/route-workflow": OrderRouteWorkflowEvent;
+  "workflow/execute-phase": WorkflowExecutePhaseEvent;
+  "workflow/checkpoint-reached": WorkflowCheckpointReachedEvent;
+  "workflow/checkpoint-approved": WorkflowCheckpointApprovedEvent;
 };
 
 /**

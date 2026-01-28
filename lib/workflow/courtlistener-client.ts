@@ -19,6 +19,7 @@ import {
   CitationVerificationStatus,
   type CourtListenerVerificationResult,
 } from '@/types/workflow';
+import { getCircuitBreaker, CircuitOpenError } from '@/lib/circuit-breaker';
 
 // ============================================================================
 // TYPES
@@ -65,44 +66,121 @@ export interface RateLimitState {
 // ============================================================================
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const HOUR_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const REQUESTS_PER_MINUTE = 60; // 60/min
+const REQUESTS_PER_HOUR = 5000; // 5,000/hour
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
+const MAX_BACKOFF_MS = 32000;
+const JITTER_PERCENT = 0.2;
 
 // ============================================================================
-// RATE LIMITER
+// RATE LIMITER (Enhanced with hourly limits)
 // ============================================================================
+
+interface RateLimiterState {
+  minuteCount: number;
+  minuteWindowStart: number;
+  hourCount: number;
+  hourWindowStart: number;
+}
 
 class RateLimiter {
-  private state: RateLimitState = {
-    requestCount: 0,
-    windowStart: Date.now(),
+  private state: RateLimiterState = {
+    minuteCount: 0,
+    minuteWindowStart: Date.now(),
+    hourCount: 0,
+    hourWindowStart: Date.now(),
   };
 
+  private rateLimitEvents: { timestamp: number; type: 'minute' | 'hour' }[] = [];
+
+  /**
+   * Wait for a rate limit slot, respecting both minute and hour limits
+   */
   async waitForSlot(): Promise<void> {
     const now = Date.now();
 
-    // Reset window if expired
-    if (now - this.state.windowStart >= RATE_LIMIT_WINDOW_MS) {
-      this.state = {
-        requestCount: 0,
-        windowStart: now,
-      };
+    // Reset minute window if expired
+    if (now - this.state.minuteWindowStart >= RATE_LIMIT_WINDOW_MS) {
+      this.state.minuteCount = 0;
+      this.state.minuteWindowStart = now;
     }
 
-    // Check if we need to wait
-    if (this.state.requestCount >= COURTLISTENER_RATE_LIMIT) {
-      const waitTime = RATE_LIMIT_WINDOW_MS - (now - this.state.windowStart);
+    // Reset hour window if expired
+    if (now - this.state.hourWindowStart >= HOUR_WINDOW_MS) {
+      this.state.hourCount = 0;
+      this.state.hourWindowStart = now;
+    }
+
+    // Check minute limit first (stricter)
+    if (this.state.minuteCount >= REQUESTS_PER_MINUTE) {
+      const waitTime = RATE_LIMIT_WINDOW_MS - (now - this.state.minuteWindowStart);
       if (waitTime > 0) {
-        console.log(`[CourtListener] Rate limit reached, waiting ${waitTime}ms`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        this.state = {
-          requestCount: 0,
-          windowStart: Date.now(),
-        };
+        this.logRateLimitEvent('minute');
+        console.log(`[CourtListener] Minute rate limit (${REQUESTS_PER_MINUTE}/min) reached, waiting ${waitTime}ms`);
+        await this.waitWithJitter(waitTime);
+        this.state.minuteCount = 0;
+        this.state.minuteWindowStart = Date.now();
       }
     }
 
-    this.state.requestCount++;
+    // Check hour limit
+    if (this.state.hourCount >= REQUESTS_PER_HOUR) {
+      const waitTime = HOUR_WINDOW_MS - (now - this.state.hourWindowStart);
+      if (waitTime > 0) {
+        this.logRateLimitEvent('hour');
+        console.warn(`[CourtListener] Hour rate limit (${REQUESTS_PER_HOUR}/hr) reached, waiting ${Math.ceil(waitTime / 1000)}s`);
+        await this.waitWithJitter(waitTime);
+        this.state.hourCount = 0;
+        this.state.hourWindowStart = Date.now();
+      }
+    }
+
+    this.state.minuteCount++;
+    this.state.hourCount++;
+  }
+
+  /**
+   * Wait with jitter to prevent thundering herd
+   */
+  private async waitWithJitter(baseMs: number): Promise<void> {
+    const jitter = baseMs * JITTER_PERCENT * (Math.random() * 2 - 1);
+    const waitTime = Math.max(0, baseMs + jitter);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+
+  /**
+   * Log rate limit event for monitoring
+   */
+  private logRateLimitEvent(type: 'minute' | 'hour'): void {
+    this.rateLimitEvents.push({ timestamp: Date.now(), type });
+    // Keep only last 100 events
+    if (this.rateLimitEvents.length > 100) {
+      this.rateLimitEvents.shift();
+    }
+  }
+
+  /**
+   * Get rate limit statistics
+   */
+  getStats(): {
+    minuteCount: number;
+    hourCount: number;
+    minuteRemaining: number;
+    hourRemaining: number;
+    recentRateLimits: number;
+  } {
+    const hourAgo = Date.now() - HOUR_WINDOW_MS;
+    const recentEvents = this.rateLimitEvents.filter(e => e.timestamp > hourAgo);
+
+    return {
+      minuteCount: this.state.minuteCount,
+      hourCount: this.state.hourCount,
+      minuteRemaining: REQUESTS_PER_MINUTE - this.state.minuteCount,
+      hourRemaining: REQUESTS_PER_HOUR - this.state.hourCount,
+      recentRateLimits: recentEvents.length,
+    };
   }
 }
 
@@ -113,6 +191,7 @@ class RateLimiter {
 export class CourtListenerClient {
   private apiKey: string;
   private rateLimiter: RateLimiter;
+  private circuitBreaker = getCircuitBreaker('courtlistener');
 
   constructor(apiKey?: string) {
     this.apiKey = apiKey || process.env.COURTLISTENER_API_KEY || '';
@@ -121,6 +200,20 @@ export class CourtListenerClient {
     if (!this.apiKey) {
       console.warn('[CourtListener] No API key configured');
     }
+  }
+
+  /**
+   * Get rate limit statistics
+   */
+  getRateLimitStats() {
+    return this.rateLimiter.getStats();
+  }
+
+  /**
+   * Check if the client is healthy (circuit not open)
+   */
+  async isHealthy(): Promise<boolean> {
+    return this.circuitBreaker.canExecute();
   }
 
   /**
@@ -340,13 +433,19 @@ export class CourtListenerClient {
   }
 
   /**
-   * Fetch with exponential backoff retry
+   * Fetch with exponential backoff retry and circuit breaker
    */
   private async fetchWithRetry(
     url: string,
     options: RequestInit,
     retries = MAX_RETRIES
   ): Promise<Response> {
+    // Check circuit breaker first
+    const canExecute = await this.circuitBreaker.canExecute();
+    if (!canExecute) {
+      throw new CircuitOpenError('courtlistener', 30);
+    }
+
     let lastError: Error | null = null;
     let backoffMs = INITIAL_BACKOFF_MS;
 
@@ -354,23 +453,51 @@ export class CourtListenerClient {
       try {
         const response = await fetch(url, options);
 
-        // Handle rate limiting
+        // Handle rate limiting with enhanced backoff
         if (response.status === 429) {
+          await this.circuitBreaker.recordFailure(new Error('Rate limited'));
+
           if (attempt < retries) {
-            console.log(`[CourtListener] Rate limited, backing off ${backoffMs}ms`);
-            await new Promise(resolve => setTimeout(resolve, backoffMs));
-            backoffMs *= 2;
+            // Add jitter to backoff
+            const jitter = backoffMs * JITTER_PERCENT * (Math.random() * 2 - 1);
+            const waitTime = Math.min(backoffMs + jitter, MAX_BACKOFF_MS);
+            console.log(`[CourtListener] Rate limited (429), backing off ${Math.round(waitTime)}ms (attempt ${attempt + 1}/${retries + 1})`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
             continue;
           }
+        }
+
+        // Handle server errors
+        if (response.status >= 500) {
+          await this.circuitBreaker.recordFailure(new Error(`Server error: ${response.status}`));
+
+          if (attempt < retries) {
+            const jitter = backoffMs * JITTER_PERCENT * (Math.random() * 2 - 1);
+            const waitTime = Math.min(backoffMs + jitter, MAX_BACKOFF_MS);
+            console.log(`[CourtListener] Server error (${response.status}), retrying in ${Math.round(waitTime)}ms`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+            continue;
+          }
+        }
+
+        // Success - record it
+        if (response.ok) {
+          await this.circuitBreaker.recordSuccess();
         }
 
         return response;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('Unknown error');
+        await this.circuitBreaker.recordFailure(lastError);
+
         if (attempt < retries) {
-          console.log(`[CourtListener] Request failed, retrying in ${backoffMs}ms`);
-          await new Promise(resolve => setTimeout(resolve, backoffMs));
-          backoffMs *= 2;
+          const jitter = backoffMs * JITTER_PERCENT * (Math.random() * 2 - 1);
+          const waitTime = Math.min(backoffMs + jitter, MAX_BACKOFF_MS);
+          console.log(`[CourtListener] Request failed (${lastError.message}), retrying in ${Math.round(waitTime)}ms`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
         }
       }
     }

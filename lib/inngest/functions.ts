@@ -1,6 +1,7 @@
 import { inngest } from "./client";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
+import { workflowOrchestration } from "./workflow-orchestration";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
@@ -412,7 +413,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
       const response = await createMessageWithRetry(
         {
           model: "claude-opus-4-5-20251101",
-          max_tokens: 16000,
+          max_tokens: 128000, // MAXED OUT - full motion generation
           system: context,
           messages: [{ role: "user", content: userMessage }],
         },
@@ -971,126 +972,416 @@ export const updateQueuePositions = inngest.createFunction(
   }
 );
 
+// ============================================================================
+// v7.2 WORKFLOW FUNCTIONS
+// ============================================================================
+
+import { executePhase } from "@/lib/workflow/phase-executor";
+import {
+  PhaseId,
+  Tier,
+  getNextPhase,
+  isBlockingCheckpoint,
+  hasCheckpoint,
+  getPhaseConfig,
+  gradePasses,
+} from "@/lib/workflow/phase-config";
+
 /**
- * Order Workflow Router
+ * v7.2 Workflow Phase Execution
  *
- * Routes orders to the appropriate workflow based on motion tier:
- * - Tier A (simple procedural): Uses simplified single-call generation
- * - Tier B/C (complex/dispositive): Uses full 14-phase workflow with checkpoints
- *
- * This function examines the order and triggers the correct workflow event.
+ * Executes individual phases of the 14-phase workflow system.
+ * Handles checkpoints, grade-based branching, and revision loops.
  */
-export const routeOrderWorkflow = inngest.createFunction(
+export const executeWorkflowPhase = inngest.createFunction(
   {
-    id: "route-order-workflow",
+    id: "workflow-execute-phase",
+    retries: 3,
     concurrency: {
-      limit: 5,
+      limit: 10,
     },
   },
-  { event: "order/route-workflow" },
+  { event: "workflow/execute-phase" },
   async ({ event, step }) => {
-    const { orderId, priority, filingDeadline } = event.data;
+    const { orderId, workflowId, phase } = event.data;
     const supabase = getSupabase();
 
-    // Determine which workflow to use based on order tier
-    const routingDecision = await step.run("determine-workflow", async () => {
-      const { data: order, error } = await supabase
+    // Step 1: Get workflow state
+    const state = await step.run("get-workflow-state", async () => {
+      const { data, error } = await supabase
+        .from("workflow_state")
+        .select("*")
+        .eq("id", workflowId)
+        .single();
+
+      if (error || !data) {
+        throw new Error(`Workflow state not found: ${error?.message}`);
+      }
+
+      return data;
+    });
+
+    // Step 2: Get order data
+    const order = await step.run("get-order-data", async () => {
+      const { data, error } = await supabase
         .from("orders")
-        .select("motion_tier, motion_type, use_full_workflow")
+        .select("*, order_documents:documents(*)")
         .eq("id", orderId)
         .single();
 
-      if (error || !order) {
-        throw new Error(`Order not found: ${error?.message || "No data"}`);
+      if (error || !data) {
+        throw new Error(`Order not found: ${error?.message}`);
       }
 
-      // Use full workflow for:
-      // 1. Tier B/C motions (complex/dispositive)
-      // 2. Orders explicitly flagged for full workflow
-      // 3. MSJ/MSA motions (always require full workflow)
-      const motionType = (order.motion_type || "").toLowerCase();
-      const isMSJ = motionType.includes("summary judgment") || motionType.includes("msj") || motionType.includes("msa");
-      const useFullWorkflow =
-        order.motion_tier === "B" ||
-        order.motion_tier === "C" ||
-        order.use_full_workflow === true ||
-        isMSJ;
+      return data;
+    });
 
-      // Log routing decision
-      await supabase.from("automation_logs").insert({
-        order_id: orderId,
-        action_type: "workflow_routed",
-        action_details: {
-          tier: order.motion_tier,
-          motionType: order.motion_type,
-          useFullWorkflow,
-          reason: useFullWorkflow
-            ? isMSJ
-              ? "MSJ/MSA requires full workflow"
-              : order.motion_tier !== "A"
-                ? `Tier ${order.motion_tier} requires full workflow`
-                : "Explicitly flagged for full workflow"
-            : "Tier A uses simplified workflow",
-        },
-      });
+    // Step 3: Update workflow status to RUNNING
+    await step.run("mark-phase-running", async () => {
+      await supabase
+        .from("workflow_state")
+        .update({
+          current_phase: phase,
+          phase_status: "RUNNING",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", workflowId);
+    });
 
+    // Step 4: Build phase input
+    const phaseInput = await step.run("build-phase-input", async () => {
       return {
-        useFullWorkflow,
-        tier: order.motion_tier,
-        motionType: order.motion_type,
+        order_id: order.id,
+        submitted_at: order.created_at,
+        customer_intake: {
+          motion_type: order.motion_type,
+          filing_posture: order.filing_posture,
+          filing_deadline: order.filing_deadline,
+          hearing_date: order.hearing_date,
+          party_represented: order.party_represented,
+          party_name: order.party_name,
+          statement_of_facts: order.statement_of_facts,
+          arguments_caselaw: order.arguments_caselaw,
+          opposing_party_name: order.opposing_party_name,
+          opposing_counsel_name: order.opposing_counsel_name,
+          judge_name: order.judge_name,
+        },
+        uploaded_documents: order.order_documents?.map((doc: Record<string, unknown>) => ({
+          document_id: doc.id,
+          filename: doc.file_name,
+          document_type: doc.document_type,
+          content_text: doc.parsed_content,
+        })) || [],
+        previous_phases: state.phase_outputs || {},
       };
     });
 
-    // Trigger the appropriate workflow
-    if (routingDecision.useFullWorkflow) {
-      // Trigger full 14-phase workflow with checkpoints
-      await step.run("trigger-full-workflow", async () => {
-        await inngest.send({
-          name: "order/workflow-orchestrate",
-          data: {
-            orderId,
-            priority,
-            filingDeadline,
-          },
-        });
+      for (const order of expiringOrders) {
+        try {
+          const profile = order.profiles as unknown as { email: string; full_name: string } | null;
+          if (!profile?.email) continue;
+
+      return await executePhase({
+        phase: phase as PhaseId,
+        tier,
+        orderId,
+        workflowId,
+        input: phaseInput,
+      });
+    });
+
+    // Step 6: Log execution
+    await step.run("log-execution", async () => {
+      await supabase.from("phase_executions").insert({
+        order_id: orderId,
+        workflow_id: workflowId,
+        phase,
+        model_used: result.output?.model_used || "unknown",
+        input_data: phaseInput,
+        output_data: result.output,
+        status: result.success ? "COMPLETE" : "ERROR",
+        error_message: result.error,
+        input_tokens: result.usage?.input_tokens,
+        output_tokens: result.usage?.output_tokens,
+        duration_ms: result.durationMs,
+        completed_at: new Date().toISOString(),
+      });
+    });
+
+    if (!result.success) {
+      // Update workflow to error state
+      await step.run("mark-phase-error", async () => {
+        await supabase
+          .from("workflow_state")
+          .update({
+            phase_status: "ERROR",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", workflowId);
       });
 
-      return {
-        orderId,
-        workflow: "full-14-phase",
-        tier: routingDecision.tier,
-        status: "triggered",
-      };
-    } else {
-      // Trigger simplified single-call workflow
-      await step.run("trigger-simple-workflow", async () => {
-        await inngest.send({
-          name: "order/submitted",
-          data: {
-            orderId,
-            priority,
-            filingDeadline,
-          },
-        });
-      });
-
-      return {
-        orderId,
-        workflow: "simplified-single-call",
-        tier: routingDecision.tier,
-        status: "triggered",
-      };
+      throw new Error(`Phase ${phase} failed: ${result.error}`);
     }
+
+    // Step 7: Update workflow state with output
+    const nextPhaseResult = await step.run("update-workflow-state", async () => {
+      // Extract tier and path from Phase I output
+      let tierUpdate: Record<string, string> = {};
+      if (phase === "I" && result.output?.determinations) {
+        tierUpdate = {
+          tier: result.output.determinations.tier,
+          path: result.output.determinations.path,
+        };
+      }
+
+      // Update phase outputs
+      const updatedOutputs = {
+        ...state.phase_outputs,
+        [phase]: result.output,
+      };
+
+      // Determine next phase
+      const phaseConfig = getPhaseConfig(phase as PhaseId);
+      let nextPhase: PhaseId | null = null;
+      let checkpointPending = false;
+      let checkpointData = null;
+
+      // Check Phase VII grading
+      if (phase === "VII") {
+        const numericGrade = result.output?.grading?.numeric_grade || 0;
+        const passes = gradePasses(numericGrade);
+
+        // Save judge simulation result
+        await supabase.from("judge_simulation_results").insert({
+          workflow_id: workflowId,
+          order_id: orderId,
+          grade: result.output?.grading?.grade || "F",
+          numeric_grade: numericGrade,
+          passes,
+          strengths: result.output?.grading?.strengths || [],
+          weaknesses: result.output?.grading?.weaknesses || [],
+          specific_feedback: result.output?.grading?.feedback || "",
+          revision_suggestions: result.output?.grading?.suggestions || [],
+          loop_number: state.revision_loop_count + 1,
+        });
+
+        nextPhase = getNextPhase(phase as PhaseId, {
+          gradePasses: passes,
+          revisionLoopCount: state.revision_loop_count,
+        });
+      } else if (phase === "VIII") {
+        const newCitations = result.output?.new_citations_added || false;
+        nextPhase = getNextPhase(phase as PhaseId, { newCitationsAdded: newCitations });
+      } else if (phase === "IX") {
+        const motionType = state.phase_outputs?.["I"]?.motion_type || "";
+        nextPhase = getNextPhase(phase as PhaseId, { motionType });
+      } else {
+        nextPhase = getNextPhase(phase as PhaseId);
+      }
+
+      // Check for checkpoint
+      if (hasCheckpoint(phase as PhaseId)) {
+        if (isBlockingCheckpoint(phase as PhaseId)) {
+          checkpointPending = true;
+          checkpointData = {
+            type: phaseConfig.checkpoint?.type,
+            phase,
+            actions: phaseConfig.checkpoint?.actions,
+            data: result.output,
+          };
+        }
+      }
+
+      // Update workflow state
+      await supabase
+        .from("workflow_state")
+        .update({
+          ...tierUpdate,
+          current_phase: checkpointPending ? phase : (nextPhase || phase),
+          phase_status: checkpointPending ? "CHECKPOINT" : (nextPhase ? "PENDING" : "COMPLETE"),
+          phase_outputs: updatedOutputs,
+          checkpoint_pending: checkpointPending,
+          checkpoint_type: checkpointPending ? phaseConfig.checkpoint?.type : null,
+          checkpoint_data: checkpointData,
+          revision_loop_count: phase === "VIII" ? state.revision_loop_count + 1 : state.revision_loop_count,
+          updated_at: new Date().toISOString(),
+          ...(nextPhase === null && !checkpointPending && { completed_at: new Date().toISOString() }),
+        })
+        .eq("id", workflowId);
+
+      return { nextPhase, checkpointPending, checkpointData };
+    });
+
+    // Step 8: Trigger next phase or checkpoint notification
+    if (nextPhaseResult.checkpointPending) {
+      await step.sendEvent("checkpoint-notification", {
+        name: "workflow/checkpoint-reached",
+        data: {
+          orderId,
+          workflowId,
+          checkpoint: nextPhaseResult.checkpointData,
+        },
+      });
+    } else if (nextPhaseResult.nextPhase) {
+      await step.sendEvent("trigger-next-phase", {
+        name: "workflow/execute-phase",
+        data: {
+          orderId,
+          workflowId,
+          phase: nextPhaseResult.nextPhase,
+        },
+      });
+    }
+
+    return {
+      success: true,
+      phase,
+      nextPhase: nextPhaseResult.nextPhase,
+      checkpointPending: nextPhaseResult.checkpointPending,
+    };
+  }
+);
+
+/**
+ * Handle Checkpoint Approval
+ *
+ * Called when an admin approves/rejects a blocking checkpoint.
+ */
+export const handleCheckpointApproval = inngest.createFunction(
+  {
+    id: "workflow-checkpoint-approval",
+  },
+  { event: "workflow/checkpoint-approved" },
+  async ({ event, step }) => {
+    const { orderId, workflowId, action, nextPhase } = event.data;
+    const supabase = getSupabase();
+
+    await step.run("process-approval", async () => {
+      if (action === "APPROVE" && nextPhase) {
+        // Clear checkpoint and continue
+        await supabase
+          .from("workflow_state")
+          .update({
+            checkpoint_pending: false,
+            checkpoint_type: null,
+            checkpoint_data: null,
+            phase_status: "PENDING",
+          })
+          .eq("id", workflowId);
+
+        // Update order status
+        await supabase
+          .from("orders")
+          .update({ status: "completed" })
+          .eq("id", orderId);
+      } else if (action === "REQUEST_CHANGES") {
+        // Route back to Phase VIII
+        await supabase
+          .from("workflow_state")
+          .update({
+            checkpoint_pending: false,
+            checkpoint_type: null,
+            checkpoint_data: null,
+            current_phase: "VIII",
+            phase_status: "PENDING",
+          })
+          .eq("id", workflowId);
+      } else if (action === "CANCEL") {
+        await supabase
+          .from("workflow_state")
+          .update({
+            checkpoint_pending: false,
+            phase_status: "CANCELLED",
+          })
+          .eq("id", workflowId);
+
+        await supabase
+          .from("orders")
+          .update({ status: "cancelled" })
+          .eq("id", orderId);
+      }
+    });
+
+    // Continue workflow if approved
+    if (action === "APPROVE" && nextPhase) {
+      await step.sendEvent("continue-workflow", {
+        name: "workflow/execute-phase",
+        data: {
+          orderId,
+          workflowId,
+          phase: nextPhase,
+        },
+      });
+    } else if (action === "REQUEST_CHANGES") {
+      await step.sendEvent("request-changes", {
+        name: "workflow/execute-phase",
+        data: {
+          orderId,
+          workflowId,
+          phase: "VIII",
+        },
+      });
+    }
+
+    return { action, continued: action === "APPROVE" };
+  }
+);
+
+/**
+ * Start Workflow on Order Submission (v7.2)
+ *
+ * Alternative to direct generation - starts the 14-phase workflow.
+ */
+export const startWorkflowOnOrder = inngest.createFunction(
+  {
+    id: "workflow-start-on-order",
+  },
+  { event: "order/submitted" },
+  async ({ event, step }) => {
+    const { orderId } = event.data;
+    const supabase = getSupabase();
+
+    // Check if workflow_state table exists and if we should use v7.2 workflow
+    const useV72Workflow = process.env.USE_V72_WORKFLOW === "true";
+
+    if (!useV72Workflow) {
+      // Let the existing generateOrderDraft function handle it
+      return { skipped: true, reason: "v7.2 workflow not enabled" };
+    }
+
+    const workflowId = await step.run("create-workflow-state", async () => {
+      const id = crypto.randomUUID();
+
+      await supabase.from("workflow_state").insert({
+        id,
+        order_id: orderId,
+        current_phase: "I",
+        phase_status: "PENDING",
+      });
+
+      return id;
+    });
+
+    // Trigger first phase
+    await step.sendEvent("start-phase-i", {
+      name: "workflow/execute-phase",
+      data: {
+        orderId,
+        workflowId,
+        phase: "I",
+      },
+    });
+
+    return { workflowId, started: true };
   }
 );
 
 // Export all functions for registration
-// Re-export the new workflow orchestration functions
-export { generateOrderWorkflow, handleWorkflowFailure };
-
+// Note: workflowOrchestration is the new 14-phase v7.2 workflow (preferred)
+// generateOrderDraft is the legacy single-call system (kept for fallback)
 export const functions = [
-  // Legacy simplified workflow
-  generateOrderDraft,
+  workflowOrchestration,  // v7.2: 14-phase workflow orchestrator
+  generateOrderDraft,      // Legacy: single-call superprompt
   handleGenerationFailure,
   // New 14-phase workflow
   ...workflowFunctions,
@@ -1099,4 +1390,8 @@ export const functions = [
   // Supporting functions
   deadlineCheck,
   updateQueuePositions,
+  // v7.2 Workflow Functions
+  executeWorkflowPhase,
+  handleCheckpointApproval,
+  startWorkflowOnOrder,
 ];
