@@ -153,12 +153,40 @@ export async function POST(
           const tier = orderData.motion_tier || 'A';
           const phaseOutputs: Record<string, unknown> = {};
 
-          // v7.2 phase sequence
-          const phases: string[] = ['I', 'II', 'III', 'IV', 'V', 'V.1', 'VI', 'VII', 'VIII.5', 'IX', 'X'];
+          // v7.2 dynamic phase routing - follows nextPhase from each result
+          let currentPhase: string = 'I';
+          let phaseIterations = 0;
+          let revisionLoopCount = 0;
+          const MAX_PHASES = 50; // Safety limit to prevent infinite loops
+          const MAX_REVISION_LOOPS = 3;
 
-          // Execute phases sequentially
-          for (const phaseCode of phases) {
-            console.log(`[Generate Direct] Executing phase ${phaseCode}`);
+          // Execute phases dynamically following nextPhase routing
+          while (currentPhase && phaseIterations < MAX_PHASES) {
+            console.log(`[Generate Direct] Executing phase ${currentPhase} (iteration ${phaseIterations + 1}, revision loop ${revisionLoopCount})`);
+            phaseIterations++;
+
+            // Track revision loops (each time we execute Phase VII after the first time)
+            if (currentPhase === 'VII' && phaseIterations > 1) {
+              revisionLoopCount++;
+              if (revisionLoopCount > MAX_REVISION_LOOPS) {
+                console.error(`[Generate Direct] Max revision loops (${MAX_REVISION_LOOPS}) reached`);
+                await adminClient
+                  .from('order_workflows')
+                  .update({
+                    status: 'failed',
+                    last_error: `Motion failed to reach B+ after ${MAX_REVISION_LOOPS} revision attempts`,
+                  })
+                  .eq('id', workflow.id);
+                await adminClient
+                  .from('orders')
+                  .update({
+                    status: 'generation_failed',
+                    generation_error: `Quality threshold not met after ${MAX_REVISION_LOOPS} revisions`,
+                  })
+                  .eq('id', orderId);
+                break;
+              }
+            }
 
             const phaseInput = {
               orderId,
@@ -173,18 +201,19 @@ export async function POST(
               instructions: orderData.instructions || '',
               previousPhaseOutputs: phaseOutputs,
               documents: [],
+              revisionLoop: revisionLoopCount || undefined,
             };
 
-            const result = await executePhase(phaseCode as any, phaseInput);
+            const result = await executePhase(currentPhase as any, phaseInput);
 
             if (!result.success) {
-              console.error(`[Generate Direct] Phase ${phaseCode} failed:`, result.error);
+              console.error(`[Generate Direct] Phase ${currentPhase} failed:`, result.error);
 
               await adminClient
                 .from('order_workflows')
                 .update({
                   status: 'failed',
-                  last_error: `Phase ${phaseCode}: ${result.error}`,
+                  last_error: `Phase ${currentPhase}: ${result.error}`,
                 })
                 .eq('id', workflow.id);
 
@@ -192,7 +221,7 @@ export async function POST(
                 .from('orders')
                 .update({
                   status: 'generation_failed',
-                  generation_error: `Phase ${phaseCode} failed: ${result.error}`,
+                  generation_error: `Phase ${currentPhase} failed: ${result.error}`,
                 })
                 .eq('id', orderId);
 
@@ -200,22 +229,47 @@ export async function POST(
             }
 
             // Store phase output for next phase
-            phaseOutputs[phaseCode] = result.output;
+            phaseOutputs[currentPhase] = result.output;
 
-            // Check if workflow requires review (HOLD condition)
-            if (result.requiresReview) {
-              console.log(`[Generate Direct] Phase ${phaseCode} requires review, stopping`);
+            // Check if workflow requires review (HOLD condition or CP3)
+            if (result.requiresReview && currentPhase !== 'VII') {
+              console.log(`[Generate Direct] Phase ${currentPhase} requires review, stopping`);
 
               await adminClient
                 .from('order_workflows')
                 .update({
                   status: 'blocked',
-                  last_error: `Phase ${phaseCode} requires review before continuing`,
+                  last_error: `Phase ${currentPhase} requires review before continuing`,
                 })
                 .eq('id', workflow.id);
 
               break;
             }
+
+            // Phase VII requiresReview is just CP2 notification, don't stop
+            if (result.requiresReview && currentPhase === 'VII') {
+              console.log(`[Generate Direct] Phase VII CP2 checkpoint - continuing`);
+            }
+
+            // Get next phase from result
+            if (result.nextPhase) {
+              currentPhase = result.nextPhase as string;
+            } else {
+              // No next phase means we're done
+              console.log(`[Generate Direct] Workflow completed at phase ${currentPhase}`);
+              break;
+            }
+          }
+
+          if (phaseIterations >= MAX_PHASES) {
+            console.error('[Generate Direct] Hit max phase iteration limit - possible infinite loop');
+            await adminClient
+              .from('order_workflows')
+              .update({
+                status: 'failed',
+                last_error: 'Workflow exceeded maximum phase iteration limit',
+              })
+              .eq('id', workflow.id);
           }
 
           console.log('[Generate Direct] Workflow execution completed');

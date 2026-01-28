@@ -897,7 +897,12 @@ async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
     const client = getAnthropicClient();
     const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
     const phaseVIOutput = input.previousPhaseOutputs['VI'] as Record<string, unknown>;
+    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
     const loopNumber = input.revisionLoop || 1;
+
+    // CRITICAL: Use revised motion if this is a re-evaluation after Phase VIII
+    const motionToEvaluate = phaseVIIIOutput?.revisedMotion || phaseVOutput?.draftMotion || phaseVOutput;
+    const isReEvaluation = !!phaseVIIIOutput;
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -905,6 +910,8 @@ PHASE VII: JUDGE SIMULATION (QUALITY GATE)
 
 You are an experienced ${input.jurisdiction} judge evaluating this motion.
 Use extended thinking to thoroughly analyze before grading.
+
+${isReEvaluation ? `**RE-EVALUATION**: This is revision loop ${loopNumber}. You are evaluating the REVISED motion after Phase VIII corrections.` : `This is the initial evaluation.`}
 
 GRADING CRITERIA:
 1. Legal soundness (are arguments legally correct?)
@@ -923,7 +930,7 @@ GRADE SCALE:
 - B- (2.7): Significant issues
 - C or below: Major problems
 
-If grade < B+, this motion will go through revision (Phase VIII).
+If grade < B+, this motion will go through ${isReEvaluation ? 'another' : ''} revision (Phase VIII).
 This is revision loop ${loopNumber} of max 3.
 
 OUTPUT FORMAT (JSON only):
@@ -945,14 +952,15 @@ OUTPUT FORMAT (JSON only):
     "weaknesses": ["weakness1", "weakness2"],
     "specificFeedback": "detailed feedback",
     "revisionSuggestions": ["if grade < B+, specific fixes"],
-    "loopNumber": ${loopNumber}
+    "loopNumber": ${loopNumber},
+    "isReEvaluation": ${isReEvaluation}
   }
 }`;
 
     const userMessage = `Evaluate this motion as a judge:
 
-DRAFT MOTION (Phase V):
-${JSON.stringify(phaseVOutput, null, 2)}
+${isReEvaluation ? 'REVISED MOTION (Phase VIII):' : 'DRAFT MOTION (Phase V):'}
+${JSON.stringify(motionToEvaluate, null, 2)}
 
 OPPOSITION ANALYSIS (Phase VI):
 ${JSON.stringify(phaseVIOutput, null, 2)}
