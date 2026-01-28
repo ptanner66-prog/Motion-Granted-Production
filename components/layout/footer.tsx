@@ -16,6 +16,8 @@ const footerLinks = {
     { name: 'Terms of Service', href: '/terms' },
     { name: 'Privacy Policy', href: '/privacy' },
     { name: 'Disclaimer', href: '/disclaimer' },
+    { name: 'Security', href: '/security' },
+    { name: 'Data Processing Agreement', href: '/dpa' },
   ],
 }
 
