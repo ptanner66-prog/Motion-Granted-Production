@@ -133,38 +133,6 @@ interface DeliverableResult {
 // ============================================================================
 
 /**
- * Execute a phase using Claude with proper model routing
- */
-async function executePhaseWithClaude(
-  phase: WorkflowPhaseCode,
-  tier: MotionTier,
-  systemPrompt: string,
-  userMessage: string,
-  state: WorkflowState
-): Promise<{ response: string; tokensUsed: { input: number; output: number } }> {
-  const client = getAnthropicClient();
-  const config = getModelConfig(phase, tier);
-
-  const params = createMessageParams(phase, tier, systemPrompt, userMessage);
-
-  const response = await client.messages.create({
-    ...params,
-    stream: false,
-  }) as Anthropic.Message;
-
-  const textContent = response.content.find((c) => c.type === "text");
-  const outputText = textContent?.type === "text" ? textContent.text : "";
-
-  return {
-    response: outputText,
-    tokensUsed: {
-      input: response.usage.input_tokens,
-      output: response.usage.output_tokens,
-    },
-  };
-}
-
-/**
  * Build the phase input object from workflow state
  */
 function buildPhaseInput(state: WorkflowState): PhaseInput {
@@ -209,556 +177,6 @@ async function logPhaseExecution(
       requiresReview: result.requiresReview,
     },
   });
-}
-
-// ============================================================================
-// MISSING PHASE EXECUTORS
-// ============================================================================
-
-/**
- * Phase V: Draft Motion
- */
-async function executePhaseV(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const input = buildPhaseInput(state);
-  const legalFramework = state.phaseOutputs["II"];
-  const research = state.phaseOutputs["III"] as { citations: Array<{ citation: string; holding: string }> };
-  const verification = state.phaseOutputs["IV"];
-
-  const systemPrompt = `You are an expert legal motion drafter. Generate a complete, court-ready ${input.motionType}.
-
-Use the legal framework and verified citations provided. Follow proper legal writing conventions.
-
-Output ONLY the motion document, starting with the caption.`;
-
-  const userMessage = `Draft a ${input.motionType} for:
-
-Case: ${input.caseCaption}
-Case Number: ${input.caseNumber}
-Jurisdiction: ${input.jurisdiction}
-
-Statement of Facts:
-${input.statementOfFacts}
-
-Procedural History:
-${input.proceduralHistory}
-
-Legal Framework:
-${JSON.stringify(legalFramework)}
-
-Available Citations:
-${research?.citations?.map((c) => `- ${c.citation}: ${c.holding}`).join("\n") || "No citations available"}
-
-Special Instructions:
-${input.instructions}
-
-Generate the complete motion document.`;
-
-  const result = await executePhaseWithClaude("V", state.tier, systemPrompt, userMessage, state);
-
-  return {
-    success: true,
-    output: { draft: result.response },
-    tokensUsed: result.tokensUsed,
-    nextPhase: "V.1",
-  };
-}
-
-/**
- * Phase V.1: Citation Accuracy Check
- */
-async function executePhaseV1(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const draft = state.phaseOutputs["V"] as { draft: string };
-
-  // Extract citations from draft
-  const citations = extractCitations(draft?.draft || "");
-
-  // Log citation extraction
-  await supabase.from("automation_logs").insert({
-    order_id: state.orderId,
-    action_type: "citation_accuracy_check",
-    action_details: {
-      citationsFound: citations.length,
-      citationTypes: citations.reduce((acc, c) => {
-        acc[c.type] = (acc[c.type] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-    },
-  });
-
-  return {
-    success: true,
-    output: {
-      citationsVerified: citations.length,
-      citations: citations.slice(0, 20),
-    },
-    nextPhase: "VI",
-  };
-}
-
-/**
- * Phase VI: Opposition Anticipation (8K thinking for B/C)
- */
-async function executePhaseVI(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const draft = state.phaseOutputs["V"] as { draft: string };
-  const input = buildPhaseInput(state);
-
-  const systemPrompt = `You are an expert legal strategist. Analyze the motion and anticipate opposing arguments.
-
-Use extended thinking to thoroughly consider counter-arguments and prepare responses.
-
-Provide a JSON response with:
-- opposingArguments: array of anticipated arguments
-- counterResponses: array of responses to each argument
-- weaknesses: array of motion weaknesses
-- strengtheningSuggestions: array of improvements`;
-
-  const userMessage = `Anticipate opposition arguments for this ${input.motionType}:
-
-${draft?.draft?.slice(0, 8000) || "No draft available"}
-
-Jurisdiction: ${input.jurisdiction}
-
-Provide comprehensive opposition analysis.`;
-
-  const result = await executePhaseWithClaude("VI", state.tier, systemPrompt, userMessage, state);
-
-  // Parse JSON from response
-  let analysis;
-  try {
-    const jsonMatch = result.response.match(/\{[\s\S]*\}/);
-    analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: result.response };
-  } catch {
-    analysis = { raw: result.response };
-  }
-
-  return {
-    success: true,
-    output: { draft: draft?.draft, oppositionAnalysis: analysis },
-    tokensUsed: result.tokensUsed,
-    nextPhase: "VII",
-  };
-}
-
-/**
- * Phase VII: Judge Simulation (Always Opus, 10K thinking)
- */
-async function executePhaseVII(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const input = buildPhaseInput(state);
-  const phaseVIOutput = state.phaseOutputs["VI"] as { draft: string };
-
-  const systemPrompt = `You are an experienced federal judge evaluating a motion.
-Use extended thinking to thoroughly analyze this motion before providing your evaluation.
-
-Evaluate on these criteria:
-1. Legal soundness of arguments
-2. Proper citation and use of authority
-3. Clarity and organization
-4. Persuasiveness
-5. Compliance with procedural requirements
-
-Provide a letter grade (A+ through F) where B+ (3.3) is the minimum acceptable standard.
-
-Output JSON with:
-- grade: letter grade
-- numericGrade: GPA equivalent (4.3 scale)
-- passes: boolean (true if B+ or better)
-- strengths: array of strengths
-- weaknesses: array of areas for improvement
-- specificFeedback: detailed feedback
-- revisionSuggestions: array of specific revisions if grade < B+`;
-
-  const userMessage = `Evaluate this ${input.motionType}:
-
-Case: ${input.caseCaption}
-Jurisdiction: ${input.jurisdiction}
-
-MOTION CONTENT:
-${phaseVIOutput?.draft || "No draft available"}
-
-Provide your judicial evaluation.`;
-
-  const result = await executePhaseWithClaude("VII", state.tier, systemPrompt, userMessage, state);
-
-  // Parse judge evaluation
-  let evaluation: JudgeSimulationResult;
-  try {
-    const jsonMatch = result.response.match(/\{[\s\S]*\}/);
-    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
-    evaluation = {
-      grade: parsed.grade || "C",
-      numericGrade: parsed.numericGrade || 2.0,
-      passes: parsed.passes ?? false,
-      strengths: parsed.strengths || [],
-      weaknesses: parsed.weaknesses || [],
-      specificFeedback: parsed.specificFeedback || "",
-      revisionSuggestions: parsed.revisionSuggestions || [],
-      loopNumber: state.revisionLoopCount + 1,
-    };
-  } catch {
-    evaluation = {
-      grade: "C",
-      numericGrade: 2.0,
-      passes: false,
-      strengths: [],
-      weaknesses: ["Could not parse evaluation"],
-      specificFeedback: result.response,
-      revisionSuggestions: [],
-      loopNumber: state.revisionLoopCount + 1,
-    };
-  }
-
-  // Store judge result in database
-  await supabase.from("judge_simulation_results").insert({
-    workflow_id: state.workflowId,
-    grade: evaluation.grade,
-    numeric_grade: evaluation.numericGrade,
-    passes: evaluation.passes,
-    strengths: evaluation.strengths,
-    weaknesses: evaluation.weaknesses,
-    specific_feedback: evaluation.specificFeedback,
-    revision_suggestions: evaluation.revisionSuggestions,
-    loop_number: evaluation.loopNumber,
-  });
-
-  // Update workflow with judge simulation results
-  await supabase
-    .from("order_workflows")
-    .update({
-      judge_sim_grade: evaluation.grade,
-      judge_sim_grade_numeric: evaluation.numericGrade,
-      judge_sim_passed: evaluation.passes,
-    })
-    .eq("id", state.workflowId);
-
-  const passes = gradePasses(evaluation.grade as LetterGrade);
-  const nextPhase: WorkflowPhaseCode = passes ? "VIII" : "VII.1";
-
-  return {
-    success: true,
-    output: evaluation,
-    tokensUsed: result.tokensUsed,
-    requiresCheckpoint: true,
-    checkpointType: "CP2",
-    nextPhase,
-  };
-}
-
-/**
- * Phase VII.1: Revision Loop
- */
-async function executePhaseVII1(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const judgeResult = state.phaseOutputs["VII"] as JudgeSimulationResult;
-  const draft = (state.phaseOutputs["VI"] as { draft: string })?.draft;
-  const input = buildPhaseInput(state);
-
-  // If we've hit max revision loops, escalate
-  if (state.revisionLoopCount >= MAX_REVISION_LOOPS) {
-    await supabase.from("automation_logs").insert({
-      order_id: state.orderId,
-      action_type: "revision_escalation",
-      action_details: {
-        reason: "Max revision loops reached",
-        loopCount: state.revisionLoopCount,
-        finalGrade: judgeResult.grade,
-      },
-    });
-
-    // Flag for admin review
-    await supabase
-      .from("orders")
-      .update({
-        needs_manual_review: true,
-        quality_notes: `ESCALATION: ${MAX_REVISION_LOOPS} revision loops completed without achieving B+ grade. Final grade: ${judgeResult.grade}`,
-      })
-      .eq("id", state.orderId);
-
-    // Continue to final draft despite not meeting grade threshold
-    return {
-      success: true,
-      output: {
-        escalated: true,
-        reason: "Max revision loops reached",
-        finalGrade: judgeResult.grade,
-      },
-      nextPhase: "VIII",
-    };
-  }
-
-  const systemPrompt = `You are an expert legal editor. Revise the motion based on judge feedback.
-
-Use extended thinking to carefully address each weakness and incorporate improvements.
-
-Focus on:
-1. Addressing specific weaknesses identified
-2. Strengthening arguments
-3. Improving clarity and persuasiveness
-4. Ensuring proper citations
-
-Output the REVISED motion document only.`;
-
-  const userMessage = `Revise this ${input.motionType} based on judge feedback:
-
-CURRENT GRADE: ${judgeResult.grade} (needs B+ or better)
-
-WEAKNESSES TO ADDRESS:
-${judgeResult.weaknesses?.join("\n") || "None specified"}
-
-REVISION SUGGESTIONS:
-${judgeResult.revisionSuggestions?.join("\n") || "None specified"}
-
-SPECIFIC FEEDBACK:
-${judgeResult.specificFeedback}
-
-CURRENT DRAFT:
-${draft}
-
-Produce the revised motion.`;
-
-  const result = await executePhaseWithClaude("VIII", state.tier, systemPrompt, userMessage, state);
-
-  return {
-    success: true,
-    output: { revisedDraft: result.response, loopNumber: state.revisionLoopCount + 1 },
-    tokensUsed: result.tokensUsed,
-    nextPhase: "VII", // Loop back to judge simulation
-  };
-}
-
-/**
- * Phase VIII: Final Draft (8K thinking for B/C)
- */
-async function executePhaseVIII(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const input = buildPhaseInput(state);
-
-  // Get the best draft - either from revision loop or original
-  const revisedDraft = state.phaseOutputs["VII.1"] as { revisedDraft?: string };
-  const originalDraft = (state.phaseOutputs["VI"] as { draft: string })?.draft;
-  const currentDraft = revisedDraft?.revisedDraft || originalDraft;
-
-  const systemPrompt = `You are an expert legal document finalizer. Polish the motion for filing.
-
-Ensure:
-1. Proper formatting for court submission
-2. All citations are correctly formatted (Bluebook)
-3. Professional tone throughout
-4. Logical flow and organization
-5. Complete signature block and certificate of service
-
-Output the FINAL motion document ready for filing.`;
-
-  const userMessage = `Finalize this ${input.motionType} for filing:
-
-Case: ${input.caseCaption}
-Case Number: ${input.caseNumber}
-Jurisdiction: ${input.jurisdiction}
-
-DRAFT:
-${currentDraft}
-
-Produce the final, court-ready document.`;
-
-  const result = await executePhaseWithClaude("VIII", state.tier, systemPrompt, userMessage, state);
-
-  return {
-    success: true,
-    output: { finalDraft: result.response },
-    tokensUsed: result.tokensUsed,
-    nextPhase: "VIII.5",
-  };
-}
-
-/**
- * Phase VIII.5: MSJ Separate Statement (if applicable)
- */
-async function executePhaseVIII5(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const input = buildPhaseInput(state);
-  const motionType = input.motionType.toLowerCase();
-
-  // Only execute for MSJ/MSA motions
-  if (!motionType.includes("summary judgment") && !motionType.includes("msj") && !motionType.includes("msa")) {
-    return {
-      success: true,
-      output: { skipped: true, reason: "Not applicable for this motion type" },
-      nextPhase: "IX",
-    };
-  }
-
-  const finalDraft = state.phaseOutputs["VIII"] as { finalDraft: string };
-
-  const systemPrompt = `You are an expert in preparing Separate Statements for summary judgment motions.
-
-Generate a Separate Statement of Undisputed Material Facts that:
-1. Lists each material fact with proper numbering
-2. Cites supporting evidence for each fact
-3. Follows the jurisdiction's specific format requirements
-
-Output the complete Separate Statement document.`;
-
-  const userMessage = `Generate a Separate Statement for this ${input.motionType}:
-
-Jurisdiction: ${input.jurisdiction}
-
-MOTION:
-${finalDraft?.finalDraft?.slice(0, 10000) || "No final draft available"}
-
-Create the Separate Statement of Undisputed Material Facts.`;
-
-  const result = await executePhaseWithClaude("VIII.5", state.tier, systemPrompt, userMessage, state);
-
-  return {
-    success: true,
-    output: { separateStatement: result.response },
-    tokensUsed: result.tokensUsed,
-    nextPhase: "IX",
-  };
-}
-
-/**
- * Phase IX: Document Formatting
- */
-async function executePhaseIX(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const finalDraft = state.phaseOutputs["VIII"] as { finalDraft: string };
-  const separateStatement = state.phaseOutputs["VIII.5"] as { separateStatement?: string };
-
-  // Format and prepare all documents
-  const formattedDocuments = {
-    motion: finalDraft?.finalDraft,
-    separateStatement: separateStatement?.separateStatement,
-    formattedAt: new Date().toISOString(),
-  };
-
-  return {
-    success: true,
-    output: { formattedDocument: finalDraft?.finalDraft, allDocuments: formattedDocuments },
-    nextPhase: "IX.1",
-  };
-}
-
-/**
- * Phase IX.1: Caption QC
- */
-async function executePhaseIX1(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const input = buildPhaseInput(state);
-  const formattedDocs = state.phaseOutputs["IX"] as { formattedDocument: string };
-
-  const systemPrompt = `You are a legal document QC specialist. Check caption consistency.
-
-Verify:
-1. Case caption matches across all documents
-2. Case number is correct and consistent
-3. Court name and division are correct
-4. Party names are spelled consistently
-5. All formatting follows local rules
-
-Output JSON with:
-- passes: boolean
-- issues: array of any issues found
-- corrections: array of corrections made`;
-
-  const userMessage = `QC check for caption consistency:
-
-Expected Caption: ${input.caseCaption}
-Case Number: ${input.caseNumber}
-Jurisdiction: ${input.jurisdiction}
-
-DOCUMENT:
-${formattedDocs?.formattedDocument?.slice(0, 2000) || "No document"}
-
-Check caption consistency.`;
-
-  const result = await executePhaseWithClaude("IX.1", state.tier, systemPrompt, userMessage, state);
-
-  let qcResult;
-  try {
-    const jsonMatch = result.response.match(/\{[\s\S]*\}/);
-    qcResult = jsonMatch ? JSON.parse(jsonMatch[0]) : { passes: true, issues: [], corrections: [] };
-  } catch {
-    qcResult = { passes: true, issues: [], corrections: [] };
-  }
-
-  return {
-    success: true,
-    output: {
-      qcPasses: qcResult.passes,
-      qcIssues: qcResult.issues,
-      qcCorrections: qcResult.corrections,
-    },
-    tokensUsed: result.tokensUsed,
-    nextPhase: "X",
-  };
-}
-
-/**
- * Phase X: Final QA and Admin Approval
- */
-async function executePhaseX(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<PhaseExecutionResult> {
-  const finalDraft = state.phaseOutputs["VIII"] as { finalDraft: string };
-  const qcResult = state.phaseOutputs["IX.1"] as { qcPasses: boolean };
-
-  // Run final checks
-  const checks = {
-    hasAllSections: true,
-    citationsVerified: state.citationCount >= CITATION_HARD_STOP_MINIMUM,
-    formattingCorrect: true,
-    noPlaceholders: !finalDraft?.finalDraft?.includes("[PLACEHOLDER]"),
-    captionQcPasses: qcResult?.qcPasses ?? true,
-    wordCountOk: (finalDraft?.finalDraft?.split(/\s+/).length || 0) >= 500,
-  };
-
-  const allChecksPass = Object.values(checks).every(Boolean);
-
-  // Log final QA
-  await supabase.from("automation_logs").insert({
-    order_id: state.orderId,
-    action_type: "final_qa_completed",
-    action_details: {
-      checks,
-      allChecksPass,
-      citationCount: state.citationCount,
-    },
-  });
-
-  return {
-    success: true,
-    output: {
-      checks,
-      allChecksPass,
-      requiresApproval: true,
-      finalDocument: finalDraft?.finalDraft,
-    },
-    requiresCheckpoint: true,
-    checkpointType: "CP3",
-  };
 }
 
 // ============================================================================
@@ -1493,19 +911,25 @@ export const generateOrderWorkflow = inngest.createFunction(
     // STEP 6: Phase V - Draft Motion
     // ========================================================================
     const phaseVResult = await step.run("phase-v-draft-motion", async () => {
-      const result = await executePhaseV(workflowState, supabase);
+      console.log('========== PHASE V START ==========');
+      console.log('Order ID:', workflowState.orderId);
+      const startTime = Date.now();
+
+      const input = buildPhaseInput(workflowState);
+      const result = await executePhase("V", input);
       workflowState.phaseOutputs["V"] = result.output;
 
-      await supabase.from("automation_logs").insert({
-        order_id: orderId,
-        action_type: "phase_executed",
-        action_details: {
-          phase: "V",
-          phaseName: "Draft Motion",
-          success: result.success,
-          tokensUsed: result.tokensUsed,
-        },
-      });
+      const duration = Date.now() - startTime;
+      console.log('========== PHASE V END ==========');
+      console.log('Duration:', duration, 'ms');
+      console.log('Success:', result.success);
+      console.log('Tokens used:', result.tokensUsed);
+
+      if (duration < 10000) {
+        console.error('WARNING: Phase V completed too fast! AI may not have been called.');
+      }
+
+      await logPhaseExecution(supabase, workflowState, "V", result, result.tokensUsed);
 
       return result;
     });
@@ -1514,8 +938,11 @@ export const generateOrderWorkflow = inngest.createFunction(
     // STEP 7: Phase V.1 - Citation Accuracy Check
     // ========================================================================
     const phaseV1Result = await step.run("phase-v1-citation-accuracy", async () => {
-      const result = await executePhaseV1(workflowState, supabase);
+      const input = buildPhaseInput(workflowState);
+      const result = await executePhase("V.1", input);
       workflowState.phaseOutputs["V.1"] = result.output;
+
+      await logPhaseExecution(supabase, workflowState, "V.1", result, result.tokensUsed);
       return result;
     });
 
@@ -1523,20 +950,11 @@ export const generateOrderWorkflow = inngest.createFunction(
     // STEP 8: Phase VI - Opposition Anticipation
     // ========================================================================
     const phaseVIResult = await step.run("phase-vi-opposition-anticipation", async () => {
-      const result = await executePhaseVI(workflowState, supabase);
+      const input = buildPhaseInput(workflowState);
+      const result = await executePhase("VI", input);
       workflowState.phaseOutputs["VI"] = result.output;
 
-      await supabase.from("automation_logs").insert({
-        order_id: orderId,
-        action_type: "phase_executed",
-        action_details: {
-          phase: "VI",
-          phaseName: "Opposition Anticipation",
-          success: result.success,
-          tokensUsed: result.tokensUsed,
-          usesExtendedThinking: shouldUseOpus("VI", workflowState.tier),
-        },
-      });
+      await logPhaseExecution(supabase, workflowState, "VI", result, result.tokensUsed);
 
       return result;
     });
@@ -1545,9 +963,15 @@ export const generateOrderWorkflow = inngest.createFunction(
     // STEP 9: Phase VII - Judge Simulation + CP2 Checkpoint
     // ========================================================================
     let phaseVIIResult = await step.run("phase-vii-judge-simulation", async () => {
-      const result = await executePhaseVII(workflowState, supabase);
+      const input = buildPhaseInput(workflowState);
+      const result = await executePhase("VII", input);
       workflowState.phaseOutputs["VII"] = result.output;
-      workflowState.currentGrade = (result.output as JudgeSimulationResult).grade as LetterGrade;
+
+      const judgeOutput = result.output as { evaluation?: { grade?: string; numericGrade?: number } };
+      const grade = judgeOutput.evaluation?.grade || judgeOutput.grade;
+      workflowState.currentGrade = grade as LetterGrade;
+
+      await logPhaseExecution(supabase, workflowState, "VII", result, result.tokensUsed);
 
       // CP2 Checkpoint - Customer reviews draft and grade
       await triggerCheckpoint(workflowState.workflowId, "CP2", {
@@ -1589,17 +1013,17 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       // Execute revision
       const revisionResult = await step.run(`phase-vii1-revision-loop-${loopNum}`, async () => {
-        const result = await executePhaseVII1(workflowState, supabase);
+        const input = buildPhaseInput(workflowState);
+        input.revisionLoop = loopNum;
+        const result = await executePhase("VII.1", input);
         workflowState.phaseOutputs["VII.1"] = result.output;
         workflowState.revisionLoopCount = loopNum;
 
-        // Update the draft in phase VI output for re-grading
-        if (result.output && (result.output as { revisedDraft?: string }).revisedDraft) {
-          const existingVI = workflowState.phaseOutputs["VI"] as Record<string, unknown> || {};
-          workflowState.phaseOutputs["VI"] = {
-            ...existingVI,
-            draft: (result.output as { revisedDraft: string }).revisedDraft,
-          };
+        await logPhaseExecution(supabase, workflowState, "VII.1", result, result.tokensUsed);
+
+        // Update the draft in phase VIII output for re-grading
+        if (result.output && (result.output as { revisedMotion?: unknown }).revisedMotion) {
+          workflowState.phaseOutputs["VIII"] = result.output;
         }
 
         return result;
@@ -1612,67 +1036,93 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       // Re-run judge simulation
       phaseVIIResult = await step.run(`phase-vii-regrade-loop-${loopNum}`, async () => {
-        const result = await executePhaseVII(workflowState, supabase);
+        const input = buildPhaseInput(workflowState);
+        input.revisionLoop = loopNum;
+        const result = await executePhase("VII", input);
         workflowState.phaseOutputs["VII"] = result.output;
-        workflowState.currentGrade = (result.output as JudgeSimulationResult).grade as LetterGrade;
+
+        const judgeOutput = result.output as { evaluation?: { grade?: string } };
+        const grade = judgeOutput.evaluation?.grade || judgeOutput.grade;
+        workflowState.currentGrade = grade as LetterGrade;
+
+        await logPhaseExecution(supabase, workflowState, "VII", result, result.tokensUsed);
         return result;
       });
     }
 
     // ========================================================================
-    // STEP 11: Phase VIII - Final Draft
+    // STEP 11: Phase VIII - Revisions (if needed) / Final Approval
     // ========================================================================
-    const phaseVIIIResult = await step.run("phase-viii-final-draft", async () => {
-      const result = await executePhaseVIII(workflowState, supabase);
-      workflowState.phaseOutputs["VIII"] = result.output;
+    const phaseVIIIResult = await step.run("phase-viii-revisions", async () => {
+      // Check if Phase VII passed - if not, execute Phase VIII for revisions
+      const passes = workflowState.currentGrade && gradePasses(workflowState.currentGrade);
 
-      await supabase.from("automation_logs").insert({
-        order_id: orderId,
-        action_type: "phase_executed",
-        action_details: {
-          phase: "VIII",
-          phaseName: "Final Draft",
-          success: result.success,
-          tokensUsed: result.tokensUsed,
-        },
-      });
+      if (!passes && workflowState.revisionLoopCount < MAX_REVISION_LOOPS) {
+        // Execute Phase VIII for revisions
+        const input = buildPhaseInput(workflowState);
+        input.revisionLoop = workflowState.revisionLoopCount;
+        const result = await executePhase("VIII", input);
+        workflowState.phaseOutputs["VIII"] = result.output;
 
-      return result;
+        await logPhaseExecution(supabase, workflowState, "VIII", result, result.tokensUsed);
+        return result;
+      }
+
+      // If passed or max loops reached, continue with existing draft
+      return {
+        success: true,
+        phase: "VIII" as WorkflowPhaseCode,
+        status: "completed" as PhaseStatus,
+        output: workflowState.phaseOutputs["V"],
+        nextPhase: "VIII.5" as WorkflowPhaseCode,
+      };
     });
 
     // ========================================================================
-    // STEP 12: Phase VIII.5 - MSJ Separate Statement (if applicable)
+    // STEP 12: Phase VIII.5 - Caption Validation
     // ========================================================================
-    const phaseVIII5Result = await step.run("phase-viii5-separate-statement", async () => {
-      const result = await executePhaseVIII5(workflowState, supabase);
+    const phaseVIII5Result = await step.run("phase-viii5-caption-validation", async () => {
+      const input = buildPhaseInput(workflowState);
+      const result = await executePhase("VIII.5", input);
       workflowState.phaseOutputs["VIII.5"] = result.output;
+
+      await logPhaseExecution(supabase, workflowState, "VIII.5", result, result.tokensUsed);
       return result;
     });
 
     // ========================================================================
-    // STEP 13: Phase IX - Document Formatting
+    // STEP 13: Phase IX - Supporting Documents
     // ========================================================================
-    const phaseIXResult = await step.run("phase-ix-document-formatting", async () => {
-      const result = await executePhaseIX(workflowState, supabase);
+    const phaseIXResult = await step.run("phase-ix-supporting-documents", async () => {
+      const input = buildPhaseInput(workflowState);
+      const result = await executePhase("IX", input);
       workflowState.phaseOutputs["IX"] = result.output;
+
+      await logPhaseExecution(supabase, workflowState, "IX", result, result.tokensUsed);
       return result;
     });
 
     // ========================================================================
-    // STEP 14: Phase IX.1 - Caption QC
+    // STEP 14: Phase IX.1 - Separate Statement Check (MSJ/MSA only)
     // ========================================================================
-    const phaseIX1Result = await step.run("phase-ix1-caption-qc", async () => {
-      const result = await executePhaseIX1(workflowState, supabase);
+    const phaseIX1Result = await step.run("phase-ix1-separate-statement", async () => {
+      const input = buildPhaseInput(workflowState);
+      const result = await executePhase("IX.1", input);
       workflowState.phaseOutputs["IX.1"] = result.output;
+
+      await logPhaseExecution(supabase, workflowState, "IX.1", result, result.tokensUsed);
       return result;
     });
 
     // ========================================================================
-    // STEP 15: Phase X - Final QA + CP3 Checkpoint (Admin Approval)
+    // STEP 15: Phase X - Final Assembly + CP3 Checkpoint (Admin Approval)
     // ========================================================================
-    const phaseXResult = await step.run("phase-x-final-qa", async () => {
-      const result = await executePhaseX(workflowState, supabase);
+    const phaseXResult = await step.run("phase-x-final-assembly", async () => {
+      const input = buildPhaseInput(workflowState);
+      const result = await executePhase("X", input);
       workflowState.phaseOutputs["X"] = result.output;
+
+      await logPhaseExecution(supabase, workflowState, "X", result, result.tokensUsed);
 
       // CP3 Checkpoint - Requires admin approval before delivery
       await triggerCheckpoint(workflowState.workflowId, "CP3", {
