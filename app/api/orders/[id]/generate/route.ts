@@ -243,9 +243,10 @@ export async function POST(
             // Store phase output for next phase
             phaseOutputs[currentPhase] = result.output;
 
-            // Check if workflow requires review (HOLD condition or CP3)
-            if (result.requiresReview && currentPhase !== 'VII') {
-              console.log(`[Generate Direct] Phase ${currentPhase} requires review, stopping`);
+            // Check if workflow requires review (HOLD condition)
+            // Phase VII and Phase X are special: VII is just a notification, X is completion
+            if (result.requiresReview && currentPhase !== 'VII' && currentPhase !== 'X') {
+              console.log(`[Generate Direct] Phase ${currentPhase} requires review (HOLD), stopping`);
 
               await adminClient
                 .from('order_workflows')
@@ -255,6 +256,14 @@ export async function POST(
                 })
                 .eq('id', workflow.id);
 
+              await adminClient
+                .from('orders')
+                .update({
+                  status: 'on_hold',
+                  generation_error: `Phase ${currentPhase} requires additional information before continuing`,
+                })
+                .eq('id', orderId);
+
               break;
             }
 
@@ -263,12 +272,39 @@ export async function POST(
               console.log(`[Generate Direct] Phase VII CP2 checkpoint - continuing`);
             }
 
+            // Phase X requiresReview is CP3 - workflow complete, ready for admin review
+            if (result.requiresReview && currentPhase === 'X') {
+              console.log(`[Generate Direct] Phase X CP3 checkpoint - workflow COMPLETE, ready for review`);
+            }
+
             // Get next phase from result
             if (result.nextPhase) {
               currentPhase = result.nextPhase as string;
             } else {
-              // No next phase means we're done
-              console.log(`[Generate Direct] Workflow completed at phase ${currentPhase}`);
+              // No next phase means we're done - SUCCESS!
+              console.log(`[Generate Direct] Workflow completed successfully at phase ${currentPhase}`);
+
+              // Mark workflow as completed
+              await adminClient
+                .from('order_workflows')
+                .update({
+                  status: 'completed',
+                  completed_at: new Date().toISOString(),
+                  last_error: null,
+                })
+                .eq('id', workflow.id);
+
+              // Mark order as ready for review (motion generated, needs admin approval)
+              await adminClient
+                .from('orders')
+                .update({
+                  status: 'pending_review',
+                  generation_completed_at: new Date().toISOString(),
+                  generation_error: null,
+                })
+                .eq('id', orderId);
+
+              console.log(`[Generate Direct] Order ${orderId} ready for review`);
               break;
             }
           }
@@ -282,6 +318,14 @@ export async function POST(
                 last_error: 'Workflow exceeded maximum phase iteration limit',
               })
               .eq('id', workflow.id);
+
+            await adminClient
+              .from('orders')
+              .update({
+                status: 'generation_failed',
+                generation_error: 'Workflow exceeded maximum phase iteration limit',
+              })
+              .eq('id', orderId);
           }
 
           console.log('[Generate Direct] Workflow execution completed');

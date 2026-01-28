@@ -21,10 +21,10 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
   const { toast } = useToast();
   const router = useRouter();
 
-  // Don't show if already has a motion ready or in progress
+  // Don't show if already has a motion ready or completed
   const alreadyGenerated = ['pending_review', 'draft_delivered', 'completed', 'revision_delivered'].includes(orderStatus);
-  const isInProgress = ['generating', 'in_progress'].includes(orderStatus);
-  const canResume = ['in_progress', 'generation_failed'].includes(orderStatus);
+  const isInProgress = ['in_progress'].includes(orderStatus);
+  const canResume = ['generation_failed'].includes(orderStatus);
 
   // Handle starting the 14-phase workflow via v7.2 phase executors
   const handleGenerateNow = async () => {

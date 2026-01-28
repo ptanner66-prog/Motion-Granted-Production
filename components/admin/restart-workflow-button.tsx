@@ -54,8 +54,8 @@ export function RestartWorkflowButton({ orderId, orderNumber, orderStatus }: Res
     }
   };
 
-  // Only show for certain statuses
-  const showButton = ['generation_failed', 'blocked', 'cancelled', 'pending_review', 'in_progress'].includes(orderStatus);
+  // Only show for failed, blocked, or stuck orders - NOT for completed/delivered orders
+  const showButton = ['generation_failed', 'on_hold'].includes(orderStatus);
 
   if (!showButton) {
     return null;
