@@ -386,7 +386,7 @@ Verify this citation and its claimed proposition. Return your analysis as JSON:
 
     return this.complete(prompt, {
       model: TIER_C_MODEL,
-      maxTokens: 2000,
+      maxTokens: 32000, // Increased from 2000 for detailed holding verification
       temperature: 0.3,
       reasoningEffort: 'high',
       systemPrompt,

@@ -102,7 +102,7 @@ export async function getOpenAIClient(): Promise<OpenAI> {
 export async function callOpenAI(
   model: string,
   prompt: string,
-  maxTokens: number = 1000
+  maxTokens: number = 32000 // Increased from 1000 for comprehensive citation analysis
 ): Promise<string> {
   const client = await getOpenAIClient();
 
@@ -122,7 +122,7 @@ export async function callOpenAI(
 export async function callAnthropic(
   model: string,
   prompt: string,
-  maxTokens: number = 1000
+  maxTokens: number = 32000 // Increased from 1000 for comprehensive citation analysis
 ): Promise<string> {
   const client = await getAnthropicClient();
 

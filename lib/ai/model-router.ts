@@ -270,7 +270,7 @@ export async function callModel(
     if (provider === 'openai') {
       const response = await askOpenAI(prompt, {
         model: modelString,
-        maxTokens: options?.maxTokens || 2000,
+        maxTokens: options?.maxTokens || 32000, // Increased from 2000 for comprehensive analysis
         temperature: options?.temperature ?? 0.2,
         systemPrompt: options?.systemPrompt,
         responseFormat: options?.responseFormat,
@@ -294,7 +294,7 @@ export async function callModel(
       const response = await askClaude({
         prompt,
         model: modelString,
-        maxTokens: options?.maxTokens || 2000,
+        maxTokens: options?.maxTokens || 32000, // Increased from 2000 for comprehensive analysis
         temperature: options?.temperature ?? 0.2,
         systemPrompt: options?.systemPrompt,
       });
