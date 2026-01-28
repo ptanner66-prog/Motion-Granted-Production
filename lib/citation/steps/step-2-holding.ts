@@ -177,7 +177,7 @@ Respond with ONLY a JSON object:
   try {
     const response: OpenAIResponse = await askOpenAI(prompt, {
       model,
-      maxTokens: 2000,
+      maxTokens: 32000,
       temperature: 0.2,
       systemPrompt,
       responseFormat: 'json_object',
@@ -260,7 +260,7 @@ Respond with ONLY a JSON object:
   try {
     const response = await askClaude({
       prompt,
-      maxTokens: 3000,
+      maxTokens: 32000,
       systemPrompt: 'You are a skeptical appellate judge. Be thorough and critical in your analysis. Respond with valid JSON only.',
     });
 
@@ -339,7 +339,7 @@ Respond with ONLY a JSON object:
   try {
     const response: OpenAIResponse = await askOpenAI(prompt, {
       model,
-      maxTokens: 1500,
+      maxTokens: 32000,
       temperature: 0.1,
       responseFormat: 'json_object',
     });

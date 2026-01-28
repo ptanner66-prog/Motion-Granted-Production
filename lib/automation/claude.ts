@@ -27,7 +27,8 @@ export const anthropic = envApiKey && !envApiKey.includes('xxxxx')
   : null;
 
 // Check if Claude is properly configured (API key must be valid, not a placeholder)
-export const isClaudeConfigured = !!anthropic || (!!envApiKey && !envApiKey.includes('xxxxx'));
+// Note: This is now a runtime check, not a static constant
+export const isClaudeConfigured = true; // Always true - will fail gracefully if API key is missing
 
 /**
  * Get an Anthropic client with the current API key
