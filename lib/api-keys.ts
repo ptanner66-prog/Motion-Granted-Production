@@ -222,6 +222,22 @@ export async function getAnthropicAPIKey(): Promise<string> {
 }
 
 /**
+ * Get OpenAI API key
+ * Falls back to environment variable
+ */
+export async function getOpenAIAPIKey(): Promise<string> {
+  return process.env.OPENAI_API_KEY || '';
+}
+
+/**
+ * Get CourtListener API key
+ * Falls back to environment variable
+ */
+export async function getCourtListenerAPIKey(): Promise<string> {
+  return process.env.COURTLISTENER_API_KEY || '';
+}
+
+/**
  * Get legal research configuration
  */
 export async function getLegalResearchConfig(): Promise<{
