@@ -769,13 +769,83 @@ async function generateDeliverables(
   state: WorkflowState,
   supabase: ReturnType<typeof getSupabase>
 ): Promise<DeliverableResult> {
+  // TODO: CRITICAL - This function was corrupted during merge and needs complete reconstruction
+  // Should generate:
+  // - Motion PDF
+  // - Attorney Instruction Sheet
+  // - Citation Accuracy Report
+  // - Caption QC Report
+
   const finalDraft = state.phaseOutputs["VIII"] as { finalDraft: string };
   const judgeResult = state.phaseOutputs["VII"] as JudgeSimulationResult;
   const qcResult = state.phaseOutputs["IX.1"] as { qcPasses: boolean; qcIssues: string[] };
 
-  // Generate Attorney Instruction Sheet
-  const attorneyInstructions = `
-ATTORNEY INSTRUCTION SHEET
+  // Temporary stub - return empty deliverables
+  return {
+    motionPdf: undefined,
+    attorneyInstructionSheet: undefined,
+    citationAccuracyReport: undefined,
+    captionQcReport: undefined,
+  };
+}
+
+// ============================================================================
+// MAIN WORKFLOW ORCHESTRATION
+// ============================================================================
+
+export const generateOrderWorkflow = inngest.createFunction(
+  {
+    id: "generate-order-workflow",
+    concurrency: 10,
+  },
+  { event: "workflow/generate" },
+  async ({ event, step }) => {
+    const { orderId } = event.data;
+    const supabase = getSupabase();
+
+    // ========================================================================
+    // STEP 1: Initialize Workflow State
+    // ========================================================================
+    const workflowState = await step.run("initialize-workflow", async () => {
+      // Fetch order details
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .select(`
+          *,
+          profiles!inner(*)
+        `)
+        .eq("id", orderId)
+        .single();
+
+      if (orderError || !order) {
+        throw new Error(`Order not found: ${orderId}`);
+      }
+
+      // Build initial context
+      const contextResult = await buildWorkflowContext(order, supabase);
+      if (!contextResult.success) {
+        throw new Error(`Failed to build context: ${contextResult.error}`);
+      }
+
+      // Check for existing workflow or create new
+      let workflowId: string;
+      const { data: existingWorkflow } = await supabase
+        .from("workflow_state")
+        .select("id")
+        .eq("order_id", orderId)
+        .single();
+
+      if (existingWorkflow) {
+        workflowId = existingWorkflow.id;
+      } else {
+        const { data: newWorkflow, error: wfError } = await supabase
+          .from("workflow_state")
+          .insert({
+            order_id: orderId,
+            current_phase: "I",
+            phase_status: "PENDING",
+            tier: contextResult.data.motionTier,
+            started_at: new Date().toISOString()
           })
           .select()
           .single();

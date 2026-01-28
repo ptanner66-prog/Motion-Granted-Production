@@ -1076,11 +1076,8 @@ export const executeWorkflowPhase = inngest.createFunction(
       };
     });
 
-      for (const order of expiringOrders) {
-        try {
-          const profile = order.profiles as unknown as { email: string; full_name: string } | null;
-          if (!profile?.email) continue;
-
+    // Step 5: Execute phase
+    const result = await step.run("execute-phase", async () => {
       return await executePhase({
         phase: phase as PhaseId,
         tier,
