@@ -70,22 +70,11 @@ export async function POST(request: NextRequest) {
       statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
     }
 
-    // Reset stuck orders to 'submitted' so they can be regenerated
-    // This is NOT marking them as delivered - it's allowing them to be restarted
-    const stuckStatuses = ['in_progress', 'generation_failed', 'in_review'];
-
-    // Get orders to reset
-    const { data: ordersToReset, error: fetchOrdersError } = await adminClient
-      .from('orders')
-      .select('id, order_number')
-      .in('status', stuckStatuses);
-
-    if (fetchOrdersError) {
-      return NextResponse.json({ error: fetchOrdersError.message }, { status: 500 });
-    }
+    // Track workflows that were cleared
+    const workflowIds: string[] = [];
 
     // Reset each order's workflow properly
-    for (const order of ordersToReset || []) {
+    for (const order of stuckOrders) {
       // Get workflow ID
       const { data: workflow } = await adminClient
         .from('order_workflows')
@@ -94,6 +83,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (workflow) {
+        workflowIds.push(workflow.id);
         // Delete phase executions and judge results
         await adminClient
           .from('workflow_phase_executions')

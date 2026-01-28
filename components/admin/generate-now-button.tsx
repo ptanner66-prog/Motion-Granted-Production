@@ -110,7 +110,7 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
     return null;
   }
 
-  const isLoading = isGenerating || isQueuing || isResuming;
+  const isLoading = isGenerating || isResuming;
 
   return (
     <Card className="bg-amber-50 border-amber-200">
@@ -148,7 +148,7 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
         <div className="grid gap-2">
           {canResume ? (
             <Button
-              onClick={handleResume}
+              onClick={handleResumeWorkflow}
               disabled={isLoading}
               className="w-full bg-green-600 hover:bg-green-700 text-white"
             >
@@ -166,7 +166,7 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
             </Button>
           ) : (
             <Button
-              onClick={handleGenerate}
+              onClick={handleGenerateNow}
               disabled={isLoading}
               className="w-full bg-amber-600 hover:bg-amber-700 text-white"
             >
@@ -189,10 +189,10 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
             disabled={isGenerating || isInProgress || isResuming}
             className="w-full bg-amber-600 hover:bg-amber-700 text-white"
           >
-            {isQueuing ? (
+            {isGenerating ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Workflow In Progress...
+                Starting Workflow...
               </>
             ) : (
               <>

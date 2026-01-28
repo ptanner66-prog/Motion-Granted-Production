@@ -1342,10 +1342,12 @@ export const generateOrderWorkflow = inngest.createFunction(
       }
 
       // Build initial context
-      const contextResult = await buildWorkflowContext(order, supabase);
-      if (!contextResult.success) {
+      const contextResult = await gatherOrderContext(orderId);
+      if (!contextResult.success || !contextResult.data) {
         throw new Error(`Failed to build context: ${contextResult.error}`);
       }
+
+      const orderContext = contextResult.data;
 
       // Check for existing workflow or create new
       let workflowId: string;
@@ -1364,7 +1366,7 @@ export const generateOrderWorkflow = inngest.createFunction(
             order_id: orderId,
             current_phase: "I",
             phase_status: "PENDING",
-            tier: contextResult.data.motionTier,
+            tier: orderContext.motionTier,
             started_at: new Date().toISOString()
           })
           .select()
@@ -1391,16 +1393,16 @@ export const generateOrderWorkflow = inngest.createFunction(
         action_type: "workflow_started",
         action_details: {
           workflowId,
-          tier: contextResult.data.motionTier,
-          motionType: contextResult.data.motionType,
+          tier: orderContext.motionTier,
+          motionType: orderContext.motionType,
         },
       });
 
       const state: WorkflowState = {
         orderId,
         workflowId,
-        tier: contextResult.data.motionTier,
-        orderContext: contextResult.data,
+        tier: orderContext.motionTier,
+        orderContext: orderContext,
         phaseOutputs: {},
         revisionLoopCount: 0,
         citationCount: 0,

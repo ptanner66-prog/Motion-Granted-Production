@@ -1,7 +1,6 @@
 import { inngest } from "./client";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
-import { workflowOrchestration } from "./workflow-orchestration";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
@@ -1080,7 +1079,7 @@ export const executeWorkflowPhase = inngest.createFunction(
     const result = await step.run("execute-phase", async () => {
       return await executePhase({
         phase: phase as PhaseId,
-        tier,
+        tier: state.tier as Tier,
         orderId,
         workflowId,
         input: phaseInput,
@@ -1124,11 +1123,14 @@ export const executeWorkflowPhase = inngest.createFunction(
     const nextPhaseResult = await step.run("update-workflow-state", async () => {
       // Extract tier and path from Phase I output
       let tierUpdate: Record<string, string> = {};
-      if (phase === "I" && result.output?.determinations) {
-        tierUpdate = {
-          tier: result.output.determinations.tier,
-          path: result.output.determinations.path,
-        };
+      if (phase === "I" && result.output) {
+        const phaseIOutput = result.output as { determinations?: { tier: string; path: string } };
+        if (phaseIOutput.determinations) {
+          tierUpdate = {
+            tier: phaseIOutput.determinations.tier,
+            path: phaseIOutput.determinations.path,
+          };
+        }
       }
 
       // Update phase outputs
@@ -1145,20 +1147,28 @@ export const executeWorkflowPhase = inngest.createFunction(
 
       // Check Phase VII grading
       if (phase === "VII") {
-        const numericGrade = result.output?.grading?.numeric_grade || 0;
+        const phaseVIIOutput = result.output as { grading?: {
+          numeric_grade?: number;
+          grade?: string;
+          strengths?: string[];
+          weaknesses?: string[];
+          feedback?: string;
+          suggestions?: string[];
+        } };
+        const numericGrade = phaseVIIOutput?.grading?.numeric_grade || 0;
         const passes = gradePasses(numericGrade);
 
         // Save judge simulation result
         await supabase.from("judge_simulation_results").insert({
           workflow_id: workflowId,
           order_id: orderId,
-          grade: result.output?.grading?.grade || "F",
+          grade: phaseVIIOutput?.grading?.grade || "F",
           numeric_grade: numericGrade,
           passes,
-          strengths: result.output?.grading?.strengths || [],
-          weaknesses: result.output?.grading?.weaknesses || [],
-          specific_feedback: result.output?.grading?.feedback || "",
-          revision_suggestions: result.output?.grading?.suggestions || [],
+          strengths: phaseVIIOutput?.grading?.strengths || [],
+          weaknesses: phaseVIIOutput?.grading?.weaknesses || [],
+          specific_feedback: phaseVIIOutput?.grading?.feedback || "",
+          revision_suggestions: phaseVIIOutput?.grading?.suggestions || [],
           loop_number: state.revision_loop_count + 1,
         });
 
@@ -1167,10 +1177,12 @@ export const executeWorkflowPhase = inngest.createFunction(
           revisionLoopCount: state.revision_loop_count,
         });
       } else if (phase === "VIII") {
-        const newCitations = result.output?.new_citations_added || false;
+        const phaseVIIIOutput = result.output as { new_citations_added?: boolean };
+        const newCitations = phaseVIIIOutput?.new_citations_added || false;
         nextPhase = getNextPhase(phase as PhaseId, { newCitationsAdded: newCitations });
       } else if (phase === "IX") {
-        const motionType = state.phase_outputs?.["I"]?.motion_type || "";
+        const phaseIOutput = state.phase_outputs?.["I"] as { motion_type?: string } | undefined;
+        const motionType = phaseIOutput?.motion_type || "";
         nextPhase = getNextPhase(phase as PhaseId, { motionType });
       } else {
         nextPhase = getNextPhase(phase as PhaseId);
@@ -1374,16 +1386,13 @@ export const startWorkflowOnOrder = inngest.createFunction(
 );
 
 // Export all functions for registration
-// Note: workflowOrchestration is the new 14-phase v7.2 workflow (preferred)
+// Note: generateOrderWorkflow (from workflowFunctions) is the new 14-phase v7.2 workflow (preferred)
 // generateOrderDraft is the legacy single-call system (kept for fallback)
 export const functions = [
-  workflowOrchestration,  // v7.2: 14-phase workflow orchestrator
   generateOrderDraft,      // Legacy: single-call superprompt
   handleGenerationFailure,
   // New 14-phase workflow
-  ...workflowFunctions,
-  // Workflow router
-  routeOrderWorkflow,
+  ...workflowFunctions,    // Includes: generateOrderWorkflow, handleWorkflowFailure
   // Supporting functions
   deadlineCheck,
   updateQueuePositions,

@@ -73,92 +73,10 @@ export async function POST(
       );
     }
 
-    // Build full context: CASE DATA FIRST (so Claude sees it), then workflow template
-    // Put case data at the BEGINNING so it doesn't get lost in the massive superprompt
-    const fullContext = buildStreamlinedPrompt() + structuredCaseData + '\n\n' + templateContent;
-
-    // Debug: Log replacements and final context preview
-    console.log('[Generate] Replacements applied:', {
-      case_number: replacements['{{CASE_NUMBER}}'],
-      case_caption: replacements['{{CASE_CAPTION}}'],
-      motion_type: replacements['{{MOTION_TYPE}}'],
-      jurisdiction: replacements['{{JURISDICTION}}'],
-      has_statement: !!replacements['{{STATEMENT_OF_FACTS}}'],
-      statement_preview: replacements['{{STATEMENT_OF_FACTS}}']?.substring(0, 200),
-      parties: replacements['{{ALL_PARTIES}}'],
-      documents_length: replacements['{{DOCUMENT_CONTENT}}']?.length || 0,
-    });
-    console.log('[Generate] Context length:', fullContext.length, 'chars');
-
-    // Generate with Claude (with automatic rate limit handling)
-    console.log(`[Generate] Starting Claude generation for order ${orderId}`);
-
-    // Put the critical instruction in the USER MESSAGE so it's the last thing Claude sees
-    const userMessage = `CRITICAL: The case data has already been provided in the system context above. DO NOT ask for more information. DO NOT say "I need" or list requirements. DO NOT output Phase I status updates.
-
-Your task: Using the customer_intake JSON and uploaded_documents provided above, generate the COMPLETE ${order.motion_type || 'motion'} document NOW.
-
-START YOUR RESPONSE WITH THE COURT CAPTION:
-
-IN THE ${order.jurisdiction === 'la_state' ? 'CIVIL DISTRICT COURT' : order.jurisdiction?.toUpperCase() || '[COURT]'}
-${order.court_division ? `FOR THE ${order.court_division.toUpperCase()}` : ''}
-
-${plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') || '[PLAINTIFF]'},
-     Plaintiff${plaintiffs.length > 1 ? 's' : ''},
-
-vs.                                    CASE NO. ${order.case_number || '[NUMBER]'}
-
-${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || '[DEFENDANT]'},
-     Defendant${defendants.length > 1 ? 's' : ''}.
-
-                    MOTION FOR ${(order.motion_type || 'RELIEF').toUpperCase().replace(/_/g, ' ')}
-
-[NOW CONTINUE WITH THE COMPLETE MOTION DOCUMENT - Introduction, Statement of Facts, Legal Arguments, Conclusion, Prayer for Relief, Certificate of Service]`;
-
-    const response = await createMessageWithRetry(
-      {
-        model: 'claude-opus-4-5-20251101',
-        max_tokens: 64000,
-        system: fullContext,
-        messages: [{
-          role: 'user',
-          content: userMessage
-        }],
-      },
-      {
-        maxRetries: 5,
-        onRetry: (attempt, waitMs, error) => {
-          console.log(`[Generate] Retry ${attempt} for order ${orderId}. Waiting ${Math.round(waitMs / 1000)}s. Error: ${error}`);
-          // Log retry to database
-          adminClient.from('automation_logs').insert({
-            order_id: orderId,
-            action_type: 'generation_retry',
-            action_details: { attempt, waitMs, error },
-          }).then(() => {});
-        },
-        onSuccess: (inputTokens, outputTokens) => {
-          console.log(`[Generate] Success for order ${orderId}. Tokens: ${inputTokens} in, ${outputTokens} out`);
-        },
-      }
-    );
-
-    const motionContent = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map((block) => block.text)
-      .join('\n');
-
-    // Parse file operations and get cleaned content
-    const { operations, cleanedResponse } = parseFileOperations(motionContent);
-
-    // Execute file operations if any
-    if (operations.length > 0) {
-      await executeFileOperations(orderId, operations);
-    }
-
-    // Create or update conversation
-    const { data: existingConv } = await adminClient
-      .from('conversations')
-      .select('id')
+    // Check workflow status
+    const { data: workflow } = await adminClient
+      .from('order_workflows')
+      .select('id, status')
       .eq('order_id', orderId)
       .single();
 
@@ -514,15 +432,14 @@ ${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || '[DE
     }
 
     // Log the workflow trigger
-    await supabase.from('automation_logs').insert({
+    await adminClient.from('automation_logs').insert({
       order_id: orderId,
       action_type: 'workflow_triggered',
       action_details: {
-        method: 'direct_generation',
-        generatedBy: user.id,
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-        model: 'claude-opus-4-5-20251101',
+        method: 'admin_generate_api',
+        triggeredBy: user.id,
+        workflowType: '14-phase-v72',
+        timestamp: new Date().toISOString(),
       },
     });
 
