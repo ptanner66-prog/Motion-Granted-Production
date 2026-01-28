@@ -92,19 +92,19 @@ export async function POST(
       );
     }
 
-    // Block if currently generating AND workflow is not stuck
-    if (order.status === 'generating' && !workflowIsStuck) {
+    // Block if currently in progress AND workflow is not stuck
+    if (order.status === 'in_progress' && !workflowIsStuck) {
       return NextResponse.json(
         { error: `Workflow is currently running. Please wait or use the restart button.` },
         { status: 400 }
       );
     }
 
-    // Update status to generating (use admin client to bypass RLS)
+    // Update status to in_progress (use admin client to bypass RLS)
     const { error: updateError } = await adminClient
       .from('orders')
       .update({
-        status: 'generating',
+        status: 'in_progress',
         generation_started_at: new Date().toISOString(),
         generation_error: null,
       })
@@ -311,7 +311,7 @@ export async function POST(
       orderId,
       orderNumber: order.order_number,
       workflow: '14-phase-v72',
-      status: 'generating',
+      status: 'in_progress',
     });
 
   } catch (error) {
