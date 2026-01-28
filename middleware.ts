@@ -1,15 +1,9 @@
-/**
- * Next.js Middleware
- *
- * Production-grade middleware with:
- * - Rate limiting per user/IP
- * - Request logging
- * - Security headers
- * - Auth verification via Supabase
- */
+// /middleware.ts
+// Security middleware per SECURITY_IMPLEMENTATION_CHECKLIST_v1
+// VERSION: 1.0 — January 28, 2026
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { updateSession } from '@/lib/supabase/middleware';
+import { NextResponse, type NextRequest } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 
 // ============================================================================
 // RATE LIMIT CONFIGURATION
@@ -50,32 +44,6 @@ function checkRateLimit(
 }
 
 // ============================================================================
-// SECURITY HEADERS
-// ============================================================================
-
-function addSecurityHeaders(response: NextResponse): NextResponse {
-  // Prevent clickjacking
-  response.headers.set('X-Frame-Options', 'DENY');
-
-  // Prevent MIME type sniffing
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-
-  // Enable XSS filter
-  response.headers.set('X-XSS-Protection', '1; mode=block');
-
-  // Referrer policy
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-
-  // Permissions policy
-  response.headers.set(
-    'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), interest-cohort=()'
-  );
-
-  return response;
-}
-
-// ============================================================================
 // REQUEST ID GENERATION
 // ============================================================================
 
@@ -92,14 +60,44 @@ export async function middleware(request: NextRequest) {
   const startTime = Date.now();
   const pathname = request.nextUrl.pathname;
 
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  });
+
   // Skip static files and internal Next.js routes
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
     pathname.includes('.')
   ) {
-    return NextResponse.next();
+    return response;
   }
+
+  // Add security headers to all responses
+  response = addSecurityHeaders(response);
+
+  // Create Supabase client
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
+  // Refresh session if needed
+  const { data: { session } } = await supabase.auth.getSession();
 
   // Get client identifier for rate limiting
   const clientId = request.headers.get('x-forwarded-for')?.split(',')[0] ||
@@ -113,7 +111,6 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith('/api/')) {
     // Skip health checks from rate limiting
     if (pathname.startsWith('/api/health')) {
-      const response = NextResponse.next();
       response.headers.set('X-Request-Id', requestId);
       return response;
     }
@@ -146,42 +143,83 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    // Process the request with session update
-    const response = await updateSession(request);
     response.headers.set('X-RateLimit-Limit', String(RATE_LIMITS[limitType].limit));
     response.headers.set('X-RateLimit-Remaining', String(rateLimit.remaining));
-    response.headers.set('X-Request-Id', requestId);
-    response.headers.set('X-Response-Time', `${Date.now() - startTime}ms`);
-
-    return addSecurityHeaders(response);
   }
 
   // ============================================================================
-  // ALL OTHER ROUTES
+  // PROTECTED ROUTES CHECK
   // ============================================================================
 
-  const response = await updateSession(request);
+  const isProtectedRoute = pathname.startsWith('/dashboard') ||
+                          pathname.startsWith('/admin') ||
+                          pathname.startsWith('/api/orders') ||
+                          pathname.startsWith('/api/admin');
+
+  const isAdminRoute = pathname.startsWith('/admin') ||
+                       pathname.startsWith('/api/admin');
+
+  if (isProtectedRoute && !session) {
+    const redirectUrl = new URL('/login', request.url);
+    redirectUrl.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // Admin route protection
+  if (isAdminRoute && session) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+  }
 
   // Add request tracking headers
   response.headers.set('X-Request-Id', requestId);
   response.headers.set('X-Response-Time', `${Date.now() - startTime}ms`);
 
-  return addSecurityHeaders(response);
+  return response;
 }
 
-// ============================================================================
-// MATCHER CONFIGURATION
-// ============================================================================
+/**
+ * Add security headers to response
+ */
+function addSecurityHeaders(response: NextResponse): NextResponse {
+  // Strict Transport Security
+  response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+
+  // Content Security Policy
+  response.headers.set('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://api.anthropic.com",
+    "frame-src 'self' https://js.stripe.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests",
+  ].join('; '));
+
+  // Other security headers
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+  return response;
+}
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
