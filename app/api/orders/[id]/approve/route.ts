@@ -1,231 +1,264 @@
 /**
- * Admin Approve Order API
+ * Workflow Checkpoint Approval API
  *
  * POST /api/orders/[id]/approve
+ * Handle admin approval/rejection of workflow checkpoints
  *
- * Approves a motion draft and triggers:
- * 1. PDF generation
- * 2. Status update to draft_delivered
- * 3. Client notification
- *
- * This is the critical step between generation and delivery.
- * Requires admin authentication.
+ * Actions:
+ * - APPROVE: Continue workflow to next phase
+ * - REQUEST_CHANGES: Route back to Phase VIII for revisions
+ * - CANCEL: Cancel the workflow
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { generatePDF } from '@/lib/workflow/pdf-generator';
-import { queueOrderNotification } from '@/lib/automation/notification-sender';
-
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createSupabaseClient(url, key);
-}
+import { inngest } from '@/lib/inngest/client';
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: orderId } = await params;
   const supabase = await createClient();
 
-  // Verify admin authentication
+  // Verify auth
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Check admin role
+  // Check admin/clerk role
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single();
 
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'clerk')) {
-    return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+  if (profile?.role !== 'admin' && profile?.role !== 'clerk') {
+    return NextResponse.json({ error: 'Forbidden - Admin/Clerk only' }, { status: 403 });
   }
 
-  // Use admin client for updates
-  const adminClient = getAdminClient();
-  if (!adminClient) {
-    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+  // Parse request body
+  let body: { action: string; notes?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const { action, notes } = body;
+
+  // Validate action
+  if (!['APPROVE', 'REQUEST_CHANGES', 'CANCEL'].includes(action)) {
+    return NextResponse.json(
+      { error: 'Invalid action. Must be APPROVE, REQUEST_CHANGES, or CANCEL' },
+      { status: 400 }
+    );
   }
 
   try {
-    // Get order with latest conversation
-    const { data: order, error: orderError } = await adminClient
-      .from('orders')
-      .select(`
-        *,
-        conversations(
-          id,
-          generated_motion,
-          created_at
-        ),
-        profiles!orders_client_id_fkey(
-          full_name,
-          email,
-          bar_number,
-          firm_name,
-          firm_address,
-          firm_phone
-        ),
-        parties(party_name, party_role)
-      `)
-      .eq('id', orderId)
+    // Get workflow state
+    const { data: workflow, error: workflowError } = await supabase
+      .from('workflow_state')
+      .select('*')
+      .eq('order_id', orderId)
       .single();
 
-    if (orderError || !order) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    if (workflowError || !workflow) {
+      return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
     }
 
-    // Verify order is in pending_review status
-    if (order.status !== 'pending_review') {
-      return NextResponse.json({
-        error: `Order is in '${order.status}' status. Only orders in 'pending_review' can be approved.`,
-        currentStatus: order.status,
-      }, { status: 400 });
+    if (!workflow.checkpoint_pending) {
+      return NextResponse.json({ error: 'No checkpoint pending for this workflow' }, { status: 400 });
     }
 
-    // Get the latest motion content
-    const latestConversation = order.conversations
-      ?.sort((a: { created_at: string }, b: { created_at: string }) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )[0];
+    // Handle different actions
+    if (action === 'APPROVE') {
+      // Clear checkpoint and mark as complete
+      await supabase
+        .from('workflow_state')
+        .update({
+          checkpoint_pending: false,
+          checkpoint_type: null,
+          checkpoint_data: null,
+          phase_status: 'COMPLETE',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', workflow.id);
 
-    if (!latestConversation?.generated_motion) {
-      return NextResponse.json({
-        error: 'No generated motion found for this order',
-      }, { status: 400 });
-    }
+      // Update order status to ready for delivery
+      await supabase
+        .from('orders')
+        .update({
+          status: 'draft_delivered',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
 
-    const motionContent = latestConversation.generated_motion;
-
-    // Generate PDF
-    let pdfUrl: string | null = null;
-    let pdfError: string | null = null;
-
-    try {
-      // Build attorney info for PDF
-      const attorneyInfo = order.profiles ? {
-        name: order.profiles.full_name || '[Attorney Name]',
-        barNumber: order.profiles.bar_number || '[Bar Number]',
-        firmName: order.profiles.firm_name || '[Law Firm]',
-        firmAddress: order.profiles.firm_address || '[Address]',
-        firmPhone: order.profiles.firm_phone || '[Phone]',
-        email: order.profiles.email || '[Email]',
-      } : undefined;
-
-      const pdfResult = await generatePDF({
-        content: motionContent,
-        orderId,
-        motionType: order.motion_type,
-        caseNumber: order.case_number,
-        attorneyInfo,
+      // Log approval
+      await supabase.from('automation_logs').insert({
+        order_id: orderId,
+        action_type: 'checkpoint_approved',
+        action_details: {
+          workflowId: workflow.id,
+          phase: workflow.current_phase,
+          approvedBy: user.id,
+          notes,
+        },
       });
 
-      if (pdfResult.success && pdfResult.data) {
-        // Upload PDF to storage
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const fileName = `${order.order_number}_${order.motion_type}_${timestamp}.pdf`;
-
-        const { data: uploadData, error: uploadError } = await adminClient.storage
-          .from('documents')
-          .upload(`deliverables/${orderId}/${fileName}`, pdfResult.data.bytes, {
-            contentType: 'application/pdf',
-            cacheControl: '3600',
-          });
-
-        if (uploadError) {
-          pdfError = `PDF upload failed: ${uploadError.message}`;
-          console.error('[Approve] PDF upload error:', uploadError);
-        } else {
-          // Get public URL
-          const { data: urlData } = adminClient.storage
-            .from('documents')
-            .getPublicUrl(uploadData.path);
-
-          pdfUrl = urlData.publicUrl;
-
-          // Save PDF as deliverable document
-          await adminClient.from('documents').insert({
-            order_id: orderId,
-            file_name: fileName,
-            file_type: 'application/pdf',
-            file_url: pdfUrl,
-            document_type: 'deliverable',
-            is_deliverable: true,
-            file_size: pdfResult.data.bytes.length,
-          });
-        }
-      } else {
-        pdfError = pdfResult.error || 'PDF generation failed';
-      }
-    } catch (err) {
-      pdfError = err instanceof Error ? err.message : 'PDF generation error';
-      console.error('[Approve] PDF generation error:', err);
-    }
-
-    // Update order status to draft_delivered
-    const { error: updateError } = await adminClient
-      .from('orders')
-      .update({
-        status: 'draft_delivered',
-        approved_at: new Date().toISOString(),
-        approved_by: user.id,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', orderId);
-
-    if (updateError) {
-      console.error('[Approve] Status update error:', updateError);
       return NextResponse.json({
-        error: `Failed to update order status: ${updateError.message}`,
-      }, { status: 500 });
+        success: true,
+        action: 'APPROVE',
+        message: 'Workflow approved and marked complete',
+      });
+
+    } else if (action === 'REQUEST_CHANGES') {
+      // Route back to Phase VIII for revisions
+      await supabase
+        .from('workflow_state')
+        .update({
+          checkpoint_pending: false,
+          checkpoint_type: null,
+          checkpoint_data: null,
+          current_phase: 'VIII',
+          phase_status: 'PENDING',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', workflow.id);
+
+      // Trigger Phase VIII via Inngest
+      await inngest.send({
+        name: 'workflow/execute-phase',
+        data: {
+          orderId,
+          workflowId: workflow.id,
+          phase: 'VIII',
+        },
+      });
+
+      // Log request
+      await supabase.from('automation_logs').insert({
+        order_id: orderId,
+        action_type: 'checkpoint_changes_requested',
+        action_details: {
+          workflowId: workflow.id,
+          phase: workflow.current_phase,
+          requestedBy: user.id,
+          notes,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        action: 'REQUEST_CHANGES',
+        message: 'Changes requested. Workflow routed to Phase VIII for revisions.',
+      });
+
+    } else if (action === 'CANCEL') {
+      // Cancel the workflow
+      await supabase
+        .from('workflow_state')
+        .update({
+          checkpoint_pending: false,
+          phase_status: 'CANCELLED',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', workflow.id);
+
+      // Update order status
+      await supabase
+        .from('orders')
+        .update({
+          status: 'cancelled',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+
+      // Log cancellation
+      await supabase.from('automation_logs').insert({
+        order_id: orderId,
+        action_type: 'workflow_cancelled',
+        action_details: {
+          workflowId: workflow.id,
+          phase: workflow.current_phase,
+          cancelledBy: user.id,
+          notes,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        action: 'CANCEL',
+        message: 'Workflow cancelled',
+      });
     }
 
-    // Log approval
-    await adminClient.from('automation_logs').insert({
-      order_id: orderId,
-      action_type: 'order_approved',
-      action_details: {
-        approvedBy: user.id,
-        approverEmail: user.email,
-        pdfGenerated: !!pdfUrl,
-        pdfUrl,
-        pdfError,
-      },
-    });
-
-    // Queue notification to client
-    try {
-      await queueOrderNotification(orderId, 'draft_ready');
-    } catch (notifyError) {
-      console.error('[Approve] Notification queue error:', notifyError);
-      // Don't fail the request - notification can be retried
-    }
-
-    return NextResponse.json({
-      success: true,
-      orderId,
-      orderNumber: order.order_number,
-      status: 'draft_delivered',
-      pdfGenerated: !!pdfUrl,
-      pdfUrl,
-      pdfError,
-      message: pdfUrl
-        ? 'Order approved, PDF generated, and client notified'
-        : `Order approved but PDF generation had an issue: ${pdfError}`,
-    });
-
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error) {
-    console.error('[Approve] Error:', error);
+    console.error('Approval error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to process approval' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET /api/orders/[id]/approve
+ * Get checkpoint status for an order
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: orderId } = await params;
+  const supabase = await createClient();
+
+  // Verify auth
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Check admin/clerk role
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (profile?.role !== 'admin' && profile?.role !== 'clerk') {
+    return NextResponse.json({ error: 'Forbidden - Admin/Clerk only' }, { status: 403 });
+  }
+
+  try {
+    const { data: workflow, error } = await supabase
+      .from('workflow_state')
+      .select('id, current_phase, phase_status, checkpoint_pending, checkpoint_type, checkpoint_data')
+      .eq('order_id', orderId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return NextResponse.json({ checkpointPending: false, message: 'No workflow found' });
+      }
+      throw error;
+    }
+
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Approval failed',
-    }, { status: 500 });
+      checkpointPending: workflow.checkpoint_pending,
+      checkpointType: workflow.checkpoint_type,
+      checkpointData: workflow.checkpoint_data,
+      currentPhase: workflow.current_phase,
+      phaseStatus: workflow.phase_status,
+    });
+  } catch (error) {
+    console.error('Checkpoint status error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to get checkpoint status' },
+      { status: 500 }
+    );
   }
 }

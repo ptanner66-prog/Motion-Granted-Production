@@ -850,247 +850,406 @@ export const updateQueuePositions = inngest.createFunction(
   }
 );
 
+// ============================================================================
+// v7.2 WORKFLOW FUNCTIONS
+// ============================================================================
+
+import { executePhase } from "@/lib/workflow/phase-executor";
+import {
+  PhaseId,
+  Tier,
+  getNextPhase,
+  isBlockingCheckpoint,
+  hasCheckpoint,
+  getPhaseConfig,
+  gradePasses,
+} from "@/lib/workflow/phase-config";
+
 /**
- * Data Retention Reminder
+ * v7.2 Workflow Phase Execution
  *
- * Runs daily at 9am CST (15:00 UTC) to send 14-day deletion reminders.
- * Finds orders where retention_expires_at is within 14 days
- * and deletion_reminder_sent = false.
- * Source: DATA_RETENTION_IMPLEMENTATION_SPEC_v1.md
+ * Executes individual phases of the 14-phase workflow system.
+ * Handles checkpoints, grade-based branching, and revision loops.
  */
-export const dataRetentionReminder = inngest.createFunction(
+export const executeWorkflowPhase = inngest.createFunction(
   {
-    id: "data-retention-reminder",
+    id: "workflow-execute-phase",
+    retries: 3,
+    concurrency: {
+      limit: 10,
+    },
   },
-  // Run daily at 9am CST (15:00 UTC)
-  { cron: "0 15 * * *" },
-  async ({ step }) => {
+  { event: "workflow/execute-phase" },
+  async ({ event, step }) => {
+    const { orderId, workflowId, phase } = event.data;
     const supabase = getSupabase();
 
-    // Find orders expiring within 14 days that haven't been reminded
-    const expiringOrders = await step.run("find-expiring-orders", async () => {
-      const fourteenDaysFromNow = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      const now = new Date().toISOString();
+    // Step 1: Get workflow state
+    const state = await step.run("get-workflow-state", async () => {
+      const { data, error } = await supabase
+        .from("workflow_state")
+        .select("*")
+        .eq("id", workflowId)
+        .single();
 
-      const { data: orders, error } = await supabase
+      if (error || !data) {
+        throw new Error(`Workflow state not found: ${error?.message}`);
+      }
+
+      return data;
+    });
+
+    // Step 2: Get order data
+    const order = await step.run("get-order-data", async () => {
+      const { data, error } = await supabase
         .from("orders")
-        .select(`
-          id,
-          order_number,
-          case_caption,
-          motion_type,
-          retention_expires_at,
-          client_id,
-          profiles!orders_client_id_fkey(email, full_name)
-        `)
-        .is("deleted_at", null)
-        .eq("deletion_reminder_sent", false)
-        .gte("retention_expires_at", now)
-        .lte("retention_expires_at", fourteenDaysFromNow)
-        .order("retention_expires_at", { ascending: true });
+        .select("*, order_documents:documents(*)")
+        .eq("id", orderId)
+        .single();
 
-      if (error) {
-        console.error("Failed to fetch expiring orders:", error);
-        return [];
+      if (error || !data) {
+        throw new Error(`Order not found: ${error?.message}`);
       }
 
-      return orders || [];
+      return data;
     });
 
-    if (expiringOrders.length === 0) {
-      return { remindersSent: 0 };
-    }
-
-    // Send reminder emails
-    const results = await step.run("send-retention-reminders", async () => {
-      let successCount = 0;
-      let failCount = 0;
-
-      for (const order of expiringOrders) {
-        try {
-          const profile = order.profiles as unknown as { email: string; full_name: string } | null;
-          if (!profile?.email) continue;
-
-          const expiresAt = new Date(order.retention_expires_at);
-          const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-
-          // Send email via Resend
-          const { Resend } = await import("resend");
-          const resend = new Resend(process.env.RESEND_API_KEY);
-
-          await resend.emails.send({
-            from: EMAIL_FROM.alerts,
-            to: profile.email,
-            subject: `[Motion Granted] Your order ${order.order_number} data expires in ${daysLeft} days`,
-            text: `
-Dear ${profile.full_name || "Valued Client"},
-
-This is a reminder that your order data will be automatically deleted in ${daysLeft} days as part of our data retention policy.
-
-Order Details:
-- Order Number: ${order.order_number}
-- Case: ${order.case_caption || "N/A"}
-- Motion Type: ${order.motion_type || "N/A"}
-- Deletion Date: ${expiresAt.toLocaleDateString("en-US", {
-  year: "numeric",
-  month: "long",
-  day: "numeric"
-})}
-
-IMPORTANT: If you need to retain this data longer, you may request a one-time 90-day extension (maximum 180 days total retention).
-
-To request an extension or download your documents before deletion, please visit:
-${process.env.NEXT_PUBLIC_APP_URL}/orders/${order.id}
-
-If you have any questions, please contact our support team.
-
----
-Motion Granted
-Data Retention Automated Notice
-            `.trim(),
-          });
-
-          // Mark as reminded
-          await supabase
-            .from("orders")
-            .update({
-              deletion_reminder_sent: true,
-              deletion_reminder_sent_at: new Date().toISOString(),
-            })
-            .eq("id", order.id);
-
-          // Log the reminder
-          await supabase.from("automation_logs").insert({
-            order_id: order.id,
-            action_type: "retention_reminder_sent",
-            action_details: {
-              recipientEmail: profile.email,
-              daysUntilExpiry: daysLeft,
-              expiresAt: order.retention_expires_at,
-            },
-          });
-
-          successCount++;
-        } catch (emailError) {
-          console.error(`Failed to send retention reminder for order ${order.id}:`, emailError);
-          failCount++;
-        }
-      }
-
-      return { successCount, failCount };
+    // Step 3: Update workflow status to RUNNING
+    await step.run("mark-phase-running", async () => {
+      await supabase
+        .from("workflow_state")
+        .update({
+          current_phase: phase,
+          phase_status: "RUNNING",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", workflowId);
     });
 
-    // Log summary
-    await step.run("log-reminder-summary", async () => {
-      await supabase.from("automation_logs").insert({
-        action_type: "retention_reminder_batch",
-        action_details: {
-          totalOrders: expiringOrders.length,
-          remindersSent: results.successCount,
-          remindersFailed: results.failCount,
+    // Step 4: Build phase input
+    const phaseInput = await step.run("build-phase-input", async () => {
+      return {
+        order_id: order.id,
+        submitted_at: order.created_at,
+        customer_intake: {
+          motion_type: order.motion_type,
+          filing_posture: order.filing_posture,
+          filing_deadline: order.filing_deadline,
+          hearing_date: order.hearing_date,
+          party_represented: order.party_represented,
+          party_name: order.party_name,
+          statement_of_facts: order.statement_of_facts,
+          arguments_caselaw: order.arguments_caselaw,
+          opposing_party_name: order.opposing_party_name,
+          opposing_counsel_name: order.opposing_counsel_name,
+          judge_name: order.judge_name,
         },
+        uploaded_documents: order.order_documents?.map((doc: Record<string, unknown>) => ({
+          document_id: doc.id,
+          filename: doc.file_name,
+          document_type: doc.document_type,
+          content_text: doc.parsed_content,
+        })) || [],
+        previous_phases: state.phase_outputs || {},
+      };
+    });
+
+    // Step 5: Execute the phase
+    const result = await step.run(`execute-phase-${phase}`, async () => {
+      const tier = (state.tier || "B") as Tier;
+
+      return await executePhase({
+        phase: phase as PhaseId,
+        tier,
+        orderId,
+        workflowId,
+        input: phaseInput,
       });
     });
 
+    // Step 6: Log execution
+    await step.run("log-execution", async () => {
+      await supabase.from("phase_executions").insert({
+        order_id: orderId,
+        workflow_id: workflowId,
+        phase,
+        model_used: result.output?.model_used || "unknown",
+        input_data: phaseInput,
+        output_data: result.output,
+        status: result.success ? "COMPLETE" : "ERROR",
+        error_message: result.error,
+        input_tokens: result.usage?.input_tokens,
+        output_tokens: result.usage?.output_tokens,
+        duration_ms: result.durationMs,
+        completed_at: new Date().toISOString(),
+      });
+    });
+
+    if (!result.success) {
+      // Update workflow to error state
+      await step.run("mark-phase-error", async () => {
+        await supabase
+          .from("workflow_state")
+          .update({
+            phase_status: "ERROR",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", workflowId);
+      });
+
+      throw new Error(`Phase ${phase} failed: ${result.error}`);
+    }
+
+    // Step 7: Update workflow state with output
+    const nextPhaseResult = await step.run("update-workflow-state", async () => {
+      // Extract tier and path from Phase I output
+      let tierUpdate: Record<string, string> = {};
+      if (phase === "I" && result.output?.determinations) {
+        tierUpdate = {
+          tier: result.output.determinations.tier,
+          path: result.output.determinations.path,
+        };
+      }
+
+      // Update phase outputs
+      const updatedOutputs = {
+        ...state.phase_outputs,
+        [phase]: result.output,
+      };
+
+      // Determine next phase
+      const phaseConfig = getPhaseConfig(phase as PhaseId);
+      let nextPhase: PhaseId | null = null;
+      let checkpointPending = false;
+      let checkpointData = null;
+
+      // Check Phase VII grading
+      if (phase === "VII") {
+        const numericGrade = result.output?.grading?.numeric_grade || 0;
+        const passes = gradePasses(numericGrade);
+
+        // Save judge simulation result
+        await supabase.from("judge_simulation_results").insert({
+          workflow_id: workflowId,
+          order_id: orderId,
+          grade: result.output?.grading?.grade || "F",
+          numeric_grade: numericGrade,
+          passes,
+          strengths: result.output?.grading?.strengths || [],
+          weaknesses: result.output?.grading?.weaknesses || [],
+          specific_feedback: result.output?.grading?.feedback || "",
+          revision_suggestions: result.output?.grading?.suggestions || [],
+          loop_number: state.revision_loop_count + 1,
+        });
+
+        nextPhase = getNextPhase(phase as PhaseId, {
+          gradePasses: passes,
+          revisionLoopCount: state.revision_loop_count,
+        });
+      } else if (phase === "VIII") {
+        const newCitations = result.output?.new_citations_added || false;
+        nextPhase = getNextPhase(phase as PhaseId, { newCitationsAdded: newCitations });
+      } else if (phase === "IX") {
+        const motionType = state.phase_outputs?.["I"]?.motion_type || "";
+        nextPhase = getNextPhase(phase as PhaseId, { motionType });
+      } else {
+        nextPhase = getNextPhase(phase as PhaseId);
+      }
+
+      // Check for checkpoint
+      if (hasCheckpoint(phase as PhaseId)) {
+        if (isBlockingCheckpoint(phase as PhaseId)) {
+          checkpointPending = true;
+          checkpointData = {
+            type: phaseConfig.checkpoint?.type,
+            phase,
+            actions: phaseConfig.checkpoint?.actions,
+            data: result.output,
+          };
+        }
+      }
+
+      // Update workflow state
+      await supabase
+        .from("workflow_state")
+        .update({
+          ...tierUpdate,
+          current_phase: checkpointPending ? phase : (nextPhase || phase),
+          phase_status: checkpointPending ? "CHECKPOINT" : (nextPhase ? "PENDING" : "COMPLETE"),
+          phase_outputs: updatedOutputs,
+          checkpoint_pending: checkpointPending,
+          checkpoint_type: checkpointPending ? phaseConfig.checkpoint?.type : null,
+          checkpoint_data: checkpointData,
+          revision_loop_count: phase === "VIII" ? state.revision_loop_count + 1 : state.revision_loop_count,
+          updated_at: new Date().toISOString(),
+          ...(nextPhase === null && !checkpointPending && { completed_at: new Date().toISOString() }),
+        })
+        .eq("id", workflowId);
+
+      return { nextPhase, checkpointPending, checkpointData };
+    });
+
+    // Step 8: Trigger next phase or checkpoint notification
+    if (nextPhaseResult.checkpointPending) {
+      await step.sendEvent("checkpoint-notification", {
+        name: "workflow/checkpoint-reached",
+        data: {
+          orderId,
+          workflowId,
+          checkpoint: nextPhaseResult.checkpointData,
+        },
+      });
+    } else if (nextPhaseResult.nextPhase) {
+      await step.sendEvent("trigger-next-phase", {
+        name: "workflow/execute-phase",
+        data: {
+          orderId,
+          workflowId,
+          phase: nextPhaseResult.nextPhase,
+        },
+      });
+    }
+
     return {
-      remindersSent: results.successCount,
-      remindersFailed: results.failCount,
-      totalOrders: expiringOrders.length,
+      success: true,
+      phase,
+      nextPhase: nextPhaseResult.nextPhase,
+      checkpointPending: nextPhaseResult.checkpointPending,
     };
   }
 );
 
 /**
- * Auto-Delete Expired Orders
+ * Handle Checkpoint Approval
  *
- * Runs daily at 1am CST (07:00 UTC) to delete orders past retention date.
- * Anonymizes order data before deletion for analytics.
- * Source: DATA_RETENTION_IMPLEMENTATION_SPEC_v1.md
+ * Called when an admin approves/rejects a blocking checkpoint.
  */
-export const autoDeleteExpiredOrders = inngest.createFunction(
+export const handleCheckpointApproval = inngest.createFunction(
   {
-    id: "auto-delete-expired-orders",
+    id: "workflow-checkpoint-approval",
   },
-  // Run daily at 1am CST (07:00 UTC)
-  { cron: "0 7 * * *" },
-  async ({ step }) => {
+  { event: "workflow/checkpoint-approved" },
+  async ({ event, step }) => {
+    const { orderId, workflowId, action, nextPhase } = event.data;
     const supabase = getSupabase();
 
-    // Find orders past retention date
-    const expiredOrders = await step.run("find-expired-orders", async () => {
-      const now = new Date().toISOString();
+    await step.run("process-approval", async () => {
+      if (action === "APPROVE" && nextPhase) {
+        // Clear checkpoint and continue
+        await supabase
+          .from("workflow_state")
+          .update({
+            checkpoint_pending: false,
+            checkpoint_type: null,
+            checkpoint_data: null,
+            phase_status: "PENDING",
+          })
+          .eq("id", workflowId);
 
-      const { data: orders, error } = await supabase
-        .from("orders")
-        .select("id, order_number, retention_expires_at")
-        .is("deleted_at", null)
-        .lt("retention_expires_at", now)
-        .not("retention_expires_at", "is", null)
-        .limit(100); // Process in batches
+        // Update order status
+        await supabase
+          .from("orders")
+          .update({ status: "completed" })
+          .eq("id", orderId);
+      } else if (action === "REQUEST_CHANGES") {
+        // Route back to Phase VIII
+        await supabase
+          .from("workflow_state")
+          .update({
+            checkpoint_pending: false,
+            checkpoint_type: null,
+            checkpoint_data: null,
+            current_phase: "VIII",
+            phase_status: "PENDING",
+          })
+          .eq("id", workflowId);
+      } else if (action === "CANCEL") {
+        await supabase
+          .from("workflow_state")
+          .update({
+            checkpoint_pending: false,
+            phase_status: "CANCELLED",
+          })
+          .eq("id", workflowId);
 
-      if (error) {
-        console.error("Failed to fetch expired orders:", error);
-        return [];
+        await supabase
+          .from("orders")
+          .update({ status: "cancelled" })
+          .eq("id", orderId);
       }
-
-      return orders || [];
     });
 
-    if (expiredOrders.length === 0) {
-      return { deletedCount: 0 };
+    // Continue workflow if approved
+    if (action === "APPROVE" && nextPhase) {
+      await step.sendEvent("continue-workflow", {
+        name: "workflow/execute-phase",
+        data: {
+          orderId,
+          workflowId,
+          phase: nextPhase,
+        },
+      });
+    } else if (action === "REQUEST_CHANGES") {
+      await step.sendEvent("request-changes", {
+        name: "workflow/execute-phase",
+        data: {
+          orderId,
+          workflowId,
+          phase: "VIII",
+        },
+      });
     }
 
-    // Anonymize and soft-delete each order
-    const deleteResults = await step.run("delete-expired-orders", async () => {
-      let successCount = 0;
-      let failCount = 0;
+    return { action, continued: action === "APPROVE" };
+  }
+);
 
-      for (const order of expiredOrders) {
-        try {
-          // Call anonymization function
-          const { error: anonError } = await supabase.rpc("anonymize_order_data", {
-            p_order_id: order.id,
-          });
+/**
+ * Start Workflow on Order Submission (v7.2)
+ *
+ * Alternative to direct generation - starts the 14-phase workflow.
+ */
+export const startWorkflowOnOrder = inngest.createFunction(
+  {
+    id: "workflow-start-on-order",
+  },
+  { event: "order/submitted" },
+  async ({ event, step }) => {
+    const { orderId } = event.data;
+    const supabase = getSupabase();
 
-          if (anonError) {
-            console.error(`Failed to anonymize order ${order.id}:`, anonError);
-          }
+    // Check if workflow_state table exists and if we should use v7.2 workflow
+    const useV72Workflow = process.env.USE_V72_WORKFLOW === "true";
 
-          // Soft-delete the order
-          await supabase
-            .from("orders")
-            .update({
-              deleted_at: new Date().toISOString(),
-              deletion_type: "auto",
-            })
-            .eq("id", order.id);
+    if (!useV72Workflow) {
+      // Let the existing generateOrderDraft function handle it
+      return { skipped: true, reason: "v7.2 workflow not enabled" };
+    }
 
-          // Log the deletion
-          await supabase.from("automation_logs").insert({
-            order_id: order.id,
-            action_type: "order_auto_deleted",
-            action_details: {
-              orderNumber: order.order_number,
-              retentionExpiredAt: order.retention_expires_at,
-              deletionType: "auto",
-            },
-          });
+    const workflowId = await step.run("create-workflow-state", async () => {
+      const id = crypto.randomUUID();
 
-          successCount++;
-        } catch (deleteError) {
-          console.error(`Failed to delete order ${order.id}:`, deleteError);
-          failCount++;
-        }
-      }
+      await supabase.from("workflow_state").insert({
+        id,
+        order_id: orderId,
+        current_phase: "I",
+        phase_status: "PENDING",
+      });
 
-      return { successCount, failCount };
+      return id;
     });
 
-    return {
-      deletedCount: deleteResults.successCount,
-      failedCount: deleteResults.failCount,
-      totalExpired: expiredOrders.length,
-    };
+    // Trigger first phase
+    await step.sendEvent("start-phase-i", {
+      name: "workflow/execute-phase",
+      data: {
+        orderId,
+        workflowId,
+        phase: "I",
+      },
+    });
+
+    return { workflowId, started: true };
   }
 );
 
@@ -1103,6 +1262,8 @@ export const functions = [
   handleGenerationFailure,
   deadlineCheck,
   updateQueuePositions,
-  dataRetentionReminder,   // Daily retention reminder at 9am CST
-  autoDeleteExpiredOrders, // Daily auto-delete at 1am CST
+  // v7.2 Workflow Functions
+  executeWorkflowPhase,
+  handleCheckpointApproval,
+  startWorkflowOnOrder,
 ];
