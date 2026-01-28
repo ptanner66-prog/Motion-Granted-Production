@@ -16,8 +16,6 @@ import {
   User,
   Search,
   HelpCircle,
-  BookOpen,
-  MessageSquare,
   ChevronRight,
   ExternalLink,
 } from 'lucide-react'
@@ -48,10 +46,10 @@ const mainNavigation = [
     description: 'View all orders'
   },
   {
-    name: 'New Order',
-    href: '/orders/new',
+    name: 'Submit New Matter',
+    href: '/dashboard/submit',
     icon: PlusCircle,
-    description: 'Start a new motion',
+    description: 'Submit a new motion',
   },
 ]
 
@@ -92,6 +90,13 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
   const supabase = createClient()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      router.push(`/orders?search=${encodeURIComponent(searchQuery.trim())}`)
+    }
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -251,28 +256,6 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
             </div>
           </nav>
 
-          {/* Help Card */}
-          <div className="px-4 pb-4">
-            <div className="rounded-xl bg-gradient-to-br from-navy to-navy-light p-4 text-white">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-                  <MessageSquare className="h-4 w-4" />
-                </div>
-                <span className="font-semibold text-sm">Need Help?</span>
-              </div>
-              <p className="text-xs text-white/70 mb-3">
-                Questions about your orders or our services?
-              </p>
-              <a
-                href="mailto:support@motiongranted.com"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-teal hover:text-teal-light transition-colors"
-              >
-                Contact Support
-                <ChevronRight className="h-3 w-3" />
-              </a>
-            </div>
-          </div>
-
           {/* User section */}
           <div className="border-t border-gray-100 p-4">
             <div className="flex items-center gap-3 rounded-xl p-2 hover:bg-gray-50 transition-colors cursor-pointer">
@@ -341,7 +324,10 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
                 )} />
                 <input
                   type="text"
-                  placeholder="Search orders..."
+                  placeholder="Search orders... (Press Enter)"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearch}
                   className={cn(
                     'w-full rounded-lg border bg-gray-50/50 py-2 pl-10 pr-4 text-sm placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal/30',
                     searchFocused ? 'border-teal bg-white shadow-sm' : 'border-gray-200 hover:border-gray-300'

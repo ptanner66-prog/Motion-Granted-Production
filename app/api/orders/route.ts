@@ -1,6 +1,35 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
+import { sendEmail } from '@/lib/resend'
+import { OrderConfirmationEmail } from '@/emails/order-confirmation'
+import { formatMotionType } from '@/config/motion-types'
+import { startOrderAutomation } from '@/lib/workflow/automation-service'
+
+// Server-side validation schema for order creation
+const createOrderSchema = z.object({
+  motion_type: z.string().min(1, 'Motion type is required'),
+  motion_tier: z.number().int().min(0).max(3),
+  base_price: z.number().nullable(),
+  turnaround: z.enum(['standard', 'rush_72', 'rush_48']),
+  rush_surcharge: z.number().min(0),
+  total_price: z.number().min(0),
+  filing_deadline: z.string().min(1, 'Filing deadline is required'),
+  jurisdiction: z.string().min(1, 'Jurisdiction is required'),
+  court_division: z.string().nullable().optional(),
+  case_number: z.string().min(1, 'Case number is required'),
+  case_caption: z.string().min(1, 'Case caption is required'),
+  statement_of_facts: z.string().min(100, 'Statement of facts is too short'),
+  procedural_history: z.string().min(50, 'Procedural history is too short'),
+  instructions: z.string().min(50, 'Instructions are too short'),
+  related_entities: z.string().nullable().optional(),
+  parties: z.array(z.object({
+    name: z.string().min(1),
+    role: z.string().min(1),
+  })).min(2, 'At least two parties are required'),
+  documents: z.array(z.any()).optional(),
+})
 
 export async function GET() {
   // Return early if Supabase is not configured
@@ -23,12 +52,14 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error('Error fetching orders:', error)
+      return NextResponse.json({ error: 'Unable to retrieve your orders. Please try again.' }, { status: 500 })
     }
 
     return NextResponse.json(orders)
   } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Orders fetch error:', error)
+    return NextResponse.json({ error: 'Unable to retrieve your orders. Please try again.' }, { status: 500 })
   }
 }
 
@@ -46,18 +77,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json()
+    const rawBody = await req.json()
+
+    // Validate request body
+    const parseResult = createOrderSchema.safeParse(rawBody)
+    if (!parseResult.success) {
+      const firstError = parseResult.error.issues[0]
+      return NextResponse.json(
+        { error: `Validation failed: ${firstError.message}` },
+        { status: 400 }
+      )
+    }
+    const body = parseResult.data
 
     // Create Stripe PaymentIntent if Stripe is configured
+    // SECURITY FIX: Use crypto.randomUUID() for cryptographically secure idempotency key
     let paymentIntent = null
     if (stripe) {
+      const idempotencyKey = `order_${user.id}_${Date.now()}_${crypto.randomUUID()}`
       paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(body.total_price * 100),
         currency: 'usd',
         metadata: {
-          user_id: user.id,
+          // SECURITY: Only include order_id after creation, not PII
           motion_type: body.motion_type,
         },
+      }, {
+        idempotencyKey,
       })
     }
 
@@ -95,7 +141,8 @@ export async function POST(req: Request) {
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error('Order creation database error:', error)
+      return NextResponse.json({ error: 'Failed to create order. Please try again.' }, { status: 500 })
     }
 
     // Insert parties
@@ -140,12 +187,56 @@ export async function POST(req: Request) {
       }
     }
 
+    // Send confirmation email (non-blocking)
+    const turnaroundLabels: Record<string, string> = {
+      standard: 'Standard (5-7 business days)',
+      rush_72: '72-Hour Rush',
+      rush_48: '48-Hour Rush',
+    }
+
+    // Only send email if user has an email address
+    if (user.email) {
+      sendEmail({
+        to: user.email,
+        subject: `Order Confirmed: ${order.order_number}`,
+        react: OrderConfirmationEmail({
+          orderNumber: order.order_number,
+          motionType: formatMotionType(body.motion_type),
+          caseCaption: body.case_caption,
+          turnaround: turnaroundLabels[body.turnaround] || body.turnaround,
+          expectedDelivery: new Date(expectedDelivery).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          }),
+          totalPrice: `$${body.total_price.toFixed(2)}`,
+          portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/orders/${order.id}`,
+        }),
+      }).catch((err) => {
+        console.error('Failed to send confirmation email:', err)
+      })
+    } else {
+      console.warn(`User ${user.id} has no email address, skipping confirmation email`)
+    }
+
+    // NOTE: Automation is NOT started here. It is triggered by:
+    // 1. Client calling POST /api/automation/start after documents are uploaded
+    // 2. Admin manually via the workflow control panel
+    // This prevents the race condition where automation runs before documents are uploaded.
+
     return NextResponse.json({
       order,
       clientSecret: paymentIntent?.client_secret || null,
       stripeConfigured: !!stripe,
+      // Tell client to call /api/automation/start after uploading documents
+      triggerAutomationUrl: `/api/automation/start?orderId=${order.id}`,
     })
   } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Order creation error:', error)
+    return NextResponse.json(
+      { error: 'We couldn\'t process your order. Please try again, or contact support@motiongranted.com if the issue persists.' },
+      { status: 500 }
+    )
   }
 }

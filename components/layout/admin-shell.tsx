@@ -13,15 +13,14 @@ import {
   LogOut,
   Menu,
   X,
-  Bell,
   ChevronRight,
   BarChart3,
   Shield,
-  User,
-  Search,
   HelpCircle,
-  MessageSquare,
   ExternalLink,
+  Sparkles,
+  ListOrdered,
+  Activity,
 } from 'lucide-react'
 import { Logo } from '@/components/shared/logo'
 import { Button } from '@/components/ui/button'
@@ -35,6 +34,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { AdminSearch } from '@/components/admin/admin-search'
+import { AdminNotifications } from '@/components/admin/admin-notifications'
 
 const mainNavigation = [
   {
@@ -50,16 +51,34 @@ const mainNavigation = [
     description: 'Manage orders'
   },
   {
+    name: 'Queue',
+    href: '/admin/queue',
+    icon: ListOrdered,
+    description: 'Generation queue'
+  },
+  {
     name: 'Clients',
     href: '/admin/clients',
     icon: Users,
     description: 'View clients'
   },
   {
+    name: 'Superprompt',
+    href: '/admin/superprompt',
+    icon: Sparkles,
+    description: 'AI templates'
+  },
+  {
     name: 'Analytics',
     href: '/admin/analytics',
     icon: BarChart3,
     description: 'Business metrics'
+  },
+  {
+    name: 'System Health',
+    href: '/admin/health',
+    icon: Activity,
+    description: 'Monitoring & diagnostics'
   },
 ]
 
@@ -92,15 +111,52 @@ interface AdminShellProps {
     name: string
     email: string
   }
+  breadcrumbLabel?: string
 }
 
-export function AdminShell({ children, user }: AdminShellProps) {
+export function AdminShell({ children, user, breadcrumbLabel }: AdminShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
   const { toast } = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [searchFocused, setSearchFocused] = useState(false)
+
+  // Helper to format breadcrumb segments
+  const formatBreadcrumb = (segment: string): string => {
+    // Check if it looks like a UUID
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (uuidPattern.test(segment)) {
+      return 'Order Details'
+    }
+    return segment.replace(/-/g, ' ')
+  }
+
+  // Build breadcrumb segments
+  const getBreadcrumbs = () => {
+    const segments = pathname.split('/').filter(Boolean)
+    const breadcrumbs: { label: string; href: string }[] = []
+
+    if (segments[0] === 'admin') {
+      breadcrumbs.push({ label: 'Admin', href: '/admin' })
+
+      if (segments.length > 1) {
+        // Add intermediate segments
+        for (let i = 1; i < segments.length - 1; i++) {
+          const href = '/' + segments.slice(0, i + 1).join('/')
+          breadcrumbs.push({ label: formatBreadcrumb(segments[i]), href })
+        }
+
+        // Add final segment
+        const lastSegment = segments[segments.length - 1]
+        breadcrumbs.push({
+          label: breadcrumbLabel || formatBreadcrumb(lastSegment),
+          href: pathname
+        })
+      }
+    }
+
+    return breadcrumbs
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -121,24 +177,6 @@ export function AdminShell({ children, user }: AdminShellProps) {
     .join('')
     .toUpperCase() || 'A'
 
-  // Generate breadcrumbs from pathname
-  const getBreadcrumbs = () => {
-    const paths = pathname.split('/').filter(Boolean)
-    const breadcrumbs = [{ name: 'Admin', href: '/admin' }]
-
-    let currentPath = ''
-    paths.forEach((path, index) => {
-      currentPath += `/${path}`
-      if (index > 0) { // Skip 'admin' as it's already added
-        const name = path.charAt(0).toUpperCase() + path.slice(1).replace(/-/g, ' ')
-        breadcrumbs.push({ name, href: currentPath })
-      }
-    })
-
-    return breadcrumbs
-  }
-
-  const breadcrumbs = getBreadcrumbs()
 
   return (
     <div className="min-h-screen bg-warm-gray">
@@ -309,61 +347,34 @@ export function AdminShell({ children, user }: AdminShellProps) {
               <Menu className="h-5 w-5 text-gray-600" />
             </button>
 
-            {/* Breadcrumbs - Desktop */}
-            <nav className="hidden md:flex items-center gap-1.5 text-sm breadcrumb">
-              {breadcrumbs.map((crumb, index) => (
-                <div key={crumb.href} className="flex items-center gap-1.5">
-                  {index > 0 && (
-                    <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
-                  )}
-                  {index === breadcrumbs.length - 1 ? (
-                    <span className="font-medium text-navy">{crumb.name}</span>
+            {/* Breadcrumbs */}
+            <nav className="hidden md:flex items-center gap-1.5 text-sm">
+              {getBreadcrumbs().map((crumb, index, arr) => (
+                <span key={crumb.href} className="flex items-center gap-1.5">
+                  {index > 0 && <ChevronRight className="h-3.5 w-3.5 text-gray-600" />}
+                  {index === arr.length - 1 ? (
+                    <span className="font-medium text-white capitalize">
+                      {crumb.label}
+                    </span>
                   ) : (
                     <Link
                       href={crumb.href}
-                      className="text-gray-500 hover:text-teal transition-colors"
+                      className="text-gray-500 hover:text-orange-400 transition-colors capitalize"
                     >
-                      {crumb.name}
+                      {crumb.label}
                     </Link>
                   )}
-                </div>
+                </span>
               ))}
             </nav>
 
             {/* Search bar */}
             <div className="flex-1 max-w-md ml-auto mr-4">
-              <div className={cn(
-                'relative transition-all duration-200',
-                searchFocused && 'scale-[1.02]'
-              )}>
-                <Search className={cn(
-                  'absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors',
-                  searchFocused ? 'text-teal' : 'text-gray-400'
-                )} />
-                <input
-                  type="text"
-                  placeholder="Search orders, clients..."
-                  className={cn(
-                    'w-full rounded-lg border bg-gray-50/50 py-2 pl-10 pr-4 text-sm placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal/30',
-                    searchFocused ? 'border-teal bg-white shadow-sm' : 'border-gray-200 hover:border-gray-300'
-                  )}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                />
-              </div>
+              <AdminSearch />
             </div>
 
             {/* Notifications */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative rounded-lg hover:bg-gray-100 transition-colors"
-              onClick={handleNotificationsClick}
-              aria-label="Notifications"
-            >
-              <Bell className="h-5 w-5 text-gray-500" />
-              <span className="notification-dot absolute right-2 top-2 h-2 w-2 rounded-full bg-teal ring-2 ring-white" />
-            </Button>
+            <AdminNotifications />
 
             {/* User menu */}
             <DropdownMenu>

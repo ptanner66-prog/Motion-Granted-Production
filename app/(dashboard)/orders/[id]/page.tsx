@@ -10,6 +10,8 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
+import { DocumentDownloadButton } from '@/components/documents/document-download-button'
 import {
   ArrowLeft,
   Calendar,
@@ -24,7 +26,12 @@ import {
   AlertCircle,
   ChevronRight,
   Copy,
+  FileCheck,
+  RefreshCw,
 } from 'lucide-react'
+import { RevisionRequestForm } from '@/components/orders/revision-request-form'
+import { CopyButton } from '@/components/ui/copy-button'
+import { QueueStatusCard } from '@/components/orders/queue-status-card'
 
 interface Party {
   party_name: string
@@ -34,6 +41,8 @@ interface Party {
 interface Document {
   id: string
   file_name: string
+  file_url: string
+  document_type: string
   created_at: string
 }
 
@@ -51,9 +60,21 @@ export const metadata: Metadata = {
 
 // Calculate progress based on status
 function getOrderProgress(status: string) {
-  const statusOrder = ['submitted', 'in_progress', 'in_review', 'draft_delivered', 'revision_requested', 'completed']
-  const currentIndex = statusOrder.indexOf(status)
-  return Math.max(((currentIndex + 1) / statusOrder.length) * 100, 20)
+  // Progress milestones: revision_requested is NOT forward progress
+  const progressMap: Record<string, number> = {
+    submitted: 15,
+    under_review: 25,
+    assigned: 35,
+    in_progress: 50,
+    in_review: 65,
+    draft_delivered: 80,
+    revision_requested: 70, // Slightly back from draft_delivered
+    revision_delivered: 85,
+    completed: 100,
+    on_hold: 20,
+    cancelled: 0,
+  }
+  return progressMap[status] ?? 15
 }
 
 export default async function OrderDetailPage({
@@ -65,15 +86,27 @@ export default async function OrderDetailPage({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Fetch order details
+  // Debug: Check if user is authenticated
+  if (!user) {
+    console.error('Order detail page: No authenticated user')
+    notFound()
+  }
+
+  // Fetch order details including queue columns
   const { data: order, error } = await supabase
     .from('orders')
-    .select('*')
+    .select('*, queue_position, generation_started_at, generation_completed_at, generation_attempts, generation_error')
     .eq('id', id)
-    .eq('client_id', user?.id)
+    .eq('client_id', user.id)
     .single()
 
-  if (error || !order) {
+  if (error) {
+    console.error('Order detail page: Query error', { error, orderId: id, userId: user.id })
+    notFound()
+  }
+
+  if (!order) {
+    console.error('Order detail page: No order found', { orderId: id, userId: user.id })
     notFound()
   }
 
@@ -90,6 +123,10 @@ export default async function OrderDetailPage({
     .select('*')
     .eq('order_id', id)
   const documents: Document[] = documentsData || []
+
+  // Split documents into client uploads and deliverables
+  const clientUploads = documents.filter(doc => doc.document_type !== 'deliverable')
+  const deliverables = documents.filter(doc => doc.document_type === 'deliverable')
 
   // Fetch messages for this order
   const { data: messagesData } = await supabase
@@ -121,7 +158,7 @@ export default async function OrderDetailPage({
               </h1>
               <OrderStatusBadge status={order.status as OrderStatus} />
             </div>
-            <p className="text-lg text-gray-600">{order.motion_type}</p>
+            <p className="text-lg text-gray-600">{formatMotionType(order.motion_type)}</p>
             <p className="text-sm text-gray-500 mt-1">
               <span className="font-medium">{order.case_caption}</span>
               <span className="mx-2">•</span>
@@ -129,16 +166,31 @@ export default async function OrderDetailPage({
             </p>
           </div>
 
-          <div className="flex gap-3">
-            <Button variant="outline" className="gap-2">
-              <MessageSquare className="h-4 w-4" />
-              Message Clerk
+          <div className="flex gap-3 flex-wrap">
+            <Button variant="outline" className="gap-2" asChild>
+              <a href={`mailto:support@motiongranted.com?subject=Question about Order ${order.order_number}`}>
+                <MessageSquare className="h-4 w-4" />
+                Message Clerk
+              </a>
             </Button>
-            {order.status === 'draft_delivered' && (
-              <Button className="gap-2 btn-premium">
-                <Download className="h-4 w-4" />
-                Download Draft
-              </Button>
+            {deliverables.length > 0 && (
+              <>
+                <DocumentDownloadButton
+                  filePath={deliverables[0].file_url}
+                  fileName={deliverables[0].file_name}
+                  variant="default"
+                  showText={true}
+                  className="gap-2 btn-premium"
+                />
+                {['draft_delivered', 'revision_delivered', 'completed'].includes(order.status) && (
+                  <RevisionRequestForm
+                    orderId={order.id}
+                    orderNumber={order.order_number}
+                    revisionCount={order.revision_count || 0}
+                    maxRevisions={2}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>
@@ -156,6 +208,18 @@ export default async function OrderDetailPage({
             />
           </div>
         </div>
+
+        {/* Queue Status Card - Show for orders in queue or processing */}
+        {['submitted', 'under_review', 'in_progress', 'pending_review', 'generation_failed'].includes(order.status) && (
+          <div className="mt-6">
+            <QueueStatusCard
+              orderId={order.id}
+              status={order.status}
+              queuePosition={order.queue_position}
+              generationStartedAt={order.generation_started_at}
+            />
+          </div>
+        )}
       </div>
 
       {/* Content Grid */}
@@ -212,9 +276,7 @@ export default async function OrderDetailPage({
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Case Number</p>
                       <div className="flex items-center gap-2">
                         <p className="text-navy font-medium font-mono">{order.case_number}</p>
-                        <button className="p-1 hover:bg-gray-100 rounded transition-colors">
-                          <Copy className="h-3.5 w-3.5 text-gray-400" />
-                        </button>
+                        <CopyButton text={order.case_number} />
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -295,22 +357,70 @@ export default async function OrderDetailPage({
               </Card>
             </TabsContent>
 
-            <TabsContent value="documents" className="mt-6">
+            <TabsContent value="documents" className="mt-6 space-y-6">
+              {/* Deliverables Section */}
+              <Card className="border-0 shadow-sm overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-teal/5 to-transparent border-b border-teal/10">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileCheck className="h-5 w-5 text-teal" />
+                    Completed Drafts
+                  </CardTitle>
+                  <CardDescription>Your motion drafts ready for download</CardDescription>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {deliverables.length > 0 ? (
+                    <div className="space-y-3">
+                      {deliverables.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="group flex items-center justify-between rounded-xl border border-teal/20 bg-teal/5 p-4 hover:border-teal/40 hover:bg-teal/10 transition-all"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal/20">
+                              <FileCheck className="h-6 w-6 text-teal" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-navy">{doc.file_name}</p>
+                              <p className="text-sm text-gray-500">
+                                Delivered • {formatDateShort(doc.created_at)}
+                              </p>
+                            </div>
+                          </div>
+                          <DocumentDownloadButton
+                            filePath={doc.file_url}
+                            fileName={doc.file_name}
+                            variant="outline"
+                            className="border-teal/30 hover:bg-teal hover:text-white hover:border-teal"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <FileCheck className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p>No drafts available yet</p>
+                      <p className="text-sm mt-1">You&apos;ll be notified when your draft is ready</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Client Uploads Section */}
               <Card className="border-0 shadow-sm overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-gray-50 to-transparent border-b border-gray-100">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Paperclip className="h-5 w-5 text-gray-500" />
-                    Uploaded Documents
+                    Your Uploaded Documents
                   </CardTitle>
-                  <CardDescription>Documents provided with this order</CardDescription>
+                  <CardDescription>Supporting documents you provided with this order</CardDescription>
                 </CardHeader>
                 <CardContent className="p-6">
-                  {documents && documents.length > 0 ? (
+                  {clientUploads.length > 0 ? (
                     <div className="space-y-3">
-                      {documents.map((doc) => (
+                      {clientUploads.map((doc) => (
                         <div
                           key={doc.id}
-                          className="group flex items-center justify-between rounded-xl border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50/50 transition-all cursor-pointer"
+                          className="group flex items-center justify-between rounded-xl border border-gray-200 p-4 hover:border-teal/30 hover:bg-gray-50/50 transition-all"
                         >
                           <div className="flex items-center gap-4">
                             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 group-hover:bg-teal/10 transition-colors">
@@ -319,14 +429,16 @@ export default async function OrderDetailPage({
                             <div>
                               <p className="font-semibold text-navy">{doc.file_name}</p>
                               <p className="text-sm text-gray-500">
-                                {formatDateShort(doc.created_at)}
+                                {doc.document_type} • {formatDateShort(doc.created_at)}
                               </p>
                             </div>
                           </div>
-                          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Download className="h-4 w-4 mr-2" />
-                            Download
-                          </Button>
+                          <DocumentDownloadButton
+                            filePath={doc.file_url}
+                            fileName={doc.file_name}
+                            variant="ghost"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          />
                         </div>
                       ))}
                     </div>
@@ -390,10 +502,16 @@ export default async function OrderDetailPage({
                     </div>
                   )}
 
-                  {/* Message input placeholder */}
+                  {/* Message input */}
                   <Separator className="my-6" />
-                  <div className="text-center text-gray-500 text-sm">
-                    <p>Messaging functionality coming soon</p>
+                  <div className="text-center">
+                    <p className="text-gray-500 text-sm mb-3">Need to contact your clerk about this order?</p>
+                    <Button variant="outline" className="gap-2" asChild>
+                      <a href={`mailto:support@motiongranted.com?subject=Question about Order ${order.order_number}`}>
+                        <MessageSquare className="h-4 w-4" />
+                        Send Message
+                      </a>
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

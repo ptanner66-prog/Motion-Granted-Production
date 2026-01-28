@@ -14,8 +14,56 @@ import { Instructions } from '@/components/orders/intake-form/instructions'
 import { DocumentUpload } from '@/components/orders/intake-form/document-upload'
 import { OrderSummary } from '@/components/orders/intake-form/order-summary'
 import { useToast } from '@/hooks/use-toast'
-import { ArrowLeft, ArrowRight, Loader2, Send } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader2, Send, Upload } from 'lucide-react'
 import { useState } from 'react'
+
+// Upload with progress tracking for large files
+function uploadWithProgress(
+  file: File,
+  orderId: string,
+  documentType: string,
+  onProgress: (percent: number) => void
+): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest()
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('orderId', orderId)
+    formData.append('documentType', documentType)
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100)
+        onProgress(percent)
+      }
+    })
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({ ok: true })
+      } else {
+        try {
+          const response = JSON.parse(xhr.responseText)
+          resolve({ ok: false, error: response.error || `Upload failed (${xhr.status})` })
+        } catch {
+          resolve({ ok: false, error: `Upload failed (${xhr.status})` })
+        }
+      }
+    })
+
+    xhr.addEventListener('error', () => {
+      resolve({ ok: false, error: 'Network error during upload' })
+    })
+
+    xhr.addEventListener('timeout', () => {
+      resolve({ ok: false, error: 'Upload timed out' })
+    })
+
+    xhr.timeout = 300000 // 5 minute timeout for large files
+    xhr.open('POST', '/api/documents')
+    xhr.send(formData)
+  })
+}
 
 const steps = [
   { number: 1, title: 'Motion Type', component: MotionSelect },
@@ -28,10 +76,18 @@ const steps = [
   { number: 8, title: 'Review', component: OrderSummary },
 ]
 
+interface UploadProgress {
+  currentFile: string
+  currentIndex: number
+  totalFiles: number
+  fileProgress: number
+}
+
 export default function NewOrderPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null)
 
   const {
     step,
@@ -41,6 +97,7 @@ export default function NewOrderPage() {
     reset,
     // Form data
     motionType,
+    otherDescription,
     motionTier,
     basePrice,
     turnaround,
@@ -57,8 +114,8 @@ export default function NewOrderPage() {
     statementOfFacts,
     proceduralHistory,
     instructions,
-    supervisionAcknowledged,
     documents,
+    supervisionAcknowledged,
   } = useOrderForm()
 
   const currentStep = steps[step - 1]
@@ -71,6 +128,10 @@ export default function NewOrderPage() {
       case 1:
         if (!motionType) {
           toast({ title: 'Please select a motion type', variant: 'destructive' })
+          return false
+        }
+        if (motionType === 'other' && (!otherDescription || otherDescription.trim().length < 10)) {
+          toast({ title: 'Please describe the motion you need (at least 10 characters)', variant: 'destructive' })
           return false
         }
         return true
@@ -139,17 +200,7 @@ export default function NewOrderPage() {
     setIsSubmitting(true)
 
     try {
-      // Prepare order data with documents
-      const uploadedDocs = documents
-        .filter(d => d.url) // Only include successfully uploaded docs
-        .map(d => ({
-          file_name: d.name,
-          file_type: d.type,
-          file_size: d.size,
-          file_url: d.url,
-          document_type: d.documentType || 'other',
-        }))
-
+      // Prepare order data (documents uploaded separately after order creation)
       const orderData = {
         motion_type: motionType,
         motion_tier: motionTier,
@@ -169,10 +220,10 @@ export default function NewOrderPage() {
         instructions,
         related_entities: relatedEntities || null,
         parties: parties.filter(p => p.name && p.role),
-        documents: uploadedDocs,
+        documents: [], // Documents are uploaded separately
       }
 
-      // Submit to API
+      // Submit order first
       const response = await fetch('/api/orders', {
         method: 'POST',
         headers: {
@@ -187,15 +238,111 @@ export default function NewOrderPage() {
         throw new Error(data.error || 'Failed to submit order')
       }
 
-      toast({
-        title: 'Order submitted successfully!',
-        description: 'You will receive a confirmation email shortly.',
-      })
+      const orderId = data.order?.id
+
+      if (!orderId) {
+        throw new Error('Order created but no ID returned')
+      }
+
+      // Upload documents one by one with progress tracking
+      let successCount = 0
+      let failCount = 0
+      const failedFiles: string[] = []
+
+      if (documents.length > 0) {
+        for (let i = 0; i < documents.length; i++) {
+          const doc = documents[i]
+
+          // Check if we have a valid file
+          if (!doc.file || !(doc.file instanceof File)) {
+            console.error('Invalid file object for:', doc.name)
+            failCount++
+            failedFiles.push(doc.name)
+            continue
+          }
+
+          // Update progress state
+          setUploadProgress({
+            currentFile: doc.name,
+            currentIndex: i + 1,
+            totalFiles: documents.length,
+            fileProgress: 0,
+          })
+
+          try {
+            const result = await uploadWithProgress(
+              doc.file,
+              orderId,
+              doc.documentType || 'other',
+              (percent) => {
+                setUploadProgress((prev) => prev ? { ...prev, fileProgress: percent } : null)
+              }
+            )
+
+            if (result.ok) {
+              successCount++
+              console.log('Uploaded successfully:', doc.name)
+            } else {
+              console.error('Upload failed for', doc.name, ':', result.error)
+              failCount++
+              failedFiles.push(doc.name)
+            }
+          } catch (uploadErr) {
+            console.error('Upload exception for', doc.name, ':', uploadErr)
+            failCount++
+            failedFiles.push(doc.name)
+          }
+        }
+
+        // Clear upload progress
+        setUploadProgress(null)
+
+        // Show results
+        if (failCount > 0 && successCount > 0) {
+          toast({
+            title: `${successCount} document(s) uploaded, ${failCount} failed`,
+            description: `Failed: ${failedFiles.join(', ')}`,
+            variant: 'destructive',
+          })
+        } else if (failCount > 0 && successCount === 0) {
+          toast({
+            title: 'Document upload failed',
+            description: 'Your order was submitted but documents could not be uploaded. Please contact support.',
+            variant: 'destructive',
+          })
+        } else if (successCount > 0) {
+          toast({
+            title: 'Order submitted successfully!',
+            description: `${successCount} document(s) uploaded.`,
+          })
+        }
+      } else {
+        toast({
+          title: 'Order submitted successfully!',
+          description: 'You will receive a confirmation email shortly.',
+        })
+      }
+
+      // Start Claude conversation with superprompt + order data
+      // This ensures AI has access to all uploaded documents
+      if (orderId) {
+        try {
+          await fetch('/api/chat/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId }),
+          })
+        } catch (automationErr) {
+          // Non-fatal - admin can start manually from Claude Chat tab
+          console.error('Failed to start Claude conversation:', automationErr)
+        }
+      }
 
       reset()
       router.push('/dashboard')
       router.refresh()
     } catch (error) {
+      console.error('Order submission error:', error)
       toast({
         title: 'Error submitting order',
         description: error instanceof Error ? error.message : 'Please try again or contact support.',
@@ -251,12 +398,31 @@ export default function NewOrderPage() {
           </CardContent>
         </Card>
 
+        {/* Upload Progress Overlay */}
+        {uploadProgress && (
+          <Card className="mt-6 border-teal/30 bg-teal/5">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <Upload className="h-5 w-5 text-teal animate-pulse" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-navy">
+                    Uploading document {uploadProgress.currentIndex} of {uploadProgress.totalFiles}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">{uploadProgress.currentFile}</p>
+                </div>
+                <span className="text-sm font-semibold text-teal">{uploadProgress.fileProgress}%</span>
+              </div>
+              <Progress value={uploadProgress.fileProgress} className="h-2" />
+            </CardContent>
+          </Card>
+        )}
+
         {/* Navigation */}
         <div className="mt-6 flex justify-between">
           <Button
             variant="outline"
             onClick={prevStep}
-            disabled={step === 1}
+            disabled={step === 1 || isSubmitting}
             className="gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -266,10 +432,17 @@ export default function NewOrderPage() {
           {step === steps.length ? (
             <Button onClick={handleSubmit} disabled={isSubmitting} className="btn-premium gap-2">
               {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Submitting...
-                </>
+                uploadProgress ? (
+                  <>
+                    <Upload className="h-4 w-4 animate-pulse" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                )
               ) : (
                 <>
                   <Send className="h-4 w-4" />

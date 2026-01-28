@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { cn } from '@/lib/utils'
 
 interface LogoProps {
   variant?: 'light' | 'dark'
@@ -17,29 +16,25 @@ export function Logo({ variant = 'light', size = 'md', className, href = '/' }: 
 
   const { width, height } = sizes[size]
 
-  const LogoSvg = () => (
-    variant === 'light' ? (
-      <svg width={width} height={height} viewBox="0 0 300 50" xmlns="http://www.w3.org/2000/svg" className={className}>
-        <rect x="0" y="3" width="44" height="44" rx="8" fill="#0f172a"/>
-        <path d="M12 25 L17 30 L30 17" stroke="#00d4aa" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-        <text x="56" y="33" fontFamily="var(--font-geist-sans), Inter, system-ui, sans-serif" fontSize="22" fontWeight="700" fill="#0f172a">
-          MOTION <tspan fill="#00d4aa">GRANTED</tspan>
-        </text>
-      </svg>
-    ) : (
-      <svg width={width} height={height} viewBox="0 0 300 50" xmlns="http://www.w3.org/2000/svg" className={className}>
-        <rect x="0" y="3" width="44" height="44" rx="8" fill="#00d4aa"/>
-        <path d="M12 25 L17 30 L30 17" stroke="#0f172a" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-        <text x="56" y="33" fontFamily="var(--font-geist-sans), Inter, system-ui, sans-serif" fontSize="22" fontWeight="700" fill="#ffffff">
-          MOTION <tspan fill="#00d4aa">GRANTED</tspan>
-        </text>
-      </svg>
-    )
-  )
-
   return (
     <Link href={href} className="inline-flex items-center">
-      <LogoSvg />
+      {variant === 'light' ? (
+        <svg width={width} height={height} viewBox="0 0 300 50" xmlns="http://www.w3.org/2000/svg" className={className}>
+          <rect x="0" y="3" width="44" height="44" rx="8" fill="#0f172a"/>
+          <path d="M12 25 L17 30 L30 17" stroke="#00d4aa" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          <text x="56" y="33" fontFamily="var(--font-geist-sans), Inter, system-ui, sans-serif" fontSize="22" fontWeight="700" fill="#0f172a">
+            MOTION <tspan fill="#00d4aa">GRANTED</tspan>
+          </text>
+        </svg>
+      ) : (
+        <svg width={width} height={height} viewBox="0 0 300 50" xmlns="http://www.w3.org/2000/svg" className={className}>
+          <rect x="0" y="3" width="44" height="44" rx="8" fill="#00d4aa"/>
+          <path d="M12 25 L17 30 L30 17" stroke="#0f172a" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          <text x="56" y="33" fontFamily="var(--font-geist-sans), Inter, system-ui, sans-serif" fontSize="22" fontWeight="700" fill="#ffffff">
+            MOTION <tspan fill="#00d4aa">GRANTED</tspan>
+          </text>
+        </svg>
+      )}
     </Link>
   )
 }

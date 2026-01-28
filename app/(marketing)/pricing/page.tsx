@@ -18,7 +18,6 @@ export default function PricingPage() {
             </h1>
             <p className="mt-6 text-lg text-gray-600">
               Know your cost upfront. No hourly surprises. Payment due at order submission.
-              One round of revisions included with every order.
             </p>
           </div>
         </div>
@@ -45,13 +44,6 @@ export default function PricingPage() {
                   Rush orders are available at an additional charge: 72-hour delivery (+25%) or
                   48-hour delivery (+50%). Rush availability depends on current workload and may
                   not always be available.
-                </p>
-              </div>
-              <div>
-                <h3 className="font-semibold text-navy">Revisions</h3>
-                <p className="mt-1">
-                  One round of revisions is included with every order. Additional revision rounds
-                  or substantial scope changes may incur additional charges.
                 </p>
               </div>
               <div>

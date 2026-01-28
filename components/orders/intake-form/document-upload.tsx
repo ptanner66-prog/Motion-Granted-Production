@@ -1,11 +1,10 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useOrderForm } from '@/hooks/use-order-form'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -13,8 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Upload, FileText, X, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
+import { Upload, FileText, X, AlertCircle, CheckCircle, Info } from 'lucide-react'
 
 const DOCUMENT_TYPES = [
   { id: 'complaint', name: 'Complaint/Petition' },
@@ -27,52 +25,14 @@ const DOCUMENT_TYPES = [
 ]
 
 export function DocumentUpload() {
-  const { documents, addDocument, removeDocument, updateDocumentProgress } = useOrderForm()
-  const { toast } = useToast()
-  const [uploading, setUploading] = useState<Record<string, boolean>>({})
-
-  const uploadFile = async (file: File, docId: string) => {
-    setUploading(prev => ({ ...prev, [docId]: true }))
-
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('documentType', 'pending') // Will be updated when user selects type
-
-      const response = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Upload failed')
-      }
-
-      const data = await response.json()
-      updateDocumentProgress(docId, 100, data.url)
-
-      return data.url
-    } catch (error) {
-      toast({
-        title: 'Upload failed',
-        description: error instanceof Error ? error.message : 'Please try again',
-        variant: 'destructive',
-      })
-      // Remove the document on failure
-      removeDocument(docId)
-      return null
-    } finally {
-      setUploading(prev => ({ ...prev, [docId]: false }))
-    }
-  }
+  const { documents, addDocument, removeDocument, updateDocument } = useOrderForm()
 
   const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
+    (acceptedFiles: File[]) => {
       for (const file of acceptedFiles) {
         const docId = `${Date.now()}-${Math.random().toString(36).substring(7)}`
 
-        // Add document to state with 0 progress
+        // Add document to state
         const doc = {
           id: docId,
           file,
@@ -84,11 +44,11 @@ export function DocumentUpload() {
         }
         addDocument(doc)
 
-        // Start upload
-        uploadFile(file, docId)
+        // Mark as ready (no immediate upload - uploads happen on order submission)
+        updateDocument(docId, { uploadProgress: 100 })
       }
     },
-    [addDocument]
+    [addDocument, updateDocument]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -98,7 +58,7 @@ export function DocumentUpload() {
       'application/msword': ['.doc'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
     },
-    maxSize: 50 * 1024 * 1024, // 50MB
+    maxSize: 100 * 1024 * 1024, // 100MB for large legal briefs
   })
 
   const formatFileSize = (bytes: number) => {
@@ -108,14 +68,9 @@ export function DocumentUpload() {
   }
 
   const hasComplaint = documents.some((d) => d.documentType === 'complaint')
-  const isAnyUploading = Object.values(uploading).some(Boolean)
 
   const handleDocumentTypeChange = (docId: string, newType: string) => {
-    // Find and update the document
-    const doc = documents.find(d => d.id === docId)
-    if (doc) {
-      doc.documentType = newType
-    }
+    updateDocument(docId, { documentType: newType })
   }
 
   return (
@@ -162,7 +117,7 @@ export function DocumentUpload() {
             isDragActive
               ? 'border-teal bg-teal/5'
               : 'border-gray-300 hover:border-gray-400'
-          } ${isAnyUploading ? 'opacity-50 pointer-events-none' : ''}`}
+          }`}
         >
           <input {...getInputProps()} />
           <Upload className="h-10 w-10 text-gray-400 mx-auto mb-4" />
@@ -174,7 +129,7 @@ export function DocumentUpload() {
                 Drag and drop files here, or click to browse
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                PDF, DOC, DOCX • Max 50MB per file
+                PDF, DOC, DOCX • Max 100MB per file
               </p>
             </>
           )}
@@ -183,18 +138,14 @@ export function DocumentUpload() {
         {/* Document List */}
         {documents.length > 0 && (
           <div className="space-y-3">
-            <Label>Uploaded Documents</Label>
+            <Label>Documents Ready for Upload ({documents.length})</Label>
             {documents.map((doc) => (
               <div
                 key={doc.id}
                 className="flex items-start gap-3 rounded-lg border border-gray-200 p-4"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-                  {uploading[doc.id] ? (
-                    <Loader2 className="h-5 w-5 text-teal animate-spin" />
-                  ) : (
-                    <FileText className="h-5 w-5 text-gray-500" />
-                  )}
+                  <FileText className="h-5 w-5 text-gray-500" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-navy truncate">{doc.name}</p>
@@ -204,38 +155,29 @@ export function DocumentUpload() {
                       <span className="ml-2 text-green-600">• Uploaded</span>
                     )}
                   </p>
-                  {uploading[doc.id] && (
-                    <div className="mt-2">
-                      <Progress value={30} className="h-1" />
-                      <p className="text-xs text-gray-400 mt-1">Uploading...</p>
-                    </div>
-                  )}
-                  {!uploading[doc.id] && doc.uploadProgress === 100 && (
-                    <div className="mt-2">
-                      <Select
-                        value={doc.documentType}
-                        onValueChange={(value) => handleDocumentTypeChange(doc.id, value)}
-                      >
-                        <SelectTrigger className="w-full sm:w-48 h-8 text-sm">
-                          <SelectValue placeholder="Document type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DOCUMENT_TYPES.map((type) => (
-                            <SelectItem key={type.id} value={type.id}>
-                              {type.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                  <div className="mt-2">
+                    <Select
+                      value={doc.documentType || ''}
+                      onValueChange={(value) => handleDocumentTypeChange(doc.id, value)}
+                    >
+                      <SelectTrigger className="w-full sm:w-48 h-8 text-sm">
+                        <SelectValue placeholder="Select document type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DOCUMENT_TYPES.map((type) => (
+                          <SelectItem key={type.id} value={type.id}>
+                            {type.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="shrink-0 text-gray-400 hover:text-red-500"
                   onClick={() => removeDocument(doc.id)}
-                  disabled={uploading[doc.id]}
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -243,6 +185,20 @@ export function DocumentUpload() {
             ))}
           </div>
         )}
+
+        {/* Info about upload timing */}
+        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+          <div className="flex gap-3">
+            <Info className="h-5 w-5 text-blue-600 shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-blue-800">Documents uploaded securely on submission</p>
+              <p className="mt-1 text-blue-700">
+                Your files will be securely uploaded to our servers when you submit your order.
+                Large files may take a moment to upload.
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Tips */}
         <div className="rounded-lg bg-gray-50 p-4">

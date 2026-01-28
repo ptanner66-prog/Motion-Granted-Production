@@ -74,7 +74,9 @@ interface OrderFormState {
   updateParty: (id: string, field: keyof Party, value: string) => void
   addDocument: (doc: UploadedDocument) => void
   removeDocument: (id: string) => void
+  updateDocument: (id: string, updates: Partial<UploadedDocument>) => void
   updateDocumentProgress: (id: string, progress: number, url?: string) => void
+  updateDocumentType: (id: string, documentType: string) => void
 }
 
 const initialState = {
@@ -184,10 +186,24 @@ export const useOrderForm = create<OrderFormState>()(
           documents: state.documents.filter((d) => d.id !== id),
         })),
 
+      updateDocument: (id, updates) =>
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === id ? { ...d, ...updates } : d
+          ),
+        })),
+
       updateDocumentProgress: (id, progress, url) =>
         set((state) => ({
           documents: state.documents.map((d) =>
             d.id === id ? { ...d, uploadProgress: progress, url } : d
+          ),
+        })),
+
+      updateDocumentType: (id, documentType) =>
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === id ? { ...d, documentType } : d
           ),
         })),
     }),

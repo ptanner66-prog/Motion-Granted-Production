@@ -2,17 +2,16 @@ import { Metadata } from 'next'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { OrderStatus } from '@/types'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { OrderStatusBadge } from '@/components/orders/order-status-badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  PlusCircle,
   FileText,
   Calendar,
   ChevronRight,
 } from 'lucide-react'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 
 export const metadata: Metadata = {
   title: 'Orders',
@@ -46,7 +45,14 @@ function getUrgencyClass(daysUntilDue: number, status: string) {
   return ''
 }
 
-export default async function OrdersPage() {
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; status?: string }>
+}) {
+  const params = await searchParams
+  const searchQuery = params.search?.toLowerCase().trim() || ''
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -57,7 +63,17 @@ export default async function OrdersPage() {
     .eq('client_id', user?.id)
     .order('created_at', { ascending: false })
 
-  const allOrders: OrderItem[] = orders || []
+  let allOrders: OrderItem[] = orders || []
+
+  // Filter by search query if provided
+  if (searchQuery) {
+    allOrders = allOrders.filter(order =>
+      order.order_number.toLowerCase().includes(searchQuery) ||
+      order.motion_type.toLowerCase().includes(searchQuery) ||
+      order.case_caption.toLowerCase().includes(searchQuery)
+    )
+  }
+
   const activeOrders = allOrders.filter(o => !['completed', 'cancelled'].includes(o.status))
   const completedOrders = allOrders.filter(o => o.status === 'completed')
 
@@ -67,14 +83,19 @@ export default async function OrdersPage() {
       <div className="dashboard-header">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-navy tracking-tight">Orders</h1>
-          <p className="text-gray-500 mt-1">View and manage your motion orders</p>
+          <p className="text-gray-500 mt-1">
+            {searchQuery ? (
+              <>
+                Search results for &quot;{params.search}&quot;
+                <Link href="/orders" className="ml-2 text-teal hover:underline">
+                  Clear search
+                </Link>
+              </>
+            ) : (
+              'View and manage your motion orders'
+            )}
+          </p>
         </div>
-        <Button asChild className="btn-premium shadow-md hover:shadow-lg" size="lg">
-          <Link href="/orders/new">
-            <PlusCircle className="mr-2 h-5 w-5" />
-            New Order
-          </Link>
-        </Button>
       </div>
 
       {/* Tabs */}
@@ -134,15 +155,9 @@ function OrderList({ orders }: { orders: OrderItem[] }) {
             <FileText className="h-8 w-8 text-gray-300" />
           </div>
           <h3 className="text-lg font-semibold text-navy mb-1">No orders found</h3>
-          <p className="text-gray-500 mb-6 max-w-sm">
-            Start by creating a new order to get your motion drafted
+          <p className="text-gray-500 max-w-sm">
+            Use the New Order tab to create your first motion order
           </p>
-          <Button asChild className="btn-premium">
-            <Link href="/orders/new">
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Create New Order
-            </Link>
-          </Button>
         </CardContent>
       </Card>
     )
@@ -177,7 +192,7 @@ function OrderList({ orders }: { orders: OrderItem[] }) {
                     <OrderStatusBadge status={order.status} size="sm" />
                   </div>
                   <p className="font-semibold text-navy truncate">
-                    {order.motion_type}
+                    {formatMotionType(order.motion_type)}
                   </p>
                   <p className="text-sm text-gray-500 truncate">{order.case_caption}</p>
                 </div>

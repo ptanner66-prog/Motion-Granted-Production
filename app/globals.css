@@ -299,18 +299,7 @@ h1, h2, h3, h4, h5, h6 {
   @apply shadow-lg -translate-y-0.5;
 }
 
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.03;
-  transform: translate(30%, -30%);
-}
+/* Decorative circle removed - was causing visual issues */
 
 /* Order card interactive state */
 .order-card {
@@ -329,7 +318,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Quick action card */
 .action-card {
-  @apply relative overflow-hidden transition-all duration-300;
+  @apply relative overflow-hidden transition-all duration-300 cursor-pointer;
 }
 
 .action-card:hover {
@@ -381,13 +370,13 @@ h1, h2, h3, h4, h5, h6 {
   animation: pulse-soft 2s ease-in-out infinite;
 }
 
-/* Urgency indicators */
+/* Urgency indicators - subtle left border only, no background */
 .urgency-soon {
-  @apply border-orange-300 bg-orange-50/50;
+  @apply border-l-4 border-l-orange-400;
 }
 
 .urgency-overdue {
-  @apply border-red-300 bg-red-50/50;
+  @apply border-l-4 border-l-red-400;
 }
 
 /* Skeleton loading */
@@ -526,4 +515,66 @@ h1, h2, h3, h4, h5, h6 {
 
 .card-shine:hover::after {
   left: 100%;
+}
+
+/* Text overflow utilities for long content */
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ========================================
+   ORDER PROGRESS TRACKER ANIMATIONS
+   ======================================== */
+
+/* Subtle pulse animation for current step indicator */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Scale and fade animation for checkmark completion */
+@keyframes scale-check {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-check {
+  animation: scale-check 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Moving gradient animation for progress bar */
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient {
+  animation: gradient 3s ease infinite;
 }

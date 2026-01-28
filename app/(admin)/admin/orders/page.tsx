@@ -4,13 +4,20 @@ import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent } from '@/components/ui/card'
 import { OrderStatusBadge } from '@/components/orders/order-status-badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
 import {
   FileText,
   Calendar,
   ChevronRight,
   User,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  MessageSquare,
+  Bot,
 } from 'lucide-react'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
+import { formatMotionType } from '@/config/motion-types'
 import type { OrderStatus } from '@/types'
 
 export const metadata: Metadata = {
@@ -64,30 +71,103 @@ export default async function AdminOrdersPage() {
     .order('created_at', { ascending: false })
 
   const allOrders: Order[] = orders || []
-  const pendingOrders = allOrders.filter(o => o.status === 'submitted')
-  const inProgressOrders = allOrders.filter(o => ['in_progress', 'in_review'].includes(o.status))
+
+  // Categorize orders by status
+  const needsApprovalOrders = allOrders.filter(o => o.status === 'pending_review')
+  const revisionRequestedOrders = allOrders.filter(o => o.status === 'revision_requested')
+  const inProgressOrders = allOrders.filter(o => ['submitted', 'in_progress', 'under_review', 'assigned'].includes(o.status))
+  const deliveredOrders = allOrders.filter(o => ['draft_delivered', 'revision_delivered'].includes(o.status))
   const completedOrders = allOrders.filter(o => o.status === 'completed')
-  const reviewOrders = allOrders.filter(o => o.status === 'draft_delivered')
+  const blockedOrders = allOrders.filter(o => o.status === 'blocked')
+
+  // Calculate action required count
+  const actionRequiredCount = needsApprovalOrders.length + revisionRequestedOrders.length
+
+  // Determine default tab
+  let defaultTab = 'in_progress'
+  if (revisionRequestedOrders.length > 0) defaultTab = 'revisions'
+  if (needsApprovalOrders.length > 0) defaultTab = 'needs_approval'
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
-      {/* Header */}
+      {/* Header with Stats */}
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-navy tracking-tight">All Orders</h1>
         <p className="text-gray-500 mt-1">Manage and track all customer orders</p>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 text-amber-700 mb-1">
+              <CheckCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">Ready to Approve</span>
+            </div>
+            <p className="text-2xl font-bold text-amber-800">{needsApprovalOrders.length}</p>
+          </div>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 text-purple-700 mb-1">
+              <MessageSquare className="h-4 w-4" />
+              <span className="text-sm font-medium">Revision Requests</span>
+            </div>
+            <p className="text-2xl font-bold text-purple-800">{revisionRequestedOrders.length}</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 text-blue-700 mb-1">
+              <Bot className="h-4 w-4" />
+              <span className="text-sm font-medium">In Progress</span>
+            </div>
+            <p className="text-2xl font-bold text-blue-800">{inProgressOrders.length}</p>
+          </div>
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 text-green-700 mb-1">
+              <FileText className="h-4 w-4" />
+              <span className="text-sm font-medium">Delivered</span>
+            </div>
+            <p className="text-2xl font-bold text-green-800">{deliveredOrders.length}</p>
+          </div>
+        </div>
       </div>
 
+      {/* Alert for action required */}
+      {actionRequiredCount > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-orange-500 mt-0.5" />
+          <div>
+            <p className="font-medium text-orange-800">Action Required</p>
+            <p className="text-sm text-orange-700">
+              You have {needsApprovalOrders.length > 0 && `${needsApprovalOrders.length} motion${needsApprovalOrders.length !== 1 ? 's' : ''} ready to approve`}
+              {needsApprovalOrders.length > 0 && revisionRequestedOrders.length > 0 && ' and '}
+              {revisionRequestedOrders.length > 0 && `${revisionRequestedOrders.length} revision request${revisionRequestedOrders.length !== 1 ? 's' : ''}`}
+              .
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
-      <Tabs defaultValue="pending" className="space-y-6">
-        <TabsList className="bg-gray-100 p-1 border border-gray-200">
+      <Tabs defaultValue={defaultTab} className="space-y-6">
+        <TabsList className="bg-gray-100 p-1 border border-gray-200 flex-wrap">
           <TabsTrigger
-            value="pending"
-            className="data-[state=active]:bg-orange-100 data-[state=active]:text-orange-600 text-gray-500 rounded-lg px-4"
+            value="needs_approval"
+            className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-700 text-gray-500 rounded-lg px-4"
           >
-            New
-            <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-600">
-              {pendingOrders.length}
-            </span>
+            Ready to Approve
+            {needsApprovalOrders.length > 0 && (
+              <span className="ml-2 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold text-white">
+                {needsApprovalOrders.length}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger
+            value="revisions"
+            className="data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700 text-gray-500 rounded-lg px-4"
+          >
+            Revision Requests
+            {revisionRequestedOrders.length > 0 && (
+              <span className="ml-2 rounded-full bg-purple-500 px-2 py-0.5 text-xs font-semibold text-white">
+                {revisionRequestedOrders.length}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger
             value="in_progress"
@@ -99,12 +179,12 @@ export default async function AdminOrdersPage() {
             </span>
           </TabsTrigger>
           <TabsTrigger
-            value="review"
-            className="data-[state=active]:bg-purple-100 data-[state=active]:text-purple-600 text-gray-500 rounded-lg px-4"
+            value="delivered"
+            className="data-[state=active]:bg-green-100 data-[state=active]:text-green-600 text-gray-500 rounded-lg px-4"
           >
-            Pending Review
-            <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-600">
-              {reviewOrders.length}
+            Delivered
+            <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-600">
+              {deliveredOrders.length}
             </span>
           </TabsTrigger>
           <TabsTrigger
@@ -116,6 +196,17 @@ export default async function AdminOrdersPage() {
               {completedOrders.length}
             </span>
           </TabsTrigger>
+          {blockedOrders.length > 0 && (
+            <TabsTrigger
+              value="blocked"
+              className="data-[state=active]:bg-red-100 data-[state=active]:text-red-600 text-gray-500 rounded-lg px-4"
+            >
+              Blocked
+              <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
+                {blockedOrders.length}
+              </span>
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="all"
             className="data-[state=active]:bg-gray-200 data-[state=active]:text-navy text-gray-500 rounded-lg px-4"
@@ -127,20 +218,43 @@ export default async function AdminOrdersPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="pending">
-          <OrderList orders={pendingOrders} emptyMessage="No new orders waiting for assignment" />
+        <TabsContent value="needs_approval">
+          <OrderList
+            orders={needsApprovalOrders}
+            emptyMessage="No drafts waiting for your approval"
+            actionHint="Review and approve these AI-generated motions before delivery to clients."
+            actionColor="amber"
+          />
+        </TabsContent>
+
+        <TabsContent value="revisions">
+          <OrderList
+            orders={revisionRequestedOrders}
+            emptyMessage="No revision requests pending"
+            actionHint="Clients have requested changes to these delivered motions."
+            actionColor="purple"
+          />
         </TabsContent>
 
         <TabsContent value="in_progress">
           <OrderList orders={inProgressOrders} emptyMessage="No orders currently in progress" />
         </TabsContent>
 
-        <TabsContent value="review">
-          <OrderList orders={reviewOrders} emptyMessage="No orders pending client review" />
+        <TabsContent value="delivered">
+          <OrderList orders={deliveredOrders} emptyMessage="No drafts delivered to clients yet" />
         </TabsContent>
 
         <TabsContent value="completed">
           <OrderList orders={completedOrders} emptyMessage="No completed orders yet" />
+        </TabsContent>
+
+        <TabsContent value="blocked">
+          <OrderList
+            orders={blockedOrders}
+            emptyMessage="No blocked orders"
+            actionHint="These orders encountered issues during processing. Click to investigate."
+            actionColor="red"
+          />
         </TabsContent>
 
         <TabsContent value="all">
@@ -151,7 +265,17 @@ export default async function AdminOrdersPage() {
   )
 }
 
-function OrderList({ orders, emptyMessage }: { orders: Order[], emptyMessage: string }) {
+function OrderList({
+  orders,
+  emptyMessage,
+  actionHint,
+  actionColor
+}: {
+  orders: Order[],
+  emptyMessage: string,
+  actionHint?: string,
+  actionColor?: 'amber' | 'purple' | 'red'
+}) {
   if (orders.length === 0) {
     return (
       <Card className="bg-white border-gray-200">
@@ -163,8 +287,21 @@ function OrderList({ orders, emptyMessage }: { orders: Order[], emptyMessage: st
     )
   }
 
+  const colorClasses = {
+    amber: 'bg-amber-50 border-amber-200 text-amber-800',
+    purple: 'bg-purple-50 border-purple-200 text-purple-800',
+    red: 'bg-red-50 border-red-200 text-red-800',
+  }
+
+  const actionBanner = actionHint ? (
+    <div className={`border-b px-4 py-3 text-sm ${actionColor ? colorClasses[actionColor] : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+      <strong>Action Required:</strong> {actionHint}
+    </div>
+  ) : null;
+
   return (
     <Card className="bg-white border-gray-200 overflow-hidden">
+      {actionBanner}
       <div className="divide-y divide-gray-200">
         {orders.map((order) => {
           const daysUntilDue = getDaysUntilDue(order.filing_deadline)
@@ -186,7 +323,7 @@ function OrderList({ orders, emptyMessage }: { orders: Order[], emptyMessage: st
                     <OrderStatusBadge status={order.status as OrderStatus} size="sm" />
                   </div>
                   <p className="font-semibold text-navy truncate">
-                    {order.motion_type}
+                    {formatMotionType(order.motion_type)}
                   </p>
                   <div className="flex items-center gap-2 text-sm text-gray-400">
                     <User className="h-3 w-3" />

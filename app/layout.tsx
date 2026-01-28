@@ -2,7 +2,13 @@ import type { Metadata } from "next";
 import { Toaster } from "@/components/ui/toaster";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { siteConfig } from "@/config/site";
+import { logEnvironmentCheck } from "@/lib/utils/env-check";
 import "./globals.css";
+
+// Validate environment variables at startup (only in development, not during build)
+if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
+  logEnvironmentCheck();
+}
 
 export const metadata: Metadata = {
   title: {
