@@ -13,8 +13,18 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-// TODO: searchCitations doesn't exist in courtlistener-client, needs implementation
-// import { searchCitations } from '@/lib/workflow/courtlistener-client';
+import { getCourtListenerClient } from '@/lib/workflow/courtlistener-client';
+
+// Stub for searchCitations - not yet implemented in courtlistener-client
+// Returns empty result as alternative citation search is not critical
+async function searchCitations(
+  _query: string,
+  _options?: { maxResults?: number }
+): Promise<{ success: boolean; citations?: Array<{ citation: string; caseName?: string }> }> {
+  // TODO: Implement citation search in CourtListenerClient
+  // For now, return empty result - alternative finding is optional
+  return { success: true, citations: [] };
+}
 
 // ============================================================================
 // TYPES

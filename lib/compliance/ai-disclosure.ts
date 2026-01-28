@@ -46,6 +46,18 @@ export interface DisclosureAcceptance {
   signatureMethod: 'checkbox' | 'e-signature' | 'verbal';
 }
 
+interface DisclosureAcceptanceRow {
+  id: string;
+  disclosure_id: string;
+  order_id: string;
+  user_id: string;
+  accepted_at: string | null;
+  created_at: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  signature_method: string;
+}
+
 export interface DisclosureRequirement {
   jurisdiction: string;
   requiresWrittenDisclosure: boolean;
@@ -553,7 +565,7 @@ export async function getDisclosureAcceptances(
     return [];
   }
 
-  return data.map((row: any) => ({
+  return data.map((row: DisclosureAcceptanceRow) => ({
     id: row.id,
     disclosureId: row.disclosure_id,
     orderId: row.order_id,
@@ -561,7 +573,7 @@ export async function getDisclosureAcceptances(
     acceptedAt: new Date(row.accepted_at || row.created_at),
     ipAddress: row.ip_address,
     userAgent: row.user_agent,
-    signatureMethod: row.signature_method,
+    signatureMethod: row.signature_method as DisclosureAcceptance['signatureMethod'],
   }));
 }
 
