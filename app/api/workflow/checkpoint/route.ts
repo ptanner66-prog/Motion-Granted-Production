@@ -27,7 +27,6 @@ const VALID_ACTIONS: Record<SupportedCheckpoint, string[]> = {
   CP1: ['continue', 'request_changes'],
   CP2: ['approve', 'request_revisions'],
   CP3: ['confirm_receipt'],
-  HOLD: ['resume', 'cancel'],
 };
 
 /**

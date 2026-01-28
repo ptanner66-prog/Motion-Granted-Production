@@ -48,11 +48,11 @@ export interface PhaseConfig {
   extendedThinking: Record<Tier, boolean>;
   budget: number;
   checkpoint: CheckpointConfig | null;
-  next: PhaseId | null;
+  next: string | null;
   // Optional properties for special phase handling
-  failNext?: PhaseId;
-  nextNoCitations?: PhaseId;
-  nextNonMSJ?: PhaseId;
+  failNext?: string;
+  nextNoCitations?: string;
+  nextNonMSJ?: string;
   minGrade?: number;
   maxLoops?: number;
   citationBatchSize?: number;
@@ -265,7 +265,7 @@ export function getNextPhase(
       return 'X'; // Skip to final assembly with warning
     }
 
-    return config.failNext as PhaseId ?? 'VIII';
+    return ((config as { failNext?: string }).failNext as PhaseId | undefined) ?? 'VIII';
   }
 
   // Phase VIII: Check if new citations were added

@@ -7,7 +7,7 @@ import {
   scheduleTask,
 } from '@/lib/automation';
 import { processRevisionPayment } from '@/lib/workflow/checkpoint-service';
-import { inngest } from '@/lib/inngest/client';
+import { inngest, calculatePriority } from '@/lib/inngest/client';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -268,7 +268,7 @@ async function handlePaymentSucceeded(
     })
     .eq('id', orderId)
     .eq('stripe_payment_intent_id', paymentIntent.id)
-    .select('id, order_number, client_id')
+    .select('id, order_number, client_id, filing_deadline')
     .single();
 
   if (updateError) {
@@ -309,14 +309,14 @@ async function handlePaymentSucceeded(
 
   // Queue order for draft generation via Inngest
   // This replaces the synchronous Claude API call
-  if (fullOrder?.filing_deadline) {
+  if (order?.filing_deadline) {
     try {
       await inngest.send({
         name: "order/submitted",
         data: {
           orderId,
-          priority: calculatePriority(fullOrder.filing_deadline),
-          filingDeadline: fullOrder.filing_deadline,
+          priority: calculatePriority(order.filing_deadline),
+          filingDeadline: order.filing_deadline,
         },
       });
 
@@ -332,7 +332,7 @@ async function handlePaymentSucceeded(
         status: 'pending',
         payload: {
           source: 'webhook_fallback',
-          filingDeadline: fullOrder.filing_deadline,
+          filingDeadline: order.filing_deadline,
           error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
         },
       });
@@ -569,14 +569,14 @@ async function handleCheckoutSessionCompleted(
       const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION === 'true';
 
       // Queue order for draft generation via Inngest
-      if (fullOrder?.filing_deadline) {
+      if (order?.filing_deadline) {
         try {
           await inngest.send({
             name: "order/submitted",
             data: {
               orderId,
-              priority: calculatePriority(fullOrder.filing_deadline),
-              filingDeadline: fullOrder.filing_deadline,
+              priority: calculatePriority(order.filing_deadline),
+              filingDeadline: order.filing_deadline,
             },
           });
 
@@ -592,7 +592,7 @@ async function handleCheckoutSessionCompleted(
             status: 'pending',
             payload: {
               source: 'checkout_webhook_fallback',
-              filingDeadline: fullOrder.filing_deadline,
+              filingDeadline: order.filing_deadline,
               error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
             },
           });

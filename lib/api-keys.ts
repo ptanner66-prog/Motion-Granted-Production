@@ -174,17 +174,19 @@ export async function getCitationVerificationConfig(): Promise<{
   courtlistener: { apiKey: string; configured: boolean };
   pacer: { username: string; password: string; configured: boolean };
 }> {
-  const keys = await getAPIKeys();
+  const courtlistenerKey = await getCourtListenerAPIKey();
+  const pacerUsername = process.env.PACER_USERNAME || '';
+  const pacerPassword = process.env.PACER_PASSWORD || '';
 
   return {
     courtlistener: {
-      apiKey: keys.courtlistener_api_key,
-      configured: !!keys.courtlistener_api_key,
+      apiKey: courtlistenerKey,
+      configured: !!courtlistenerKey,
     },
     pacer: {
-      username: keys.pacer_username,
-      password: keys.pacer_password,
-      configured: !!(keys.pacer_username && keys.pacer_password),
+      username: pacerUsername,
+      password: pacerPassword,
+      configured: !!(pacerUsername && pacerPassword),
     },
   };
 }
