@@ -3,8 +3,11 @@
  *
  * Securely stores and retrieves API keys for:
  * - Anthropic (Claude AI)
- * - Westlaw
- * - LexisNexis
+ * - OpenAI
+ * - CourtListener
+ * - PACER
+ * - Stripe
+ * - Resend
  *
  * Keys are stored encrypted in the database and used at runtime.
  * Uses AES-256-GCM encryption with a secret derived from ENCRYPTION_SECRET env var.
@@ -145,13 +148,13 @@ export async function GET() {
       .select('setting_key, setting_value')
       .in('setting_key', [
         'anthropic_api_key',
-        'westlaw_api_key',
-        'westlaw_client_id',
-        'westlaw_enabled',
-        'lexisnexis_api_key',
-        'lexisnexis_client_id',
-        'lexisnexis_enabled',
-        'legal_research_provider',
+        'openai_api_key',
+        'courtlistener_api_key',
+        'pacer_username',
+        'pacer_password',
+        'stripe_secret_key',
+        'stripe_webhook_secret',
+        'resend_api_key',
       ]);
 
     type SettingRow = { setting_key: string; setting_value: Record<string, unknown> | null };
@@ -163,31 +166,50 @@ export async function GET() {
     };
 
     const anthropicKey = getValue('anthropic_api_key', '') as string;
-    const westlawKey = getValue('westlaw_api_key', '') as string;
-    const lexisKey = getValue('lexisnexis_api_key', '') as string;
+    const openaiKey = getValue('openai_api_key', '') as string;
+    const courtlistenerKey = getValue('courtlistener_api_key', '') as string;
+    const pacerUsername = getValue('pacer_username', '') as string;
+    const pacerPassword = getValue('pacer_password', '') as string;
+    const stripeSecretKey = getValue('stripe_secret_key', '') as string;
+    const stripeWebhookSecret = getValue('stripe_webhook_secret', '') as string;
+    const resendKey = getValue('resend_api_key', '') as string;
 
     // Also check environment variables as fallback
     const envAnthropicKey = process.env.ANTHROPIC_API_KEY || '';
-    const envWestlawKey = process.env.WESTLAW_API_KEY || '';
-    const envLexisKey = process.env.LEXISNEXIS_API_KEY || '';
+    const envOpenAIKey = process.env.OPENAI_API_KEY || '';
+    const envCourtListenerKey = process.env.COURTLISTENER_API_KEY || '';
+    const envPACERUsername = process.env.PACER_USERNAME || '';
+    const envPACERPassword = process.env.PACER_PASSWORD || '';
+    const envStripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
+    const envStripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    const envResendKey = process.env.RESEND_API_KEY || '';
 
     return NextResponse.json({
       // Anthropic - mask the key, show if configured
       anthropic_api_key: anthropicKey ? maskKey(anthropicKey) : (envAnthropicKey ? maskKey(envAnthropicKey) : ''),
       anthropic_configured: !!(anthropicKey || envAnthropicKey),
 
-      // Westlaw
-      westlaw_api_key: westlawKey ? maskKey(westlawKey) : (envWestlawKey ? maskKey(envWestlawKey) : ''),
-      westlaw_client_id: getValue('westlaw_client_id', process.env.WESTLAW_CLIENT_ID || '') as string,
-      westlaw_enabled: getValue('westlaw_enabled', false) as boolean,
+      // OpenAI
+      openai_api_key: openaiKey ? maskKey(openaiKey) : (envOpenAIKey ? maskKey(envOpenAIKey) : ''),
+      openai_configured: !!(openaiKey || envOpenAIKey),
 
-      // LexisNexis
-      lexisnexis_api_key: lexisKey ? maskKey(lexisKey) : (envLexisKey ? maskKey(envLexisKey) : ''),
-      lexisnexis_client_id: getValue('lexisnexis_client_id', process.env.LEXISNEXIS_CLIENT_ID || '') as string,
-      lexisnexis_enabled: getValue('lexisnexis_enabled', false) as boolean,
+      // CourtListener
+      courtlistener_api_key: courtlistenerKey ? maskKey(courtlistenerKey) : (envCourtListenerKey ? maskKey(envCourtListenerKey) : ''),
+      courtlistener_configured: !!(courtlistenerKey || envCourtListenerKey),
 
-      // Provider preference
-      legal_research_provider: getValue('legal_research_provider', 'none') as string,
+      // PACER
+      pacer_username: pacerUsername || envPACERUsername || '',
+      pacer_password: pacerPassword ? maskKey(pacerPassword) : (envPACERPassword ? maskKey(envPACERPassword) : ''),
+      pacer_configured: !!((pacerUsername || envPACERUsername) && (pacerPassword || envPACERPassword)),
+
+      // Stripe
+      stripe_secret_key: stripeSecretKey ? maskKey(stripeSecretKey) : (envStripeSecretKey ? maskKey(envStripeSecretKey) : ''),
+      stripe_webhook_secret: stripeWebhookSecret ? maskKey(stripeWebhookSecret) : (envStripeWebhookSecret ? maskKey(envStripeWebhookSecret) : ''),
+      stripe_configured: !!((stripeSecretKey || envStripeSecretKey) && (stripeWebhookSecret || envStripeWebhookSecret)),
+
+      // Resend
+      resend_api_key: resendKey ? maskKey(resendKey) : (envResendKey ? maskKey(envResendKey) : ''),
+      resend_configured: !!(resendKey || envResendKey),
     });
   } catch (error) {
     console.error('Error fetching API key settings:', error);
@@ -225,22 +247,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       anthropic_api_key,
-      westlaw_api_key,
-      westlaw_client_id,
-      westlaw_enabled,
-      lexisnexis_api_key,
-      lexisnexis_client_id,
-      lexisnexis_enabled,
-      legal_research_provider,
+      openai_api_key,
+      courtlistener_api_key,
+      pacer_username,
+      pacer_password,
+      stripe_secret_key,
+      stripe_webhook_secret,
+      resend_api_key,
     } = body;
-
-    // Debug: Log what we received (masked for security)
-    const keyPreview = anthropic_api_key
-      ? (anthropic_api_key.startsWith('****')
-          ? '(masked - skipping)'
-          : `${anthropic_api_key.slice(0, 10)}...${anthropic_api_key.slice(-4)} (${anthropic_api_key.length} chars)`)
-      : '(empty)';
-    console.log(`[API-KEYS SAVE] Received anthropic_api_key: ${keyPreview}`);
 
     // Prepare settings to save (encrypt keys, skip if masked/unchanged)
     const settingsToSave: Array<{
@@ -262,68 +276,80 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Westlaw settings
-    if (westlaw_api_key && !westlaw_api_key.startsWith('****')) {
+    // OpenAI
+    if (openai_api_key && !openai_api_key.startsWith('****')) {
       settingsToSave.push({
-        setting_key: 'westlaw_api_key',
-        setting_value: { value: encryptKey(westlaw_api_key) },
-        description: 'Westlaw API key',
+        setting_key: 'openai_api_key',
+        setting_value: { value: encryptKey(openai_api_key) },
+        description: 'OpenAI API key for GPT models',
         category: 'general',
         updated_by: user.id,
       });
     }
 
-    settingsToSave.push({
-      setting_key: 'westlaw_client_id',
-      setting_value: { value: westlaw_client_id || '' },
-      description: 'Westlaw client ID',
-      category: 'general',
-      updated_by: user.id,
-    });
-
-    settingsToSave.push({
-      setting_key: 'westlaw_enabled',
-      setting_value: { value: westlaw_enabled || false },
-      description: 'Whether Westlaw integration is enabled',
-      category: 'general',
-      updated_by: user.id,
-    });
-
-    // LexisNexis settings
-    if (lexisnexis_api_key && !lexisnexis_api_key.startsWith('****')) {
+    // CourtListener
+    if (courtlistener_api_key && !courtlistener_api_key.startsWith('****')) {
       settingsToSave.push({
-        setting_key: 'lexisnexis_api_key',
-        setting_value: { value: encryptKey(lexisnexis_api_key) },
-        description: 'LexisNexis API key',
+        setting_key: 'courtlistener_api_key',
+        setting_value: { value: encryptKey(courtlistener_api_key) },
+        description: 'CourtListener API key for legal research',
         category: 'general',
         updated_by: user.id,
       });
     }
 
-    settingsToSave.push({
-      setting_key: 'lexisnexis_client_id',
-      setting_value: { value: lexisnexis_client_id || '' },
-      description: 'LexisNexis client ID',
-      category: 'general',
-      updated_by: user.id,
-    });
+    // PACER
+    if (pacer_username) {
+      settingsToSave.push({
+        setting_key: 'pacer_username',
+        setting_value: { value: pacer_username },
+        description: 'PACER username',
+        category: 'general',
+        updated_by: user.id,
+      });
+    }
 
-    settingsToSave.push({
-      setting_key: 'lexisnexis_enabled',
-      setting_value: { value: lexisnexis_enabled || false },
-      description: 'Whether LexisNexis integration is enabled',
-      category: 'general',
-      updated_by: user.id,
-    });
+    if (pacer_password && !pacer_password.startsWith('****')) {
+      settingsToSave.push({
+        setting_key: 'pacer_password',
+        setting_value: { value: encryptKey(pacer_password) },
+        description: 'PACER password',
+        category: 'general',
+        updated_by: user.id,
+      });
+    }
 
-    // Legal research provider preference
-    settingsToSave.push({
-      setting_key: 'legal_research_provider',
-      setting_value: { value: legal_research_provider || 'none' },
-      description: 'Preferred legal research provider',
-      category: 'general',
-      updated_by: user.id,
-    });
+    // Stripe
+    if (stripe_secret_key && !stripe_secret_key.startsWith('****')) {
+      settingsToSave.push({
+        setting_key: 'stripe_secret_key',
+        setting_value: { value: encryptKey(stripe_secret_key) },
+        description: 'Stripe secret key',
+        category: 'general',
+        updated_by: user.id,
+      });
+    }
+
+    if (stripe_webhook_secret && !stripe_webhook_secret.startsWith('****')) {
+      settingsToSave.push({
+        setting_key: 'stripe_webhook_secret',
+        setting_value: { value: encryptKey(stripe_webhook_secret) },
+        description: 'Stripe webhook secret',
+        category: 'general',
+        updated_by: user.id,
+      });
+    }
+
+    // Resend
+    if (resend_api_key && !resend_api_key.startsWith('****')) {
+      settingsToSave.push({
+        setting_key: 'resend_api_key',
+        setting_value: { value: encryptKey(resend_api_key) },
+        description: 'Resend API key',
+        category: 'general',
+        updated_by: user.id,
+      });
+    }
 
     // Log which settings will be saved
     const keysBeingSaved = settingsToSave.map(s => s.setting_key);

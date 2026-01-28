@@ -13,7 +13,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude } from '@/lib/automation/claude';
 import { parseDocument, parseOrderDocuments } from './document-parser';
 
 // Create admin client with service role key (bypasses RLS for server-side operations)
@@ -307,6 +307,16 @@ export async function executeCurrentPhase(
           last_activity_at: new Date().toISOString(),
         })
         .eq('id', workflowId);
+    } else if (result.success && result.requiresReview) {
+      // Phase completed but requires admin review before continuing
+      await supabase
+        .from('order_workflows')
+        .update({
+          status: 'blocked',
+          last_error: result.error || 'Phase requires review before continuing',
+          last_activity_at: new Date().toISOString(),
+        })
+        .eq('id', workflowId);
     } else if (!result.success) {
       await supabase
         .from('order_workflows')
@@ -513,17 +523,6 @@ async function executeDocumentParsingPhase(
 async function executeLegalAnalysisPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured for legal analysis',
-    };
-  }
-
   const { previousOutputs, motionType } = context;
 
   const prompt = `You are a legal analyst. Analyze the following case information and provide a structured legal analysis.
@@ -566,7 +565,7 @@ Provide a comprehensive legal analysis in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 3000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal analyst. Always respond with valid JSON.',
   });
 
@@ -618,16 +617,6 @@ Provide a comprehensive legal analysis in JSON format:
 async function executeLegalResearchPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured for legal research',
-    };
-  }
 
   const { previousOutputs, motionType, workflow } = context;
   const supabase = getAdminClient();
@@ -693,7 +682,7 @@ Ensure citations are:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal researcher. Always respond with valid JSON and accurate citations.',
   });
 
@@ -854,16 +843,6 @@ async function executeCitationVerificationPhase(
 async function executeArgumentStructuringPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
 
@@ -906,7 +885,7 @@ Create a comprehensive argument outline in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 3000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal writer. Create clear, organized argument structures.',
   });
 
@@ -958,16 +937,6 @@ Create a comprehensive argument outline in JSON format:
 async function executeDocumentGenerationPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { motionType, workflow } = context;
 
@@ -1050,16 +1019,6 @@ async function executeDocumentGenerationPhase(
 async function executeQualityReviewPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
   const draftDocument = previousOutputs.draft_document as string;
@@ -1115,7 +1074,7 @@ Respond with JSON:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 2000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal editor. Provide thorough, constructive reviews.',
   });
 
@@ -1200,16 +1159,6 @@ Respond with JSON:
 async function executeDocumentRevisionPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
   const draftDocument = previousOutputs.draft_document as string;
@@ -1259,7 +1208,7 @@ Maintain the same overall structure and length.`;
 
   const result = await askClaude({
     prompt,
-    maxTokens: 8000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal editor. Apply revisions precisely and professionally.',
   });
 
@@ -1330,7 +1279,7 @@ async function executeDocumentAssemblyPhase(
 
   // Generate proposed order if required
   let proposedOrder = '';
-  if (motionType.requires_proposed_order && isClaudeConfigured) {
+  if (motionType.requires_proposed_order) {
     const orderResult = await askClaude({
       prompt: `Generate a proposed order for this ${motionType.name} motion.
 
@@ -1339,7 +1288,7 @@ Court: ${order?.court_type || 'United States District Court'}
 
 The proposed order should grant the relief requested in the motion.
 Format as a proper court order with signature lines for the judge.`,
-      maxTokens: 1000,
+      maxTokens: 32000, // MAXED OUT
       systemPrompt: 'You are a legal document drafter. Create concise, proper proposed orders.',
     });
 
@@ -1404,16 +1353,6 @@ _______________________________
 async function executeArgumentAnalysisPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs } = context;
 
@@ -1457,7 +1396,7 @@ Provide analysis in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 3000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal strategist. Identify weaknesses and opportunities.',
   });
 
@@ -1515,16 +1454,6 @@ Provide analysis in JSON format:
 async function executeEvidenceMappingPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured for evidence mapping',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
 
@@ -1585,7 +1514,7 @@ Provide a comprehensive evidence mapping in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal evidence analyst. Map evidence to elements thoroughly.',
   });
 
@@ -1642,16 +1571,6 @@ Provide a comprehensive evidence mapping in JSON format:
 async function executeOppositionAnticipationPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType, workflow } = context;
   const isOpposition = workflow.workflow_path === 'path_b';
@@ -1711,7 +1630,7 @@ Provide a comprehensive anticipation analysis in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal strategist specializing in motion practice.',
   });
 
@@ -1874,16 +1793,6 @@ async function executeSupportingDocumentsPhase(
     };
   }
 
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   // Get order details
   const { data: order } = await supabase
@@ -1914,7 +1823,7 @@ The proposed order should:
 6. Include date line
 
 Generate a complete, court-ready proposed order.`,
-      maxTokens: 1500,
+      maxTokens: 32000, // MAXED OUT
       systemPrompt: 'You are a legal document drafter. Create formal court documents.',
     });
 
@@ -1973,7 +1882,7 @@ Create a declaration template with:
 5. Signature block with date
 
 Include [FILL IN] markers for information the declarant must provide.`,
-        maxTokens: 2000,
+        maxTokens: 32000, // MAXED OUT
         systemPrompt: 'You are a legal document drafter specializing in declarations.',
       });
 
@@ -2001,7 +1910,7 @@ FACT NO. [X]: [Statement of undisputed fact]
 SUPPORTING EVIDENCE: [Citation to evidence with exhibit letter/number]
 
 Include at least the key undisputed facts that support each element of the motion.`,
-      maxTokens: 3000,
+      maxTokens: 32000, // MAXED OUT
       systemPrompt: 'You are a legal document drafter. Create properly formatted separate statements.',
     });
 
@@ -2023,7 +1932,7 @@ For each fact the moving party claims is undisputed, either:
 Use the format:
 FACT NO. [X]: [Moving party's statement]
 RESPONSE: [UNDISPUTED/DISPUTED] [Explanation with evidence citation]`,
-      maxTokens: 3000,
+      maxTokens: 32000, // MAXED OUT
       systemPrompt: 'You are a legal document drafter. Create properly formatted response statements.',
     });
 
@@ -2214,16 +2123,6 @@ END OF ATTORNEY INSTRUCTION SHEET
 async function executeMotionDeconstructionPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs } = context;
 
@@ -2271,7 +2170,7 @@ Provide a comprehensive deconstruction in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal analyst. Deconstruct arguments thoroughly.',
   });
 
@@ -2326,16 +2225,6 @@ Provide a comprehensive deconstruction in JSON format:
 async function executeIssueIdentificationPhase(
   context: PhaseExecutionContext
 ): Promise<PhaseResult> {
-  if (!isClaudeConfigured) {
-    return {
-      success: false,
-      phaseNumber: context.phaseDefinition.phase_number,
-      status: 'failed',
-      outputs: {},
-      requiresReview: false,
-      error: 'AI not configured',
-    };
-  }
 
   const { previousOutputs, motionType } = context;
   const isMSJOpposition = motionType.code === 'OPP_MSJ';
@@ -2401,7 +2290,7 @@ Provide analysis in JSON format:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 4000,
+    maxTokens: 32000, // MAXED OUT
     systemPrompt: 'You are an expert legal analyst. Identify issues comprehensively.',
   });
 

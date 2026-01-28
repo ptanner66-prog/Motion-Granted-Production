@@ -1,6 +1,7 @@
 import { inngest } from "./client";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
+import { workflowOrchestration } from "./workflow-orchestration";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
@@ -403,7 +404,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
       const response = await createMessageWithRetry(
         {
           model: "claude-opus-4-5-20251101",
-          max_tokens: 16000,
+          max_tokens: 128000, // MAXED OUT - full motion generation
           system: context,
           messages: [{ role: "user", content: userMessage }],
         },
@@ -849,10 +850,259 @@ export const updateQueuePositions = inngest.createFunction(
   }
 );
 
+/**
+ * Data Retention Reminder
+ *
+ * Runs daily at 9am CST (15:00 UTC) to send 14-day deletion reminders.
+ * Finds orders where retention_expires_at is within 14 days
+ * and deletion_reminder_sent = false.
+ * Source: DATA_RETENTION_IMPLEMENTATION_SPEC_v1.md
+ */
+export const dataRetentionReminder = inngest.createFunction(
+  {
+    id: "data-retention-reminder",
+  },
+  // Run daily at 9am CST (15:00 UTC)
+  { cron: "0 15 * * *" },
+  async ({ step }) => {
+    const supabase = getSupabase();
+
+    // Find orders expiring within 14 days that haven't been reminded
+    const expiringOrders = await step.run("find-expiring-orders", async () => {
+      const fourteenDaysFromNow = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+      const now = new Date().toISOString();
+
+      const { data: orders, error } = await supabase
+        .from("orders")
+        .select(`
+          id,
+          order_number,
+          case_caption,
+          motion_type,
+          retention_expires_at,
+          client_id,
+          profiles!orders_client_id_fkey(email, full_name)
+        `)
+        .is("deleted_at", null)
+        .eq("deletion_reminder_sent", false)
+        .gte("retention_expires_at", now)
+        .lte("retention_expires_at", fourteenDaysFromNow)
+        .order("retention_expires_at", { ascending: true });
+
+      if (error) {
+        console.error("Failed to fetch expiring orders:", error);
+        return [];
+      }
+
+      return orders || [];
+    });
+
+    if (expiringOrders.length === 0) {
+      return { remindersSent: 0 };
+    }
+
+    // Send reminder emails
+    const results = await step.run("send-retention-reminders", async () => {
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const order of expiringOrders) {
+        try {
+          const profile = order.profiles as unknown as { email: string; full_name: string } | null;
+          if (!profile?.email) continue;
+
+          const expiresAt = new Date(order.retention_expires_at);
+          const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+          // Send email via Resend
+          const { Resend } = await import("resend");
+          const resend = new Resend(process.env.RESEND_API_KEY);
+
+          await resend.emails.send({
+            from: EMAIL_FROM.alerts,
+            to: profile.email,
+            subject: `[Motion Granted] Your order ${order.order_number} data expires in ${daysLeft} days`,
+            text: `
+Dear ${profile.full_name || "Valued Client"},
+
+This is a reminder that your order data will be automatically deleted in ${daysLeft} days as part of our data retention policy.
+
+Order Details:
+- Order Number: ${order.order_number}
+- Case: ${order.case_caption || "N/A"}
+- Motion Type: ${order.motion_type || "N/A"}
+- Deletion Date: ${expiresAt.toLocaleDateString("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric"
+})}
+
+IMPORTANT: If you need to retain this data longer, you may request a one-time 90-day extension (maximum 180 days total retention).
+
+To request an extension or download your documents before deletion, please visit:
+${process.env.NEXT_PUBLIC_APP_URL}/orders/${order.id}
+
+If you have any questions, please contact our support team.
+
+---
+Motion Granted
+Data Retention Automated Notice
+            `.trim(),
+          });
+
+          // Mark as reminded
+          await supabase
+            .from("orders")
+            .update({
+              deletion_reminder_sent: true,
+              deletion_reminder_sent_at: new Date().toISOString(),
+            })
+            .eq("id", order.id);
+
+          // Log the reminder
+          await supabase.from("automation_logs").insert({
+            order_id: order.id,
+            action_type: "retention_reminder_sent",
+            action_details: {
+              recipientEmail: profile.email,
+              daysUntilExpiry: daysLeft,
+              expiresAt: order.retention_expires_at,
+            },
+          });
+
+          successCount++;
+        } catch (emailError) {
+          console.error(`Failed to send retention reminder for order ${order.id}:`, emailError);
+          failCount++;
+        }
+      }
+
+      return { successCount, failCount };
+    });
+
+    // Log summary
+    await step.run("log-reminder-summary", async () => {
+      await supabase.from("automation_logs").insert({
+        action_type: "retention_reminder_batch",
+        action_details: {
+          totalOrders: expiringOrders.length,
+          remindersSent: results.successCount,
+          remindersFailed: results.failCount,
+        },
+      });
+    });
+
+    return {
+      remindersSent: results.successCount,
+      remindersFailed: results.failCount,
+      totalOrders: expiringOrders.length,
+    };
+  }
+);
+
+/**
+ * Auto-Delete Expired Orders
+ *
+ * Runs daily at 1am CST (07:00 UTC) to delete orders past retention date.
+ * Anonymizes order data before deletion for analytics.
+ * Source: DATA_RETENTION_IMPLEMENTATION_SPEC_v1.md
+ */
+export const autoDeleteExpiredOrders = inngest.createFunction(
+  {
+    id: "auto-delete-expired-orders",
+  },
+  // Run daily at 1am CST (07:00 UTC)
+  { cron: "0 7 * * *" },
+  async ({ step }) => {
+    const supabase = getSupabase();
+
+    // Find orders past retention date
+    const expiredOrders = await step.run("find-expired-orders", async () => {
+      const now = new Date().toISOString();
+
+      const { data: orders, error } = await supabase
+        .from("orders")
+        .select("id, order_number, retention_expires_at")
+        .is("deleted_at", null)
+        .lt("retention_expires_at", now)
+        .not("retention_expires_at", "is", null)
+        .limit(100); // Process in batches
+
+      if (error) {
+        console.error("Failed to fetch expired orders:", error);
+        return [];
+      }
+
+      return orders || [];
+    });
+
+    if (expiredOrders.length === 0) {
+      return { deletedCount: 0 };
+    }
+
+    // Anonymize and soft-delete each order
+    const deleteResults = await step.run("delete-expired-orders", async () => {
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const order of expiredOrders) {
+        try {
+          // Call anonymization function
+          const { error: anonError } = await supabase.rpc("anonymize_order_data", {
+            p_order_id: order.id,
+          });
+
+          if (anonError) {
+            console.error(`Failed to anonymize order ${order.id}:`, anonError);
+          }
+
+          // Soft-delete the order
+          await supabase
+            .from("orders")
+            .update({
+              deleted_at: new Date().toISOString(),
+              deletion_type: "auto",
+            })
+            .eq("id", order.id);
+
+          // Log the deletion
+          await supabase.from("automation_logs").insert({
+            order_id: order.id,
+            action_type: "order_auto_deleted",
+            action_details: {
+              orderNumber: order.order_number,
+              retentionExpiredAt: order.retention_expires_at,
+              deletionType: "auto",
+            },
+          });
+
+          successCount++;
+        } catch (deleteError) {
+          console.error(`Failed to delete order ${order.id}:`, deleteError);
+          failCount++;
+        }
+      }
+
+      return { successCount, failCount };
+    });
+
+    return {
+      deletedCount: deleteResults.successCount,
+      failedCount: deleteResults.failCount,
+      totalExpired: expiredOrders.length,
+    };
+  }
+);
+
 // Export all functions for registration
+// Note: workflowOrchestration is the new 14-phase v7.2 workflow (preferred)
+// generateOrderDraft is the legacy single-call system (kept for fallback)
 export const functions = [
-  generateOrderDraft,
+  workflowOrchestration,  // v7.2: 14-phase workflow orchestrator
+  generateOrderDraft,      // Legacy: single-call superprompt
   handleGenerationFailure,
   deadlineCheck,
   updateQueuePositions,
+  dataRetentionReminder,   // Daily retention reminder at 9am CST
+  autoDeleteExpiredOrders, // Daily auto-delete at 1am CST
 ];

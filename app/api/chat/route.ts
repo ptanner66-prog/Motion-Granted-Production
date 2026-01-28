@@ -40,6 +40,17 @@ interface ConversationMessage {
 
 /**
  * POST: Send message to Claude and stream response
+ *
+ * IMPORTANT: This chat API is for REVISIONS ONLY after the 14-phase workflow completes.
+ * Initial motion generation MUST go through the workflow orchestrator.
+ *
+ * To generate a motion:
+ * 1. Use the admin "Run 14-Phase Workflow" button, OR
+ * 2. Call POST /api/orders/[id]/generate
+ *
+ * This chat API should only be used for:
+ * - Post-delivery revisions requested by clients
+ * - Admin conversations about completed motions
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -70,6 +81,39 @@ export async function POST(request: Request) {
   try {
     const body: ChatRequest = await request.json();
     const { orderId, message, regenerate } = body;
+
+    // =========================================================================
+    // PHASE SYSTEM ENFORCEMENT: Block initial generation via chat
+    // =========================================================================
+    // The chat API should NOT be used to generate initial motions.
+    // Initial generation MUST go through the 14-phase workflow orchestrator.
+    // Chat is only allowed for orders that have already been generated.
+    // =========================================================================
+
+    // Check if regenerate is requested
+    if (regenerate) {
+      // Get order status to verify workflow has completed
+      const { data: order } = await supabase
+        .from('orders')
+        .select('status, order_number')
+        .eq('id', orderId)
+        .single();
+
+      // Only allow regenerate for orders that have been through the workflow
+      const workflowCompletedStatuses = ['draft_delivered', 'completed', 'revision_requested', 'revision_delivered'];
+      if (!order || !workflowCompletedStatuses.includes(order.status)) {
+        return new Response(JSON.stringify({
+          error: 'Cannot regenerate via chat. Initial motion must be generated via the 14-phase workflow.',
+          hint: 'Use the "Run 14-Phase Workflow" button in the admin panel.',
+          orderStatus: order?.status || 'unknown',
+        }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log(`[Chat API] Revision request for completed order ${order.order_number}`);
+    }
 
     if (!orderId) {
       return new Response(JSON.stringify({ error: 'orderId is required' }), {
