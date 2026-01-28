@@ -1,17 +1,12 @@
 /**
- * API Keys Utility
- *
- * Retrieves API keys from the database at runtime.
- * Falls back to environment variables if not set in database.
- *
- * Keys stored in DB take precedence over environment variables,
- * allowing admins to configure keys without redeploying.
+ * API Keys Module
+ * Centralized API key management with database and environment variable fallback
  */
 
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
-// Create admin client with service role key (bypasses RLS for reading API keys)
+// Get admin Supabase client (bypasses RLS)
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -20,18 +15,17 @@ function getAdminClient() {
     return null;
   }
 
-  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+  return createClient(supabaseUrl, supabaseServiceKey);
 }
 
-// Encryption configuration (must match route.ts)
-const ENCRYPTION_PREFIX_V2 = 'enc_v2_';
+// Encryption configuration (same as used in API routes)
+const ENCRYPTION_PREFIX = 'enc_v2_';
 const ALGORITHM = 'aes-256-gcm';
 
-// Get encryption key from environment - MUST be configured in production
 function getEncryptionKey(): Buffer {
   const secret = process.env.ENCRYPTION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!secret) {
-    throw new Error('ENCRYPTION_SECRET or SUPABASE_SERVICE_ROLE_KEY must be configured for API key encryption');
+    throw new Error('ENCRYPTION_SECRET or SUPABASE_SERVICE_ROLE_KEY must be configured');
   }
   return crypto.createHash('sha256').update(secret).digest();
 }
@@ -46,13 +40,13 @@ function decryptKey(encryptedKey: string): string {
   }
 
   // Handle v2 (AES-GCM) format
-  if (!encryptedKey.startsWith(ENCRYPTION_PREFIX_V2)) {
+  if (!encryptedKey.startsWith(ENCRYPTION_PREFIX)) {
     return encryptedKey; // Not encrypted
   }
 
   try {
     const key = getEncryptionKey();
-    const parts = encryptedKey.slice(ENCRYPTION_PREFIX_V2.length).split(':');
+    const parts = encryptedKey.slice(ENCRYPTION_PREFIX.length).split(':');
 
     if (parts.length !== 3) {
       console.error('Invalid encrypted key format');
@@ -76,8 +70,7 @@ function decryptKey(encryptedKey: string): string {
   }
 }
 
-// Cache disabled - always fetch fresh from database
-// This ensures API key changes take effect immediately
+// In-memory cache for API keys
 let keyCache: {
   keys: Record<string, string>;
   timestamp: number;
@@ -90,25 +83,11 @@ const CACHE_TTL = 0; // Disabled - fetch fresh every time
  */
 export async function getAPIKeys(): Promise<{
   anthropic_api_key: string;
-  westlaw_api_key: string;
-  westlaw_client_id: string;
-  westlaw_enabled: boolean;
-  lexisnexis_api_key: string;
-  lexisnexis_client_id: string;
-  lexisnexis_enabled: boolean;
-  legal_research_provider: 'westlaw' | 'lexisnexis' | 'none';
 }> {
   // Check cache
   if (keyCache && Date.now() - keyCache.timestamp < CACHE_TTL) {
     return {
       anthropic_api_key: keyCache.keys.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
-      westlaw_api_key: keyCache.keys.westlaw_api_key || process.env.WESTLAW_API_KEY || '',
-      westlaw_client_id: keyCache.keys.westlaw_client_id || process.env.WESTLAW_CLIENT_ID || '',
-      westlaw_enabled: keyCache.keys.westlaw_enabled === 'true',
-      lexisnexis_api_key: keyCache.keys.lexisnexis_api_key || process.env.LEXISNEXIS_API_KEY || '',
-      lexisnexis_client_id: keyCache.keys.lexisnexis_client_id || process.env.LEXISNEXIS_CLIENT_ID || '',
-      lexisnexis_enabled: keyCache.keys.lexisnexis_enabled === 'true',
-      legal_research_provider: (keyCache.keys.legal_research_provider as 'westlaw' | 'lexisnexis' | 'none') || 'none',
     };
   }
 
@@ -120,13 +99,6 @@ export async function getAPIKeys(): Promise<{
       console.warn('Supabase not configured, using environment variables for API keys');
       return {
         anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
-        westlaw_api_key: process.env.WESTLAW_API_KEY || '',
-        westlaw_client_id: process.env.WESTLAW_CLIENT_ID || '',
-        westlaw_enabled: !!process.env.WESTLAW_API_KEY,
-        lexisnexis_api_key: process.env.LEXISNEXIS_API_KEY || '',
-        lexisnexis_client_id: process.env.LEXISNEXIS_CLIENT_ID || '',
-        lexisnexis_enabled: !!process.env.LEXISNEXIS_API_KEY,
-        legal_research_provider: 'none',
       };
     }
 
@@ -135,13 +107,6 @@ export async function getAPIKeys(): Promise<{
       .select('setting_key, setting_value')
       .in('setting_key', [
         'anthropic_api_key',
-        'westlaw_api_key',
-        'westlaw_client_id',
-        'westlaw_enabled',
-        'lexisnexis_api_key',
-        'lexisnexis_client_id',
-        'lexisnexis_enabled',
-        'legal_research_provider',
       ]);
 
     type SettingRow = { setting_key: string; setting_value: Record<string, unknown> | null };
@@ -163,98 +128,54 @@ export async function getAPIKeys(): Promise<{
     keyCache = {
       keys: {
         anthropic_api_key: getValue('anthropic_api_key'),
-        westlaw_api_key: getValue('westlaw_api_key'),
-        westlaw_client_id: getValue('westlaw_client_id'),
-        westlaw_enabled: getValue('westlaw_enabled'),
-        lexisnexis_api_key: getValue('lexisnexis_api_key'),
-        lexisnexis_client_id: getValue('lexisnexis_client_id'),
-        lexisnexis_enabled: getValue('lexisnexis_enabled'),
-        legal_research_provider: getValue('legal_research_provider'),
       },
       timestamp: Date.now(),
     };
 
     return {
       anthropic_api_key: keyCache.keys.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
-      westlaw_api_key: keyCache.keys.westlaw_api_key || process.env.WESTLAW_API_KEY || '',
-      westlaw_client_id: keyCache.keys.westlaw_client_id || process.env.WESTLAW_CLIENT_ID || '',
-      westlaw_enabled: keyCache.keys.westlaw_enabled === 'true',
-      lexisnexis_api_key: keyCache.keys.lexisnexis_api_key || process.env.LEXISNEXIS_API_KEY || '',
-      lexisnexis_client_id: keyCache.keys.lexisnexis_client_id || process.env.LEXISNEXIS_CLIENT_ID || '',
-      lexisnexis_enabled: keyCache.keys.lexisnexis_enabled === 'true',
-      legal_research_provider: (keyCache.keys.legal_research_provider as 'westlaw' | 'lexisnexis' | 'none') || 'none',
     };
   } catch (error) {
-    console.error('Error fetching API keys from database:', error);
-
-    // Fall back to environment variables
+    console.error('Failed to fetch API keys from database:', error);
     return {
       anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
-      westlaw_api_key: process.env.WESTLAW_API_KEY || '',
-      westlaw_client_id: process.env.WESTLAW_CLIENT_ID || '',
-      westlaw_enabled: !!process.env.WESTLAW_API_KEY,
-      lexisnexis_api_key: process.env.LEXISNEXIS_API_KEY || '',
-      lexisnexis_client_id: process.env.LEXISNEXIS_CLIENT_ID || '',
-      lexisnexis_enabled: !!process.env.LEXISNEXIS_API_KEY,
-      legal_research_provider: 'none',
     };
   }
 }
 
 /**
- * Get Anthropic API key (for Claude)
- * Checks database first, falls back to environment variable
+ * Get Anthropic API key (database first, then environment variable)
  */
 export async function getAnthropicAPIKey(): Promise<string> {
   const keys = await getAPIKeys();
-  const key = keys.anthropic_api_key;
-
-  // Debug logging - show source and key preview
-  if (key) {
-    const preview = key.length > 12 ? `${key.slice(0, 8)}...${key.slice(-4)}` : '(short)';
-    const source = key === process.env.ANTHROPIC_API_KEY ? 'ENV' : 'DATABASE';
-    console.log(`[API-KEYS] Anthropic key from ${source}: ${preview}`);
-  } else {
-    console.log('[API-KEYS] No Anthropic API key found in database or env');
-  }
-
-  return key;
+  return keys.anthropic_api_key;
 }
 
 /**
- * Get legal research configuration
+ * Get citation verification configuration (CourtListener + PACER)
+ *
+ * Flow (January 2026):
+ * 1. CourtListener (PRIMARY) - Free, 10M+ cases
+ * 2. PACER (FALLBACK) - Federal unpublished only, ~$0.10/lookup
+ *
+ * NOTE: Case.law was sunset September 5, 2024
  */
-export async function getLegalResearchConfig(): Promise<{
-  provider: 'westlaw' | 'lexisnexis' | 'none';
-  apiKey: string;
-  clientId: string;
-  enabled: boolean;
+export async function getCitationVerificationConfig(): Promise<{
+  courtlistener: { apiKey: string; configured: boolean };
+  pacer: { username: string; password: string; configured: boolean };
 }> {
   const keys = await getAPIKeys();
 
-  if (keys.legal_research_provider === 'westlaw' && keys.westlaw_enabled) {
-    return {
-      provider: 'westlaw',
-      apiKey: keys.westlaw_api_key,
-      clientId: keys.westlaw_client_id,
-      enabled: true,
-    };
-  }
-
-  if (keys.legal_research_provider === 'lexisnexis' && keys.lexisnexis_enabled) {
-    return {
-      provider: 'lexisnexis',
-      apiKey: keys.lexisnexis_api_key,
-      clientId: keys.lexisnexis_client_id,
-      enabled: true,
-    };
-  }
-
   return {
-    provider: 'none',
-    apiKey: '',
-    clientId: '',
-    enabled: false,
+    courtlistener: {
+      apiKey: keys.courtlistener_api_key,
+      configured: !!keys.courtlistener_api_key,
+    },
+    pacer: {
+      username: keys.pacer_username,
+      password: keys.pacer_password,
+      configured: !!(keys.pacer_username && keys.pacer_password),
+    },
   };
 }
 

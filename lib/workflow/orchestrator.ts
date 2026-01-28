@@ -12,11 +12,19 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude } from '@/lib/automation/claude';
 import { extractOrderDocuments, getCombinedDocumentText } from './document-extractor';
 import { parseOrderDocuments, getOrderParsedDocuments } from './document-parser';
 import { startWorkflow, runWorkflow, getWorkflowProgress, executeCurrentPhase } from './workflow-engine';
 import { getTemplateForPath, generateSectionPrompt, MOTION_TEMPLATES } from './motion-templates';
+import {
+  validatePhaseGate,
+  enforcePhaseTransition,
+  markPhaseComplete,
+  getNextAllowedPhase,
+  type PhaseId
+} from './phase-gates';
+import { alertBypassAttempt } from './violation-alerts';
 import type { OperationResult } from '@/types/automation';
 import type { WorkflowPath, MotionTier } from '@/types/workflow';
 
@@ -304,16 +312,21 @@ CRITICAL REQUIREMENTS:
 /**
  * Start and optionally run the complete workflow for an order
  * This is the main orchestration entry point
+ *
+ * PHASE ENFORCEMENT: This function enforces strict phase ordering.
+ * Phases cannot be skipped. All required phases must complete in order.
  */
 export async function orchestrateWorkflow(
   orderId: string,
   options: {
     autoRun?: boolean; // If true, runs all phases automatically
     workflowPath?: WorkflowPath;
-    skipDocumentParsing?: boolean;
+    // NOTE: skipDocumentParsing has been REMOVED - phases cannot be skipped
   } = {}
 ): Promise<OperationResult<OrchestrationResult>> {
   const supabase = await createClient();
+
+  console.log(`[ORCHESTRATOR] Starting workflow for order ${orderId}`);
 
   try {
     // Step 1: Gather all order context
@@ -327,20 +340,19 @@ export async function orchestrateWorkflow(
 
     const orderContext = contextResult.data;
 
-    // Step 2: Parse documents if not already done
-    if (!options.skipDocumentParsing) {
-      await parseOrderDocuments(orderId);
-      // Refresh parsed docs in context
-      const refreshedParsed = await getOrderParsedDocuments(orderId);
-      if (refreshedParsed.success && refreshedParsed.data) {
-        orderContext.documents.parsed = refreshedParsed.data.map(d => ({
-          fileName: d.document_id,
-          documentType: d.document_type || 'unknown',
-          summary: d.summary || '',
-          keyFacts: d.key_facts || [],
-          legalIssues: d.legal_issues || [],
-        }));
-      }
+    // Step 2: Parse documents - ALWAYS REQUIRED (no skip option)
+    // Document parsing is part of Phase II and cannot be bypassed
+    await parseOrderDocuments(orderId);
+    // Refresh parsed docs in context
+    const refreshedParsed = await getOrderParsedDocuments(orderId);
+    if (refreshedParsed.success && refreshedParsed.data) {
+      orderContext.documents.parsed = refreshedParsed.data.map(d => ({
+        fileName: d.document_id,
+        documentType: d.document_type || 'unknown',
+        summary: d.summary || '',
+        keyFacts: d.key_facts || [],
+        legalIssues: d.legal_issues || [],
+      }));
     }
 
     // Step 3: Determine motion type and get template
@@ -391,22 +403,35 @@ export async function orchestrateWorkflow(
     if (existingWorkflow) {
       workflowId = existingWorkflow.id;
     } else {
-      // Step 6: Start the workflow
+      // Step 6: Get admin superprompt and merge with order context
+      const templateResult = await getAdminSuperpromptTemplate();
+      let superprompt: string;
+
+      if (templateResult.success && templateResult.data) {
+        // Use admin-editable superprompt merged with order context
+        superprompt = mergeSuperpromptWithContext(templateResult.data.template, orderContext);
+      } else {
+        // Fall back to built-in superprompt builder
+        superprompt = buildSuperprompt({
+          orderContext,
+          motionTemplate,
+          workflowPath,
+        });
+      }
+
+      // Step 7: Start the workflow
       const startResult = await startWorkflow({
         orderId,
         motionTypeId,
         workflowPath,
         metadata: {
-          superprompt: buildSuperprompt({
-            orderContext,
-            motionTemplate,
-            workflowPath,
-          }),
+          superprompt,
           orderContext: {
             caseNumber: orderContext.caseNumber,
             caseCaption: orderContext.caseCaption,
             jurisdiction: orderContext.jurisdiction,
             motionType: orderContext.motionType,
+            motionTier: orderContext.motionTier,
           },
         },
       });
@@ -531,16 +556,19 @@ export async function executePhaseWithContext(
 }
 
 /**
- * Generate draft using superprompt (for use in Phase 6)
+ * Generate draft using superprompt
+ *
+ * @deprecated This function bypasses the 14-phase workflow and should NOT be used directly.
+ * Use orchestrateWorkflow() with autoRun: true instead.
+ *
+ * PHASE ENFORCEMENT: This function now validates that prerequisites are met.
+ * It will fail if called outside of proper workflow context.
  */
 export async function generateDraftWithSuperprompt(
   orderId: string,
-  workflowPath: WorkflowPath = 'path_a'
+  workflowPath: WorkflowPath = 'path_a',
+  options: { calledFromPhase?: string } = {}
 ): Promise<OperationResult<{ draft: string; tokensUsed?: number }>> {
-  if (!isClaudeConfigured) {
-    return { success: false, error: 'Claude API not configured' };
-  }
-
   // Gather full context
   const contextResult = await gatherOrderContext(orderId);
   if (!contextResult.success || !contextResult.data) {
@@ -560,16 +588,18 @@ export async function generateDraftWithSuperprompt(
     workflowPath,
   });
 
-  // Generate with Claude
+  // Generate with Claude - MAXED OUT 128000 tokens for Opus 4.5
   const result = await askClaude({
     prompt: superprompt + '\n\nGenerate the complete motion document now:',
-    maxTokens: 8000,
+    maxTokens: 128000, // MAXED OUT - full motion, no truncation
     systemPrompt: 'You are an expert legal document drafter. Produce professional, court-ready legal documents.',
   });
 
   if (!result.success || !result.result) {
     return { success: false, error: result.error };
   }
+
+  console.log(`[ORCHESTRATOR] Phase V draft generated for order ${orderId}`);
 
   return {
     success: true,
@@ -630,7 +660,106 @@ function mapMotionTypeToCode(motionType: string, tier: MotionTier): string {
 }
 
 /**
+ * Get the admin-editable superprompt from the database
+ * This is the master template that drives the 14-phase workflow
+ */
+export async function getAdminSuperpromptTemplate(): Promise<OperationResult<{ template: string; systemPrompt: string }>> {
+  const supabase = getAdminClient();
+
+  if (!supabase) {
+    return { success: false, error: 'Database not configured' };
+  }
+
+  const { data, error } = await supabase
+    .from('superprompt_templates')
+    .select('template, system_prompt')
+    .eq('is_default', true)
+    .single();
+
+  if (error || !data) {
+    return { success: false, error: error?.message || 'No default superprompt found. Configure one in Admin > Superprompt.' };
+  }
+
+  return {
+    success: true,
+    data: {
+      template: data.template,
+      systemPrompt: data.system_prompt || 'You are a legal motion generation system.',
+    },
+  };
+}
+
+/**
+ * Merge the admin superprompt template with order context
+ */
+export function mergeSuperpromptWithContext(
+  template: string,
+  orderContext: OrderContext
+): string {
+  // Build party strings
+  const plaintiffs = orderContext.parties.filter(p => p.role === 'plaintiff');
+  const defendants = orderContext.parties.filter(p => p.role === 'defendant');
+  const allPartiesFormatted = orderContext.parties
+    .map(p => `${p.name} (${p.role})`)
+    .join('\n');
+
+  // Build document summaries
+  const documentSummaries = orderContext.documents.parsed
+    .map(d => `[${d.documentType.toUpperCase()}]\n${d.summary}`)
+    .join('\n\n');
+
+  // Extract key facts
+  const keyFactsList = orderContext.documents.parsed
+    .flatMap(d => (d.keyFacts as Array<{ fact: string }>).map(f => f.fact || String(f)))
+    .map(f => `• ${f}`)
+    .join('\n');
+
+  // Extract legal issues
+  const legalIssuesList = orderContext.documents.parsed
+    .flatMap(d => (d.legalIssues as Array<{ issue: string }>).map(i => i.issue || String(i)))
+    .map(i => `• ${i}`)
+    .join('\n');
+
+  // Replacement map
+  const replacements: Record<string, string> = {
+    '{{CASE_NUMBER}}': orderContext.caseNumber || '',
+    '{{CASE_CAPTION}}': orderContext.caseCaption || '',
+    '{{COURT}}': orderContext.jurisdiction || '',
+    '{{JURISDICTION}}': orderContext.jurisdiction || '',
+    '{{COURT_DIVISION}}': orderContext.courtDivision || '',
+    '{{MOTION_TYPE}}': orderContext.motionType || '',
+    '{{MOTION_TIER}}': orderContext.motionTier || 'B',
+    '{{FILING_DEADLINE}}': orderContext.filingDeadline || 'Not specified',
+    '{{ALL_PARTIES}}': allPartiesFormatted || '',
+    '{{PLAINTIFF_NAMES}}': plaintiffs.map(p => p.name).join(', ') || 'N/A',
+    '{{DEFENDANT_NAMES}}': defendants.map(p => p.name).join(', ') || 'N/A',
+    '{{STATEMENT_OF_FACTS}}': orderContext.statementOfFacts || '[No statement of facts provided]',
+    '{{PROCEDURAL_HISTORY}}': orderContext.proceduralHistory || '[No procedural history provided]',
+    '{{CLIENT_INSTRUCTIONS}}': orderContext.instructions || '[No special instructions]',
+    '{{DOCUMENT_CONTENT}}': orderContext.documents.raw || '[No documents uploaded]',
+    '{{DOCUMENT_SUMMARIES}}': documentSummaries || '[No document summaries]',
+    '{{KEY_FACTS}}': keyFactsList || '[No key facts extracted]',
+    '{{LEGAL_ISSUES}}': legalIssuesList || '[No legal issues identified]',
+    '{{ORDER_ID}}': orderContext.orderId || '',
+    '{{ORDER_NUMBER}}': orderContext.orderNumber || '',
+    '{{TODAY_DATE}}': new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }),
+  };
+
+  let result = template;
+  for (const [placeholder, value] of Object.entries(replacements)) {
+    result = result.split(placeholder).join(value);
+  }
+
+  return result;
+}
+
+/**
  * Get current superprompt for a workflow
+ * Uses the admin-editable template merged with order context
  */
 export async function getWorkflowSuperprompt(workflowId: string): Promise<OperationResult<string>> {
   const supabase = await createClient();
@@ -645,28 +774,27 @@ export async function getWorkflowSuperprompt(workflowId: string): Promise<Operat
     return { success: false, error: 'Workflow not found' };
   }
 
-  // Check if superprompt is cached in metadata
-  if (workflow.metadata?.superprompt) {
-    return { success: true, data: workflow.metadata.superprompt as string };
+  // Get the admin superprompt template
+  const templateResult = await getAdminSuperpromptTemplate();
+  if (!templateResult.success || !templateResult.data) {
+    // Fall back to cached or built superprompt
+    if (workflow.metadata?.superprompt) {
+      return { success: true, data: workflow.metadata.superprompt as string };
+    }
+    return { success: false, error: templateResult.error };
   }
 
-  // Build fresh superprompt
+  // Get order context
   const contextResult = await gatherOrderContext(workflow.order_id);
   if (!contextResult.success || !contextResult.data) {
     return { success: false, error: contextResult.error };
   }
 
-  const motionCode = mapMotionTypeToCode(
-    contextResult.data.motionType,
-    contextResult.data.motionTier
+  // Merge template with context
+  const superprompt = mergeSuperpromptWithContext(
+    templateResult.data.template,
+    contextResult.data
   );
-  const motionTemplate = getTemplateForPath(motionCode, workflow.workflow_path);
-
-  const superprompt = buildSuperprompt({
-    orderContext: contextResult.data,
-    motionTemplate,
-    workflowPath: workflow.workflow_path,
-  });
 
   return { success: true, data: superprompt };
 }

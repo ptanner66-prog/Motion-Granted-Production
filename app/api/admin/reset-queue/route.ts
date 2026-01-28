@@ -2,7 +2,8 @@
  * Admin endpoint to reset order statuses
  *
  * POST /api/admin/reset-queue
- * Updates stuck orders to draft_delivered status
+ * Resets stuck orders to 'submitted' status and clears all workflow data
+ * so they can be completely restarted from Phase 1
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -39,33 +40,119 @@ export async function POST(request: NextRequest) {
 
     const adminClient = createSupabaseClient(supabaseUrl, supabaseServiceKey);
 
-    // Get current order statuses
-    const { data: orders, error: fetchError } = await adminClient
+    // Statuses that indicate stuck/failed orders needing reset
+    const stuckStatuses = ['under_review', 'in_progress', 'generation_failed', 'pending_review', 'in_review', 'blocked'];
+
+    // Get orders that need to be reset
+    const { data: stuckOrders, error: fetchError } = await adminClient
       .from('orders')
       .select('id, order_number, status')
-      .order('created_at', { ascending: false });
+      .in('status', stuckStatuses);
 
     if (fetchError) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
 
+    if (!stuckOrders || stuckOrders.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'No stuck orders found to reset',
+        orders_updated: [],
+        workflows_cleared: 0,
+      });
+    }
+
+    const orderIds = stuckOrders.map(o => o.id);
+
     // Count by status before update
     const statusCounts: Record<string, number> = {};
-    for (const order of orders || []) {
+    for (const order of stuckOrders) {
       statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
     }
 
-    // Update orders that are stuck to draft_delivered
-    // Using 'draft_delivered' as it's valid in all database constraint versions
-    const stuckStatuses = ['submitted', 'under_review', 'in_progress', 'generation_failed', 'pending_review', 'in_review'];
+    // Reset stuck orders to 'submitted' so they can be regenerated
+    // This is NOT marking them as delivered - it's allowing them to be restarted
+    const stuckStatuses = ['in_progress', 'generation_failed', 'in_review'];
 
+    // Get orders to reset
+    const { data: ordersToReset, error: fetchOrdersError } = await adminClient
+      .from('orders')
+      .select('id, order_number')
+      .in('status', stuckStatuses);
+
+    if (fetchOrdersError) {
+      return NextResponse.json({ error: fetchOrdersError.message }, { status: 500 });
+    }
+
+    // Reset each order's workflow properly
+    for (const order of ordersToReset || []) {
+      // Get workflow ID
+      const { data: workflow } = await adminClient
+        .from('order_workflows')
+        .select('id, workflow_path')
+        .eq('order_id', order.id)
+        .single();
+
+      if (workflow) {
+        // Delete phase executions and judge results
+        await adminClient
+          .from('workflow_phase_executions')
+          .delete()
+          .eq('order_workflow_id', workflow.id);
+
+        try {
+          await adminClient
+            .from('judge_simulation_results')
+            .delete()
+            .eq('order_workflow_id', workflow.id);
+        } catch {
+          // Table might not exist
+        }
+
+        // Reset workflow state
+        await adminClient
+          .from('order_workflows')
+          .update({
+            status: 'pending',
+            current_phase: 1,
+            last_error: null,
+            started_at: null,
+            completed_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', workflow.id);
+
+        // Recreate phase execution records
+        const { data: phases } = await adminClient
+          .from('workflow_phase_definitions')
+          .select('id, phase_number')
+          .eq('workflow_path', workflow.workflow_path)
+          .order('phase_number', { ascending: true });
+
+        if (phases && phases.length > 0) {
+          const phaseExecutions = phases.map((phase: { id: string; phase_number: number }) => ({
+            order_workflow_id: workflow.id,
+            phase_definition_id: phase.id,
+            phase_number: phase.phase_number,
+            status: 'pending',
+          }));
+
+          await adminClient
+            .from('workflow_phase_executions')
+            .insert(phaseExecutions);
+        }
+      }
+    }
+
+    // Update order statuses to 'submitted' (ready to restart)
     const { data: updatedOrders, error: updateError } = await adminClient
       .from('orders')
       .update({
-        status: 'draft_delivered',
+        status: 'submitted',
+        generation_error: null,
         updated_at: new Date().toISOString()
       })
-      .in('status', stuckStatuses)
+      .in('id', orderIds)
       .select('id, order_number');
 
     if (updateError) {
@@ -74,21 +161,24 @@ export async function POST(request: NextRequest) {
 
     // Log the action
     await adminClient.from('automation_logs').insert({
-      action_type: 'status_changed',
+      action_type: 'queue_reset',
       action_details: {
-        change_type: 'queue_reset',
+        change_type: 'complete_reset',
         updated_by: user.id,
-        orders_updated: updatedOrders?.length || 0,
+        orders_reset: updatedOrders?.length || 0,
+        workflows_cleared: workflowIds.length,
         previous_statuses: statusCounts,
+        new_status: 'submitted',
         timestamp: new Date().toISOString(),
       },
     });
 
     return NextResponse.json({
       success: true,
-      message: `Updated ${updatedOrders?.length || 0} orders to draft_delivered`,
+      message: `Reset ${updatedOrders?.length || 0} stuck orders - workflows cleared, ready to regenerate`,
       previous_statuses: statusCounts,
       orders_updated: updatedOrders?.map(o => o.order_number) || [],
+      workflows_cleared: workflowIds.length,
     });
   } catch (error) {
     console.error('Reset queue error:', error);

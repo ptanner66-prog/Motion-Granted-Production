@@ -85,16 +85,22 @@ const ORDER_STATUS_MAP: Record<string, string> = {
   completed: 'Draft ready',
 };
 
+// v7.2: 14-phase workflow
 const PHASE_ACTIVITY_MAP: Record<number, string> = {
-  1: 'Parsing uploaded documents',
-  2: 'Analyzing legal issues',
-  3: 'Researching case law and citations',
-  4: 'Verifying citations',
-  5: 'Structuring arguments',
-  6: 'Drafting the motion',
-  7: 'Reviewing for quality',
-  8: 'Applying revisions',
-  9: 'Finalizing document',
+  1: 'Parsing uploaded documents (Phase I)',
+  2: 'Building legal framework (Phase II)',
+  3: 'Researching case law (Phase III)',
+  4: 'Verifying citations (Phase IV)',
+  5: 'Structuring arguments (Phase V)',
+  6: 'Refining structure (Phase V.1)',
+  7: 'Drafting the motion (Phase VI)',
+  8: 'Judge simulation review (Phase VII)',
+  9: 'Applying revisions (Phase VII.1)',
+  10: 'Final legal polish (Phase VIII)',
+  11: 'Disclosure & transparency (Phase VIII.5)',
+  12: 'Formatting & assembly (Phase IX)',
+  13: 'Final formatting adjustments (Phase IX.1)',
+  14: 'Quality assurance & approval (Phase X)',
 };
 
 // ============================================================================
@@ -141,10 +147,10 @@ export async function startOrderAutomation(
     });
 
     // Start workflow orchestration
+    // NOTE: skipDocumentParsing has been removed - phases cannot be skipped
     const workflowResult = await orchestrateWorkflow(orderId, {
       autoRun: mergedConfig.autoRun,
       workflowPath: mergedConfig.workflowPath,
-      skipDocumentParsing: false,
     });
 
     if (!workflowResult.success || !workflowResult.data) {
@@ -178,7 +184,7 @@ export async function startOrderAutomation(
           workflowId: resolvedWorkflowId,
           status: 'requires_review',
           currentPhase: workflowResult.data.currentPhase,
-          totalPhases: 9,
+          totalPhases: 14,
           pdfGenerated: false,
           notificationSent: false,
         },
@@ -199,7 +205,7 @@ export async function startOrderAutomation(
         workflowId: resolvedWorkflowId,
         status: 'in_progress',
         currentPhase: workflowResult.data.currentPhase || 1,
-        totalPhases: 9,
+        totalPhases: 14,
         pdfGenerated: false,
         notificationSent: false,
       },
@@ -306,7 +312,7 @@ async function finalizeOrder(
         orderNumber,
         workflowId,
         status: 'completed',
-        totalPhases: 9,
+        totalPhases: 14,
         pdfGenerated,
         deliverableId,
         notificationSent,
@@ -407,7 +413,7 @@ export async function getOrderProgress(orderId: string): Promise<OperationResult
 
     // Calculate progress
     const currentPhase = workflow?.current_phase || 0;
-    const totalPhases = 9;
+    const totalPhases = 14;
     const percentComplete = workflow
       ? Math.round((currentPhase / totalPhases) * 100)
       : order.status === 'submitted'

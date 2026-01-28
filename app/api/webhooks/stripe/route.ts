@@ -7,7 +7,7 @@ import {
   scheduleTask,
 } from '@/lib/automation';
 import { processRevisionPayment } from '@/lib/workflow/checkpoint-service';
-import { inngest, calculatePriority } from '@/lib/inngest/client';
+import { inngest } from '@/lib/inngest/client';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -18,6 +18,70 @@ const stripe = stripeSecretKey && !stripeSecretKey.includes('xxxxx')
       apiVersion: '2025-12-15.clover',
     })
   : null;
+
+// Track invalid webhook attempts for security monitoring
+const INVALID_ATTEMPT_THRESHOLD = 5; // Alert after 5 invalid attempts in 1 hour
+
+/**
+ * Log invalid webhook attempts for security monitoring
+ * Alerts if threshold exceeded (potential attack)
+ */
+async function logInvalidWebhookAttempt(
+  req: Request,
+  reason: 'missing_signature' | 'invalid_signature',
+  signature: string | null
+): Promise<void> {
+  try {
+    const supabase = await createClient();
+    const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+                     req.headers.get('x-real-ip') ||
+                     'unknown';
+    const userAgent = req.headers.get('user-agent') || 'unknown';
+
+    // Log the invalid attempt
+    await supabase.from('automation_logs').insert({
+      action_type: 'webhook_invalid_attempt',
+      action_details: {
+        source: 'stripe',
+        reason,
+        clientIP,
+        userAgent,
+        signaturePrefix: signature ? signature.substring(0, 20) + '...' : null,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    // Check for repeated invalid attempts (potential attack)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count } = await supabase
+      .from('automation_logs')
+      .select('*', { count: 'exact', head: true })
+      .eq('action_type', 'webhook_invalid_attempt')
+      .gte('created_at', oneHourAgo);
+
+    if (count && count >= INVALID_ATTEMPT_THRESHOLD) {
+      console.error(`[SECURITY ALERT] ${count} invalid Stripe webhook attempts in the last hour from IP: ${clientIP}`);
+
+      // Log the security alert
+      await supabase.from('automation_logs').insert({
+        action_type: 'security_alert',
+        action_details: {
+          alertType: 'webhook_attack_suspected',
+          source: 'stripe',
+          invalidAttempts: count,
+          timeWindow: '1 hour',
+          clientIP,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      // TODO: Send alert notification to admin (email/Slack)
+    }
+  } catch (error) {
+    console.error('[Stripe Webhook] Failed to log invalid attempt:', error);
+    // Don't throw - logging failure shouldn't affect response
+  }
+}
 
 /**
  * POST /api/webhooks/stripe
@@ -39,6 +103,8 @@ export async function POST(req: Request) {
   const signature = headersList.get('stripe-signature');
 
   if (!signature) {
+    // Log missing signature attempt
+    await logInvalidWebhookAttempt(req, 'missing_signature', null);
     return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
   }
 
@@ -48,6 +114,8 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     console.error('[Stripe Webhook] Signature verification failed:', err);
+    // Log invalid signature attempt and check for potential attack
+    await logInvalidWebhookAttempt(req, 'invalid_signature', signature);
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
@@ -235,26 +303,49 @@ async function handlePaymentSucceeded(
     payload: { triggeredBy: 'payment_success' },
   });
 
-  // Get filing deadline for priority calculation
-  const { data: fullOrder } = await supabase
-    .from('orders')
-    .select('filing_deadline')
-    .eq('id', orderId)
-    .single();
+  // AUTO-GENERATION DISABLED FOR DEVELOPMENT
+  // Set ENABLE_AUTO_GENERATION=true in production to auto-trigger workflow after payment
+  const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION === 'true';
 
   // Queue order for draft generation via Inngest
   // This replaces the synchronous Claude API call
   if (fullOrder?.filing_deadline) {
-    await inngest.send({
-      name: "order/submitted",
-      data: {
-        orderId,
-        priority: calculatePriority(fullOrder.filing_deadline),
-        filingDeadline: fullOrder.filing_deadline,
-      },
-    });
+    try {
+      await inngest.send({
+        name: "order/submitted",
+        data: {
+          orderId,
+          priority: calculatePriority(fullOrder.filing_deadline),
+          filingDeadline: fullOrder.filing_deadline,
+        },
+      });
 
-    console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation`);
+      console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation`);
+    } catch (inngestError) {
+      // CRITICAL: Inngest failed - queue to automation_tasks as fallback
+      console.error(`[Stripe Webhook] Inngest send failed, using fallback queue:`, inngestError);
+
+      await supabase.from('automation_tasks').insert({
+        task_type: 'generate_draft',
+        order_id: orderId,
+        priority: 10,
+        status: 'pending',
+        payload: {
+          source: 'webhook_fallback',
+          filingDeadline: fullOrder.filing_deadline,
+          error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
+        },
+      });
+
+      await supabase.from('automation_logs').insert({
+        order_id: orderId,
+        action_type: 'inngest_fallback',
+        action_details: {
+          error: inngestError instanceof Error ? inngestError.message : 'Unknown error',
+          fallbackQueue: 'automation_tasks',
+        },
+      });
+    }
   }
 
   console.log(`[Stripe Webhook] Payment succeeded for order ${order.order_number}`);
@@ -474,28 +565,39 @@ async function handleCheckoutSessionCompleted(
         payload: { triggeredBy: 'checkout_success' },
       });
 
-      // Get filing deadline for priority calculation
-      const { data: fullOrder } = await supabase
-        .from('orders')
-        .select('filing_deadline')
-        .eq('id', orderId)
-        .single();
+      // AUTO-GENERATION DISABLED FOR DEVELOPMENT
+      const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION === 'true';
 
       // Queue order for draft generation via Inngest
       if (fullOrder?.filing_deadline) {
-        await inngest.send({
-          name: "order/submitted",
-          data: {
-            orderId,
-            priority: calculatePriority(fullOrder.filing_deadline),
-            filingDeadline: fullOrder.filing_deadline,
-          },
-        });
+        try {
+          await inngest.send({
+            name: "order/submitted",
+            data: {
+              orderId,
+              priority: calculatePriority(fullOrder.filing_deadline),
+              filingDeadline: fullOrder.filing_deadline,
+            },
+          });
 
-        console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
+          console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
+        } catch (inngestError) {
+          // CRITICAL: Inngest failed - queue to automation_tasks as fallback
+          console.error(`[Stripe Webhook] Inngest send failed (checkout), using fallback:`, inngestError);
+
+          await supabase.from('automation_tasks').insert({
+            task_type: 'generate_draft',
+            order_id: orderId,
+            priority: 10,
+            status: 'pending',
+            payload: {
+              source: 'checkout_webhook_fallback',
+              filingDeadline: fullOrder.filing_deadline,
+              error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
+            },
+          });
+        }
       }
-
-      console.log(`[Stripe Webhook] Checkout completed for order ${order.order_number}`);
     }
   }
 }

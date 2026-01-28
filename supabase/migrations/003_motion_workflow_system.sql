@@ -9,9 +9,9 @@
 
 -- Motion complexity tiers
 CREATE TYPE motion_tier AS ENUM ('A', 'B', 'C');
--- Tier A: Complex strategic motions requiring extensive legal analysis
--- Tier B: Standard procedural motions with moderate complexity
--- Tier C: Routine motions with straightforward requirements
+-- Tier A: Procedural/Administrative - Simple procedural motions
+-- Tier B: Intermediate - Standard motions with moderate complexity
+-- Tier C: Complex/Dispositive - MSJ, MSA, PI, TRO
 
 -- Workflow path types
 CREATE TYPE workflow_path AS ENUM ('path_a', 'path_b');
@@ -385,7 +385,7 @@ CREATE TRIGGER update_motion_types_timestamp
 -- SEED DATA: MOTION TYPES
 -- ============================================================================
 
--- Tier A: Complex Strategic Motions
+-- Tier A: Procedural/Administrative Motions
 INSERT INTO motion_types (code, name, description, tier, base_price_cents, typical_turnaround_days, required_documents, generation_prompts) VALUES
 ('MTD_12B6', 'Motion to Dismiss (12(b)(6))', 'Motion to dismiss for failure to state a claim under FRCP 12(b)(6)', 'A', 89900, 7,
   '["complaint", "relevant_contracts", "prior_court_orders"]'::jsonb,
@@ -423,7 +423,7 @@ INSERT INTO motion_types (code, name, description, tier, base_price_cents, typic
   '["complaint", "removal_notice", "jurisdictional_evidence"]'::jsonb,
   '{"focus": "removal defects", "key_analysis": "federal question, diversity, timeliness, procedure"}'::jsonb);
 
--- Tier B: Standard Procedural Motions
+-- Tier B: Intermediate Motions
 INSERT INTO motion_types (code, name, description, tier, base_price_cents, typical_turnaround_days, required_documents) VALUES
 ('MTC', 'Motion to Continue/Postpone', 'Motion to continue trial or hearing date', 'B', 34900, 3,
   '["current_scheduling_order", "reason_documentation"]'::jsonb),
@@ -464,7 +464,7 @@ INSERT INTO motion_types (code, name, description, tier, base_price_cents, typic
 ('MLIMINE', 'Motion in Limine', 'Motion in limine to exclude evidence at trial', 'B', 49900, 5,
   '["evidence_at_issue", "exclusion_basis"]'::jsonb);
 
--- Tier C: Routine Motions
+-- Tier C: Complex/Dispositive Motions
 INSERT INTO motion_types (code, name, description, tier, base_price_cents, typical_turnaround_days, required_documents) VALUES
 ('MEXT', 'Motion for Extension of Time', 'Motion for extension of time to respond or comply', 'C', 24900, 2,
   '["deadline_documentation", "reason_statement"]'::jsonb),

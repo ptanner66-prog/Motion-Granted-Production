@@ -59,10 +59,10 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Create Claude message with automatic rate limit handling
+ * Create Claude message with automatic rate limit handling and streaming support
  */
 export async function createMessageWithRetry(
-  params: Anthropic.MessageCreateParamsNonStreaming,
+  params: Anthropic.MessageCreateParams,
   options: {
     maxRetries?: number;
     onRetry?: (attempt: number, waitMs: number, error: string) => void;
@@ -78,6 +78,12 @@ export async function createMessageWithRetry(
   }
 
   const anthropic = new Anthropic({ apiKey });
+
+  // Determine if streaming is needed (16K+ tokens)
+  const maxTokens = params.max_tokens;
+  const useStreaming = maxTokens >= 16000;
+
+  console.log(`[Claude] Using streaming: ${useStreaming} (${maxTokens} tokens)`);
 
   // Ensure minimum interval between requests
   const now = Date.now();
@@ -99,7 +105,16 @@ export async function createMessageWithRetry(
 
       console.log(`[Claude] Attempt ${attempt + 1}/${maxRetries + 1} - Making request...`);
 
-      const response = await anthropic.messages.create(params);
+      let response: Anthropic.Message;
+
+      if (useStreaming) {
+        // Use streaming for high-token operations
+        const stream = anthropic.messages.stream(params);
+        response = (await stream.finalMessage()) as Anthropic.Message;
+      } else {
+        // Standard non-streaming for smaller operations
+        response = (await anthropic.messages.create(params)) as Anthropic.Message;
+      }
 
       // Log success
       console.log(`[Claude] Success - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);

@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       orderId,
       autoRun = false,
       workflowPath = 'path_a',
-      skipDocumentParsing = false,
+      // NOTE: skipDocumentParsing has been REMOVED - phases cannot be skipped
     } = body;
 
     if (!orderId) {
@@ -63,10 +63,10 @@ export async function POST(request: Request) {
     }
 
     // Run orchestration
+    // PHASE ENFORCEMENT: All phases execute in order, no skipping
     const result = await orchestrateWorkflow(orderId, {
       autoRun,
       workflowPath: workflowPath as WorkflowPath,
-      skipDocumentParsing,
     });
 
     if (!result.success) {
