@@ -135,21 +135,73 @@ export async function POST(
       // Fallback: Execute workflow directly using v7.2 phase executors
       console.log('[Generate] Inngest not configured, executing workflow directly with v7.2 system');
 
-      // Import v7.2 phase executors
+      // Import v7.2 phase executors and workflow functions
       const { executePhase } = await import('@/lib/workflow/phase-executors');
+      const { startWorkflow } = await import('@/lib/workflow');
 
       // Execute phases in background (non-blocking)
       (async () => {
         try {
-          // Get workflow ID and order details
-          const { data: workflow } = await adminClient
+          // Check if workflow exists, create if not
+          let { data: workflow } = await adminClient
             .from('order_workflows')
             .select('id')
             .eq('order_id', orderId)
             .single();
 
           if (!workflow) {
-            throw new Error('Workflow not found');
+            console.log('[Generate] Workflow not found, creating new workflow');
+
+            // Get motion type ID - try to match from motion_types table, or use first available
+            let motionTypeId = null;
+
+            const { data: motionTypeData } = await adminClient
+              .from('motion_types')
+              .select('id')
+              .eq('code', (order.motion_type || '').toUpperCase())
+              .single();
+
+            if (motionTypeData) {
+              motionTypeId = motionTypeData.id;
+            } else {
+              // Fallback to first motion type
+              const { data: fallbackType } = await adminClient
+                .from('motion_types')
+                .select('id')
+                .limit(1)
+                .single();
+
+              if (fallbackType) {
+                motionTypeId = fallbackType.id;
+              } else {
+                throw new Error('No motion types configured in database. Run migrations first.');
+              }
+            }
+
+            // Create workflow
+            const result = await startWorkflow({
+              orderId,
+              motionTypeId,
+              workflowPath: 'path_a',
+            });
+
+            if (!result.success || !result.data) {
+              throw new Error(result.error || 'Failed to create workflow');
+            }
+
+            // Fetch the created workflow
+            const { data: createdWorkflow } = await adminClient
+              .from('order_workflows')
+              .select('id')
+              .eq('order_id', orderId)
+              .single();
+
+            if (!createdWorkflow) {
+              throw new Error('Workflow creation succeeded but cannot fetch workflow');
+            }
+
+            workflow = createdWorkflow;
+            console.log(`[Generate] Created workflow ${workflow.id} for order ${orderId}`);
           }
 
           const { data: orderData } = await adminClient
@@ -172,9 +224,28 @@ export async function POST(
           const MAX_PHASES = 50; // Safety limit to prevent infinite loops
           const MAX_REVISION_LOOPS = 3;
 
+          // Update workflow status to in_progress
+          await adminClient
+            .from('order_workflows')
+            .update({
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+            })
+            .eq('id', workflow.id);
+
           // Execute phases dynamically following nextPhase routing
           while (currentPhase && phaseIterations < MAX_PHASES) {
             console.log(`[Generate Direct] Executing phase ${currentPhase} (iteration ${phaseIterations + 1}, revision loop ${revisionLoopCount})`);
+
+            // Update workflow activity (current_phase is for old system, we track via phase codes in v7.2)
+            await adminClient
+              .from('order_workflows')
+              .update({
+                last_activity_at: new Date().toISOString(),
+                metadata: { currentPhaseCode: currentPhase, revisionLoop: revisionLoopCount },
+              })
+              .eq('id', workflow.id);
+
             phaseIterations++;
 
             // Track revision loops (each time we execute Phase VII after the first time)
@@ -331,6 +402,32 @@ export async function POST(
           console.log('[Generate Direct] Workflow execution completed');
         } catch (error) {
           console.error('[Generate Direct] Workflow execution error:', error);
+
+          // Record error in database so it's visible
+          try {
+            await adminClient
+              .from('automation_logs')
+              .insert({
+                order_id: orderId,
+                action_type: 'workflow_error',
+                action_details: {
+                  error: error instanceof Error ? error.message : 'Unknown error',
+                  stack: error instanceof Error ? error.stack : undefined,
+                  phase: 'workflow_execution',
+                },
+              });
+
+            // Update order status
+            await adminClient
+              .from('orders')
+              .update({
+                status: 'generation_failed',
+                generation_error: error instanceof Error ? error.message : 'Workflow execution error',
+              })
+              .eq('id', orderId);
+          } catch (logError) {
+            console.error('[Generate Direct] Failed to log error:', logError);
+          }
         }
       })();
     }
