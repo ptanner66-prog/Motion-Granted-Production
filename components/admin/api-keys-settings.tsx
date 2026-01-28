@@ -20,7 +20,7 @@ import {
   CreditCard,
   Mail,
   Scale,
-  FileText,
+  BookOpen,
 } from 'lucide-react';
 
 interface APIKeysSettings {
@@ -217,444 +217,93 @@ export function APIKeysSettings() {
           </div>
         )}
 
-        {/* ========== REQUIRED SECTION ========== */}
-        <div className="space-y-6">
-          <h2 className="text-lg font-semibold text-navy border-b pb-2">Required API Keys</h2>
-
-          {/* Anthropic API Key Section */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
-              <Sparkles className="h-5 w-5 text-orange-500" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-navy">Claude AI (Anthropic)</h3>
-                <p className="text-sm text-gray-500">Powers all motion generation and AI analysis</p>
-              </div>
-              {settings.anthropic_configured ? (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Active
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-red-500/20 text-red-600 rounded">
-                  <XCircle className="h-3.5 w-3.5" />
-                  Required
-                </span>
-              )}
+        {/* ========== 1. ANTHROPIC (REQUIRED) ========== */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
+            <Sparkles className="h-5 w-5 text-orange-500" />
+            <div className="flex-1">
+              <h3 className="font-semibold text-navy">Claude AI (Anthropic)</h3>
+              <p className="text-sm text-gray-500">Powers all motion generation and AI analysis</p>
             </div>
-
-            <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="anthropic-key">Anthropic API Key</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="anthropic-key"
-                      type={showKeys['anthropic'] ? 'text' : 'password'}
-                      value={settings.anthropic_api_key}
-                      onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, anthropic_api_key: e.target.value }))
-                      }
-                      placeholder="sk-ant-api03-..."
-                      className="pl-10 pr-10 font-mono text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('anthropic')}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showKeys['anthropic'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleTestKey('anthropic')}
-                    disabled={!settings.anthropic_api_key || testingKey === 'anthropic'}
-                  >
-                    {testingKey === 'anthropic' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Test'
-                    )}
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">
-                    Get your API key from{' '}
-                    <a
-                      href="https://console.anthropic.com/settings/keys"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-teal hover:underline inline-flex items-center gap-1"
-                    >
-                      Anthropic Console <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </p>
-                  {testResults['anthropic'] && (
-                    <span className={`text-xs ${testResults['anthropic'].success ? 'text-green-600' : 'text-red-600'}`}>
-                      {testResults['anthropic'].message}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
+            {settings.anthropic_configured ? (
+              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Active
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-red-500/20 text-red-600 rounded">
+                <XCircle className="h-3.5 w-3.5" />
+                Required
+              </span>
+            )}
           </div>
 
-          {/* OpenAI API Key Section */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
-              <Sparkles className="h-5 w-5 text-green-500" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-navy">OpenAI (GPT)</h3>
-                <p className="text-sm text-gray-500">Powers Stage 1 cross-vendor citation verification</p>
-              </div>
-              {settings.openai_configured ? (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Active
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-red-500/20 text-red-600 rounded">
-                  <XCircle className="h-3.5 w-3.5" />
-                  Required
-                </span>
-              )}
-            </div>
-
-            <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="openai-key">OpenAI API Key</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="openai-key"
-                      type={showKeys['openai'] ? 'text' : 'password'}
-                      value={settings.openai_api_key}
-                      onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, openai_api_key: e.target.value }))
-                      }
-                      placeholder="sk-..."
-                      className="pl-10 pr-10 font-mono text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('openai')}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showKeys['openai'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleTestKey('openai')}
-                    disabled={!settings.openai_api_key || testingKey === 'openai'}
+          <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="anthropic-key">Anthropic API Key</Label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="anthropic-key"
+                    type={showKeys['anthropic'] ? 'text' : 'password'}
+                    value={settings.anthropic_api_key}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, anthropic_api_key: e.target.value }))
+                    }
+                    placeholder="sk-ant-api03-..."
+                    className="pl-10 pr-10 font-mono text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleShowKey('anthropic')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {testingKey === 'openai' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Test'
-                    )}
-                  </Button>
+                    {showKeys['anthropic'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">
-                    Get your API key from{' '}
-                    <a
-                      href="https://platform.openai.com/api-keys"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-teal hover:underline inline-flex items-center gap-1"
-                    >
-                      OpenAI Platform <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </p>
-                  {testResults['openai'] && (
-                    <span className={`text-xs ${testResults['openai'].success ? 'text-green-600' : 'text-red-600'}`}>
-                      {testResults['openai'].message}
-                    </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleTestKey('anthropic')}
+                  disabled={!settings.anthropic_api_key || testingKey === 'anthropic'}
+                >
+                  {testingKey === 'anthropic' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Test'
                   )}
-                </div>
+                </Button>
               </div>
-            </div>
-          </div>
-
-          {/* CourtListener API Key Section */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
-              <Search className="h-5 w-5 text-blue-500" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-navy">CourtListener (Free Law Project)</h3>
-                <p className="text-sm text-gray-500">Primary source for citation verification (CIV Step 1)</p>
-              </div>
-              {settings.courtlistener_configured ? (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Active
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-red-500/20 text-red-600 rounded">
-                  <XCircle className="h-3.5 w-3.5" />
-                  Required
-                </span>
-              )}
-            </div>
-
-            <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="courtlistener-key">CourtListener API Token</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="courtlistener-key"
-                      type={showKeys['courtlistener'] ? 'text' : 'password'}
-                      value={settings.courtlistener_api_key}
-                      onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, courtlistener_api_key: e.target.value }))
-                      }
-                      placeholder="Enter CourtListener API token"
-                      className="pl-10 pr-10 font-mono text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('courtlistener')}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showKeys['courtlistener'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleTestKey('courtlistener')}
-                    disabled={!settings.courtlistener_api_key || testingKey === 'courtlistener'}
-                  >
-                    {testingKey === 'courtlistener' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Test'
-                    )}
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">
-                    Get your free API token from{' '}
-                    <a
-                      href="https://www.courtlistener.com/help/api/rest/#permissions"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-teal hover:underline inline-flex items-center gap-1"
-                    >
-                      CourtListener <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </p>
-                  {testResults['courtlistener'] && (
-                    <span className={`text-xs ${testResults['courtlistener'].success ? 'text-green-600' : 'text-red-600'}`}>
-                      {testResults['courtlistener'].message}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Resend API Key Section */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
-              <Mail className="h-5 w-5 text-violet-500" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-navy">Resend (Email Service)</h3>
-                <p className="text-sm text-gray-500">Powers all email notifications and client communications</p>
-              </div>
-              {settings.resend_configured ? (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Active
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-red-500/20 text-red-600 rounded">
-                  <XCircle className="h-3.5 w-3.5" />
-                  Required
-                </span>
-              )}
-            </div>
-
-            <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="resend-key">Resend API Key</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="resend-key"
-                      type={showKeys['resend'] ? 'text' : 'password'}
-                      value={settings.resend_api_key}
-                      onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, resend_api_key: e.target.value }))
-                      }
-                      placeholder="re_..."
-                      className="pl-10 pr-10 font-mono text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('resend')}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showKeys['resend'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleTestKey('resend')}
-                    disabled={!settings.resend_api_key || testingKey === 'resend'}
-                  >
-                    {testingKey === 'resend' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Test'
-                    )}
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">
-                    Get your API key from{' '}
-                    <a
-                      href="https://resend.com/api-keys"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-teal hover:underline inline-flex items-center gap-1"
-                    >
-                      Resend Dashboard <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </p>
-                  {testResults['resend'] && (
-                    <span className={`text-xs ${testResults['resend'].success ? 'text-green-600' : 'text-red-600'}`}>
-                      {testResults['resend'].message}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* PACER Section (Optional - Federal Unpublished Cases) */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
-              <BookOpen className="h-5 w-5 text-amber-500" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-navy">PACER (Federal Courts)</h3>
-                <p className="text-sm text-gray-500">Fallback for federal unpublished cases (~$0.10/lookup)</p>
-              </div>
-              {settings.pacer_configured ? (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Active
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  Optional
-                </span>
-              )}
-            </div>
-
-            <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <div className="flex gap-2">
-                  <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                  <div className="text-xs text-amber-700">
-                    <p className="font-medium">Cost Warning</p>
-                    <p className="mt-1">PACER charges ~$0.10 per lookup. Only used when CourtListener doesn&apos;t find a federal case.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="pacer-username">PACER Username</Label>
-                  <div className="relative">
-                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="pacer-username"
-                      type="text"
-                      value={settings.pacer_username}
-                      onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, pacer_username: e.target.value }))
-                      }
-                      placeholder="Enter PACER username"
-                      className="pl-10 font-mono text-sm"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pacer-password">PACER Password</Label>
-                  <div className="relative">
-                    <Input
-                      id="pacer-password"
-                      type={showKeys['pacer'] ? 'text' : 'password'}
-                      value={settings.pacer_password}
-                      onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, pacer_password: e.target.value }))
-                      }
-                      placeholder="Enter PACER password"
-                      className="pr-10 font-mono text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('pacer')}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showKeys['pacer'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-500">
-                  Register at{' '}
+                  Get your API key from{' '}
                   <a
-                    href="https://pacer.uscourts.gov"
+                    href="https://console.anthropic.com/settings/keys"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-teal hover:underline inline-flex items-center gap-1"
                   >
-                    PACER.uscourts.gov <ExternalLink className="h-3 w-3" />
+                    Anthropic Console <ExternalLink className="h-3 w-3" />
                   </a>
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleTestKey('pacer')}
-                  disabled={!settings.pacer_username || !settings.pacer_password || testingKey === 'pacer'}
-                >
-                  {testingKey === 'pacer' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Test Connection'
-                  )}
-                </Button>
+                {testResults['anthropic'] && (
+                  <span className={`text-xs ${testResults['anthropic'].success ? 'text-green-600' : 'text-red-600'}`}>
+                    {testResults['anthropic'].message}
+                  </span>
+                )}
               </div>
-              {testResults['pacer'] && (
-                <span className={`text-xs ${testResults['pacer'].success ? 'text-green-600' : 'text-red-600'}`}>
-                  {testResults['pacer'].message}
-                </span>
-              )}
             </div>
           </div>
         </div>
 
-        {/* OpenAI Section */}
+        {/* ========== 2. OPENAI (OPTIONAL) ========== */}
         <div className="space-y-4">
-          <div className="flex items-center gap-3 pb-2 border-b">
+          <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
             <Sparkles className="h-5 w-5 text-green-500" />
             <div className="flex-1">
-              <h3 className="font-semibold text-navy">OpenAI</h3>
-              <p className="text-sm text-gray-500">GPT models for citation verification</p>
+              <h3 className="font-semibold text-navy">OpenAI (GPT)</h3>
+              <p className="text-sm text-gray-500">Powers Stage 1 cross-vendor citation verification</p>
             </div>
             {settings.openai_configured ? (
               <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
@@ -662,16 +311,12 @@ export function APIKeysSettings() {
                 Active
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-500/20 text-gray-600 rounded">
+              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded">
                 <AlertCircle className="h-3.5 w-3.5" />
                 Optional
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500">
-            Optional integrations with premium legal research providers for enhanced citation verification.
-            The system works without these, but they provide additional verification sources.
-          </p>
 
           <div className="p-4 bg-gray-50 rounded-lg space-y-4">
             <div className="space-y-2">
@@ -732,13 +377,13 @@ export function APIKeysSettings() {
           </div>
         </div>
 
-        {/* CourtListener Section */}
+        {/* ========== 3. COURTLISTENER (OPTIONAL) ========== */}
         <div className="space-y-4">
-          <div className="flex items-center gap-3 pb-2 border-b">
-            <Scale className="h-5 w-5 text-indigo-500" />
+          <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
+            <Scale className="h-5 w-5 text-blue-500" />
             <div className="flex-1">
-              <h3 className="font-semibold text-navy">CourtListener</h3>
-              <p className="text-sm text-gray-500">Legal citation verification and case lookup</p>
+              <h3 className="font-semibold text-navy">CourtListener (Free Law Project)</h3>
+              <p className="text-sm text-gray-500">Primary source for citation verification (CIV Step 1)</p>
             </div>
             {settings.courtlistener_configured ? (
               <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
@@ -746,7 +391,7 @@ export function APIKeysSettings() {
                 Active
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-500/20 text-gray-600 rounded">
+              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded">
                 <AlertCircle className="h-3.5 w-3.5" />
                 Optional
               </span>
@@ -755,7 +400,7 @@ export function APIKeysSettings() {
 
           <div className="p-4 bg-gray-50 rounded-lg space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="courtlistener-key">CourtListener API Key</Label>
+              <Label htmlFor="courtlistener-key">CourtListener API Token</Label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -766,7 +411,7 @@ export function APIKeysSettings() {
                     onChange={(e) =>
                       setSettings((prev) => ({ ...prev, courtlistener_api_key: e.target.value }))
                     }
-                    placeholder="Enter CourtListener API key"
+                    placeholder="Enter CourtListener API token"
                     className="pl-10 pr-10 font-mono text-sm"
                   />
                   <button
@@ -792,9 +437,9 @@ export function APIKeysSettings() {
               </div>
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-500">
-                  Get your API key from{' '}
+                  Get your free API token from{' '}
                   <a
-                    href="https://www.courtlistener.com/api/"
+                    href="https://www.courtlistener.com/help/api/rest/#permissions"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-teal hover:underline inline-flex items-center gap-1"
@@ -812,13 +457,13 @@ export function APIKeysSettings() {
           </div>
         </div>
 
-        {/* PACER Section */}
+        {/* ========== 4. PACER (OPTIONAL) ========== */}
         <div className="space-y-4">
-          <div className="flex items-center gap-3 pb-2 border-b">
-            <FileText className="h-5 w-5 text-blue-500" />
+          <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
+            <BookOpen className="h-5 w-5 text-amber-500" />
             <div className="flex-1">
-              <h3 className="font-semibold text-navy">PACER</h3>
-              <p className="text-sm text-gray-500">Federal court document access (fallback for unpublished opinions)</p>
+              <h3 className="font-semibold text-navy">PACER (Federal Courts)</h3>
+              <p className="text-sm text-gray-500">Fallback for federal unpublished cases (~$0.10/lookup)</p>
             </div>
             {settings.pacer_configured ? (
               <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
@@ -826,7 +471,7 @@ export function APIKeysSettings() {
                 Active
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-500/20 text-gray-600 rounded">
+              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded">
                 <AlertCircle className="h-3.5 w-3.5" />
                 Optional
               </span>
@@ -834,19 +479,32 @@ export function APIKeysSettings() {
           </div>
 
           <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-700">
+                  <p className="font-medium">Cost Warning</p>
+                  <p className="mt-1">PACER charges ~$0.10 per lookup. Only used when CourtListener doesn&apos;t find a federal case.</p>
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="pacer-username">PACER Username</Label>
-                <Input
-                  id="pacer-username"
-                  type="text"
-                  value={settings.pacer_username}
-                  onChange={(e) =>
-                    setSettings((prev) => ({ ...prev, pacer_username: e.target.value }))
-                  }
-                  placeholder="Enter PACER username"
-                  className="font-mono text-sm"
-                />
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="pacer-username"
+                    type="text"
+                    value={settings.pacer_username}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, pacer_username: e.target.value }))
+                    }
+                    placeholder="Enter PACER username"
+                    className="pl-10 font-mono text-sm"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="pacer-password">PACER Password</Label>
@@ -871,21 +529,19 @@ export function APIKeysSettings() {
                 </div>
               </div>
             </div>
+
             <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-1">
-                <p className="text-xs text-gray-500">
-                  Register at{' '}
-                  <a
-                    href="https://pacer.uscourts.gov/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-teal hover:underline inline-flex items-center gap-1"
-                  >
-                    PACER <ExternalLink className="h-3 w-3" />
-                  </a>
-                </p>
-                <p className="text-xs text-amber-600">~$0.10 per lookup, $50/month budget cap enforced</p>
-              </div>
+              <p className="text-xs text-gray-500">
+                Register at{' '}
+                <a
+                  href="https://pacer.uscourts.gov"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal hover:underline inline-flex items-center gap-1"
+                >
+                  PACER.uscourts.gov <ExternalLink className="h-3 w-3" />
+                </a>
+              </p>
               <Button
                 variant="outline"
                 size="sm"
@@ -895,25 +551,25 @@ export function APIKeysSettings() {
                 {testingKey === 'pacer' ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  'Test'
+                  'Test Connection'
                 )}
               </Button>
             </div>
             {testResults['pacer'] && (
-              <p className={`text-xs ${testResults['pacer'].success ? 'text-green-600' : 'text-red-600'}`}>
+              <span className={`text-xs ${testResults['pacer'].success ? 'text-green-600' : 'text-red-600'}`}>
                 {testResults['pacer'].message}
-              </p>
+              </span>
             )}
           </div>
         </div>
 
-        {/* Stripe Section */}
+        {/* ========== 5. STRIPE (OPTIONAL) ========== */}
         <div className="space-y-4">
-          <div className="flex items-center gap-3 pb-2 border-b">
+          <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
             <CreditCard className="h-5 w-5 text-purple-500" />
             <div className="flex-1">
-              <h3 className="font-semibold text-navy">Stripe</h3>
-              <p className="text-sm text-gray-500">Payment processing</p>
+              <h3 className="font-semibold text-navy">Stripe (Payment Processing)</h3>
+              <p className="text-sm text-gray-500">Handles customer payments and subscription billing</p>
             </div>
             {settings.stripe_configured ? (
               <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
@@ -921,7 +577,7 @@ export function APIKeysSettings() {
                 Active
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-500/20 text-gray-600 rounded">
+              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded">
                 <AlertCircle className="h-3.5 w-3.5" />
                 Optional
               </span>
@@ -1010,13 +666,13 @@ export function APIKeysSettings() {
           </div>
         </div>
 
-        {/* Resend Section */}
+        {/* ========== 6. RESEND (OPTIONAL) ========== */}
         <div className="space-y-4">
-          <div className="flex items-center gap-3 pb-2 border-b">
-            <Mail className="h-5 w-5 text-pink-500" />
+          <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
+            <Mail className="h-5 w-5 text-violet-500" />
             <div className="flex-1">
-              <h3 className="font-semibold text-navy">Resend</h3>
-              <p className="text-sm text-gray-500">Transactional email delivery</p>
+              <h3 className="font-semibold text-navy">Resend (Email Service)</h3>
+              <p className="text-sm text-gray-500">Powers all email notifications and client communications</p>
             </div>
             {settings.resend_configured ? (
               <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
@@ -1024,7 +680,7 @@ export function APIKeysSettings() {
                 Active
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-500/20 text-gray-600 rounded">
+              <span className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded">
                 <AlertCircle className="h-3.5 w-3.5" />
                 Optional
               </span>
