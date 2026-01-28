@@ -1716,6 +1716,74 @@ export const generateOrderWorkflow = inngest.createFunction(
     // STEP 17: Finalize Workflow
     // ========================================================================
     const finalResult = await step.run("finalize-workflow", async () => {
+      // CRITICAL FIX: Extract final motion from Phase VIII and save to conversations table
+      // This is required for the UI to display the motion
+      const finalDraft = workflowState.phaseOutputs["VIII"] as { finalDraft?: string };
+      const motionContent = finalDraft?.finalDraft || '';
+
+      // Log motion extraction
+      console.log('[Workflow Finalization] Motion content length:', motionContent.length);
+
+      if (!motionContent) {
+        console.warn('[Workflow Finalization] WARNING: No motion content found in Phase VIII output!');
+
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "workflow_warning",
+          action_details: {
+            warning: "No motion content found in Phase VIII output",
+            phaseVIIIOutput: finalDraft,
+            allPhaseKeys: Object.keys(workflowState.phaseOutputs),
+          },
+        });
+      }
+
+      // Get or create conversation for this order
+      let conversation;
+      const { data: existingConv } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("order_id", orderId)
+        .single();
+
+      if (existingConv) {
+        // Update existing conversation with generated motion
+        await supabase
+          .from("conversations")
+          .update({
+            generated_motion: motionContent,
+            status: 'completed',
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingConv.id);
+
+        conversation = existingConv;
+        console.log('[Workflow Finalization] Updated conversation', existingConv.id, 'with motion');
+      } else {
+        // Create new conversation with generated motion
+        const { data: newConv, error: convError } = await supabase
+          .from("conversations")
+          .insert({
+            order_id: orderId,
+            generated_motion: motionContent,
+            status: 'completed',
+            initial_context: {
+              source: 'workflow',
+              tier: workflowState.tier,
+              motionType: workflowState.orderContext.motionType,
+            },
+          })
+          .select()
+          .single();
+
+        if (convError) {
+          console.error('[Workflow Finalization] Failed to create conversation:', convError);
+        } else {
+          conversation = newConv;
+          console.log('[Workflow Finalization] Created conversation', newConv?.id, 'with motion');
+        }
+      }
+
       // Update order status to pending_review (awaiting admin approval)
       await supabase
         .from("orders")
@@ -1747,6 +1815,9 @@ export const generateOrderWorkflow = inngest.createFunction(
           citationCount: workflowState.citationCount,
           revisionLoops: workflowState.revisionLoopCount,
           phasesCompleted: Object.keys(workflowState.phaseOutputs).length,
+          motionSaved: !!motionContent,
+          motionLength: motionContent.length,
+          conversationId: conversation?.id,
         },
       });
 
@@ -1758,6 +1829,8 @@ export const generateOrderWorkflow = inngest.createFunction(
         citationCount: workflowState.citationCount,
         revisionLoops: workflowState.revisionLoopCount,
         status: "pending_review",
+        motionSaved: !!motionContent,
+        conversationId: conversation?.id,
       };
     });
 
