@@ -282,7 +282,7 @@ Respond with ONLY a JSON object:
 
     const response = await askClaude({
       prompt,
-      maxTokens: 1500,
+      maxTokens: 32000,
       systemPrompt: 'You are a legal research expert. Respond with valid JSON only.',
       model,
     });

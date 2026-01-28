@@ -42,7 +42,7 @@ export function QuickActionsPanel({
   const { toast } = useToast();
 
   const handleResetQueue = async () => {
-    if (!confirm('This will reset all stuck orders to pending_review. Continue?')) return;
+    if (!confirm('This will RESTART all stuck orders from the beginning. Their workflows will be cleared and they will be regenerated from Phase I. Continue?')) return;
 
     setIsResetting(true);
     try {

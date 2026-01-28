@@ -40,13 +40,37 @@ export type DeadlineCheckEvent = {
   };
 };
 
-// v7.2: 14-Phase Workflow Orchestration Event
-export type WorkflowOrchestrationEvent = {
-  name: "workflow/orchestration.start";
+// v7.2 Workflow Events
+export type WorkflowExecutePhaseEvent = {
+  name: "workflow/execute-phase";
   data: {
     orderId: string;
-    triggeredBy: string;
-    timestamp: string;
+    workflowId: string;
+    phase: string;
+  };
+};
+
+export type WorkflowCheckpointReachedEvent = {
+  name: "workflow/checkpoint-reached";
+  data: {
+    orderId: string;
+    workflowId: string;
+    checkpoint: {
+      type: string;
+      phase: string;
+      actions?: string[];
+      data?: Record<string, unknown>;
+    };
+  };
+};
+
+export type WorkflowCheckpointApprovedEvent = {
+  name: "workflow/checkpoint-approved";
+  data: {
+    orderId: string;
+    workflowId: string;
+    action: "APPROVE" | "REQUEST_CHANGES" | "CANCEL";
+    nextPhase?: string;
   };
 };
 
@@ -54,7 +78,9 @@ export type Events = {
   "order/submitted": OrderSubmittedEvent;
   "order/generate-draft": OrderGenerationEvent;
   "deadline/check": DeadlineCheckEvent;
-  "workflow/orchestration.start": WorkflowOrchestrationEvent;
+  "workflow/execute-phase": WorkflowExecutePhaseEvent;
+  "workflow/checkpoint-reached": WorkflowCheckpointReachedEvent;
+  "workflow/checkpoint-approved": WorkflowCheckpointApprovedEvent;
 };
 
 /**

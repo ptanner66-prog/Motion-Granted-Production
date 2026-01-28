@@ -21,29 +21,21 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
   const { toast } = useToast();
   const router = useRouter();
 
-  // Don't show if already has a motion ready or in progress
+  // Don't show if already has a motion ready or completed
   const alreadyGenerated = ['pending_review', 'draft_delivered', 'completed', 'revision_delivered'].includes(orderStatus);
-  const isInProgress = ['generating', 'in_progress'].includes(orderStatus);
-  const canResume = ['in_progress', 'generation_failed'].includes(orderStatus);
+  const isInProgress = ['in_progress'].includes(orderStatus);
+  const canResume = ['generation_failed'].includes(orderStatus);
 
-  // Handle starting the 14-phase workflow via orchestrator
+  // Handle starting the 14-phase workflow via v7.2 phase executors
   const handleGenerateNow = async () => {
     setIsGenerating(true);
     setError(null);
 
     try {
-      // Detect workflow path based on filing type (path_a for initiating motions, path_b for oppositions)
-      const workflowPath = filingType === 'opposition' ? 'path_b' : 'path_a';
-
-      const response = await fetch('/api/workflow/orchestrate', {
+      // Use the v7.2 generate endpoint (NOT the old orchestrate endpoint)
+      const response = await fetch(`/api/orders/${orderId}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId,
-          autoRun: true,
-          workflowPath,
-          skipDocumentParsing: false,
-        }),
       });
 
       const data = await response.json();

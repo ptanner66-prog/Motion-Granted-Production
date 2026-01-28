@@ -12,6 +12,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
+import { createMessageWithStreaming } from '@/lib/automation/claude';
 import type {
   WorkflowPhaseCode,
   MotionTier,
@@ -185,7 +186,7 @@ ${input.documents?.join('\n') || 'None provided'}
 
 Provide your Phase I analysis as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('I', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -295,7 +296,7 @@ JURISDICTION: ${input.jurisdiction}
 
 Provide your Phase II legal framework analysis as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('II', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -404,7 +405,7 @@ ${JSON.stringify(phaseIIOutput, null, 2)}
 
 Provide your Phase III evidence strategy as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('III', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -523,7 +524,7 @@ MOTION TYPE: ${input.motionType}
 
 Find at least ${citationTarget} relevant authorities. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IV', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -643,7 +644,7 @@ JURISDICTION: ${input.jurisdiction}
 
 Draft the complete motion. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('V', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -738,7 +739,7 @@ ${JSON.stringify(phaseVOutput, null, 2)}
 
 Verify all citations. Provide audit as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('V.1', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -849,7 +850,7 @@ Analyze potential opposition. Provide as JSON.`;
       };
     }
 
-    const response = await client.messages.create(requestParams) as Anthropic.Message;
+    const response = await createMessageWithStreaming(client, requestParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
@@ -896,7 +897,12 @@ async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
     const client = getAnthropicClient();
     const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
     const phaseVIOutput = input.previousPhaseOutputs['VI'] as Record<string, unknown>;
+    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
     const loopNumber = input.revisionLoop || 1;
+
+    // CRITICAL: Use revised motion if this is a re-evaluation after Phase VIII
+    const motionToEvaluate = phaseVIIIOutput?.revisedMotion || phaseVOutput?.draftMotion || phaseVOutput;
+    const isReEvaluation = !!phaseVIIIOutput;
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -904,6 +910,8 @@ PHASE VII: JUDGE SIMULATION (QUALITY GATE)
 
 You are an experienced ${input.jurisdiction} judge evaluating this motion.
 Use extended thinking to thoroughly analyze before grading.
+
+${isReEvaluation ? `**RE-EVALUATION**: This is revision loop ${loopNumber}. You are evaluating the REVISED motion after Phase VIII corrections.` : `This is the initial evaluation.`}
 
 GRADING CRITERIA:
 1. Legal soundness (are arguments legally correct?)
@@ -922,7 +930,7 @@ GRADE SCALE:
 - B- (2.7): Significant issues
 - C or below: Major problems
 
-If grade < B+, this motion will go through revision (Phase VIII).
+If grade < B+, this motion will go through ${isReEvaluation ? 'another' : ''} revision (Phase VIII).
 This is revision loop ${loopNumber} of max 3.
 
 OUTPUT FORMAT (JSON only):
@@ -944,14 +952,15 @@ OUTPUT FORMAT (JSON only):
     "weaknesses": ["weakness1", "weakness2"],
     "specificFeedback": "detailed feedback",
     "revisionSuggestions": ["if grade < B+, specific fixes"],
-    "loopNumber": ${loopNumber}
+    "loopNumber": ${loopNumber},
+    "isReEvaluation": ${isReEvaluation}
   }
 }`;
 
     const userMessage = `Evaluate this motion as a judge:
 
-DRAFT MOTION (Phase V):
-${JSON.stringify(phaseVOutput, null, 2)}
+${isReEvaluation ? 'REVISED MOTION (Phase VIII):' : 'DRAFT MOTION (Phase V):'}
+${JSON.stringify(motionToEvaluate, null, 2)}
 
 OPPOSITION ANALYSIS (Phase VI):
 ${JSON.stringify(phaseVIOutput, null, 2)}
@@ -961,14 +970,14 @@ JURISDICTION: ${input.jurisdiction}
 
 Provide your judicial evaluation as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('VII', input.tier), // Always Opus
       max_tokens: 32000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       thinking: {
         type: 'enabled',
-        budget_tokens: 10000,
+        budget_tokens: 50000, // MAXED OUT - deep reasoning
       },
     } as Anthropic.MessageCreateParams) as Anthropic.Message;
 
@@ -1057,7 +1066,7 @@ ${JSON.stringify(phaseVIIIOutput, null, 2)}
 
 Verify any new citations. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('VII.1', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -1173,7 +1182,7 @@ Address all weaknesses and revision suggestions. Provide as JSON.`;
       };
     }
 
-    const response = await client.messages.create(requestParams) as Anthropic.Message;
+    const response = await createMessageWithStreaming(client, requestParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
@@ -1270,7 +1279,7 @@ JURISDICTION: ${input.jurisdiction}
 
 Validate captions. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('VIII.5', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -1372,7 +1381,7 @@ MOTION TYPE: ${input.motionType}
 
 Generate supporting documents. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IX', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -1463,7 +1472,7 @@ ${JSON.stringify(phaseVOutput, null, 2)}
 
 Verify Separate Statement. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IX.1', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
@@ -1577,7 +1586,7 @@ ${JSON.stringify(phaseIXOutput, null, 2)}
 
 Assemble and check. Provide as JSON.`;
 
-    const response = await client.messages.create({
+    const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('X', input.tier),
       max_tokens: 32000,
       system: systemPrompt,
