@@ -285,14 +285,14 @@ export class CacheManager {
     result: VerificationResult
   ): Promise<void> {
     const key = this.getCacheKey(citation, proposition);
-    const ttl = TTL_BY_STATUS[result.compositeStatus] || this.config.defaultTTLMinutes;
+    const ttl = TTL_BY_STATUS[result.composite_status] || this.config.defaultTTLMinutes;
 
     const cached: CachedVerification = {
       citation,
       normalizedCitation: this.normalizeCitation(citation),
       proposition,
-      verificationStatus: result.compositeStatus as CachedVerification['verificationStatus'],
-      compositeConfidence: result.compositeConfidence,
+      verificationStatus: result.composite_status as CachedVerification['verificationStatus'],
+      compositeConfidence: result.composite_confidence,
       flags: result.flags,
       verifiedAt: new Date(),
       expiresAt: new Date(Date.now() + ttl * 60 * 1000),

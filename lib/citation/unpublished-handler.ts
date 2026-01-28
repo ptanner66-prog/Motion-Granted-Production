@@ -13,7 +13,8 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import { searchCitations } from '@/lib/workflow/courtlistener-client';
+// TODO: searchCitations doesn't exist in courtlistener-client, needs implementation
+// import { searchCitations } from '@/lib/workflow/courtlistener-client';
 
 // ============================================================================
 // TYPES
@@ -393,25 +394,28 @@ async function findPublishedAlternatives(citation: string): Promise<AlternativeC
     const caseNameMatch = citation.match(/^([^,]+?\s+v\.\s+[^,]+)/i);
     const caseName = caseNameMatch ? caseNameMatch[1] : citation.split(',')[0];
 
+    // TODO: Implement searchCitations in courtlistener-client or use alternative method
     // Search CourtListener for similar cases
-    const searchResult = await searchCitations(caseName, { maxResults: 5 });
+    // const searchResult = await searchCitations(caseName, { maxResults: 5 });
 
-    if (searchResult.success && searchResult.citations) {
-      for (const result of searchResult.citations) {
-        // Skip if this is the same case or also unpublished
-        if (result.citation === citation) continue;
+    // if (searchResult.success && searchResult.citations) {
+    //   for (const result of searchResult.citations) {
+    //     // Skip if this is the same case or also unpublished
+    //     if (result.citation === citation) continue;
 
-        const isPublished = !UNPUBLISHED_CITATION_PATTERNS.some(p => p.test(result.citation));
-        if (!isPublished) continue;
+    //     const isPublished = !UNPUBLISHED_CITATION_PATTERNS.some(p => p.test(result.citation));
+    //     if (!isPublished) continue;
 
-        alternatives.push({
-          citation: result.citation,
-          caseName: result.caseName || caseName,
-          similarity: 0.7, // CourtListener returned it as similar
-          reason: 'Similar case from same search terms',
-        });
-      }
-    }
+    //     alternatives.push({
+    //       citation: result.citation,
+    //       caseName: result.caseName || caseName,
+    //       similarity: 0.7, // CourtListener returned it as similar
+    //       reason: 'Similar case from same search terms',
+    //     });
+    //   }
+    // }
+
+    console.warn('[UnpublishedHandler] searchCitations not implemented, cannot find alternatives');
   } catch (error) {
     console.warn('[UnpublishedHandler] Error finding alternatives:', error);
   }

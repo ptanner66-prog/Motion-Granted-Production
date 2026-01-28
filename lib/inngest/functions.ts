@@ -340,7 +340,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
       const response = await createMessageWithRetry(
         {
           model: "claude-opus-4-5-20251101",
-          max_tokens: 16000,
+          max_tokens: 128000, // MAXED OUT - full motion generation
           system: context,
           messages: [{ role: "user", content: userMessage }],
         },
@@ -789,7 +789,7 @@ export const dataRetentionReminder = inngest.createFunction(
 
       for (const order of expiringOrders) {
         try {
-          const profile = order.profiles as { email: string; full_name: string } | null;
+          const profile = order.profiles as unknown as { email: string; full_name: string } | null;
           if (!profile?.email) continue;
 
           const expiresAt = new Date(order.retention_expires_at);
