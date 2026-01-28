@@ -119,7 +119,7 @@ Return ONLY valid JSON as specified in your instructions. Do not include markdow
     // Build API parameters
     const apiParams: Anthropic.Messages.MessageCreateParams = {
       model,
-      max_tokens: 16000,
+      max_tokens: 64000, // Minimum for legal reasoning - increased from 16000
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     };
@@ -295,7 +295,7 @@ Verify if this case supports the claimed proposition.`;
   try {
     const response = await anthropic.messages.create({
       model: MODELS.OPUS, // Always use Opus for holding verification
-      max_tokens: 2000,
+      max_tokens: 32000, // Increased from 2000 for detailed verification analysis
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
