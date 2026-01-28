@@ -1,5 +1,5 @@
 /**
- * Instruction Sheet Generator (Task 57)
+ * Instruction Sheet Generator (Task 57 + Task 65)
  *
  * Generates Attorney Instruction Sheet included with every delivery.
  *
@@ -9,10 +9,13 @@
  * 3. Filing instructions (jurisdiction-specific)
  * 4. Deadline summary
  * 5. AI/Disclosure notices
- * 6. Revision instructions
- * 7. Contact information
+ * 6. AI DISCLOSURE REMINDER (Task 65 - State Bar Compliance)
+ * 7. Revision instructions
+ * 8. Contact information
  *
  * Source: Chunk 8, Task 57 - Code Mode Spec Section 19
+ * Updated: Task 65 - Chen Legal & Compliance Megaprompt
+ * VERSION: 1.1 — January 28, 2026
  */
 
 import {
@@ -376,10 +379,75 @@ function generateInstructionSheetDocument(data: InstructionSheetData): Document 
     }
   }
 
+  // AI Disclosure Reminder Section (Task 65 - State Bar Compliance)
+  children.push(
+    new Paragraph({
+      children: [new TextRun({ text: '6. AI DISCLOSURE REMINDER', bold: true, size: 24, color: 'CC0000' })],
+      spacing: { before: 400, after: 200 },
+    })
+  );
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: '⚠️ IMPORTANT: STATE BAR DISCLOSURE REQUIREMENTS',
+          bold: true,
+          size: 22,
+        }),
+      ],
+      indent: { left: convertInchesToTwip(0.5) },
+      spacing: { after: 200 },
+      shading: { fill: 'FFF3CD' },
+    })
+  );
+
+  const aiDisclosureContent = [
+    'This document was prepared with AI assistance through Motion Granted. As the attorney of record, you have the following disclosure obligations:',
+    '',
+    '1. REVIEW OBLIGATION: You must thoroughly review all AI-generated content before filing. You are responsible for the accuracy and appropriateness of all legal arguments, citations, and factual assertions.',
+    '',
+    '2. CALIFORNIA DISCLOSURE: Per California Rules of Professional Conduct and emerging court guidance, attorneys must disclose AI assistance when required by court rules or standing orders. Check local rules for your specific court.',
+    '',
+    '3. FEDERAL COURTS: Many federal courts now require disclosure of AI use in legal filings. Review the local rules and any standing orders for the assigned judge.',
+    '',
+    '4. CITATION VERIFICATION: All case citations should be independently verified. While we use validated legal databases, you must confirm accuracy before filing.',
+    '',
+    '5. PROFESSIONAL RESPONSIBILITY: Under ABA Model Rule 1.1 (Competence) and state equivalents, attorneys must understand the capabilities and limitations of AI tools and supervise their use appropriately.',
+    '',
+    '6. CLIENT COMMUNICATION: Consider whether disclosure of AI assistance to your client is appropriate or required under your jurisdiction\'s rules.',
+  ];
+
+  for (const line of aiDisclosureContent) {
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: line, size: 20 })],
+        indent: { left: convertInchesToTwip(0.5) },
+        spacing: { after: line === '' ? 100 : 50 },
+      })
+    );
+  }
+
+  // Add signature acknowledgment checkbox
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: '☐ I acknowledge my professional responsibility to review all documents, verify citations, and comply with applicable disclosure requirements before filing.',
+          bold: true,
+          size: 20,
+        }),
+      ],
+      indent: { left: convertInchesToTwip(0.5) },
+      spacing: { before: 200, after: 200 },
+      border: { top: { style: BorderStyle.SINGLE, size: 4 }, bottom: { style: BorderStyle.SINGLE, size: 4 }, left: { style: BorderStyle.SINGLE, size: 4 }, right: { style: BorderStyle.SINGLE, size: 4 } },
+    })
+  );
+
   // Revision Instructions Section
   children.push(
     new Paragraph({
-      children: [new TextRun({ text: '6. REVISION INSTRUCTIONS', bold: true, size: 24 })],
+      children: [new TextRun({ text: '7. REVISION INSTRUCTIONS', bold: true, size: 24 })],
       spacing: { before: 400, after: 200 },
     })
   );
@@ -397,7 +465,7 @@ function generateInstructionSheetDocument(data: InstructionSheetData): Document 
   // Contact Information Section
   children.push(
     new Paragraph({
-      children: [new TextRun({ text: '7. CONTACT INFORMATION', bold: true, size: 24 })],
+      children: [new TextRun({ text: '8. CONTACT INFORMATION', bold: true, size: 24 })],
       spacing: { before: 400, after: 200 },
     })
   );

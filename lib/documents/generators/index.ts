@@ -49,6 +49,25 @@ import {
   identifyUnpublishedCases,
 } from './case-appendix';
 
+import {
+  generateSeparateStatement,
+  validateSeparateStatement,
+  validateEvidence,
+  SeparateStatementData,
+  SeparateStatementResult,
+  MaterialFact,
+  EvidenceCitation,
+} from './separate-statement-generator';
+
+import {
+  generateExParteApplication,
+  validateNoticeRequirements,
+  ExParteApplicationData,
+  ExParteApplicationResult,
+  NoticeMethod,
+  NoticeGiven,
+} from './ex-parte-generator';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -59,7 +78,9 @@ export type DocumentType =
   | 'exhibit_index'
   | 'proposed_order'
   | 'notice_of_motion'
-  | 'case_appendix';
+  | 'case_appendix'
+  | 'separate_statement'
+  | 'ex_parte';
 
 export interface GeneratorResult {
   documentType: DocumentType;
@@ -76,6 +97,8 @@ export interface GeneratorDataMap {
   proposed_order: ProposedOrderData;
   notice_of_motion: NoticeOfMotionData;
   case_appendix: CaseAppendixData;
+  separate_statement: SeparateStatementData;
+  ex_parte: ExParteApplicationData;
 }
 
 // ============================================================================
@@ -218,6 +241,29 @@ export async function generateDocument<T extends DocumentType>(
       metadata = {
         casesIncluded: appendixResult.cases.length,
         totalAppendixPages: appendixResult.totalPages,
+      };
+      break;
+    }
+
+    case 'separate_statement': {
+      const ssResult = await generateSeparateStatement(fullData as SeparateStatementData);
+      path = ssResult.path;
+      pageCount = ssResult.pageCount;
+      metadata = {
+        factCount: ssResult.factCount,
+        evidenceCount: ssResult.evidenceCount,
+        validationPassed: ssResult.validationPassed,
+        validationErrors: ssResult.validationErrors,
+      };
+      break;
+    }
+
+    case 'ex_parte': {
+      const epResult = await generateExParteApplication(fullData as ExParteApplicationData);
+      path = epResult.path;
+      pageCount = epResult.pageCount;
+      metadata = {
+        noticeMethodsUsed: epResult.noticeMethodsUsed,
       };
       break;
     }
@@ -557,9 +603,14 @@ export {
   generateProposedOrder,
   generateNoticeOfMotion,
   generateCaseAppendix,
+  generateSeparateStatement,
+  generateExParteApplication,
   isNoticeRequired,
   requiresAppendix,
   identifyUnpublishedCases,
+  validateSeparateStatement,
+  validateEvidence,
+  validateNoticeRequirements,
 };
 
 // Type exports (using export type for isolatedModules compatibility)
@@ -579,6 +630,14 @@ export type {
   CaseAppendixData,
   CaseAppendixResult,
   UnpublishedCase,
+  SeparateStatementData,
+  SeparateStatementResult,
+  MaterialFact,
+  EvidenceCitation,
+  ExParteApplicationData,
+  ExParteApplicationResult,
+  NoticeMethod,
+  NoticeGiven,
 };
 
 // ============================================================================
