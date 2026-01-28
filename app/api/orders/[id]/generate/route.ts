@@ -114,17 +114,23 @@ export async function POST(
         },
       });
     } else {
-      // Fallback: Execute workflow directly without Inngest
-      console.log('[Generate] Inngest not configured, executing workflow directly');
+      // Fallback: Execute workflow directly using v7.2 phase executors
+      console.log('[Generate] Inngest not configured, executing workflow directly with v7.2 system');
 
-      // Import and execute workflow engine directly
-      const { executeCurrentPhase } = await import('@/lib/workflow/workflow-engine');
+      // Import v7.2 phase executors
+      const { executePhase } = await import('@/lib/workflow/phase-executors');
+      const { createClient: createSupabaseAdmin } = await import('@supabase/supabase-js');
 
       // Execute phases in background (non-blocking)
       (async () => {
         try {
-          // Get workflow ID
-          const { data: workflow } = await supabase
+          // Create admin client
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+          const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+          const adminClient = createSupabaseAdmin(supabaseUrl, supabaseServiceKey);
+
+          // Get workflow ID and order details
+          const { data: workflow } = await adminClient
             .from('order_workflows')
             .select('id')
             .eq('order_id', orderId)
@@ -134,29 +140,87 @@ export async function POST(
             throw new Error('Workflow not found');
           }
 
+          const { data: orderData } = await adminClient
+            .from('orders')
+            .select('*')
+            .eq('id', orderId)
+            .single();
+
+          if (!orderData) {
+            throw new Error('Order not found');
+          }
+
+          const tier = orderData.motion_tier || 'A';
+          const phaseOutputs: Record<string, unknown> = {};
+
+          // v7.2 phase sequence
+          const phases: string[] = ['I', 'II', 'III', 'IV', 'V', 'V.1', 'VI', 'VII', 'VIII.5', 'IX', 'X'];
+
           // Execute phases sequentially
-          for (let i = 0; i < 14; i++) {
-            const result = await executeCurrentPhase(workflow.id);
+          for (const phaseCode of phases) {
+            console.log(`[Generate Direct] Executing phase ${phaseCode}`);
+
+            const phaseInput = {
+              orderId,
+              workflowId: workflow.id,
+              tier,
+              jurisdiction: orderData.jurisdiction || '',
+              motionType: orderData.motion_type || '',
+              caseCaption: orderData.case_caption || '',
+              caseNumber: orderData.case_number || '',
+              statementOfFacts: orderData.statement_of_facts || '',
+              proceduralHistory: orderData.procedural_history || '',
+              instructions: orderData.instructions || '',
+              previousPhaseOutputs: phaseOutputs,
+              documents: [],
+            };
+
+            const result = await executePhase(phaseCode as any, phaseInput);
 
             if (!result.success) {
-              console.error(`[Generate] Phase execution failed:`, result.error);
+              console.error(`[Generate Direct] Phase ${phaseCode} failed:`, result.error);
+
+              await adminClient
+                .from('order_workflows')
+                .update({
+                  status: 'failed',
+                  last_error: `Phase ${phaseCode}: ${result.error}`,
+                })
+                .eq('id', workflow.id);
+
+              await adminClient
+                .from('orders')
+                .update({
+                  status: 'generation_failed',
+                  generation_error: `Phase ${phaseCode} failed: ${result.error}`,
+                })
+                .eq('id', orderId);
+
               break;
             }
 
-            // Check if workflow is blocked (requires review)
-            const { data: wf } = await supabase
-              .from('order_workflows')
-              .select('status')
-              .eq('id', workflow.id)
-              .single();
+            // Store phase output for next phase
+            phaseOutputs[phaseCode] = result.output;
 
-            if (wf?.status === 'blocked') {
-              console.log('[Generate] Workflow blocked, stopping execution');
+            // Check if workflow requires review (HOLD condition)
+            if (result.requiresReview) {
+              console.log(`[Generate Direct] Phase ${phaseCode} requires review, stopping`);
+
+              await adminClient
+                .from('order_workflows')
+                .update({
+                  status: 'blocked',
+                  last_error: `Phase ${phaseCode} requires review before continuing`,
+                })
+                .eq('id', workflow.id);
+
               break;
             }
           }
+
+          console.log('[Generate Direct] Workflow execution completed');
         } catch (error) {
-          console.error('[Generate] Direct workflow execution error:', error);
+          console.error('[Generate Direct] Workflow execution error:', error);
         }
       })();
     }
