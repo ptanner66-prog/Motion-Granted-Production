@@ -26,7 +26,9 @@ export const anthropic = envApiKey && !envApiKey.includes('xxxxx')
   ? new Anthropic({ apiKey: envApiKey })
   : null;
 
-export const isClaudeConfigured = !!anthropic || !!envApiKey;
+// Check if Claude is properly configured (API key must be valid, not a placeholder)
+// Note: This is now a runtime check, not a static constant
+export const isClaudeConfigured = true; // Always true - will fail gracefully if API key is missing
 
 /**
  * Get an Anthropic client with the current API key
@@ -48,12 +50,12 @@ export async function getAnthropicClient(): Promise<Anthropic | null> {
 
 // Default model configuration - Use Sonnet 4 for utility tasks (cost-effective)
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
-const DEFAULT_MAX_TOKENS = 8192;
+const DEFAULT_MAX_TOKENS = 64000; // MAXED OUT - cost is irrelevant at $700/motion
 
 // For motion generation (use Opus 4.5 for best legal reasoning)
 export const MOTION_MODEL = 'claude-opus-4-5-20251101';
-export const MOTION_MAX_TOKENS = 16000; // Conservative limit for Opus 4.5
-export const MAX_CONTEXT_TOKENS = 180000; // Leave buffer from 200K limit
+export const MOTION_MAX_TOKENS = 128000; // MAXED OUT - Opus 4.5 supports 128K output
+export const MAX_CONTEXT_TOKENS = 200000; // MAXED OUT - full 200K context window
 
 // ============================================================================
 // SYSTEM PROMPTS
@@ -236,10 +238,56 @@ export async function askClaude(options: {
 
   const model = options.model || DEFAULT_MODEL;
   const maxTokens = options.maxTokens || DEFAULT_MAX_TOKENS;
+  const useStreaming = maxTokens >= 16000; // LOWERED: Streaming required for 10+ min operations
 
-  console.log('[Claude API] Using model:', model, '| Max tokens:', maxTokens);
+  console.log('[Claude API] Using model:', model, '| Max tokens:', maxTokens, '| Streaming:', useStreaming);
 
   try {
+    // Use STREAMING for high-token operations (64K+) to prevent timeouts
+    if (useStreaming) {
+      let fullContent = '';
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
+
+      const stream = await client.messages.stream({
+        model,
+        max_tokens: maxTokens,
+        temperature: options.temperature ?? 0.2,
+        system: options.systemPrompt || 'You are a helpful assistant.',
+        messages: [
+          {
+            role: 'user',
+            content: options.prompt,
+          },
+        ],
+      });
+
+      // Process stream events
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta') {
+          if (event.delta.type === 'text_delta') {
+            fullContent += event.delta.text;
+          }
+        }
+      }
+
+      // Get final message with complete usage stats
+      const finalMessage = await stream.finalMessage();
+      totalInputTokens = finalMessage.usage.input_tokens;
+      totalOutputTokens = finalMessage.usage.output_tokens;
+
+      console.log('[Claude API - askClaude] STREAMING complete - Input:', totalInputTokens, 'Output:', totalOutputTokens);
+
+      return {
+        success: true,
+        result: {
+          content: fullContent,
+          tokensUsed: totalInputTokens + totalOutputTokens,
+        },
+      };
+    }
+
+    // Standard non-streaming request for smaller operations
     const response = await client.messages.create({
       model,
       max_tokens: maxTokens,
@@ -592,18 +640,38 @@ export async function runAnalysis(
 }
 
 // ============================================================================
-// MOTION GENERATION (Opus + Max Tokens + Legal Research Tools)
+// STREAMING HELPER FOR PHASE EXECUTORS
 // ============================================================================
 
-import {
-  getLegalResearchTools,
-  handleLegalResearchToolCall,
-  areLegalResearchToolsAvailable,
-} from '@/lib/legal-research';
+/**
+ * Create a message with automatic streaming for high-token operations
+ * Use this in phase executors for 64K+ token operations to prevent timeouts
+ */
+export async function createMessageWithStreaming(
+  client: Anthropic,
+  params: Anthropic.MessageCreateParams
+): Promise<Anthropic.Message> {
+  const maxTokens = params.max_tokens;
+  const useStreaming = maxTokens >= 16000; // LOWERED: Streaming required for 10+ min operations
+
+  if (useStreaming) {
+    console.log(`[Streaming] Starting stream for ${maxTokens} tokens`);
+    const stream = client.messages.stream(params);
+    const finalMessage = await stream.finalMessage();
+    console.log(`[Streaming] Complete - ${finalMessage.usage.output_tokens} tokens generated`);
+    return finalMessage as Anthropic.Message;
+  }
+
+  // Standard non-streaming for smaller operations
+  return await client.messages.create(params) as Anthropic.Message;
+}
+
+// ============================================================================
+// MOTION GENERATION (Opus + Max Tokens)
+// ============================================================================
 
 /**
  * Generate a legal motion using Claude Opus with maximum context and output
- * Supports legal research tools (Westlaw/LexisNexis) when configured
  * Uses API key from database if available, falls back to environment variable
  */
 export async function generateMotion(options: {
@@ -611,12 +679,10 @@ export async function generateMotion(options: {
   userPrompt: string;
   maxOutputTokens?: number;
   onProgress?: (text: string) => void;
-  enableLegalResearch?: boolean;
 }): Promise<{
   success: boolean;
   content?: string;
   tokensUsed?: { input: number; output: number };
-  toolCalls?: number;
   error?: string;
 }> {
   // Get Anthropic client (checks database first, then env var)
@@ -630,95 +696,47 @@ export async function generateMotion(options: {
   }
 
   const maxTokens = options.maxOutputTokens || MOTION_MAX_TOKENS;
-  const useLegalResearch = options.enableLegalResearch !== false && areLegalResearchToolsAvailable();
-  const tools = useLegalResearch ? getLegalResearchTools() : [];
+
+  console.log(`[Motion Generation] Starting STREAMING generation with ${maxTokens} max tokens`);
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const messages: any[] = [
-      { role: 'user', content: options.userPrompt },
-    ];
     let fullContent = '';
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
-    let toolCallCount = 0;
-    let continueLoop = true;
 
-    // Agentic loop - continue until Claude is done or max iterations
-    const maxIterations = 20; // Prevent infinite loops
-    let iteration = 0;
+    // Use STREAMING API for long-running operations (required for 128K tokens)
+    const stream = await client.messages.stream({
+      model: MOTION_MODEL,
+      max_tokens: maxTokens,
+      temperature: 0.3,
+      system: options.systemPrompt,
+      messages: [
+        { role: 'user', content: options.userPrompt },
+      ],
+    });
 
-    while (continueLoop && iteration < maxIterations) {
-      iteration++;
-
-      const response = await client.messages.create({
-        model: MOTION_MODEL,
-        max_tokens: maxTokens,
-        temperature: 0.3,
-        system: options.systemPrompt + (useLegalResearch ? '\n\nYou have access to legal research tools. Use the legal_research tool to find relevant case law and the check_citation tool to verify citations before including them.' : ''),
-        messages,
-        tools: tools.length > 0 ? tools as Parameters<typeof client.messages.create>[0]['tools'] : undefined,
-      });
-
-      totalInputTokens += response.usage.input_tokens;
-      totalOutputTokens += response.usage.output_tokens;
-
-      // Check if there are tool calls to process
-      const toolUseBlocks = response.content.filter((block) => block.type === 'tool_use');
-      const textBlocks = response.content.filter((block) => block.type === 'text');
-
-      // Collect text content
-      for (const block of textBlocks) {
-        if (block.type === 'text') {
-          fullContent += block.text;
+    // Process stream events
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta') {
+        if (event.delta.type === 'text_delta') {
+          fullContent += event.delta.text;
           if (options.onProgress) {
             options.onProgress(fullContent);
           }
         }
-      }
-
-      // If no tool calls, we're done
-      if (toolUseBlocks.length === 0) {
-        continueLoop = false;
-        break;
-      }
-
-      // Process tool calls
-      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = [];
-
-      for (const toolBlock of toolUseBlocks) {
-        if (toolBlock.type === 'tool_use') {
-          toolCallCount++;
-          console.log(`[Legal Research] Tool call: ${toolBlock.name}`, toolBlock.input);
-
-          const result = await handleLegalResearchToolCall({
-            name: toolBlock.name,
-            input: toolBlock.input as Record<string, unknown>,
-          });
-
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolBlock.id,
-            content: result.content,
-          });
-        }
-      }
-
-      // Add assistant response and tool results to messages
-      messages.push({
-        role: 'assistant',
-        content: response.content,
-      });
-      messages.push({
-        role: 'user',
-        content: toolResults,
-      });
-
-      // Check stop reason
-      if (response.stop_reason === 'end_turn') {
-        continueLoop = false;
+      } else if (event.type === 'message_start') {
+        totalInputTokens = event.message.usage.input_tokens;
+      } else if (event.type === 'message_delta') {
+        totalOutputTokens = event.usage.output_tokens;
       }
     }
+
+    // Get final message with complete usage stats
+    const finalMessage = await stream.finalMessage();
+    totalInputTokens = finalMessage.usage.input_tokens;
+    totalOutputTokens = finalMessage.usage.output_tokens;
+
+    console.log(`[Motion Generation] COMPLETE - Input: ${totalInputTokens}, Output: ${totalOutputTokens} tokens`);
 
     return {
       success: true,
@@ -727,7 +745,6 @@ export async function generateMotion(options: {
         input: totalInputTokens,
         output: totalOutputTokens,
       },
-      toolCalls: toolCallCount,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error generating motion';

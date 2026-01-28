@@ -16,7 +16,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { generateMotion, isClaudeConfigured, MOTION_MAX_TOKENS } from '@/lib/automation/claude';
+import { generateMotion, MOTION_MAX_TOKENS } from '@/lib/automation/claude';
 import { gatherOrderContext } from './orchestrator';
 import type { OperationResult } from '@/types/automation';
 
@@ -360,10 +360,6 @@ export async function executeSuperprompt(
   merged: MergedSuperprompt,
   options: { maxTokens?: number; onProgress?: (text: string) => void } = {}
 ): Promise<GenerationResult> {
-  if (!isClaudeConfigured) {
-    return { success: false, error: 'Claude API is not configured' };
-  }
-
   // Use the new Opus-powered generation with high token limits
   const result = await generateMotion({
     systemPrompt: merged.systemPrompt,
@@ -467,7 +463,7 @@ export async function saveSuperpromptTemplate(
       motion_types: template.motionTypes,
       template: template.template,
       system_prompt: template.systemPrompt,
-      max_tokens: template.maxTokens || 16000,
+      max_tokens: template.maxTokens || 128000, // MAXED OUT
       is_default: template.isDefault || false,
     })
     .select()

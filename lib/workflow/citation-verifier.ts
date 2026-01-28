@@ -381,7 +381,7 @@ Consider:
 
   const result = await askClaude({
     prompt,
-    maxTokens: 500,
+    maxTokens: 32000, // MAXED OUT - thorough citation verification
     systemPrompt: 'You are a legal citation verification expert. Always respond with valid JSON.',
   });
 

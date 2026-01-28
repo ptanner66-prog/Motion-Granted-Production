@@ -33,6 +33,7 @@ import { ClaudeChat } from '@/components/admin/claude-chat'
 import { AdminRevisionRequests } from '@/components/admin/admin-revision-requests'
 import { QuickApproveButton } from '@/components/admin/quick-approve-button'
 import { RetryGenerationButton } from '@/components/admin/retry-generation-button'
+import { RestartWorkflowButton } from '@/components/admin/restart-workflow-button'
 import { MotionReview } from '@/components/admin/motion-review'
 import { GenerateNowButton } from '@/components/admin/generate-now-button'
 import { TierBadge } from '@/components/workflow/TierBadge'
@@ -498,6 +499,13 @@ export default async function AdminOrderDetailPage({
               errorMessage={order.generation_error}
             />
           )}
+
+          {/* Restart Workflow - restart from beginning */}
+          <RestartWorkflowButton
+            orderId={order.id}
+            orderNumber={order.order_number}
+            orderStatus={order.status}
+          />
 
           {/* Revision Requests - shown when client requested revision */}
           {(order.status === 'revision_requested' || order.status === 'draft_delivered' || order.status === 'revision_delivered') && (

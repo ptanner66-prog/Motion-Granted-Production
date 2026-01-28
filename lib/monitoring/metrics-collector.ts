@@ -346,9 +346,9 @@ class MetricsCollector {
         return null;
       }
 
-      const values = data.map((d) => d.metric_value);
+      const values = data.map((d: any) => d.metric_value);
       const count = values.length;
-      const sum = values.reduce((a, b) => a + b, 0);
+      const sum = values.reduce((a: number, b: number) => a + b, 0);
 
       return {
         metricType,
@@ -392,27 +392,27 @@ class MetricsCollector {
         .single();
 
       // Calculate totals
-      const phaseDurations = metrics.filter((m) => m.metric_type === 'workflow_phase_duration');
-      const apiLatencies = metrics.filter((m) => m.metric_type === 'api_call_latency');
-      const revisions = metrics.filter((m) => m.metric_type === 'revision_loop');
-      const citations = metrics.find((m) => m.metric_type === 'citation_verification');
+      const phaseDurations = metrics.filter((m: any) => m.metric_type === 'workflow_phase_duration');
+      const apiLatencies = metrics.filter((m: any) => m.metric_type === 'api_call_latency');
+      const revisions = metrics.filter((m: any) => m.metric_type === 'revision_loop');
+      const citations = metrics.find((m: any) => m.metric_type === 'citation_verification');
 
-      const totalWorkflowMetric = metrics.find((m) => m.metric_type === 'total_workflow_time');
+      const totalWorkflowMetric = metrics.find((m: any) => m.metric_type === 'total_workflow_time');
       const totalDurationMs = totalWorkflowMetric?.metric_value ||
-        phaseDurations.reduce((sum, m) => sum + m.metric_value, 0);
+        phaseDurations.reduce((sum: number, m: any) => sum + m.metric_value, 0);
 
       return {
         orderId,
         totalDurationMs,
-        phaseBreakdown: phaseDurations.map((m) => ({
+        phaseBreakdown: phaseDurations.map((m: any) => ({
           phase: m.phase || 'unknown',
           durationMs: m.metric_value,
           startedAt: m.created_at,
           completedAt: null, // Would need to track this separately
         })),
         apiCalls: apiLatencies.length,
-        totalApiLatencyMs: apiLatencies.reduce((sum, m) => sum + m.metric_value, 0),
-        revisionCount: revisions.length > 0 ? Math.max(...revisions.map((r) => r.metric_value)) : 0,
+        totalApiLatencyMs: apiLatencies.reduce((sum: number, m: any) => sum + m.metric_value, 0),
+        revisionCount: revisions.length > 0 ? Math.max(...revisions.map((r: any) => r.metric_value)) : 0,
         citationsVerified: (citations?.metadata as Record<string, number>)?.verified || 0,
         citationsFailed: (citations?.metadata as Record<string, number>)?.failed || 0,
       };
@@ -466,14 +466,14 @@ class MetricsCollector {
         .gte('created_at', since.toISOString());
 
       // Calculate averages
-      const workflowTimes = workflowMetrics?.map((m) => m.metric_value) || [];
+      const workflowTimes = workflowMetrics?.map((m: any) => m.metric_value) || [];
       const avgWorkflowTimeMs = workflowTimes.length > 0
-        ? workflowTimes.reduce((a, b) => a + b, 0) / workflowTimes.length
+        ? workflowTimes.reduce((a: number, b: number) => a + b, 0) / workflowTimes.length
         : 0;
 
-      const apiLatencies = apiMetrics?.map((m) => m.metric_value) || [];
+      const apiLatencies = apiMetrics?.map((m: any) => m.metric_value) || [];
       const avgApiLatencyMs = apiLatencies.length > 0
-        ? apiLatencies.reduce((a, b) => a + b, 0) / apiLatencies.length
+        ? apiLatencies.reduce((a: number, b: number) => a + b, 0) / apiLatencies.length
         : 0;
 
       // Calculate by tier
@@ -517,7 +517,7 @@ class MetricsCollector {
       const citationVerificationRate = totalCitations > 0 ? totalVerified / totalCitations : 0;
 
       return {
-        totalOrders: new Set(workflowMetrics?.map((m) => m.order_id)).size,
+        totalOrders: new Set(workflowMetrics?.map((m: any) => m.order_id)).size,
         avgWorkflowTimeMs,
         avgApiLatencyMs,
         totalRevisions: revisionMetrics?.length || 0,
