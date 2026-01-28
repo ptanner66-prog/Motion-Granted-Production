@@ -40,6 +40,10 @@ const ITEMS_PER_PAGE = 25;
 async function ApprovalStats() {
   const supabase = await createClient();
 
+  // Server component - Date.now() is safe here (ESLint purity rule is for client components)
+  // eslint-disable-next-line react-hooks/purity
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
   const [
     { count: pendingCount },
     { count: criticalCount },
@@ -58,7 +62,7 @@ async function ApprovalStats() {
       .from('approval_queue')
       .select('*', { count: 'exact', head: true })
       .in('status', ['approved', 'rejected'])
-      .gte('resolved_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+      .gte('resolved_at', twentyFourHoursAgo),
   ]);
 
   const stats = [

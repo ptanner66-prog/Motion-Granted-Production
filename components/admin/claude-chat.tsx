@@ -274,20 +274,18 @@ export function ClaudeChat({ orderId, orderNumber, onMotionGenerated }: ClaudeCh
             <div className="flex flex-col items-center justify-center h-full py-12 text-center">
               <MessageSquare className="h-12 w-12 text-gray-300 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No conversation yet
+                Chat is for Revisions Only
               </h3>
               <p className="text-gray-500 mb-4 max-w-sm">
-                Start generating the motion by clicking the button below.
-                Claude will use the lawyer&apos;s superprompt and the order details.
+                Use the <strong>Generate Now</strong> button in the sidebar to start motion generation.
+                This chat interface is designed for requesting revisions after the initial draft is generated.
               </p>
-              <Button onClick={handleStartGeneration} disabled={isLoading}>
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Bot className="h-4 w-4 mr-2" />
-                )}
-                Generate Motion
-              </Button>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 max-w-sm">
+                <p className="text-sm text-amber-800">
+                  <strong>Why?</strong> The 14-phase workflow system provides better token management,
+                  citation verification, and quality control than direct chat generation.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-4 pb-4">

@@ -1,88 +1,32 @@
 /**
- * Direct Motion Generation API
+ * Motion Generation API - 14-Phase Workflow
  *
  * POST /api/orders/[id]/generate
  *
- * Generates a motion directly without going through Inngest queue.
- * Use this as a fallback if the queue isn't working, or for immediate generation.
+ * Triggers the new 14-phase workflow orchestrator via Inngest.
+ * This replaces the old single-call superprompt system.
+ *
+ * v7.2: Uses workflow-orchestration.ts for proper phase execution,
+ * checkpoints, and revision loops.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import Anthropic from '@anthropic-ai/sdk';
-import { createMessageWithRetry } from '@/lib/claude-client';
-import { parseFileOperations, executeFileOperations } from '@/lib/workflow/file-system';
+import { createClient as createSupabaseAdmin } from '@supabase/supabase-js';
+import { inngest } from '@/lib/inngest/client';
 
-export const maxDuration = 300; // 5 minutes for Vercel
+export const maxDuration = 30; // Just enough to trigger the workflow
 
+// Create admin client with service role key (bypasses RLS)
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Database not configured');
+    return null;
   }
-  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
-}
 
-function buildStreamlinedPrompt(): string {
-  return `
-################################################################################
-#                                                                              #
-#   MANDATORY INSTRUCTION - FAILURE TO COMPLY WILL RESULT IN REJECTION        #
-#                                                                              #
-################################################################################
-
-YOU MUST GENERATE A COMPLETE LEGAL MOTION - FINAL DOCUMENT ONLY.
-
-FORBIDDEN OUTPUTS (will cause immediate rejection):
-- "PHASE I:", "PHASE II:", etc. - NO PHASE HEADERS
-- "Status: IN PROGRESS" or any status updates
-- Tables showing phase progress or element mapping
-- "### PHASE X COMPLETE" or any completion markers
-- Workflow summaries or checklists
-- "Next Phase:" indicators
-- Research notes or citation verification reports
-- Attorney instruction sheets (these come separately)
-- INTRODUCTORY SENTENCES like "I'll generate..." or "Let me create..." or "Here is..."
-- CONCLUDING COMMENTARY like "Key Improvements Made" or summaries of what you did
-- Any text before the court caption
-- Any text after the Certificate of Service
-
-YOUR ENTIRE RESPONSE MUST BE ONLY THE MOTION DOCUMENT.
-No introduction. No explanation. No commentary. Just the motion.
-
-SKIP THE WORKFLOW OUTPUT. Only output the FINAL MOTION DOCUMENT.
-
-REQUIRED OUTPUT FORMAT:
-Start IMMEDIATELY with the court caption. Your entire response should be the
-motion document that gets filed with the court. Nothing else.
-
-Example of CORRECT output (start like this):
-
-IN THE CIVIL DISTRICT COURT
-FOR THE PARISH OF ORLEANS
-
-JOHN DOE,
-     Plaintiff,
-
-vs.                                    CASE NO. 2025-12345
-
-JANE SMITH,
-     Defendant.
-
-                    MOTION TO COMPEL DISCOVERY
-
-TO THE HONORABLE COURT:
-[Continue with the actual motion content...]
-
-DO NOT show your work. DO NOT output phases. ONLY output the final motion.
-
-################################################################################
-#   CASE DATA BELOW - USE THIS TO WRITE THE MOTION                            #
-################################################################################
-
-`;
+  return createSupabaseAdmin(supabaseUrl, supabaseServiceKey);
 }
 
 export async function POST(
@@ -91,6 +35,11 @@ export async function POST(
 ) {
   const { id: orderId } = await params;
   const supabase = await createClient();
+  const adminClient = getAdminClient();
+
+  if (!adminClient) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+  }
 
   // Verify auth
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -109,180 +58,18 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden - Admin/Clerk only' }, { status: 403 });
   }
 
-  const adminClient = getAdminClient();
-
   try {
-    // Get order with all related data including client profile for attorney info
-    const { data: order, error: orderError } = await adminClient
+    // Verify order exists and get current state
+    const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('*, parties(*), profiles!orders_client_id_fkey(full_name, email, bar_number, firm_name, firm_address, firm_phone)')
+      .select('id, status, motion_type, motion_tier, order_number')
       .eq('id', orderId)
       .single();
 
     if (orderError || !order) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-    }
-
-    // Debug: Log what data we found
-    console.log('[Generate] Order data:', JSON.stringify({
-      orderId,
-      order_number: order.order_number,
-      case_number: order.case_number,
-      case_caption: order.case_caption,
-      motion_type: order.motion_type,
-      jurisdiction: order.jurisdiction,
-      has_statement_of_facts: !!order.statement_of_facts,
-      statement_preview: order.statement_of_facts?.substring(0, 200),
-      parties_count: order.parties?.length || 0,
-      parties: order.parties,
-    }, null, 2));
-
-    // Update status to in_progress
-    await adminClient
-      .from('orders')
-      .update({
-        status: 'in_progress',
-        generation_started_at: new Date().toISOString(),
-      })
-      .eq('id', orderId);
-
-    // Get superprompt template (prefer is_default, fall back to most recent)
-    const { data: templates } = await adminClient
-      .from('superprompt_templates')
-      .select('*')
-      .order('is_default', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    const template = templates?.[0];
-    if (!template) {
-      throw new Error('No active superprompt template found. Please upload one in Admin > Superprompt.');
-    }
-
-    // Get documents
-    const { data: documents } = await adminClient
-      .from('documents')
-      .select('*')
-      .eq('order_id', orderId)
-      .neq('document_type', 'deliverable');
-
-    const documentContent = documents
-      ?.map((doc) => `[${doc.document_type}] ${doc.file_name}:\n${doc.parsed_content || '(no parsed content)'}`)
-      .join('\n\n---\n\n') || '';
-
-    // Get parties
-    const parties = order.parties || [];
-    const plaintiffs = parties.filter((p: { party_role?: string }) =>
-      p.party_role?.toLowerCase().includes('plaintiff')
-    );
-    const defendants = parties.filter((p: { party_role?: string }) =>
-      p.party_role?.toLowerCase().includes('defendant')
-    );
-
-    // Build structured case data that will ALWAYS be appended
-    const todayDate = new Date().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-
-    const structuredCaseData = `
-
-================================================================================
-CASE DATA - USE THIS INFORMATION TO GENERATE THE MOTION
-================================================================================
-
-The following JSON contains all the case information needed for Phase I Input:
-
-\`\`\`json
-{
-  "order_id": "${orderId}",
-  "customer_intake": {
-    "motion_type": "${order.motion_type || ''}",
-    "filing_deadline": "${order.filing_deadline || ''}",
-    "hearing_date": "${order.hearing_date || ''}",
-    "party_represented": "${plaintiffs.length > 0 ? 'plaintiff' : 'defendant'}",
-    "party_name": "${plaintiffs.length > 0 ? plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ') : defendants.map((p: { party_name: string }) => p.party_name).join(', ')}",
-    "opposing_party_name": "${plaintiffs.length > 0 ? defendants.map((p: { party_name: string }) => p.party_name).join(', ') : plaintiffs.map((p: { party_name: string }) => p.party_name).join(', ')}",
-    "case_number": "${order.case_number || ''}",
-    "case_caption": "${order.case_caption || ''}",
-    "court": "${order.jurisdiction || ''}",
-    "court_division": "${order.court_division || ''}",
-    "statement_of_facts": ${JSON.stringify(order.statement_of_facts || '')},
-    "procedural_history": ${JSON.stringify(order.procedural_history || '')},
-    "drafting_instructions": ${JSON.stringify(order.instructions || '')},
-    "judge_name": ""
-  },
-  "uploaded_documents": [
-    ${documents?.map((doc: { id: string; file_name: string; document_type: string; parsed_content?: string }) => `{
-      "document_id": "${doc.id}",
-      "filename": "${doc.file_name}",
-      "document_type": "${doc.document_type}",
-      "content_text": ${JSON.stringify(doc.parsed_content || '(no content extracted)')}
-    }`).join(',\n    ') || ''}
-  ],
-  "attorney_info": {
-    "attorney_name": "${order.profiles?.full_name || '[Attorney Name]'}",
-    "bar_number": "${order.profiles?.bar_number || '[Bar Number]'}",
-    "firm_name": "${order.profiles?.firm_name || '[Law Firm]'}",
-    "firm_address": "${order.profiles?.firm_address || '[Address]'}",
-    "firm_phone": "${order.profiles?.firm_phone || '[Phone]'}",
-    "attorney_email": "${order.profiles?.email || '[Email]'}"
-  }
-}
-\`\`\`
-
-ADDITIONAL CONTEXT (Plain Text):
-
-PARTIES:
-${parties.length > 0
-  ? parties.map((p: { party_name: string; party_role: string }) =>
-      `- ${p.party_name} (${p.party_role})`
-    ).join('\n')
-  : '- No parties specified'}
-
-Today's Date: ${todayDate}
-Order Number: ${order.order_number || 'Not specified'}
-
-================================================================================
-END OF CASE DATA - NOW GENERATE THE MOTION
-================================================================================
-
-You have received all required Phase I inputs above. Execute the workflow and generate the complete ${order.motion_type || 'motion'} document.
-Do NOT ask for more information. START WITH THE COURT CAPTION.
-`;
-
-    // Build replacements for any placeholders that might exist in template
-    const replacements: Record<string, string> = {
-      '{{CASE_NUMBER}}': order.case_number || '',
-      '{{CASE_CAPTION}}': order.case_caption || '',
-      '{{COURT}}': order.jurisdiction || '',
-      '{{JURISDICTION}}': order.jurisdiction || '',
-      '{{COURT_DIVISION}}': order.court_division || '',
-      '{{MOTION_TYPE}}': order.motion_type || '',
-      '{{MOTION_TIER}}': order.motion_tier || '',
-      '{{FILING_DEADLINE}}': order.filing_deadline || '',
-      '{{ALL_PARTIES}}': parties.map((p: { party_name: string; party_role: string }) =>
-        `${p.party_name} (${p.party_role})`
-      ).join(', '),
-      '{{PLAINTIFF_NAMES}}': plaintiffs.map((p: { party_name: string }) => p.party_name).join(', '),
-      '{{DEFENDANT_NAMES}}': defendants.map((p: { party_name: string }) => p.party_name).join(', '),
-      '{{PARTIES_JSON}}': JSON.stringify(parties),
-      '{{STATEMENT_OF_FACTS}}': order.statement_of_facts || '',
-      '{{PROCEDURAL_HISTORY}}': order.procedural_history || '',
-      '{{CLIENT_INSTRUCTIONS}}': order.instructions || '',
-      '{{DOCUMENT_CONTENT}}': documentContent,
-      '{{ORDER_ID}}': orderId,
-      '{{ORDER_NUMBER}}': order.order_number || '',
-      '{{TODAY_DATE}}': todayDate,
-    };
-
-    // Replace placeholders in template (if any exist)
-    let templateContent = template.template;
-    for (const [placeholder, value] of Object.entries(replacements)) {
-      templateContent = templateContent.replace(
-        new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'),
-        value
+      return NextResponse.json(
+        { error: 'Order not found' },
+        { status: 404 }
       );
     }
 
@@ -375,71 +162,361 @@ ${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || '[DE
       .eq('order_id', orderId)
       .single();
 
-    let conversationId: string;
+    const workflowIsStuck = workflow && ['blocked', 'failed'].includes(workflow.status);
+    const blockedStatuses = ['pending_review', 'draft_delivered', 'completed'];
 
-    if (existingConv) {
-      // Update existing
-      await adminClient
-        .from('conversations')
-        .update({
-          generated_motion: cleanedResponse,
-          status: 'active',
-        })
-        .eq('id', existingConv.id);
-      conversationId = existingConv.id;
-    } else {
-      // Create new
-      const { data: newConv } = await adminClient
-        .from('conversations')
-        .insert({
-          order_id: orderId,
-          initial_context: fullContext,
-          generated_motion: cleanedResponse,
-          status: 'active',
-        })
-        .select()
-        .single();
-      conversationId = newConv?.id;
+    // Block if order is in a final/review state, unless workflow is stuck
+    if (blockedStatuses.includes(order.status)) {
+      return NextResponse.json(
+        { error: `Order already in status: ${order.status}. Cannot restart workflow.` },
+        { status: 400 }
+      );
     }
 
-    // Save message
-    if (conversationId) {
-      // Get max sequence number
-      const { data: lastMsg } = await adminClient
-        .from('conversation_messages')
-        .select('sequence_number')
-        .eq('conversation_id', conversationId)
-        .order('sequence_number', { ascending: false })
-        .limit(1)
-        .single();
-
-      const nextSeq = (lastMsg?.sequence_number || 0) + 1;
-
-      await adminClient.from('conversation_messages').insert({
-        conversation_id: conversationId,
-        role: 'assistant',
-        content: motionContent,
-        is_motion_draft: true,
-        sequence_number: nextSeq,
-        input_tokens: response.usage.input_tokens,
-        output_tokens: response.usage.output_tokens,
-      });
+    // Block if currently in progress AND workflow is not stuck
+    if (order.status === 'in_progress' && !workflowIsStuck) {
+      return NextResponse.json(
+        { error: `Workflow is currently running. Please wait or use the restart button.` },
+        { status: 400 }
+      );
     }
 
-    // Update order status to pending_review
-    await adminClient
+    // Update status to in_progress (use admin client to bypass RLS)
+    const { error: updateError } = await adminClient
       .from('orders')
       .update({
-        status: 'pending_review',
-        generation_completed_at: new Date().toISOString(),
+        status: 'in_progress',
+        generation_started_at: new Date().toISOString(),
         generation_error: null,
       })
       .eq('id', orderId);
 
-    // Log success
-    await adminClient.from('automation_logs').insert({
+    if (updateError) {
+      console.error('[Generate] Failed to update order status:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update order status' },
+        { status: 500 }
+      );
+    }
+
+    // Trigger the 14-phase workflow via Inngest
+    // If INNGEST_EVENT_KEY is not configured, fall back to direct execution
+    const inngestConfigured = process.env.INNGEST_EVENT_KEY && process.env.INNGEST_SIGNING_KEY;
+
+    if (inngestConfigured) {
+      await inngest.send({
+        name: 'workflow/orchestration.start',
+        data: {
+          orderId,
+          triggeredBy: 'admin_generate_now',
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } else {
+      // Fallback: Execute workflow directly using v7.2 phase executors
+      console.log('[Generate] Inngest not configured, executing workflow directly with v7.2 system');
+
+      // Import v7.2 phase executors and workflow functions
+      const { executePhase } = await import('@/lib/workflow/phase-executors');
+      const { startWorkflow } = await import('@/lib/workflow');
+
+      // Execute phases in background (non-blocking)
+      (async () => {
+        try {
+          // Check if workflow exists, create if not
+          let { data: workflow } = await adminClient
+            .from('order_workflows')
+            .select('id')
+            .eq('order_id', orderId)
+            .single();
+
+          if (!workflow) {
+            console.log('[Generate] Workflow not found, creating new workflow');
+
+            // Get motion type ID - try to match from motion_types table, or use first available
+            let motionTypeId = null;
+
+            const { data: motionTypeData } = await adminClient
+              .from('motion_types')
+              .select('id')
+              .eq('code', (order.motion_type || '').toUpperCase())
+              .single();
+
+            if (motionTypeData) {
+              motionTypeId = motionTypeData.id;
+            } else {
+              // Fallback to first motion type
+              const { data: fallbackType } = await adminClient
+                .from('motion_types')
+                .select('id')
+                .limit(1)
+                .single();
+
+              if (fallbackType) {
+                motionTypeId = fallbackType.id;
+              } else {
+                throw new Error('No motion types configured in database. Run migrations first.');
+              }
+            }
+
+            // Create workflow
+            const result = await startWorkflow({
+              orderId,
+              motionTypeId,
+              workflowPath: 'path_a',
+            });
+
+            if (!result.success || !result.data) {
+              throw new Error(result.error || 'Failed to create workflow');
+            }
+
+            // Fetch the created workflow
+            const { data: createdWorkflow } = await adminClient
+              .from('order_workflows')
+              .select('id')
+              .eq('order_id', orderId)
+              .single();
+
+            if (!createdWorkflow) {
+              throw new Error('Workflow creation succeeded but cannot fetch workflow');
+            }
+
+            workflow = createdWorkflow;
+            console.log(`[Generate] Created workflow ${workflow.id} for order ${orderId}`);
+          }
+
+          const { data: orderData } = await adminClient
+            .from('orders')
+            .select('*')
+            .eq('id', orderId)
+            .single();
+
+          if (!orderData) {
+            throw new Error('Order not found');
+          }
+
+          const tier = orderData.motion_tier || 'A';
+          const phaseOutputs: Record<string, unknown> = {};
+
+          // v7.2 dynamic phase routing - follows nextPhase from each result
+          let currentPhase: string = 'I';
+          let phaseIterations = 0;
+          let revisionLoopCount = 0;
+          const MAX_PHASES = 50; // Safety limit to prevent infinite loops
+          const MAX_REVISION_LOOPS = 3;
+
+          // Update workflow status to in_progress
+          await adminClient
+            .from('order_workflows')
+            .update({
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+            })
+            .eq('id', workflow.id);
+
+          // Execute phases dynamically following nextPhase routing
+          while (currentPhase && phaseIterations < MAX_PHASES) {
+            console.log(`[Generate Direct] Executing phase ${currentPhase} (iteration ${phaseIterations + 1}, revision loop ${revisionLoopCount})`);
+
+            // Update workflow activity (current_phase is for old system, we track via phase codes in v7.2)
+            await adminClient
+              .from('order_workflows')
+              .update({
+                last_activity_at: new Date().toISOString(),
+                metadata: { currentPhaseCode: currentPhase, revisionLoop: revisionLoopCount },
+              })
+              .eq('id', workflow.id);
+
+            phaseIterations++;
+
+            // Track revision loops (each time we execute Phase VII after the first time)
+            if (currentPhase === 'VII' && phaseIterations > 1) {
+              revisionLoopCount++;
+              if (revisionLoopCount > MAX_REVISION_LOOPS) {
+                console.error(`[Generate Direct] Max revision loops (${MAX_REVISION_LOOPS}) reached`);
+                await adminClient
+                  .from('order_workflows')
+                  .update({
+                    status: 'failed',
+                    last_error: `Motion failed to reach B+ after ${MAX_REVISION_LOOPS} revision attempts`,
+                  })
+                  .eq('id', workflow.id);
+                await adminClient
+                  .from('orders')
+                  .update({
+                    status: 'generation_failed',
+                    generation_error: `Quality threshold not met after ${MAX_REVISION_LOOPS} revisions`,
+                  })
+                  .eq('id', orderId);
+                break;
+              }
+            }
+
+            const phaseInput = {
+              orderId,
+              workflowId: workflow.id,
+              tier,
+              jurisdiction: orderData.jurisdiction || '',
+              motionType: orderData.motion_type || '',
+              caseCaption: orderData.case_caption || '',
+              caseNumber: orderData.case_number || '',
+              statementOfFacts: orderData.statement_of_facts || '',
+              proceduralHistory: orderData.procedural_history || '',
+              instructions: orderData.instructions || '',
+              previousPhaseOutputs: phaseOutputs,
+              documents: [],
+              revisionLoop: revisionLoopCount || undefined,
+            };
+
+            const result = await executePhase(currentPhase as any, phaseInput);
+
+            if (!result.success) {
+              console.error(`[Generate Direct] Phase ${currentPhase} failed:`, result.error);
+
+              await adminClient
+                .from('order_workflows')
+                .update({
+                  status: 'failed',
+                  last_error: `Phase ${currentPhase}: ${result.error}`,
+                })
+                .eq('id', workflow.id);
+
+              await adminClient
+                .from('orders')
+                .update({
+                  status: 'generation_failed',
+                  generation_error: `Phase ${currentPhase} failed: ${result.error}`,
+                })
+                .eq('id', orderId);
+
+              break;
+            }
+
+            // Store phase output for next phase
+            phaseOutputs[currentPhase] = result.output;
+
+            // Check if workflow requires review (HOLD condition)
+            // Phase VII and Phase X are special: VII is just a notification, X is completion
+            if (result.requiresReview && currentPhase !== 'VII' && currentPhase !== 'X') {
+              console.log(`[Generate Direct] Phase ${currentPhase} requires review (HOLD), stopping`);
+
+              await adminClient
+                .from('order_workflows')
+                .update({
+                  status: 'blocked',
+                  last_error: `Phase ${currentPhase} requires review before continuing`,
+                })
+                .eq('id', workflow.id);
+
+              await adminClient
+                .from('orders')
+                .update({
+                  status: 'on_hold',
+                  generation_error: `Phase ${currentPhase} requires additional information before continuing`,
+                })
+                .eq('id', orderId);
+
+              break;
+            }
+
+            // Phase VII requiresReview is just CP2 notification, don't stop
+            if (result.requiresReview && currentPhase === 'VII') {
+              console.log(`[Generate Direct] Phase VII CP2 checkpoint - continuing`);
+            }
+
+            // Phase X requiresReview is CP3 - workflow complete, ready for admin review
+            if (result.requiresReview && currentPhase === 'X') {
+              console.log(`[Generate Direct] Phase X CP3 checkpoint - workflow COMPLETE, ready for review`);
+            }
+
+            // Get next phase from result
+            if (result.nextPhase) {
+              currentPhase = result.nextPhase as string;
+            } else {
+              // No next phase means we're done - SUCCESS!
+              console.log(`[Generate Direct] Workflow completed successfully at phase ${currentPhase}`);
+
+              // Mark workflow as completed
+              await adminClient
+                .from('order_workflows')
+                .update({
+                  status: 'completed',
+                  completed_at: new Date().toISOString(),
+                  last_error: null,
+                })
+                .eq('id', workflow.id);
+
+              // Mark order as ready for review (motion generated, needs admin approval)
+              await adminClient
+                .from('orders')
+                .update({
+                  status: 'pending_review',
+                  generation_completed_at: new Date().toISOString(),
+                  generation_error: null,
+                })
+                .eq('id', orderId);
+
+              console.log(`[Generate Direct] Order ${orderId} ready for review`);
+              break;
+            }
+          }
+
+          if (phaseIterations >= MAX_PHASES) {
+            console.error('[Generate Direct] Hit max phase iteration limit - possible infinite loop');
+            await adminClient
+              .from('order_workflows')
+              .update({
+                status: 'failed',
+                last_error: 'Workflow exceeded maximum phase iteration limit',
+              })
+              .eq('id', workflow.id);
+
+            await adminClient
+              .from('orders')
+              .update({
+                status: 'generation_failed',
+                generation_error: 'Workflow exceeded maximum phase iteration limit',
+              })
+              .eq('id', orderId);
+          }
+
+          console.log('[Generate Direct] Workflow execution completed');
+        } catch (error) {
+          console.error('[Generate Direct] Workflow execution error:', error);
+
+          // Record error in database so it's visible
+          try {
+            await adminClient
+              .from('automation_logs')
+              .insert({
+                order_id: orderId,
+                action_type: 'workflow_error',
+                action_details: {
+                  error: error instanceof Error ? error.message : 'Unknown error',
+                  stack: error instanceof Error ? error.stack : undefined,
+                  phase: 'workflow_execution',
+                },
+              });
+
+            // Update order status
+            await adminClient
+              .from('orders')
+              .update({
+                status: 'generation_failed',
+                generation_error: error instanceof Error ? error.message : 'Workflow execution error',
+              })
+              .eq('id', orderId);
+          } catch (logError) {
+            console.error('[Generate Direct] Failed to log error:', logError);
+          }
+        }
+      })();
+    }
+
+    // Log the workflow trigger
+    await supabase.from('automation_logs').insert({
       order_id: orderId,
-      action_type: 'motion_generated',
+      action_type: 'workflow_triggered',
       action_details: {
         method: 'direct_generation',
         generatedBy: user.id,
@@ -451,30 +528,30 @@ ${defendants.map((p: { party_name: string }) => p.party_name).join(', ') || '[DE
 
     return NextResponse.json({
       success: true,
-      message: 'Motion generated successfully',
+      message: '14-phase workflow started',
       orderId,
-      conversationId,
-      status: 'pending_review',
-      tokens: {
-        input: response.usage.input_tokens,
-        output: response.usage.output_tokens,
-      },
+      orderNumber: order.order_number,
+      workflow: '14-phase-v72',
+      status: 'in_progress',
     });
 
   } catch (error) {
-    console.error('Direct generation error:', error);
+    console.error('[Generate] Failed to start workflow:', error);
 
-    // Update order with error
-    await adminClient
-      .from('orders')
-      .update({
-        status: 'generation_failed',
-        generation_error: error instanceof Error ? error.message : 'Unknown error',
-      })
-      .eq('id', orderId);
+    // Revert status on error (use admin client)
+    if (adminClient) {
+      await adminClient
+        .from('orders')
+        .update({
+          status: 'paid',
+          generation_error: error instanceof Error ? error.message : 'Failed to start workflow',
+        })
+        .eq('id', orderId);
+    }
 
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to generate motion',
-    }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to start workflow' },
+      { status: 500 }
+    );
   }
 }

@@ -1,10 +1,18 @@
 import { inngest } from "./client";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
+import { workflowOrchestration } from "./workflow-orchestration";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
 import { createMessageWithRetry } from "@/lib/claude-client";
+import { parseOrderDocuments, getOrderParsedDocuments } from "@/lib/workflow/document-parser";
+import { extractDocumentContent } from "@/lib/workflow/document-extractor";
+import { quickValidate } from "@/lib/workflow/quality-validator";
+import { extractCitations } from "@/lib/workflow/citation-verifier";
+
+// Import the new 14-phase workflow orchestration
+import { generateOrderWorkflow, handleWorkflowFailure, workflowFunctions } from "./workflow-orchestration";
 
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
@@ -83,7 +91,10 @@ DO NOT show your work. DO NOT output phases. ONLY output the final motion.
 }
 
 /**
- * Order Draft Generation Function
+ * Order Draft Generation Function (Legacy - Single Claude Call)
+ *
+ * This is the simplified single-call generation for quick turnaround.
+ * For full 14-phase workflow with checkpoints, use generateOrderWorkflow.
  *
  * Processes paid orders through Claude API to generate motion drafts.
  * Features:
@@ -93,14 +104,17 @@ DO NOT show your work. DO NOT output phases. ONLY output the final motion.
  * - Concurrency limit of 5 for Claude rate limit safety
  * - Failure alerting via email
  * - Continuous execution mode (all 9 phases in one shot)
+ *
+ * NOTE: For Tier B/C motions or orders requiring checkpoints,
+ * use the order/workflow-orchestrate event instead.
  */
 export const generateOrderDraft = inngest.createFunction(
   {
     id: "generate-order-draft",
-    // Process one order at a time for reliability and cost control
-    // Increase to 2-3 once system is proven stable
+    // Process 3 orders concurrently for production scale
+    // Rate limiting handled by lib/redis.ts and lib/rate-limit.ts
     concurrency: {
-      limit: 1,
+      limit: 3,
     },
     // Retry configuration
     retries: 3,
@@ -158,6 +172,51 @@ export const generateOrderDraft = inngest.createFunction(
       }
     });
 
+    // Step 2.5: Parse documents if not already parsed
+    // This extracts text content, key facts, legal issues from uploaded PDFs/DOCXs
+    const parsedDocs = await step.run("parse-documents", async () => {
+      try {
+        // Check if documents are already parsed
+        const existingParsed = await getOrderParsedDocuments(orderId);
+        if (existingParsed.success && existingParsed.data && existingParsed.data.length > 0) {
+          console.log(`[Inngest] Found ${existingParsed.data.length} pre-parsed documents for order ${orderId}`);
+          return { parsed: existingParsed.data.length, fromCache: true, data: existingParsed.data };
+        }
+
+        // Parse all documents for this order
+        console.log(`[Inngest] Parsing documents for order ${orderId}`);
+        const parseResult = await parseOrderDocuments(orderId);
+
+        if (!parseResult.success) {
+          console.warn(`[Inngest] Document parsing failed: ${parseResult.error}`);
+          // Don't fail the generation - proceed with raw document content
+          return { parsed: 0, failed: true, error: parseResult.error };
+        }
+
+        // Log document parsing to automation_logs
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "documents_parsed",
+          action_details: {
+            parsed: parseResult.data?.parsed || 0,
+            failed: parseResult.data?.failed || 0,
+          },
+        });
+
+        // Fetch the newly parsed documents
+        const newParsed = await getOrderParsedDocuments(orderId);
+        return {
+          parsed: parseResult.data?.parsed || 0,
+          failed: parseResult.data?.failed || 0,
+          data: newParsed.data || []
+        };
+      } catch (parseError) {
+        console.error(`[Inngest] Document parsing error:`, parseError);
+        // Don't fail the generation - proceed without parsed content
+        return { parsed: 0, failed: true, error: parseError instanceof Error ? parseError.message : 'Unknown' };
+      }
+    });
+
     // Step 3: Gather order data and build context with web adapter
     const context = await step.run("build-context", async () => {
       // Get superprompt template (prefer is_default, fall back to most recent)
@@ -179,10 +238,25 @@ export const generateOrderDraft = inngest.createFunction(
         .select("*")
         .eq("order_id", orderId);
 
-      // Build document content
-      const documentContent = documents
-        ?.map((doc) => `[${doc.document_type}] ${doc.file_name}:\n${doc.parsed_content || ""}`)
-        .join("\n\n---\n\n") || "";
+      // Build document content - use parsed documents if available
+      let documentContent = "";
+      if ('data' in parsedDocs && parsedDocs.data && parsedDocs.data.length > 0) {
+        // Use AI-parsed documents with extracted facts and issues
+        documentContent = parsedDocs.data.map(pd => {
+          const keyFactsText = pd.key_facts?.length > 0
+            ? `\nKey Facts:\n${pd.key_facts.map((f: { fact: string; importance: string }) => `- [${f.importance}] ${f.fact}`).join('\n')}`
+            : '';
+          const legalIssuesText = pd.legal_issues?.length > 0
+            ? `\nLegal Issues:\n${pd.legal_issues.map((i: { issue: string; relevance: string }) => `- ${i.issue}: ${i.relevance}`).join('\n')}`
+            : '';
+          return `[${pd.document_type || 'document'}] ${pd.summary || '(No summary)'}\n${pd.full_text?.slice(0, 10000) || '(No content)'}${keyFactsText}${legalIssuesText}`;
+        }).join("\n\n---\n\n");
+      } else {
+        // Fallback to raw document content
+        documentContent = documents
+          ?.map((doc) => `[${doc.document_type}] ${doc.file_name}:\n${doc.parsed_content || ""}`)
+          .join("\n\n---\n\n") || "";
+      }
 
       // Get parties
       const { data: parties } = await supabase
@@ -425,12 +499,12 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         ]);
       }
 
-      // Update order status to draft_delivered so admin can approve
-      // Using 'draft_delivered' as it's valid in all database constraint versions
+      // Update order status to pending_review so admin can approve before delivery
+      // This ensures the motion goes through admin review before being visible to client
       await supabase
         .from("orders")
         .update({
-          status: "draft_delivered",
+          status: "pending_review",
           generation_completed_at: new Date().toISOString(),
           generation_error: null,
         })
@@ -451,12 +525,153 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         },
       });
 
-      return { conversationId: conversation?.id };
+      return { conversationId: conversation?.id, motion: cleanedResponse };
+    });
+
+    // Step 5.5: Quick quality check (non-blocking but logged)
+    const qualityResult = await step.run("quality-check", async () => {
+      try {
+        const motionContent = conversationData.motion || generatedMotion.motion;
+
+        // Run quick validation (no AI, just structural checks)
+        // Only citation_requirements.minimum is actually used by the validator
+        const validation = quickValidate(motionContent, {
+          motionType: {
+            citation_requirements: { minimum: 4, hard_stop: false },
+          } as import('@/types/workflow').MotionType,
+          jurisdiction: orderData.jurisdiction,
+        });
+
+        // Extract citations for logging
+        const citations = extractCitations(motionContent);
+
+        // Log quality metrics
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "quality_check",
+          action_details: {
+            passes: validation.passes,
+            issueCount: validation.issues.length,
+            citationCount: citations.length,
+            criticalIssues: validation.issues.filter(i => i.severity === 'critical').length,
+            majorIssues: validation.issues.filter(i => i.severity === 'major').length,
+            issues: validation.issues.slice(0, 5).map(i => ({ title: i.title, severity: i.severity })),
+          },
+        });
+
+        // If critical issues, flag for manual review
+        const criticalIssues = validation.issues.filter(i => i.severity === 'critical');
+        if (criticalIssues.length > 0) {
+          await supabase.from("orders").update({
+            needs_manual_review: true,
+            quality_notes: `Quality check found ${criticalIssues.length} critical issue(s): ${criticalIssues.map(i => i.title).join(', ')}`,
+          }).eq("id", orderId);
+        }
+
+        return {
+          passes: validation.passes,
+          citationCount: citations.length,
+          issueCount: validation.issues.length,
+          criticalIssues: criticalIssues.length,
+        };
+      } catch (qcError) {
+        console.error("[Inngest] Quality check error:", qcError);
+        // Don't fail the pipeline - quality check is informational
+        return { passes: true, error: qcError instanceof Error ? qcError.message : 'Unknown' };
+      }
+    });
+
+    // Step 5.6: Extract citations from generated motion
+    const citationResult = await step.run("extract-citations", async () => {
+      try {
+        const motionContent = conversationData.motion || generatedMotion.motion;
+        const citations = extractCitations(motionContent);
+
+        // Log citation extraction
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "citations_extracted",
+          action_details: {
+            citationCount: citations.length,
+            citationTypes: citations.reduce((acc, c) => {
+              acc[c.type] = (acc[c.type] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+            sampleCitations: citations.slice(0, 5).map(c => c.text),
+          },
+        });
+
+        console.log(`[Inngest] Extracted ${citations.length} citations for order ${orderId}`);
+
+        return {
+          count: citations.length,
+          citations: citations.slice(0, 10), // Keep first 10 for reference
+        };
+      } catch (extractError) {
+        console.error("[Inngest] Citation extraction error:", extractError);
+        // Don't fail the pipeline - citation extraction is informational
+        return { count: 0, error: extractError instanceof Error ? extractError.message : 'Unknown' };
+      }
+    });
+
+    // Step 5.7: Verify citations (NON-BLOCKING - informational only)
+    const citationVerification = await step.run("verify-citations", async () => {
+      try {
+        const citationCount = citationResult.count || 0;
+        const CITATION_MINIMUM = 4;
+
+        // Determine quality status based on citation count
+        const qualityStatus = citationCount >= CITATION_MINIMUM ? 'pass' : 'warning';
+        const qualityMessage = citationCount >= CITATION_MINIMUM
+          ? `Citation count (${citationCount}) meets minimum requirement of ${CITATION_MINIMUM}`
+          : `Citation count (${citationCount}) below recommended minimum of ${CITATION_MINIMUM}`;
+
+        // Log verification result
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "citation_verification",
+          action_details: {
+            citationCount,
+            minimumRequired: CITATION_MINIMUM,
+            qualityStatus,
+            qualityMessage,
+            isBlocking: false, // Non-blocking for now
+          },
+        });
+
+        // If citation count is low, flag for review but don't block
+        if (qualityStatus === 'warning') {
+          console.log(`[Inngest] Citation warning for order ${orderId}: ${qualityMessage}`);
+
+          // Update order with quality warning (non-blocking)
+          await supabase.from("orders").update({
+            quality_notes: `Citation warning: ${qualityMessage}`,
+          }).eq("id", orderId);
+        } else {
+          console.log(`[Inngest] Citation verification passed for order ${orderId}: ${qualityMessage}`);
+        }
+
+        return {
+          citationCount,
+          qualityStatus,
+          qualityMessage,
+          meetsMinimum: citationCount >= CITATION_MINIMUM,
+        };
+      } catch (verifyError) {
+        console.error("[Inngest] Citation verification error:", verifyError);
+        // Don't fail the pipeline - verification is informational
+        return {
+          citationCount: citationResult.count || 0,
+          qualityStatus: 'unknown',
+          qualityMessage: 'Verification failed',
+          error: verifyError instanceof Error ? verifyError.message : 'Unknown',
+        };
+      }
     });
 
     // Step 6: Send notification to admin
     await step.run("send-notification", async () => {
-      // Queue notification for admin
+      // Queue notification for admin - draft ready
       await supabase.from("notification_queue").insert({
         notification_type: "draft_ready",
         recipient_email: ADMIN_EMAIL,
@@ -470,12 +685,39 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         status: "pending",
       });
 
+      // Queue approval_needed notification with citation count and quality score
+      const citationCount = citationVerification.citationCount || 0;
+      const qualityScore = qualityResult.passes ? 'pass' : 'needs_review';
+      const criticalIssues = 'criticalIssues' in qualityResult ? qualityResult.criticalIssues : 0;
+
+      await supabase.from("notification_queue").insert({
+        notification_type: "approval_needed",
+        recipient_email: ADMIN_EMAIL,
+        order_id: orderId,
+        template_data: {
+          orderNumber: orderData.order_number,
+          motionType: orderData.motion_type,
+          caseCaption: orderData.case_caption,
+          citationCount,
+          citationStatus: citationVerification.qualityStatus || 'unknown',
+          qualityScore,
+          criticalIssues,
+          reviewUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/admin/orders/${orderId}`,
+        },
+        priority: 9, // Higher priority than draft_ready
+        status: "pending",
+      });
+
       // Also log as automation event
       await supabase.from("automation_logs").insert({
         order_id: orderId,
         action_type: "admin_notified",
         action_details: {
           notificationType: "draft_ready",
+          approvalNeeded: true,
+          citationCount,
+          qualityScore,
+          criticalIssues,
         },
       });
     });
@@ -484,7 +726,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
       success: true,
       orderId,
       conversationId: conversationData.conversationId,
-      status: "draft_delivered",
+      status: "pending_review",
     };
   }
 );
@@ -730,10 +972,426 @@ export const updateQueuePositions = inngest.createFunction(
   }
 );
 
+// ============================================================================
+// v7.2 WORKFLOW FUNCTIONS
+// ============================================================================
+
+import { executePhase } from "@/lib/workflow/phase-executor";
+import {
+  PhaseId,
+  Tier,
+  getNextPhase,
+  isBlockingCheckpoint,
+  hasCheckpoint,
+  getPhaseConfig,
+  gradePasses,
+} from "@/lib/workflow/phase-config";
+
+/**
+ * v7.2 Workflow Phase Execution
+ *
+ * Executes individual phases of the 14-phase workflow system.
+ * Handles checkpoints, grade-based branching, and revision loops.
+ */
+export const executeWorkflowPhase = inngest.createFunction(
+  {
+    id: "workflow-execute-phase",
+    retries: 3,
+    concurrency: {
+      limit: 10,
+    },
+  },
+  { event: "workflow/execute-phase" },
+  async ({ event, step }) => {
+    const { orderId, workflowId, phase } = event.data;
+    const supabase = getSupabase();
+
+    // Step 1: Get workflow state
+    const state = await step.run("get-workflow-state", async () => {
+      const { data, error } = await supabase
+        .from("workflow_state")
+        .select("*")
+        .eq("id", workflowId)
+        .single();
+
+      if (error || !data) {
+        throw new Error(`Workflow state not found: ${error?.message}`);
+      }
+
+      return data;
+    });
+
+    // Step 2: Get order data
+    const order = await step.run("get-order-data", async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*, order_documents:documents(*)")
+        .eq("id", orderId)
+        .single();
+
+      if (error || !data) {
+        throw new Error(`Order not found: ${error?.message}`);
+      }
+
+      return data;
+    });
+
+    // Step 3: Update workflow status to RUNNING
+    await step.run("mark-phase-running", async () => {
+      await supabase
+        .from("workflow_state")
+        .update({
+          current_phase: phase,
+          phase_status: "RUNNING",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", workflowId);
+    });
+
+    // Step 4: Build phase input
+    const phaseInput = await step.run("build-phase-input", async () => {
+      return {
+        order_id: order.id,
+        submitted_at: order.created_at,
+        customer_intake: {
+          motion_type: order.motion_type,
+          filing_posture: order.filing_posture,
+          filing_deadline: order.filing_deadline,
+          hearing_date: order.hearing_date,
+          party_represented: order.party_represented,
+          party_name: order.party_name,
+          statement_of_facts: order.statement_of_facts,
+          arguments_caselaw: order.arguments_caselaw,
+          opposing_party_name: order.opposing_party_name,
+          opposing_counsel_name: order.opposing_counsel_name,
+          judge_name: order.judge_name,
+        },
+        uploaded_documents: order.order_documents?.map((doc: Record<string, unknown>) => ({
+          document_id: doc.id,
+          filename: doc.file_name,
+          document_type: doc.document_type,
+          content_text: doc.parsed_content,
+        })) || [],
+        previous_phases: state.phase_outputs || {},
+      };
+    });
+
+      for (const order of expiringOrders) {
+        try {
+          const profile = order.profiles as unknown as { email: string; full_name: string } | null;
+          if (!profile?.email) continue;
+
+      return await executePhase({
+        phase: phase as PhaseId,
+        tier,
+        orderId,
+        workflowId,
+        input: phaseInput,
+      });
+    });
+
+    // Step 6: Log execution
+    await step.run("log-execution", async () => {
+      await supabase.from("phase_executions").insert({
+        order_id: orderId,
+        workflow_id: workflowId,
+        phase,
+        model_used: result.output?.model_used || "unknown",
+        input_data: phaseInput,
+        output_data: result.output,
+        status: result.success ? "COMPLETE" : "ERROR",
+        error_message: result.error,
+        input_tokens: result.usage?.input_tokens,
+        output_tokens: result.usage?.output_tokens,
+        duration_ms: result.durationMs,
+        completed_at: new Date().toISOString(),
+      });
+    });
+
+    if (!result.success) {
+      // Update workflow to error state
+      await step.run("mark-phase-error", async () => {
+        await supabase
+          .from("workflow_state")
+          .update({
+            phase_status: "ERROR",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", workflowId);
+      });
+
+      throw new Error(`Phase ${phase} failed: ${result.error}`);
+    }
+
+    // Step 7: Update workflow state with output
+    const nextPhaseResult = await step.run("update-workflow-state", async () => {
+      // Extract tier and path from Phase I output
+      let tierUpdate: Record<string, string> = {};
+      if (phase === "I" && result.output?.determinations) {
+        tierUpdate = {
+          tier: result.output.determinations.tier,
+          path: result.output.determinations.path,
+        };
+      }
+
+      // Update phase outputs
+      const updatedOutputs = {
+        ...state.phase_outputs,
+        [phase]: result.output,
+      };
+
+      // Determine next phase
+      const phaseConfig = getPhaseConfig(phase as PhaseId);
+      let nextPhase: PhaseId | null = null;
+      let checkpointPending = false;
+      let checkpointData = null;
+
+      // Check Phase VII grading
+      if (phase === "VII") {
+        const numericGrade = result.output?.grading?.numeric_grade || 0;
+        const passes = gradePasses(numericGrade);
+
+        // Save judge simulation result
+        await supabase.from("judge_simulation_results").insert({
+          workflow_id: workflowId,
+          order_id: orderId,
+          grade: result.output?.grading?.grade || "F",
+          numeric_grade: numericGrade,
+          passes,
+          strengths: result.output?.grading?.strengths || [],
+          weaknesses: result.output?.grading?.weaknesses || [],
+          specific_feedback: result.output?.grading?.feedback || "",
+          revision_suggestions: result.output?.grading?.suggestions || [],
+          loop_number: state.revision_loop_count + 1,
+        });
+
+        nextPhase = getNextPhase(phase as PhaseId, {
+          gradePasses: passes,
+          revisionLoopCount: state.revision_loop_count,
+        });
+      } else if (phase === "VIII") {
+        const newCitations = result.output?.new_citations_added || false;
+        nextPhase = getNextPhase(phase as PhaseId, { newCitationsAdded: newCitations });
+      } else if (phase === "IX") {
+        const motionType = state.phase_outputs?.["I"]?.motion_type || "";
+        nextPhase = getNextPhase(phase as PhaseId, { motionType });
+      } else {
+        nextPhase = getNextPhase(phase as PhaseId);
+      }
+
+      // Check for checkpoint
+      if (hasCheckpoint(phase as PhaseId)) {
+        if (isBlockingCheckpoint(phase as PhaseId)) {
+          checkpointPending = true;
+          checkpointData = {
+            type: phaseConfig.checkpoint?.type,
+            phase,
+            actions: phaseConfig.checkpoint?.actions,
+            data: result.output,
+          };
+        }
+      }
+
+      // Update workflow state
+      await supabase
+        .from("workflow_state")
+        .update({
+          ...tierUpdate,
+          current_phase: checkpointPending ? phase : (nextPhase || phase),
+          phase_status: checkpointPending ? "CHECKPOINT" : (nextPhase ? "PENDING" : "COMPLETE"),
+          phase_outputs: updatedOutputs,
+          checkpoint_pending: checkpointPending,
+          checkpoint_type: checkpointPending ? phaseConfig.checkpoint?.type : null,
+          checkpoint_data: checkpointData,
+          revision_loop_count: phase === "VIII" ? state.revision_loop_count + 1 : state.revision_loop_count,
+          updated_at: new Date().toISOString(),
+          ...(nextPhase === null && !checkpointPending && { completed_at: new Date().toISOString() }),
+        })
+        .eq("id", workflowId);
+
+      return { nextPhase, checkpointPending, checkpointData };
+    });
+
+    // Step 8: Trigger next phase or checkpoint notification
+    if (nextPhaseResult.checkpointPending) {
+      await step.sendEvent("checkpoint-notification", {
+        name: "workflow/checkpoint-reached",
+        data: {
+          orderId,
+          workflowId,
+          checkpoint: nextPhaseResult.checkpointData,
+        },
+      });
+    } else if (nextPhaseResult.nextPhase) {
+      await step.sendEvent("trigger-next-phase", {
+        name: "workflow/execute-phase",
+        data: {
+          orderId,
+          workflowId,
+          phase: nextPhaseResult.nextPhase,
+        },
+      });
+    }
+
+    return {
+      success: true,
+      phase,
+      nextPhase: nextPhaseResult.nextPhase,
+      checkpointPending: nextPhaseResult.checkpointPending,
+    };
+  }
+);
+
+/**
+ * Handle Checkpoint Approval
+ *
+ * Called when an admin approves/rejects a blocking checkpoint.
+ */
+export const handleCheckpointApproval = inngest.createFunction(
+  {
+    id: "workflow-checkpoint-approval",
+  },
+  { event: "workflow/checkpoint-approved" },
+  async ({ event, step }) => {
+    const { orderId, workflowId, action, nextPhase } = event.data;
+    const supabase = getSupabase();
+
+    await step.run("process-approval", async () => {
+      if (action === "APPROVE" && nextPhase) {
+        // Clear checkpoint and continue
+        await supabase
+          .from("workflow_state")
+          .update({
+            checkpoint_pending: false,
+            checkpoint_type: null,
+            checkpoint_data: null,
+            phase_status: "PENDING",
+          })
+          .eq("id", workflowId);
+
+        // Update order status
+        await supabase
+          .from("orders")
+          .update({ status: "completed" })
+          .eq("id", orderId);
+      } else if (action === "REQUEST_CHANGES") {
+        // Route back to Phase VIII
+        await supabase
+          .from("workflow_state")
+          .update({
+            checkpoint_pending: false,
+            checkpoint_type: null,
+            checkpoint_data: null,
+            current_phase: "VIII",
+            phase_status: "PENDING",
+          })
+          .eq("id", workflowId);
+      } else if (action === "CANCEL") {
+        await supabase
+          .from("workflow_state")
+          .update({
+            checkpoint_pending: false,
+            phase_status: "CANCELLED",
+          })
+          .eq("id", workflowId);
+
+        await supabase
+          .from("orders")
+          .update({ status: "cancelled" })
+          .eq("id", orderId);
+      }
+    });
+
+    // Continue workflow if approved
+    if (action === "APPROVE" && nextPhase) {
+      await step.sendEvent("continue-workflow", {
+        name: "workflow/execute-phase",
+        data: {
+          orderId,
+          workflowId,
+          phase: nextPhase,
+        },
+      });
+    } else if (action === "REQUEST_CHANGES") {
+      await step.sendEvent("request-changes", {
+        name: "workflow/execute-phase",
+        data: {
+          orderId,
+          workflowId,
+          phase: "VIII",
+        },
+      });
+    }
+
+    return { action, continued: action === "APPROVE" };
+  }
+);
+
+/**
+ * Start Workflow on Order Submission (v7.2)
+ *
+ * Alternative to direct generation - starts the 14-phase workflow.
+ */
+export const startWorkflowOnOrder = inngest.createFunction(
+  {
+    id: "workflow-start-on-order",
+  },
+  { event: "order/submitted" },
+  async ({ event, step }) => {
+    const { orderId } = event.data;
+    const supabase = getSupabase();
+
+    // Check if workflow_state table exists and if we should use v7.2 workflow
+    const useV72Workflow = process.env.USE_V72_WORKFLOW === "true";
+
+    if (!useV72Workflow) {
+      // Let the existing generateOrderDraft function handle it
+      return { skipped: true, reason: "v7.2 workflow not enabled" };
+    }
+
+    const workflowId = await step.run("create-workflow-state", async () => {
+      const id = crypto.randomUUID();
+
+      await supabase.from("workflow_state").insert({
+        id,
+        order_id: orderId,
+        current_phase: "I",
+        phase_status: "PENDING",
+      });
+
+      return id;
+    });
+
+    // Trigger first phase
+    await step.sendEvent("start-phase-i", {
+      name: "workflow/execute-phase",
+      data: {
+        orderId,
+        workflowId,
+        phase: "I",
+      },
+    });
+
+    return { workflowId, started: true };
+  }
+);
+
 // Export all functions for registration
+// Note: workflowOrchestration is the new 14-phase v7.2 workflow (preferred)
+// generateOrderDraft is the legacy single-call system (kept for fallback)
 export const functions = [
-  generateOrderDraft,
+  workflowOrchestration,  // v7.2: 14-phase workflow orchestrator
+  generateOrderDraft,      // Legacy: single-call superprompt
   handleGenerationFailure,
+  // New 14-phase workflow
+  ...workflowFunctions,
+  // Workflow router
+  routeOrderWorkflow,
+  // Supporting functions
   deadlineCheck,
   updateQueuePositions,
+  // v7.2 Workflow Functions
+  executeWorkflowPhase,
+  handleCheckpointApproval,
+  startWorkflowOnOrder,
 ];

@@ -40,6 +40,17 @@ interface ConversationMessage {
 
 /**
  * POST: Send message to Claude and stream response
+ *
+ * IMPORTANT: This chat API is for REVISIONS ONLY after the 14-phase workflow completes.
+ * Initial motion generation MUST go through the workflow orchestrator.
+ *
+ * To generate a motion:
+ * 1. Use the admin "Run 14-Phase Workflow" button, OR
+ * 2. Call POST /api/orders/[id]/generate
+ *
+ * This chat API should only be used for:
+ * - Post-delivery revisions requested by clients
+ * - Admin conversations about completed motions
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -71,8 +82,50 @@ export async function POST(request: Request) {
     const body: ChatRequest = await request.json();
     const { orderId, message, regenerate } = body;
 
+    // =========================================================================
+    // PHASE SYSTEM ENFORCEMENT: Block initial generation via chat
+    // =========================================================================
+    // The chat API should NOT be used to generate initial motions.
+    // Initial generation MUST go through the 14-phase workflow orchestrator.
+    // Chat is only allowed for orders that have already been generated.
+    // =========================================================================
+
+    // Check if regenerate is requested
+    if (regenerate) {
+      // Get order status to verify workflow has completed
+      const { data: order } = await supabase
+        .from('orders')
+        .select('status, order_number')
+        .eq('id', orderId)
+        .single();
+
+      // Only allow regenerate for orders that have been through the workflow
+      const workflowCompletedStatuses = ['draft_delivered', 'completed', 'revision_requested', 'revision_delivered'];
+      if (!order || !workflowCompletedStatuses.includes(order.status)) {
+        return new Response(JSON.stringify({
+          error: 'Cannot regenerate via chat. Initial motion must be generated via the 14-phase workflow.',
+          hint: 'Use the "Run 14-Phase Workflow" button in the admin panel.',
+          orderStatus: order?.status || 'unknown',
+        }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log(`[Chat API] Revision request for completed order ${order.order_number}`);
+    }
+
     if (!orderId) {
       return new Response(JSON.stringify({ error: 'orderId is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate orderId is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(orderId)) {
+      return new Response(JSON.stringify({ error: 'Invalid order ID format' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -214,26 +267,29 @@ export async function POST(request: Request) {
       const orderDataResult = await gatherOrderData(orderId);
       const orderData = orderDataResult.data;
 
-      const initialPrompt = `CRITICAL: The case data has already been provided in the system context above. DO NOT ask for more information. DO NOT say "I need" or list requirements. DO NOT output Phase I status updates.
+      const initialPrompt = `GENERATE THE MOTION DOCUMENT ONLY.
 
-Your task: Using the customer_intake JSON and uploaded_documents provided above, generate the COMPLETE ${orderData?.motionType || 'motion'} document NOW.
+FORBIDDEN - DO NOT INCLUDE IN YOUR RESPONSE:
+- "I'll execute..." or "Let me generate..." or any preamble text
+- "MOTION GRANTED WORKFLOW" or "OUTPUT DOCUMENT" headers
+- Lines of equals signs (================) or dashes
+- Phase headers, status updates, tables, or workflow commentary
+- Introductory or concluding remarks
 
-START YOUR RESPONSE WITH THE COURT CAPTION:
+REQUIRED - YOUR RESPONSE MUST:
+- Start DIRECTLY with the court caption (no text before it)
+- End with the signature block and certificate of service
+- Contain ONLY the motion document
 
-IN THE ${orderData?.jurisdiction === 'la_state' ? 'CIVIL DISTRICT COURT' : orderData?.jurisdiction?.toUpperCase() || '[COURT]'}
-${orderData?.courtDivision ? `FOR THE ${orderData.courtDivision.toUpperCase()}` : ''}
+Motion Type: ${orderData?.motionType || 'Motion'}
+Case Number: ${orderData?.caseNumber || '[NUMBER]'}
+Court: ${orderData?.jurisdiction === 'la_state' ? 'Civil District Court' : orderData?.jurisdiction || '[COURT]'}
+Plaintiffs: ${orderData?.plaintiffNames || '[PLAINTIFF]'}
+Defendants: ${orderData?.defendantNames || '[DEFENDANT]'}
 
-${orderData?.plaintiffNames || '[PLAINTIFF]'},
-     Plaintiff,
+BEGIN YOUR RESPONSE WITH THE COURT CAPTION NOW:
 
-vs.                                    CASE NO. ${orderData?.caseNumber || '[NUMBER]'}
-
-${orderData?.defendantNames || '[DEFENDANT]'},
-     Defendant.
-
-                    MOTION FOR ${(orderData?.motionType || 'RELIEF').toUpperCase().replace(/_/g, ' ')}
-
-[NOW CONTINUE WITH THE COMPLETE MOTION DOCUMENT - Introduction, Statement of Facts, Legal Arguments, Conclusion, Prayer for Relief, Certificate of Service]`;
+BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
 
       await supabase.from('conversation_messages').insert({
         conversation_id: conversation.id,
@@ -267,6 +323,7 @@ ${orderData?.defendantNames || '[DEFENDANT]'},
             ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`
             : '(key too short)';
           console.log(`[CHAT] Using API key: ${keyPreview}`);
+          console.log(`[CHAT] Requesting model: claude-opus-4-5-20251101`);
 
           const anthropic = new Anthropic({ apiKey });
 
@@ -390,6 +447,15 @@ export async function GET(request: Request) {
     });
   }
 
+  // Validate orderId is a valid UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(orderId)) {
+    return new Response(JSON.stringify({ error: 'Invalid order ID format' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     // Get conversation
     const { data: conversation } = await supabase
@@ -477,42 +543,8 @@ END OF EXISTING HANDOFF
 `;
     }
 
-    // Critical instruction header
-    const criticalInstruction = `
-################################################################################
-#                                                                              #
-#   MANDATORY INSTRUCTION - FAILURE TO COMPLY WILL RESULT IN REJECTION        #
-#                                                                              #
-################################################################################
-
-YOU MUST GENERATE A COMPLETE LEGAL MOTION - FINAL DOCUMENT ONLY.
-
-FORBIDDEN OUTPUTS (will cause immediate rejection):
-- "PHASE I:", "PHASE II:", etc. - NO PHASE HEADERS
-- "Status: IN PROGRESS" or any status updates
-- Tables showing phase progress or element mapping
-- "### PHASE X COMPLETE" or any completion markers
-- Workflow summaries or checklists
-- "Next Phase:" indicators
-- Research notes or citation verification reports
-- Attorney instruction sheets
-- INTRODUCTORY SENTENCES like "I'll generate..." or "Let me create..."
-- CONCLUDING COMMENTARY like "Key Improvements Made" or summaries of what you did
-- Any text before the court caption
-- Any text after the Certificate of Service
-
-YOUR ENTIRE RESPONSE MUST BE ONLY THE MOTION DOCUMENT.
-No introduction. No explanation. No commentary. Just the motion.
-
-REQUIRED OUTPUT FORMAT:
-Start IMMEDIATELY with the court caption (e.g., "IN THE CIVIL DISTRICT COURT").
-End with the Certificate of Service. Nothing else.
-
-################################################################################
-#   CASE DATA BELOW - USE THIS TO WRITE THE MOTION                            #
-################################################################################
-
-`;
+    // Minimal instruction - let the superprompt template drive everything
+    const workflowInstruction = '';
 
     // Build structured JSON case data matching superprompt schema
     const todayDate = new Date().toLocaleDateString('en-US', {
@@ -567,16 +599,13 @@ ADDITIONAL CONTEXT:
 - All Parties: ${orderData.parties?.map((p: { name: string; role: string }) => `${p.name} (${p.role})`).join(', ') || 'Not specified'}
 
 ================================================================================
-END OF CASE DATA - NOW GENERATE THE MOTION
+END OF CASE DATA
 ================================================================================
-
-You have received all required Phase I inputs above. Execute the workflow and generate the complete ${orderData.motionType || 'motion'} document.
-Do NOT ask for more information. START WITH THE COURT CAPTION.
 
 `;
 
-    // Build context: Critical instruction + Case data FIRST + then superprompt template
-    let context = criticalInstruction + structuredCaseData + '\n\n' + template.template;
+    // Build context: Workflow instruction + Case data + superprompt template
+    let context = workflowInstruction + structuredCaseData + '\n\n' + template.template;
 
     // Replace all placeholders
     const replacements: Record<string, string> = {

@@ -50,25 +50,25 @@ interface MotionTypeSelectorProps {
 
 const TIER_INFO = {
   A: {
-    name: 'Complex Strategic',
-    description: 'Motions requiring extensive legal analysis and research',
-    icon: Scale,
-    color: 'text-purple-600 bg-purple-50 border-purple-200',
-    badge: 'bg-purple-100 text-purple-700',
+    name: 'Procedural/Administrative',
+    description: 'Simple procedural motions - Extensions, Continuances, Pro Hac Vice',
+    icon: FileText,
+    color: 'text-gray-600 bg-gray-50 border-gray-200',
+    badge: 'bg-gray-100 text-gray-700',
   },
   B: {
-    name: 'Standard Procedural',
-    description: 'Standard motions with moderate complexity',
-    icon: FileText,
+    name: 'Intermediate',
+    description: 'Standard motions with moderate complexity - Motion to Compel, Demurrer',
+    icon: Scale,
     color: 'text-blue-600 bg-blue-50 border-blue-200',
     badge: 'bg-blue-100 text-blue-700',
   },
   C: {
-    name: 'Routine',
-    description: 'Straightforward motions with standard requirements',
+    name: 'Complex/Dispositive',
+    description: 'Complex dispositive motions - MSJ, MSA, Preliminary Injunction, TRO',
     icon: Shield,
-    color: 'text-green-600 bg-green-50 border-green-200',
-    badge: 'bg-green-100 text-green-700',
+    color: 'text-purple-600 bg-purple-50 border-purple-200',
+    badge: 'bg-purple-100 text-purple-700',
   },
 };
 

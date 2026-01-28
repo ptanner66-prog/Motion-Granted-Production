@@ -151,7 +151,7 @@ const BASE_QUALITY_CRITERIA: QualityCriteria = {
 // ============================================================================
 
 export const MOTION_TEMPLATES: Record<string, MotionTemplate> = {
-  // TIER A: Complex Strategic Motions
+  // TIER A: Procedural/Administrative Motions
   MTD_12B6: {
     code: 'MTD_12B6',
     name: 'Motion to Dismiss (12(b)(6))',
@@ -321,7 +321,7 @@ export const MOTION_TEMPLATES: Record<string, MotionTemplate> = {
     },
   },
 
-  // TIER B: Standard Procedural Motions
+  // TIER B: Intermediate Motions
   MTC: {
     code: 'MTC',
     name: 'Motion to Continue',
@@ -379,7 +379,7 @@ export const MOTION_TEMPLATES: Record<string, MotionTemplate> = {
     },
   },
 
-  // TIER C: Routine Motions
+  // TIER C: Complex/Dispositive Motions
   MEXT: {
     code: 'MEXT',
     name: 'Motion for Extension of Time',

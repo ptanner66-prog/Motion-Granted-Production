@@ -1,0 +1,324 @@
+import { Metadata } from 'next'
+import {
+  Shield,
+  Lock,
+  Server,
+  Eye,
+  FileCheck,
+  Users,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
+} from 'lucide-react'
+
+export const metadata: Metadata = {
+  title: 'Security',
+  description: 'Learn about Motion Granted security practices and data protection measures.',
+}
+
+const securityFeatures = [
+  {
+    icon: Lock,
+    title: 'Encryption',
+    description: 'TLS 1.3 for data in transit, AES-256 encryption for data at rest. Your documents and case information are always protected.',
+  },
+  {
+    icon: Server,
+    title: 'Infrastructure',
+    description: 'Hosted on enterprise-grade infrastructure with SOC 2 Type II compliance. Our providers (Vercel, Supabase) maintain rigorous security standards.',
+  },
+  {
+    icon: Eye,
+    title: 'Access Controls',
+    description: 'Role-based access control ensures only authorized personnel can access your data. Multi-factor authentication is enforced for all staff.',
+  },
+  {
+    icon: FileCheck,
+    title: 'Audit Logging',
+    description: 'Comprehensive audit logs track all access to your data. We maintain detailed records for compliance and security monitoring.',
+  },
+  {
+    icon: Users,
+    title: 'Staff Training',
+    description: 'All staff receive regular security awareness training. Confidentiality agreements are required for anyone who handles client data.',
+  },
+  {
+    icon: Clock,
+    title: 'Backups',
+    description: 'Daily encrypted backups with 30-day retention. Point-in-time recovery ensures your data is never lost.',
+  },
+]
+
+const complianceItems = [
+  {
+    title: 'SOC 2 Type II',
+    description: 'Our infrastructure providers maintain SOC 2 Type II compliance, demonstrating rigorous security controls.',
+    status: 'compliant',
+  },
+  {
+    title: 'ABA Formal Opinion 512',
+    description: 'We comply with ABA guidance on AI disclosure, ensuring transparency about AI-assisted drafting.',
+    status: 'compliant',
+  },
+  {
+    title: 'CCPA/CPRA',
+    description: 'California Consumer Privacy Act compliance for California residents.',
+    status: 'compliant',
+  },
+  {
+    title: 'Attorney-Client Privilege',
+    description: 'Our systems and processes are designed to protect the confidentiality of attorney work product.',
+    status: 'compliant',
+  },
+]
+
+const aiSecurityMeasures = [
+  'AI prompts do not include identifying client information when possible',
+  'AI API calls use encrypted connections',
+  'AI-generated content is reviewed by human professionals before delivery',
+  'Your data is NOT used to train AI models',
+  'AI processing is logged for audit and compliance purposes',
+  'Separate API keys and access controls for AI systems',
+]
+
+export default function SecurityPage() {
+  return (
+    <div className="bg-white">
+      {/* Header */}
+      <section className="bg-gray-50 py-16 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="flex justify-center mb-6">
+              <Shield className="h-16 w-16 text-blue-600" />
+            </div>
+            <h1 className="text-4xl font-bold tracking-tight text-navy sm:text-5xl">
+              Security at Motion Granted
+            </h1>
+            <p className="mt-6 text-lg text-gray-600">
+              Your trust is our foundation. We employ industry-leading security practices
+              to protect your confidential information.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Security Features Grid */}
+      <section className="py-16 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900">
+              How We Protect Your Data
+            </h2>
+            <p className="mt-4 text-lg text-gray-600">
+              Multiple layers of security protect your confidential information
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {securityFeatures.map((feature) => (
+              <div
+                key={feature.title}
+                className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+              >
+                <div className="flex items-center mb-4">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <feature.icon className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <h3 className="ml-3 text-lg font-semibold text-gray-900">
+                    {feature.title}
+                  </h3>
+                </div>
+                <p className="text-gray-600">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* AI Security Section */}
+      <section className="py-16 sm:py-24 bg-gray-50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl mx-auto">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-gray-900">
+                AI Security Measures
+              </h2>
+              <p className="mt-4 text-lg text-gray-600">
+                Special protections for AI-assisted drafting
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-8">
+              <ul className="space-y-4">
+                {aiSecurityMeasures.map((measure, index) => (
+                  <li key={index} className="flex items-start">
+                    <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 mr-3 flex-shrink-0" />
+                    <span className="text-gray-700">{measure}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+                <div className="flex items-start">
+                  <AlertTriangle className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium text-blue-900">Important Note</p>
+                    <p className="mt-1 text-sm text-blue-800">
+                      While we employ robust security measures, AI systems process data
+                      through third-party APIs. We select AI providers with strong
+                      security practices and ensure contractual protections for your data.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Compliance Section */}
+      <section className="py-16 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900">
+              Compliance & Standards
+            </h2>
+            <p className="mt-4 text-lg text-gray-600">
+              Meeting industry standards and legal requirements
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            {complianceItems.map((item) => (
+              <div
+                key={item.title}
+                className="bg-white rounded-xl border border-gray-200 p-6"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {item.title}
+                  </h3>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Compliant
+                  </span>
+                </div>
+                <p className="text-gray-600 text-sm">{item.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Infrastructure Partners */}
+      <section className="py-16 sm:py-24 bg-gray-50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900">
+              Trusted Infrastructure
+            </h2>
+            <p className="mt-4 text-lg text-gray-600">
+              We partner with industry-leading providers
+            </p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto">
+            <div className="text-center">
+              <div className="bg-white rounded-lg p-6 border border-gray-200">
+                <p className="font-semibold text-gray-900">Vercel</p>
+                <p className="text-sm text-gray-500 mt-1">Application Hosting</p>
+                <p className="text-xs text-green-600 mt-2">SOC 2 Type II</p>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="bg-white rounded-lg p-6 border border-gray-200">
+                <p className="font-semibold text-gray-900">Supabase</p>
+                <p className="text-sm text-gray-500 mt-1">Database</p>
+                <p className="text-xs text-green-600 mt-2">SOC 2 Type II</p>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="bg-white rounded-lg p-6 border border-gray-200">
+                <p className="font-semibold text-gray-900">Stripe</p>
+                <p className="text-sm text-gray-500 mt-1">Payments</p>
+                <p className="text-xs text-green-600 mt-2">PCI DSS Level 1</p>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="bg-white rounded-lg p-6 border border-gray-200">
+                <p className="font-semibold text-gray-900">Anthropic</p>
+                <p className="text-sm text-gray-500 mt-1">AI Processing</p>
+                <p className="text-xs text-green-600 mt-2">SOC 2 Type II</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Security Contact */}
+      <section className="py-16 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="max-w-2xl mx-auto text-center">
+            <h2 className="text-3xl font-bold text-gray-900">
+              Report a Security Issue
+            </h2>
+            <p className="mt-4 text-lg text-gray-600">
+              We take security seriously. If you discover a vulnerability, please
+              report it responsibly.
+            </p>
+            <div className="mt-8 p-6 bg-gray-50 rounded-xl border border-gray-200">
+              <p className="text-gray-700 mb-4">
+                For security concerns or to report a vulnerability:
+              </p>
+              <a
+                href="mailto:security@motiongranted.com"
+                className="text-blue-600 hover:text-blue-700 font-medium"
+              >
+                security@motiongranted.com
+              </a>
+              <p className="mt-4 text-sm text-gray-500">
+                Please include as much detail as possible about the potential
+                vulnerability. We will respond within 48 hours.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Documentation Links */}
+      <section className="py-16 sm:py-24 bg-gray-50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900">
+              Related Documentation
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            <a
+              href="/privacy"
+              className="block bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+            >
+              <h3 className="font-semibold text-gray-900">Privacy Policy</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                How we collect, use, and protect your personal information.
+              </p>
+            </a>
+            <a
+              href="/terms"
+              className="block bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+            >
+              <h3 className="font-semibold text-gray-900">Terms of Service</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                The agreement governing your use of our services.
+              </p>
+            </a>
+            <a
+              href="/dpa"
+              className="block bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+            >
+              <h3 className="font-semibold text-gray-900">Data Processing Agreement</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Detailed data processing terms for enterprise clients.
+              </p>
+            </a>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}

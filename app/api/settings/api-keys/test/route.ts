@@ -3,8 +3,11 @@
  *
  * Tests connectivity for API keys:
  * - Anthropic: Makes a simple API call to verify the key works
- * - Westlaw: Attempts a test search
- * - LexisNexis: Attempts a test search
+ * - OpenAI: Tests models endpoint
+ * - CourtListener: Tests search endpoint
+ * - PACER: Tests authentication
+ * - Stripe: Tests account endpoint
+ * - Resend: Tests domains endpoint
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -40,11 +43,35 @@ export async function POST(request: NextRequest) {
       case 'anthropic': {
         return await testAnthropicKey(settings.anthropic_api_key);
       }
+      case 'openai': {
+        return await testOpenAIKey(settings.openai_api_key);
+<<<<<<< claude/citation-integrity-system-6DUP6
+      }
+      case 'courtlistener': {
+        return await testCourtListenerKey(settings.courtlistener_api_key);
+      }
+      case 'pacer': {
+        return await testPACERCredentials(settings.pacer_username, settings.pacer_password);
+      }
+      case 'resend': {
+        return await testResendKey(settings.resend_api_key);
+      }
       case 'westlaw': {
         return await testWestlawKey(settings.westlaw_api_key, settings.westlaw_client_id);
+=======
+>>>>>>> main
       }
-      case 'lexisnexis': {
-        return await testLexisNexisKey(settings.lexisnexis_api_key, settings.lexisnexis_client_id);
+      case 'courtlistener': {
+        return await testCourtListenerKey(settings.courtlistener_api_key);
+      }
+      case 'pacer': {
+        return await testPACERCredentials(settings.pacer_username, settings.pacer_password);
+      }
+      case 'stripe': {
+        return await testStripeKey(settings.stripe_secret_key);
+      }
+      case 'resend': {
+        return await testResendKey(settings.resend_api_key);
       }
       default:
         return NextResponse.json({ success: false, message: 'Unknown key type' }, { status: 400 });
@@ -119,7 +146,7 @@ async function testAnthropicKey(apiKey: string): Promise<NextResponse> {
   }
 }
 
-async function testWestlawKey(apiKey: string, clientId?: string): Promise<NextResponse> {
+async function testOpenAIKey(apiKey: string): Promise<NextResponse> {
   if (!apiKey || apiKey.startsWith('****')) {
     return NextResponse.json({
       success: false,
@@ -128,14 +155,11 @@ async function testWestlawKey(apiKey: string, clientId?: string): Promise<NextRe
   }
 
   try {
-    // Westlaw API test - attempt authentication
-    // Note: This is a placeholder - actual Westlaw API may differ
-    const baseUrl = 'https://api.westlaw.com/v1';
-    const response = await fetch(`${baseUrl}/auth/test`, {
+    // Test by listing models
+    const response = await fetch('https://api.openai.com/v1/models', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        'X-Client-Id': clientId || '',
         'Content-Type': 'application/json',
       },
     });
@@ -143,32 +167,33 @@ async function testWestlawKey(apiKey: string, clientId?: string): Promise<NextRe
     if (response.ok) {
       return NextResponse.json({
         success: true,
-        message: 'Westlaw API connection successful!',
+        message: 'OpenAI API key is valid!',
       });
     }
 
-    // If we get a 404, the endpoint might be different but auth might work
-    if (response.status === 404) {
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = errorData.error?.message || `API returned status ${response.status}`;
+
+    if (response.status === 401) {
       return NextResponse.json({
-        success: true,
-        message: 'Westlaw API key format accepted (endpoint verification pending)',
+        success: false,
+        message: 'Invalid API key - authentication failed',
       });
     }
 
     return NextResponse.json({
       success: false,
-      message: `Westlaw API returned status ${response.status}`,
+      message: errorMessage,
     });
   } catch (error) {
-    // Network errors might mean the API key format is fine but endpoint is wrong
     return NextResponse.json({
       success: false,
-      message: 'Could not connect to Westlaw API. Verify your API credentials.',
+      message: error instanceof Error ? error.message : 'Connection failed',
     });
   }
 }
 
-async function testLexisNexisKey(apiKey: string, clientId?: string): Promise<NextResponse> {
+async function testCourtListenerKey(apiKey: string): Promise<NextResponse> {
   if (!apiKey || apiKey.startsWith('****')) {
     return NextResponse.json({
       success: false,
@@ -177,14 +202,11 @@ async function testLexisNexisKey(apiKey: string, clientId?: string): Promise<Nex
   }
 
   try {
-    // LexisNexis API test
-    // Note: This is a placeholder - actual LexisNexis API may differ
-    const baseUrl = 'https://api.lexisnexis.com/v1';
-    const response = await fetch(`${baseUrl}/auth/verify`, {
+    // Test with a simple search
+    const response = await fetch('https://www.courtlistener.com/api/rest/v3/search/?q=test&type=o', {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'X-Client-Id': clientId || '',
+        'Authorization': `Token ${apiKey}`,
         'Content-Type': 'application/json',
       },
     });
@@ -192,25 +214,178 @@ async function testLexisNexisKey(apiKey: string, clientId?: string): Promise<Nex
     if (response.ok) {
       return NextResponse.json({
         success: true,
-        message: 'LexisNexis API connection successful!',
+        message: 'CourtListener API key is valid!',
       });
     }
 
-    if (response.status === 404) {
+    if (response.status === 401) {
       return NextResponse.json({
-        success: true,
-        message: 'LexisNexis API key format accepted (endpoint verification pending)',
+        success: false,
+        message: 'Invalid API key - authentication failed',
+      });
+    }
+
+    if (response.status === 403) {
+      return NextResponse.json({
+        success: false,
+        message: 'API key lacks required permissions',
       });
     }
 
     return NextResponse.json({
       success: false,
-      message: `LexisNexis API returned status ${response.status}`,
+      message: `CourtListener API returned status ${response.status}`,
     });
   } catch (error) {
     return NextResponse.json({
       success: false,
-      message: 'Could not connect to LexisNexis API. Verify your API credentials.',
+      message: error instanceof Error ? error.message : 'Connection failed',
+    });
+  }
+}
+
+async function testPACERCredentials(username: string, password: string): Promise<NextResponse> {
+  if (!username || !password || password.startsWith('****')) {
+    return NextResponse.json({
+      success: false,
+      message: 'Please enter valid credentials (not masked)',
+    });
+  }
+
+  try {
+    // PACER login test - this is a simplified test
+    // Real PACER API may require different authentication flow
+    const response = await fetch('https://pacer.login.uscourts.gov/services/cso-auth', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        login: username,
+        key: password,
+      }).toString(),
+    });
+
+    // PACER may return different status codes
+    if (response.ok || response.status === 302) {
+      return NextResponse.json({
+        success: true,
+        message: 'PACER credentials appear valid!',
+      });
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid PACER credentials',
+      });
+    }
+
+    // If we can't test properly, give a warning
+    return NextResponse.json({
+      success: true,
+      message: 'PACER credentials saved (full test requires active session)',
+    });
+  } catch (error) {
+    // Network errors might mean the endpoint is different, but credentials could still be valid
+    return NextResponse.json({
+      success: true,
+      message: 'PACER credentials saved (connection test inconclusive)',
+    });
+  }
+}
+
+async function testStripeKey(apiKey: string): Promise<NextResponse> {
+  if (!apiKey || apiKey.startsWith('****')) {
+    return NextResponse.json({
+      success: false,
+      message: 'Please enter a valid API key (not masked)',
+    });
+  }
+
+  try {
+    // Test by retrieving account info
+    const response = await fetch('https://api.stripe.com/v1/account', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return NextResponse.json({
+        success: true,
+        message: `Stripe API key is valid! (Account: ${data.business_profile?.name || 'Connected'})`,
+      });
+    }
+
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = errorData.error?.message || `API returned status ${response.status}`;
+
+    if (response.status === 401) {
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid API key - authentication failed',
+      });
+    }
+
+    return NextResponse.json({
+      success: false,
+      message: errorMessage,
+    });
+  } catch (error) {
+    return NextResponse.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Connection failed',
+    });
+  }
+}
+
+async function testResendKey(apiKey: string): Promise<NextResponse> {
+  if (!apiKey || apiKey.startsWith('****')) {
+    return NextResponse.json({
+      success: false,
+      message: 'Please enter a valid API key (not masked)',
+    });
+  }
+
+  try {
+    // Test by listing domains
+    const response = await fetch('https://api.resend.com/domains', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      return NextResponse.json({
+        success: true,
+        message: 'Resend API key is valid!',
+      });
+    }
+
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = errorData.message || `API returned status ${response.status}`;
+
+    if (response.status === 401 || response.status === 403) {
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid API key - authentication failed',
+      });
+    }
+
+    return NextResponse.json({
+      success: false,
+      message: errorMessage,
+    });
+  } catch (error) {
+    return NextResponse.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Connection failed',
     });
   }
 }

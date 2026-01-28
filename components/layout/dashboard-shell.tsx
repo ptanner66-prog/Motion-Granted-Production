@@ -16,8 +16,6 @@ import {
   User,
   Search,
   HelpCircle,
-  BookOpen,
-  MessageSquare,
   ChevronRight,
   ExternalLink,
 } from 'lucide-react'
@@ -257,28 +255,6 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
               ))}
             </div>
           </nav>
-
-          {/* Help Card */}
-          <div className="px-4 pb-4">
-            <div className="rounded-xl bg-gradient-to-br from-navy to-navy-light p-4 text-white">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-                  <MessageSquare className="h-4 w-4" />
-                </div>
-                <span className="font-semibold text-sm">Need Help?</span>
-              </div>
-              <p className="text-xs text-white/70 mb-3">
-                Questions about your orders or our services?
-              </p>
-              <a
-                href="mailto:support@motiongranted.com"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-teal hover:text-teal-light transition-colors"
-              >
-                Contact Support
-                <ChevronRight className="h-3 w-3" />
-              </a>
-            </div>
-          </div>
 
           {/* User section */}
           <div className="border-t border-gray-100 p-4">

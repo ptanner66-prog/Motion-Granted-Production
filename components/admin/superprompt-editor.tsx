@@ -76,7 +76,7 @@ export function SuperpromptEditor({
     motionTypes: '*',
     template: '',
     systemPrompt: '',
-    maxTokens: 64000, // Increased for long motions
+    maxTokens: 32000, // Increased for long motions
     isDefault: false,
   });
 
@@ -199,7 +199,7 @@ export function SuperpromptEditor({
       motionTypes: '*',
       template: '',
       systemPrompt: 'You are an expert legal motion drafter using the superprompt workflow. Follow the structured phases exactly. Produce professional, court-ready legal documents with proper formatting and verified citations.',
-      maxTokens: 64000, // High limit for long motions
+      maxTokens: 32000, // High limit for long motions
       isDefault: templates.length === 0,
     });
     setIsCreating(true);

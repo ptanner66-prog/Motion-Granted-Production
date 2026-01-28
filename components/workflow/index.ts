@@ -1,9 +1,17 @@
 /**
  * Workflow Components
  *
- * v6.3: Export all workflow-related components
+ * v7.2: 14-phase workflow system components
  */
 
+// v7.2 Components
+export { TierBadge, getTierColor } from './TierBadge';
+export { PhaseProgressTracker } from './PhaseProgressTracker';
+export { JudgeSimulationCard } from './JudgeSimulationCard';
+export { CheckpointNotificationBanner } from './CheckpointNotificationBanner';
+export { PhaseXApprovalModal } from './PhaseXApprovalModal';
+
+// Existing components
 export { PhaseProgress } from './PhaseProgress';
 export { CheckpointBanner } from './CheckpointBanner';
 export { GradeDisplay, GradeBadge } from './GradeDisplay';
