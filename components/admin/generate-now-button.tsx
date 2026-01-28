@@ -110,6 +110,30 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
     return null;
   }
 
+  // Don't show if in progress (workflow is running)
+  // Parent page handles showing this for in_progress, but we hide it here
+  // to prevent 400 errors when workflow is actively running
+  if (isInProgress && !canResume) {
+    return (
+      <Card className="bg-blue-50 border-blue-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2 text-blue-800">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Workflow In Progress
+          </CardTitle>
+          <CardDescription className="text-blue-700">
+            Order {orderNumber} - Processing
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-blue-600">
+            The 14-phase workflow is currently running. Check back in a few minutes.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const isLoading = isGenerating || isResuming;
 
   return (
@@ -124,13 +148,6 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {isInProgress && (
-          <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-100 p-2 rounded">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Workflow is currently in progress...
-          </div>
-        )}
-
         {orderStatus === 'generation_failed' && (
           <div className="flex items-center gap-2 text-sm text-red-700 bg-red-100 p-2 rounded">
             <AlertCircle className="h-4 w-4" />
@@ -145,48 +162,29 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
           </div>
         )}
 
-        <div className="grid gap-2">
-          {canResume ? (
-            <Button
-              onClick={handleResumeWorkflow}
-              disabled={isLoading}
-              className="w-full bg-green-600 hover:bg-green-700 text-white"
-            >
-              {isResuming ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Resuming Workflow...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  Resume Workflow
-                </>
-              )}
-            </Button>
-          ) : (
-            <Button
-              onClick={handleGenerateNow}
-              disabled={isLoading}
-              className="w-full bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Starting Workflow... (5-10 minutes)
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  Generate Now (14-Phase Workflow)
-                </>
-              )}
-            </Button>
-          )}
-
+        {/* SINGLE BUTTON - either Resume OR Generate */}
+        {canResume ? (
+          <Button
+            onClick={handleResumeWorkflow}
+            disabled={isLoading}
+            className="w-full bg-green-600 hover:bg-green-700 text-white"
+          >
+            {isResuming ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Resuming Workflow...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                Resume Workflow
+              </>
+            )}
+          </Button>
+        ) : (
           <Button
             onClick={handleGenerateNow}
-            disabled={isGenerating || isInProgress || isResuming}
+            disabled={isLoading}
             className="w-full bg-amber-600 hover:bg-amber-700 text-white"
           >
             {isGenerating ? (
@@ -197,32 +195,11 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
             ) : (
               <>
                 <Play className="h-4 w-4 mr-2" />
-                Run 14-Phase Workflow
+                Generate Now (14-Phase Workflow)
               </>
             )}
           </Button>
-
-          {canResume && (
-            <Button
-              onClick={handleResumeWorkflow}
-              disabled={isResuming || isGenerating}
-              variant="outline"
-              className="w-full border-amber-600 text-amber-700 hover:bg-amber-50"
-            >
-              {isResuming ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Resuming...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  Resume Workflow
-                </>
-              )}
-            </Button>
-          )}
-        </div>
+        )}
 
         <p className="text-xs text-amber-600 text-center">
           Uses 14-phase workflow with checkpoints. Queue processes in background via Inngest.
