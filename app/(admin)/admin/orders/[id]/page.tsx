@@ -482,8 +482,9 @@ export default async function AdminOrderDetailPage({
             />
           )}
 
-          {/* Generate Now - shown for orders that need generation */}
-          {['submitted', 'under_review', 'in_progress', 'generation_failed', 'assigned'].includes(order.status) && (
+          {/* Generate Now - ONLY shown for orders that need INITIAL generation or are in_progress */}
+          {/* Don't show for generation_failed - use RetryGenerationButton instead */}
+          {['submitted', 'under_review', 'in_progress', 'assigned'].includes(order.status) && (
             <GenerateNowButton
               orderId={order.id}
               orderNumber={order.order_number}
@@ -491,7 +492,8 @@ export default async function AdminOrderDetailPage({
             />
           )}
 
-          {/* Retry Generation - shown when generation failed */}
+          {/* Retry Generation - ONLY shown when generation failed */}
+          {/* This replaces GenerateNowButton for failed orders */}
           {(order.status === 'generation_failed' || order.status === 'blocked') && (
             <RetryGenerationButton
               orderId={order.id}
@@ -500,7 +502,8 @@ export default async function AdminOrderDetailPage({
             />
           )}
 
-          {/* Restart Workflow - restart from beginning */}
+          {/* Restart Workflow - Advanced option, only for stuck/failed workflows */}
+          {/* Hidden by default inside the component based on status */}
           <RestartWorkflowButton
             orderId={order.id}
             orderNumber={order.order_number}
