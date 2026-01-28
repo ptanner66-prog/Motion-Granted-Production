@@ -999,7 +999,7 @@ function generateInstructionSheetContent(
   content.push(`Citations Verified: ${citationCount}`);
   if (judgeResult) {
     content.push(`Judge Simulation Grade: ${judgeResult.grade || 'N/A'}`);
-    content.push(`Quality Score: ${judgeResult.score || 'N/A'}/100`);
+    content.push(`Quality Score: ${judgeResult.numericGrade || 'N/A'}/4.5`);
   }
   content.push('');
   content.push('───────────────────────────────────────────────────────────────────────');
