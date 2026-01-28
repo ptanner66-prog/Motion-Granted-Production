@@ -70,60 +70,86 @@ export async function POST(request: NextRequest) {
       statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
     }
 
-    // ============================================================================
-    // STEP 1: Clear all workflow data for these orders
-    // ============================================================================
+    // Reset stuck orders to 'submitted' so they can be regenerated
+    // This is NOT marking them as delivered - it's allowing them to be restarted
+    const stuckStatuses = ['in_progress', 'generation_failed', 'in_review'];
 
-    // Get workflow IDs for these orders
-    const { data: workflows } = await adminClient
-      .from('order_workflows')
-      .select('id')
-      .in('order_id', orderIds);
+    // Get orders to reset
+    const { data: ordersToReset, error: fetchOrdersError } = await adminClient
+      .from('orders')
+      .select('id, order_number')
+      .in('status', stuckStatuses);
 
-    const workflowIds = workflows?.map(w => w.id) || [];
-
-    if (workflowIds.length > 0) {
-      // Delete workflow phase executions
-      await adminClient
-        .from('workflow_phase_executions')
-        .delete()
-        .in('workflow_id', workflowIds);
-
-      // Delete the workflow records
-      await adminClient
-        .from('order_workflows')
-        .delete()
-        .in('order_id', orderIds);
+    if (fetchOrdersError) {
+      return NextResponse.json({ error: fetchOrdersError.message }, { status: 500 });
     }
 
-    // Clear citation banks for these orders
-    await adminClient
-      .from('citation_banks')
-      .delete()
-      .in('order_id', orderIds);
+    // Reset each order's workflow properly
+    for (const order of ordersToReset || []) {
+      // Get workflow ID
+      const { data: workflow } = await adminClient
+        .from('order_workflows')
+        .select('id, workflow_path')
+        .eq('order_id', order.id)
+        .single();
 
-    // Clear citation verifications for these orders
-    await adminClient
-      .from('citation_verifications')
-      .delete()
-      .in('order_id', orderIds);
+      if (workflow) {
+        // Delete phase executions and judge results
+        await adminClient
+          .from('workflow_phase_executions')
+          .delete()
+          .eq('order_workflow_id', workflow.id);
 
-    // Clear verified citations for these orders
-    await adminClient
-      .from('verified_citations')
-      .delete()
-      .in('order_id', orderIds);
+        try {
+          await adminClient
+            .from('judge_simulation_results')
+            .delete()
+            .eq('order_workflow_id', workflow.id);
+        } catch {
+          // Table might not exist
+        }
 
-    // ============================================================================
-    // STEP 2: Reset orders to 'submitted' status (ready for fresh start)
-    // ============================================================================
+        // Reset workflow state
+        await adminClient
+          .from('order_workflows')
+          .update({
+            status: 'pending',
+            current_phase: 1,
+            last_error: null,
+            started_at: null,
+            completed_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', workflow.id);
 
+        // Recreate phase execution records
+        const { data: phases } = await adminClient
+          .from('workflow_phase_definitions')
+          .select('id, phase_number')
+          .eq('workflow_path', workflow.workflow_path)
+          .order('phase_number', { ascending: true });
+
+        if (phases && phases.length > 0) {
+          const phaseExecutions = phases.map((phase: { id: string; phase_number: number }) => ({
+            order_workflow_id: workflow.id,
+            phase_definition_id: phase.id,
+            phase_number: phase.phase_number,
+            status: 'pending',
+          }));
+
+          await adminClient
+            .from('workflow_phase_executions')
+            .insert(phaseExecutions);
+        }
+      }
+    }
+
+    // Update order statuses to 'submitted' (ready to restart)
     const { data: updatedOrders, error: updateError } = await adminClient
       .from('orders')
       .update({
         status: 'submitted',
         generation_error: null,
-        generation_attempts: 0,
         updated_at: new Date().toISOString()
       })
       .in('id', orderIds)
@@ -149,7 +175,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Reset ${updatedOrders?.length || 0} orders to 'submitted' status. Cleared ${workflowIds.length} workflows.`,
+      message: `Reset ${updatedOrders?.length || 0} stuck orders - workflows cleared, ready to regenerate`,
       previous_statuses: statusCounts,
       orders_updated: updatedOrders?.map(o => o.order_number) || [],
       workflows_cleared: workflowIds.length,

@@ -12,7 +12,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { askClaude, isClaudeConfigured } from '@/lib/automation/claude';
+import { askClaude } from '@/lib/automation/claude';
 import { extractOrderDocuments, getCombinedDocumentText } from './document-extractor';
 import { parseOrderDocuments, getOrderParsedDocuments } from './document-parser';
 import { startWorkflow, runWorkflow, getWorkflowProgress, executeCurrentPhase } from './workflow-engine';
@@ -556,30 +556,6 @@ export async function generateDraftWithSuperprompt(
   workflowPath: WorkflowPath = 'path_a',
   options: { calledFromPhase?: string } = {}
 ): Promise<OperationResult<{ draft: string; tokensUsed?: number }>> {
-  // PHASE GATE: Only allow this if called from Phase V context
-  if (options.calledFromPhase !== 'V') {
-    console.error(`[ORCHESTRATOR] Direct generation blocked for order ${orderId}`);
-    await alertBypassAttempt(
-      'generateDraftWithSuperprompt',
-      `Direct call without workflow context for order ${orderId}`
-    );
-    return {
-      success: false,
-      error: 'DIRECT_GENERATION_BLOCKED: This function cannot be called directly. Use orchestrateWorkflow() instead.',
-    };
-  }
-
-  // Validate Phase V prerequisites
-  const gateResult = await validatePhaseGate(orderId, 'V');
-  if (!gateResult.canProceed) {
-    console.error(`[ORCHESTRATOR] Phase V gate blocked: ${gateResult.error}`);
-    return { success: false, error: gateResult.error };
-  }
-
-  if (!isClaudeConfigured) {
-    return { success: false, error: 'Claude API not configured' };
-  }
-
   // Gather full context
   const contextResult = await gatherOrderContext(orderId);
   if (!contextResult.success || !contextResult.data) {
@@ -599,11 +575,10 @@ export async function generateDraftWithSuperprompt(
     workflowPath,
   });
 
-  // Generate with Claude
-  // Using 32000 tokens to accommodate Tier C complex motions
+  // Generate with Claude - MAXED OUT 128000 tokens for Opus 4.5
   const result = await askClaude({
     prompt: superprompt + '\n\nGenerate the complete motion document now:',
-    maxTokens: 32000,
+    maxTokens: 128000, // MAXED OUT - full motion, no truncation
     systemPrompt: 'You are an expert legal document drafter. Produce professional, court-ready legal documents.',
   });
 

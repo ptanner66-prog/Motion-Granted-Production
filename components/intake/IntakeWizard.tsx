@@ -2,6 +2,7 @@
  * Intake Wizard Component
  *
  * v6.3: Multi-step intake wizard with progress tracking.
+ * v11.0: Added State & Court selection step (Task 83 - 50-State Expansion)
  */
 
 'use client';
@@ -11,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { IntakeProvider, useIntakeForm } from '@/lib/intake/context';
 import { submitOrder } from '@/lib/intake/api';
 import { PathSelection } from './PathSelection';
+import { StateCourtSelection } from './StateCourtSelection';
 import { CaseInformationForm } from './CaseInformationForm';
 import { MotionTypeSelection } from './MotionTypeSelection';
 import { StatementOfFactsForm } from './StatementOfFactsForm';
@@ -22,6 +24,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 const STEPS = [
   { id: 'path', title: 'Get Started', component: PathSelection },
+  { id: 'state-court', title: 'State & Court', component: StateCourtSelection },
   { id: 'case', title: 'Case Info', component: CaseInformationForm },
   { id: 'motion', title: 'Motion Type', component: MotionTypeSelection },
   { id: 'facts', title: 'Statement of Facts', component: StatementOfFactsForm },

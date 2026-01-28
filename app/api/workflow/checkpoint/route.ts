@@ -19,11 +19,15 @@ import {
   type CheckpointType,
 } from '@/lib/workflow/checkpoint-service';
 
+// Supported checkpoint types for this endpoint (HOLD is handled separately)
+type SupportedCheckpoint = 'CP1' | 'CP2' | 'CP3';
+
 // Valid actions for each checkpoint type
-const VALID_ACTIONS: Record<CheckpointType, string[]> = {
+const VALID_ACTIONS: Record<SupportedCheckpoint, string[]> = {
   CP1: ['continue', 'request_changes'],
   CP2: ['approve', 'request_revisions'],
   CP3: ['confirm_receipt'],
+  HOLD: ['resume', 'cancel'],
 };
 
 /**
@@ -144,15 +148,15 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate checkpoint type
-  if (!['CP1', 'CP2', 'CP3'].includes(checkpoint)) {
+  if (!['CP1', 'CP2', 'CP3', 'HOLD'].includes(checkpoint)) {
     return NextResponse.json(
-      { error: 'Invalid checkpoint type. Must be CP1, CP2, or CP3' },
+      { error: 'Invalid checkpoint type. Must be CP1, CP2, CP3, or HOLD' },
       { status: 400 }
     );
   }
 
   // Validate action for checkpoint type
-  const validActions = VALID_ACTIONS[checkpoint];
+  const validActions = VALID_ACTIONS[checkpoint as SupportedCheckpoint];
   if (!validActions.includes(action)) {
     return NextResponse.json(
       { error: `Invalid action for ${checkpoint}. Valid actions: ${validActions.join(', ')}` },

@@ -1,156 +1,120 @@
 /**
- * Resume Automation API
+ * Resume Workflow API
  *
- * POST: Resume a workflow that was interrupted or failed mid-execution.
- *       Uses the resumeOrderAutomation function from automation-service.ts
- *       which picks up from the last checkpoint.
+ * POST: Resume a paused or failed workflow for an order
  *
- * Called when:
- * - Order status is 'in_progress' (workflow stopped mid-execution)
- * - Order status is 'generation_failed' (workflow failed and needs retry)
+ * Source: CMS 20.3
+ * Requires admin or clerk role
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { resumeOrderAutomation } from '@/lib/workflow/automation-service';
+import { resumeOrderAutomation } from '@/lib/workflow';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   const supabase = await createClient();
 
-  // Get orderId from body
-  let orderId: string | null = null;
-
-  try {
-    const body = await request.json();
-    orderId = body.orderId;
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
-
-  if (!orderId) {
-    return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
-  }
-
-  // Validate UUID format
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(orderId)) {
-    return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 });
-  }
-
-  // Verify auth - admin or clerk only
+  // Verify user is authenticated
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
+    console.warn('[Resume API] Unauthorized access attempt');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Check authorization - must be admin or clerk
+  // Check admin/clerk role
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single();
 
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'clerk';
-
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Forbidden - admin or clerk access required' }, { status: 403 });
-  }
-
-  // Get the order
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .select('id, status, order_number')
-    .eq('id', orderId)
-    .single();
-
-  if (orderError || !order) {
-    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-  }
-
-  // Check if order is in a resumable state
-  const resumableStatuses = ['in_progress', 'generation_failed', 'blocked'];
-  if (!resumableStatuses.includes(order.status)) {
-    return NextResponse.json({
-      error: `Order is in '${order.status}' status. Can only resume orders that are in_progress, generation_failed, or blocked.`,
-      orderStatus: order.status,
-    }, { status: 400 });
+  if (profile?.role !== 'admin' && profile?.role !== 'clerk') {
+    console.warn(`[Resume API] Forbidden access attempt by user ${user.id} with role ${profile?.role}`);
+    return NextResponse.json({ error: 'Forbidden - requires admin or clerk role' }, { status: 403 });
   }
 
   try {
+    const body = await request.json();
+    const { orderId } = body;
+
+    if (!orderId) {
+      return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
+    }
+
+    // Validate orderId is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(orderId)) {
+      return NextResponse.json({ error: 'Invalid orderId format' }, { status: 400 });
+    }
+
+    // Verify order exists and get current status
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, order_number, status')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
     // Log the resume attempt
     await supabase.from('automation_logs').insert({
       order_id: orderId,
-      action_type: 'workflow_resume_requested',
+      action_type: 'workflow_resume_attempt',
       action_details: {
+        initiatedBy: user.id,
         previousStatus: order.status,
-        requestedAt: new Date().toISOString(),
-        requestedBy: user.id,
+        timestamp: new Date().toISOString(),
       },
     });
 
-    // Call the resume function from automation-service
+    // Call the resume function
     const result = await resumeOrderAutomation(orderId);
 
     if (!result.success) {
-      // Log failure
+      // Log the failure
       await supabase.from('automation_logs').insert({
         order_id: orderId,
         action_type: 'workflow_resume_failed',
         action_details: {
           error: result.error,
-          failedAt: new Date().toISOString(),
+          timestamp: new Date().toISOString(),
         },
       });
 
-      // Update order status to generation_failed
-      await supabase
-        .from('orders')
-        .update({ status: 'generation_failed' })
-        .eq('id', orderId);
-
-      return NextResponse.json({
-        success: false,
-        error: result.error || 'Failed to resume workflow',
-      }, { status: 500 });
+      return NextResponse.json(
+        { error: result.error || 'Failed to resume workflow' },
+        { status: 400 }
+      );
     }
 
-    // Log success
+    // Log the success
     await supabase.from('automation_logs').insert({
       order_id: orderId,
       action_type: 'workflow_resumed',
       action_details: {
-        workflowId: result.data?.workflowId,
-        status: result.data?.status,
-        currentPhase: result.data?.currentPhase,
-        resumedAt: new Date().toISOString(),
+        initiatedBy: user.id,
+        result: result.data,
+        timestamp: new Date().toISOString(),
       },
+      was_auto_approved: false,
     });
+
+    console.log(`[Resume API] Workflow resumed for order ${order.order_number} by user ${user.id}`);
 
     return NextResponse.json({
       success: true,
-      orderId,
-      orderNumber: order.order_number,
-      workflowId: result.data?.workflowId,
-      status: result.data?.status,
-      currentPhase: result.data?.currentPhase,
-      totalPhases: result.data?.totalPhases || 14,
-      message: `Workflow resumed successfully. Status: ${result.data?.status}`,
+      message: `Workflow resumed for order ${order.order_number}`,
+      data: result.data,
     });
   } catch (error) {
-    console.error('Resume automation error:', error);
-
-    // Log error
-    await supabase.from('automation_logs').insert({
-      order_id: orderId,
-      action_type: 'workflow_resume_error',
-      action_details: {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        errorAt: new Date().toISOString(),
-      },
-    });
-
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Failed to resume workflow',
-    }, { status: 500 });
+    console.error('[Resume API] Error:', error);
+    return NextResponse.json(
+      { error: 'Failed to resume workflow. Please try again.' },
+      { status: 500 }
+    );
   }
 }

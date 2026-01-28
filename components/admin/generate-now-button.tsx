@@ -11,30 +11,29 @@ interface GenerateNowButtonProps {
   orderId: string;
   orderNumber: string;
   orderStatus: string;
+  filingType?: 'initiating' | 'opposition';
 }
 
-export function GenerateNowButton({ orderId, orderNumber, orderStatus }: GenerateNowButtonProps) {
+export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingType }: GenerateNowButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isQueuing, setIsQueuing] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
 
-  // Don't show if already has a motion ready or in progress
+  // Don't show if already has a motion ready or completed
   const alreadyGenerated = ['pending_review', 'draft_delivered', 'completed', 'revision_delivered'].includes(orderStatus);
-  const isInProgress = ['generating', 'in_progress'].includes(orderStatus);
+  const isInProgress = ['in_progress'].includes(orderStatus);
+  const canResume = ['generation_failed'].includes(orderStatus);
 
-  // Show resume button for interrupted workflows
-  const canResume = ['in_progress', 'generation_failed'].includes(orderStatus);
-
-  // Direct generation via Orchestrator (proper 14-phase workflow)
-  const handleGenerate = async () => {
+  // Handle starting the 14-phase workflow via v7.2 phase executors
+  const handleGenerateNow = async () => {
     setIsGenerating(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/workflow/orchestrate', {
+      // Use the v7.2 generate endpoint (NOT the old orchestrate endpoint)
+      const response = await fetch(`/api/orders/${orderId}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -70,8 +69,8 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
     }
   };
 
-  // Resume interrupted workflow
-  const handleResume = async () => {
+  // Handle resuming a paused or failed workflow
+  const handleResumeWorkflow = async () => {
     setIsResuming(true);
     setError(null);
 
@@ -89,8 +88,8 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
       }
 
       toast({
-        title: 'Workflow Resumed!',
-        description: 'Continuing from the last checkpoint.',
+        title: 'Workflow Resumed',
+        description: `Order ${orderNumber} workflow has been resumed.`,
       });
 
       router.refresh();
@@ -104,43 +103,6 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
       });
     } finally {
       setIsResuming(false);
-    }
-  };
-
-  // Queue for generation via Inngest
-  const handleQueue = async () => {
-    setIsQueuing(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/admin/queue-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to queue order');
-      }
-
-      toast({
-        title: 'Order Queued!',
-        description: `${orderNumber} added to generation queue. It will process in the background.`,
-      });
-
-      router.refresh();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to queue order';
-      setError(message);
-      toast({
-        title: 'Queue Failed',
-        description: message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsQueuing(false);
     }
   };
 
@@ -223,10 +185,9 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
           )}
 
           <Button
-            onClick={handleQueue}
-            disabled={isLoading}
-            variant="outline"
-            className="w-full border-amber-300 text-amber-700 hover:bg-amber-100"
+            onClick={handleGenerateNow}
+            disabled={isGenerating || isInProgress || isResuming}
+            className="w-full bg-amber-600 hover:bg-amber-700 text-white"
           >
             {isQueuing ? (
               <>
@@ -240,6 +201,27 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus }: Generat
               </>
             )}
           </Button>
+
+          {canResume && (
+            <Button
+              onClick={handleResumeWorkflow}
+              disabled={isResuming || isGenerating}
+              variant="outline"
+              className="w-full border-amber-600 text-amber-700 hover:bg-amber-50"
+            >
+              {isResuming ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Resuming...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-2" />
+                  Resume Workflow
+                </>
+              )}
+            </Button>
+          )}
         </div>
 
         <p className="text-xs text-amber-600 text-center">
