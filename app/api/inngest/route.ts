@@ -1,6 +1,17 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
-import { functions } from "@/lib/inngest/functions";
+
+// v7.4.1: Explicit imports for reliable function registration
+// Primary workflow handler
+import { generateOrderWorkflow, handleWorkflowFailure } from "@/lib/inngest/workflow-orchestration";
+
+// Supporting functions
+import {
+  handleGenerationFailure,
+  deadlineCheck,
+  updateQueuePositions,
+  handleCheckpointApproval,
+} from "@/lib/inngest/functions";
 
 /**
  * Inngest API Route Handler
@@ -16,5 +27,14 @@ import { functions } from "@/lib/inngest/functions";
  */
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions,
+  functions: [
+    // PRIMARY: 14-phase workflow (handles order/submitted)
+    generateOrderWorkflow,
+    handleWorkflowFailure,
+    // SUPPORTING: Error handling, deadlines, queue management
+    handleGenerationFailure,
+    deadlineCheck,
+    updateQueuePositions,
+    handleCheckpointApproval,
+  ],
 });
