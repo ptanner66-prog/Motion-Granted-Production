@@ -65,7 +65,7 @@ export async function deleteOrderData(
         .list(orderId);
 
       if (files && files.length > 0) {
-        const filePaths = files.map(f => `${orderId}/${f.name}`);
+        const filePaths = files.map((f: { name: string }) => `${orderId}/${f.name}`);
         await supabase.storage.from('order-documents').remove(filePaths);
       }
     } catch (storageError) {
@@ -79,7 +79,7 @@ export async function deleteOrderData(
         .list(orderId);
 
       if (deliverables && deliverables.length > 0) {
-        const deliverablePaths = deliverables.map(f => `${orderId}/${f.name}`);
+        const deliverablePaths = deliverables.map((f: { name: string }) => `${orderId}/${f.name}`);
         await supabase.storage.from('deliverables').remove(deliverablePaths);
       }
     } catch (storageError) {

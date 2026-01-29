@@ -53,6 +53,7 @@ import type {
   MotionTier,
   JudgeSimulationResult,
   LetterGrade,
+  PhaseStatus,
 } from "@/types/workflow";
 import {
   WORKFLOW_PHASES,
@@ -735,8 +736,9 @@ export const generateOrderWorkflow = inngest.createFunction(
   {
     id: "generate-order-workflow",
     concurrency: 10,
+    retries: 3,
   },
-  { event: "workflow/generate" },
+  { event: "order/submitted" },
   async ({ event, step }) => {
     const { orderId } = event.data;
     const supabase = getSupabase();
@@ -967,7 +969,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       const result = await executePhase("VII", input);
       workflowState.phaseOutputs["VII"] = result.output;
 
-      const judgeOutput = result.output as { evaluation?: { grade?: string; numericGrade?: number } };
+      const judgeOutput = result.output as { evaluation?: { grade?: string; numericGrade?: number }; grade?: string };
       const grade = judgeOutput.evaluation?.grade || judgeOutput.grade;
       workflowState.currentGrade = grade as LetterGrade;
 
@@ -1041,7 +1043,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         const result = await executePhase("VII", input);
         workflowState.phaseOutputs["VII"] = result.output;
 
-        const judgeOutput = result.output as { evaluation?: { grade?: string } };
+        const judgeOutput = result.output as { evaluation?: { grade?: string }; grade?: string };
         const grade = judgeOutput.evaluation?.grade || judgeOutput.grade;
         workflowState.currentGrade = grade as LetterGrade;
 

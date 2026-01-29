@@ -1077,11 +1077,21 @@ export const executeWorkflowPhase = inngest.createFunction(
 
     // Step 5: Execute phase
     const result = await step.run("execute-phase", async () => {
+      // Build order context from state and order data
+      const orderContext = {
+        id: orderId,
+        tier: (state.tier || 'A') as 'A' | 'B' | 'C',
+        motionType: order.motion_type || '',
+        jurisdiction: order.jurisdiction || '',
+        state: order.jurisdiction?.split('-')[0] || '',
+        courtType: 'state' as const,
+        judgeOrderedSeparateStatement: order.judge_ordered_separate_statement || false,
+      };
       return await executePhase({
-        phase: phase as PhaseId,
-        tier: state.tier as Tier,
         orderId,
         workflowId,
+        phase: phase as PhaseId,
+        orderContext,
         input: phaseInput,
       });
     });
@@ -1092,13 +1102,13 @@ export const executeWorkflowPhase = inngest.createFunction(
         order_id: orderId,
         workflow_id: workflowId,
         phase,
-        model_used: result.output?.model_used || "unknown",
+        model_used: (result.output as Record<string, unknown>)?.model_used || "unknown",
         input_data: phaseInput,
         output_data: result.output,
         status: result.success ? "COMPLETE" : "ERROR",
         error_message: result.error,
-        input_tokens: result.usage?.input_tokens,
-        output_tokens: result.usage?.output_tokens,
+        input_tokens: null, // Token tracking in workflow-orchestration.ts
+        output_tokens: null,
         duration_ms: result.durationMs,
         completed_at: new Date().toISOString(),
       });
@@ -1386,18 +1396,18 @@ export const startWorkflowOnOrder = inngest.createFunction(
 );
 
 // Export all functions for registration
-// Note: generateOrderWorkflow (from workflowFunctions) is the new 14-phase v7.2 workflow (preferred)
-// generateOrderDraft is the legacy single-call system (kept for fallback)
+// v7.4.1: generateOrderWorkflow (from workflowFunctions) now handles order/submitted directly
+// Legacy functions commented out to prevent duplicate event handling
 export const functions = [
-  generateOrderDraft,      // Legacy: single-call superprompt
+  // generateOrderDraft,      // DISABLED: Legacy single-call superprompt (conflicts with 14-phase workflow)
   handleGenerationFailure,
-  // New 14-phase workflow
+  // New 14-phase workflow - PRIMARY HANDLER for order/submitted
   ...workflowFunctions,    // Includes: generateOrderWorkflow, handleWorkflowFailure
   // Supporting functions
   deadlineCheck,
   updateQueuePositions,
-  // v7.2 Workflow Functions
-  executeWorkflowPhase,
+  // v7.2 Workflow Functions (placeholder implementations - disabled in favor of workflow-orchestration.ts)
+  // executeWorkflowPhase,      // DISABLED: Uses placeholder phase-executor.ts
   handleCheckpointApproval,
-  startWorkflowOnOrder,
+  // startWorkflowOnOrder,      // DISABLED: Routes to placeholder executeWorkflowPhase
 ];

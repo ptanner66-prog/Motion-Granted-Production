@@ -87,12 +87,13 @@ export async function anonymizeOrderForAnalytics(orderId: string): Promise<void>
   }
 
   // Calculate citation stats
+  type CitationRecord = { status: string };
   const totalCitations = citations?.length || 0;
-  const citationsVerified = citations?.filter(c => c.status === 'VERIFIED').length || 0;
-  const citationsFailed = citations?.filter(c =>
+  const citationsVerified = citations?.filter((c: CitationRecord) => c.status === 'VERIFIED').length || 0;
+  const citationsFailed = citations?.filter((c: CitationRecord) =>
     c.status === 'FAILED' || c.status === 'BLOCKED'
   ).length || 0;
-  const citationsFlagged = citations?.filter(c => c.status === 'FLAGGED').length || 0;
+  const citationsFlagged = citations?.filter((c: CitationRecord) => c.status === 'FLAGGED').length || 0;
 
   // Convert grade to numeric
   const gradeNumeric = workflow?.judge_simulation_grade

@@ -80,7 +80,7 @@ export async function runConflictCheck(
             currentPartyName: newParty.name,
             currentPartyRole: newParty.role,
             similarityScore: matchResult.similarity,
-            matchType: matchResult.matchType,
+            matchType: matchResult.matchType as 'exact' | 'fuzzy' | 'normalized',
           });
         }
 

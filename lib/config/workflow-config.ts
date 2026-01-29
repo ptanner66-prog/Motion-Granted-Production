@@ -36,7 +36,7 @@ export const PHASE_SKIP_RULES: PhaseSkipRule[] = [
       const msjMotions = ['msj', 'msa', 'msj_simple', 'msj_complex', 'partial_sj', 'opposition_msj', 'opposition_msa'];
       if (!msjMotions.includes(order.motionType.toLowerCase())) return true;
       if (order.state !== 'CA' || order.courtType !== 'state') return true;
-      if (order.courtType === 'federal' && !order.judgeOrderedSeparateStatement) return true;
+      // CA state court MSJ/MSA requires separate statement - don't skip
       return false;
     },
     reason: 'Separate statement only for CA state MSJ/MSA',

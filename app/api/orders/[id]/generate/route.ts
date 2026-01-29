@@ -122,12 +122,13 @@ export async function POST(
     const inngestConfigured = process.env.INNGEST_EVENT_KEY && process.env.INNGEST_SIGNING_KEY;
 
     if (inngestConfigured) {
+      // Trigger the 14-phase workflow via order/submitted event (v7.4.1)
       await inngest.send({
-        name: 'workflow/orchestration.start',
+        name: 'order/submitted',
         data: {
           orderId,
-          triggeredBy: 'admin_generate_now',
-          timestamp: new Date().toISOString(),
+          priority: 1000, // High priority for admin-triggered generation
+          filingDeadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         },
       });
     } else {

@@ -66,7 +66,7 @@ export async function validateFile(
   const ext = filename.split('.').pop()?.toLowerCase();
   const allowedConfig = ALLOWED_FILE_TYPES[detectedType as AllowedMimeType];
 
-  if (ext && !allowedConfig.ext.includes(ext)) {
+  if (ext && !(allowedConfig.ext as readonly string[]).includes(ext)) {
     return {
       valid: false,
       error: `File extension .${ext} does not match detected content type (${detectedType})`
