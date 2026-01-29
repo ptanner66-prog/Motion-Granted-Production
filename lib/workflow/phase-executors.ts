@@ -107,10 +107,33 @@ function getThinkingBudget(phase: WorkflowPhaseCode, tier: MotionTier): number |
 
 let anthropicClient: Anthropic | null = null;
 
+/**
+ * Validate that an API key has the correct format
+ * Anthropic API keys start with 'sk-ant-'
+ */
+function validateApiKeyFormat(apiKey: string): boolean {
+  if (!apiKey) return false;
+  // Anthropic API keys should start with 'sk-ant-' and be at least 40 characters
+  if (!apiKey.startsWith('sk-ant-')) return false;
+  if (apiKey.length < 40) return false;
+  // Check for obvious placeholders
+  if (apiKey.includes('xxxxx') || apiKey.includes('YOUR_API_KEY')) return false;
+  return true;
+}
+
 function getAnthropicClient(): Anthropic {
   if (!anthropicClient) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+    if (!apiKey) {
+      console.error('[Phase Executor] CRITICAL: ANTHROPIC_API_KEY environment variable is not set!');
+      throw new Error('ANTHROPIC_API_KEY not configured - set it in Vercel environment variables');
+    }
+    if (!validateApiKeyFormat(apiKey)) {
+      console.error('[Phase Executor] CRITICAL: ANTHROPIC_API_KEY appears to be invalid or a placeholder!');
+      console.error('[Phase Executor] Key starts with:', apiKey.substring(0, 10) + '...');
+      throw new Error('ANTHROPIC_API_KEY appears to be invalid. Must start with "sk-ant-" and be at least 40 characters.');
+    }
+    console.log('[Phase Executor] Creating Anthropic client with valid API key');
     anthropicClient = new Anthropic({ apiKey });
   }
   return anthropicClient;
@@ -122,9 +145,13 @@ function getAnthropicClient(): Anthropic {
 
 async function executePhaseI(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase I] ========== STARTING PHASE I ==========`);
+  console.log(`[Phase I] Order: ${input.orderId}, Workflow: ${input.workflowId}, Tier: ${input.tier}`);
 
   try {
+    console.log(`[Phase I] Getting Anthropic client...`);
     const client = getAnthropicClient();
+    console.log(`[Phase I] Anthropic client ready`);
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -186,29 +213,87 @@ ${input.documents?.join('\n') || 'None provided'}
 
 Provide your Phase I analysis as JSON.`;
 
+    const model = getModelForPhase('I', input.tier);
+    console.log(`[Phase I] Calling Claude with model: ${model}, max_tokens: 32000`);
+    console.log(`[Phase I] Input context length: ${userMessage.length} chars`);
+
+    const callStart = Date.now();
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('I', input.tier),
+      model,
       max_tokens: 32000, // Phase I: Document intake analysis
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
+    const callDuration = Date.now() - callStart;
+
+    console.log(`[Phase I] Claude responded in ${callDuration}ms`);
+    console.log(`[Phase I] Tokens used - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
+    console.log(`[Phase I] Stop reason: ${response.stop_reason}`);
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+
+    console.log(`[Phase I] Response text length: ${outputText.length} chars`);
+
+    // CRITICAL: Validate that we got meaningful output
+    if (!outputText || outputText.length < 100) {
+      console.error(`[Phase I] CRITICAL: Claude returned empty or very short response!`);
+      console.error(`[Phase I] Response content: ${JSON.stringify(response.content).substring(0, 500)}`);
+      return {
+        success: false,
+        phase: 'I',
+        status: 'failed',
+        output: null,
+        error: `Claude returned empty or very short response (${outputText.length} chars). This usually indicates an API issue.`,
+        durationMs: Date.now() - start,
+      };
+    }
 
     // Parse JSON output
     let phaseOutput;
     try {
       const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+      if (!jsonMatch) {
+        console.error(`[Phase I] No JSON found in Claude response`);
+        console.error(`[Phase I] Response preview: ${outputText.substring(0, 500)}...`);
+        return {
+          success: false,
+          phase: 'I',
+          status: 'failed',
+          output: { raw: outputText },
+          error: 'Claude did not return valid JSON. Response may need manual review.',
+          durationMs: Date.now() - start,
+        };
+      }
+      phaseOutput = JSON.parse(jsonMatch[0]);
+      console.log(`[Phase I] Successfully parsed JSON output`);
+    } catch (parseError) {
+      console.error(`[Phase I] JSON parse failed:`, parseError);
+      console.error(`[Phase I] Response preview: ${outputText.substring(0, 500)}...`);
+      return {
+        success: false,
+        phase: 'I',
+        status: 'failed',
+        output: { raw: outputText },
+        error: `Failed to parse Claude response as JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    // Validate phase output
-    if (phaseOutput.phaseComplete !== 'I') {
-      phaseOutput.phaseComplete = 'I'; // Force correct phase marker
+    // Validate phase output has expected structure
+    if (!phaseOutput.classification && !phaseOutput.parties) {
+      console.error(`[Phase I] Output missing expected fields (classification, parties)`);
+      console.error(`[Phase I] Output keys: ${Object.keys(phaseOutput).join(', ')}`);
+      // Still allow it to proceed but log the warning
     }
+
+    // Ensure phase marker is set
+    if (phaseOutput.phaseComplete !== 'I') {
+      phaseOutput.phaseComplete = 'I';
+    }
+
+    console.log(`[Phase I] ========== PHASE I COMPLETE ==========`);
+    console.log(`[Phase I] Total duration: ${Date.now() - start}ms`);
 
     return {
       success: true,
@@ -220,6 +305,8 @@ Provide your Phase I analysis as JSON.`;
       durationMs: Date.now() - start,
     };
   } catch (error) {
+    console.error(`[Phase I] ========== PHASE I FAILED ==========`);
+    console.error(`[Phase I] Error:`, error);
     return {
       success: false,
       phase: 'I',
@@ -572,13 +659,24 @@ Find at least ${citationTarget} relevant authorities. Provide as JSON.`;
 
 async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase V] ========== STARTING PHASE V (DRAFT MOTION) ==========`);
+  console.log(`[Phase V] Order: ${input.orderId}, Tier: ${input.tier}`);
 
   try {
+    console.log(`[Phase V] Getting Anthropic client...`);
     const client = getAnthropicClient();
+    console.log(`[Phase V] Anthropic client ready`);
+
     const phaseIOutput = input.previousPhaseOutputs['I'] as Record<string, unknown>;
     const phaseIIOutput = input.previousPhaseOutputs['II'] as Record<string, unknown>;
     const phaseIIIOutput = input.previousPhaseOutputs['III'] as Record<string, unknown>;
     const phaseIVOutput = input.previousPhaseOutputs['IV'] as Record<string, unknown>;
+
+    // Validate we have outputs from previous phases
+    console.log(`[Phase V] Phase I output exists: ${!!phaseIOutput}`);
+    console.log(`[Phase V] Phase II output exists: ${!!phaseIIOutput}`);
+    console.log(`[Phase V] Phase III output exists: ${!!phaseIIIOutput}`);
+    console.log(`[Phase V] Phase IV output exists: ${!!phaseIVOutput}`);
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -644,25 +742,97 @@ JURISDICTION: ${input.jurisdiction}
 
 Draft the complete motion. Provide as JSON.`;
 
+    const model = getModelForPhase('V', input.tier);
+    console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 128000`);
+    console.log(`[Phase V] User message length: ${userMessage.length} chars`);
+
+    const callStart = Date.now();
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('V', input.tier),
+      model,
       max_tokens: 128000, // Phase V: Full motion draft with all arguments
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
+    const callDuration = Date.now() - callStart;
+
+    console.log(`[Phase V] Claude responded in ${callDuration}ms`);
+    console.log(`[Phase V] Tokens used - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
+    console.log(`[Phase V] Stop reason: ${response.stop_reason}`);
+
+    // CRITICAL: Phase V should take at least 30 seconds for a real motion draft
+    if (callDuration < 10000) {
+      console.warn(`[Phase V] WARNING: Claude responded very quickly (${callDuration}ms). This may indicate an issue.`);
+    }
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
+    console.log(`[Phase V] Response text length: ${outputText.length} chars`);
+
+    // CRITICAL: Phase V output should be substantial (a motion is typically 5000+ characters)
+    if (!outputText || outputText.length < 1000) {
+      console.error(`[Phase V] CRITICAL: Claude returned empty or very short response!`);
+      console.error(`[Phase V] Response content: ${JSON.stringify(response.content).substring(0, 500)}`);
+      return {
+        success: false,
+        phase: 'V',
+        status: 'failed',
+        output: null,
+        error: `Claude returned insufficient response for motion draft (${outputText.length} chars). Expected at least 1000 chars.`,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // Parse JSON output
     let phaseOutput;
     try {
       const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+      if (!jsonMatch) {
+        console.error(`[Phase V] No JSON found in Claude response`);
+        console.error(`[Phase V] Response preview: ${outputText.substring(0, 500)}...`);
+        return {
+          success: false,
+          phase: 'V',
+          status: 'failed',
+          output: { raw: outputText },
+          error: 'Claude did not return valid JSON for motion draft. Response may need manual review.',
+          durationMs: Date.now() - start,
+        };
+      }
+      phaseOutput = JSON.parse(jsonMatch[0]);
+      console.log(`[Phase V] Successfully parsed JSON output`);
+    } catch (parseError) {
+      console.error(`[Phase V] JSON parse failed:`, parseError);
+      console.error(`[Phase V] Response preview: ${outputText.substring(0, 500)}...`);
+      return {
+        success: false,
+        phase: 'V',
+        status: 'failed',
+        output: { raw: outputText },
+        error: `Failed to parse motion draft as JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // Validate motion draft has expected structure
+    if (!phaseOutput.draftMotion) {
+      console.error(`[Phase V] Output missing draftMotion field`);
+      console.error(`[Phase V] Output keys: ${Object.keys(phaseOutput).join(', ')}`);
+      return {
+        success: false,
+        phase: 'V',
+        status: 'failed',
+        output: phaseOutput,
+        error: 'Claude response missing draftMotion field. Motion draft incomplete.',
+        durationMs: Date.now() - start,
+      };
     }
 
     phaseOutput.phaseComplete = 'V';
+
+    console.log(`[Phase V] ========== PHASE V COMPLETE ==========`);
+    console.log(`[Phase V] Total duration: ${Date.now() - start}ms`);
+    console.log(`[Phase V] Motion word count: ${phaseOutput.wordCount || 'N/A'}`);
 
     return {
       success: true,
@@ -674,6 +844,8 @@ Draft the complete motion. Provide as JSON.`;
       durationMs: Date.now() - start,
     };
   } catch (error) {
+    console.error(`[Phase V] ========== PHASE V FAILED ==========`);
+    console.error(`[Phase V] Error:`, error);
     return {
       success: false,
       phase: 'V',

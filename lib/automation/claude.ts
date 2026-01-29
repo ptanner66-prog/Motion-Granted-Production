@@ -653,17 +653,67 @@ export async function createMessageWithStreaming(
 ): Promise<Anthropic.Message> {
   const maxTokens = params.max_tokens;
   const useStreaming = maxTokens >= 16000; // LOWERED: Streaming required for 10+ min operations
+  const model = params.model || 'unknown';
 
-  if (useStreaming) {
-    console.log(`[Streaming] Starting stream for ${maxTokens} tokens`);
-    const stream = client.messages.stream(params);
-    const finalMessage = await stream.finalMessage();
-    console.log(`[Streaming] Complete - ${finalMessage.usage.output_tokens} tokens generated`);
-    return finalMessage as Anthropic.Message;
+  console.log(`[Claude API] createMessageWithStreaming called`);
+  console.log(`[Claude API] Model: ${model}, Max tokens: ${maxTokens}, Streaming: ${useStreaming}`);
+
+  const startTime = Date.now();
+
+  try {
+    if (useStreaming) {
+      console.log(`[Claude API] Starting streaming request...`);
+      const stream = client.messages.stream(params);
+
+      // Track progress during streaming
+      let chunkCount = 0;
+      stream.on('text', () => {
+        chunkCount++;
+        if (chunkCount % 100 === 0) {
+          console.log(`[Claude API] Streaming progress: ${chunkCount} text chunks received`);
+        }
+      });
+
+      const finalMessage = await stream.finalMessage();
+      const duration = Date.now() - startTime;
+
+      console.log(`[Claude API] Streaming complete in ${duration}ms`);
+      console.log(`[Claude API] Input tokens: ${finalMessage.usage.input_tokens}`);
+      console.log(`[Claude API] Output tokens: ${finalMessage.usage.output_tokens}`);
+      console.log(`[Claude API] Stop reason: ${finalMessage.stop_reason}`);
+      console.log(`[Claude API] Content blocks: ${finalMessage.content.length}`);
+
+      // Validate response has content
+      if (!finalMessage.content || finalMessage.content.length === 0) {
+        console.error(`[Claude API] WARNING: Empty content in response!`);
+      }
+
+      return finalMessage as Anthropic.Message;
+    }
+
+    // Standard non-streaming for smaller operations
+    console.log(`[Claude API] Starting non-streaming request...`);
+    const response = await client.messages.create(params);
+    const duration = Date.now() - startTime;
+
+    console.log(`[Claude API] Non-streaming complete in ${duration}ms`);
+    console.log(`[Claude API] Input tokens: ${response.usage.input_tokens}`);
+    console.log(`[Claude API] Output tokens: ${response.usage.output_tokens}`);
+    console.log(`[Claude API] Stop reason: ${response.stop_reason}`);
+
+    return response as Anthropic.Message;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[Claude API] Request FAILED after ${duration}ms`);
+    console.error(`[Claude API] Error type:`, error instanceof Error ? error.constructor.name : typeof error);
+    console.error(`[Claude API] Error message:`, error instanceof Error ? error.message : String(error));
+
+    // Re-throw with more context
+    if (error instanceof Error) {
+      error.message = `Claude API call failed (model: ${model}, after ${duration}ms): ${error.message}`;
+    }
+    throw error;
   }
-
-  // Standard non-streaming for smaller operations
-  return await client.messages.create(params) as Anthropic.Message;
 }
 
 // ============================================================================
