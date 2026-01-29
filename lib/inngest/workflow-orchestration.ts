@@ -867,6 +867,7 @@ export const generateOrderWorkflow = inngest.createFunction(
     // STEP 2: Phase I - Document Parsing
     // ========================================================================
     const phaseIResult = await step.run("phase-i-document-parsing", async () => {
+      console.log('[Orchestration] Phase I starting');
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("I", input);
 
@@ -875,15 +876,20 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase I failed: ${result.error || 'No output returned'}`);
       }
 
-      workflowState.phaseOutputs["I"] = result.output;
       await logPhaseExecution(supabase, workflowState, "I", result);
       return result;
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseIResult?.output) {
+      workflowState.phaseOutputs["I"] = phaseIResult.output;
+    }
+    console.log('[Orchestration] Accumulated after I:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 3: Phase II - Legal Framework
     // ========================================================================
     const phaseIIResult = await step.run("phase-ii-legal-framework", async () => {
+      console.log('[Orchestration] Phase II - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("II", input);
 
@@ -892,15 +898,20 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase II failed: ${result.error || 'No output returned'}`);
       }
 
-      workflowState.phaseOutputs["II"] = result.output;
       await logPhaseExecution(supabase, workflowState, "II", result, result.tokensUsed);
       return result;
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseIIResult?.output) {
+      workflowState.phaseOutputs["II"] = phaseIIResult.output;
+    }
+    console.log('[Orchestration] Accumulated after II:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 4: Phase III - Legal Research
     // ========================================================================
     const phaseIIIResult = await step.run("phase-iii-legal-research", async () => {
+      console.log('[Orchestration] Phase III - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("III", input);
 
@@ -908,16 +919,21 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.error(`[Phase III] FAILED: ${result.error || 'No output'}`);
         throw new Error(`Phase III failed: ${result.error || 'No output returned'}`);
       }
-      workflowState.phaseOutputs["III"] = result.output;
 
       await logPhaseExecution(supabase, workflowState, "III", result, result.tokensUsed);
       return result;
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseIIIResult?.output) {
+      workflowState.phaseOutputs["III"] = phaseIIIResult.output;
+    }
+    console.log('[Orchestration] Accumulated after III:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 5: Phase IV - Citation Verification + CP1 Checkpoint
     // ========================================================================
     const phaseIVResult = await step.run("phase-iv-citation-verification", async () => {
+      console.log('[Orchestration] Phase IV - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("IV", input);
 
@@ -926,22 +942,28 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase IV failed: ${result.error || 'No output returned'}`);
       }
 
-      workflowState.phaseOutputs["IV"] = result.output;
-
+      await logPhaseExecution(supabase, workflowState, "IV", result);
+      return result;
+    });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseIVResult?.output) {
+      workflowState.phaseOutputs["IV"] = phaseIVResult.output;
       // Update citation count
-      const verificationOutput = result.output as { verificationResults: Array<{ status: string }> };
+      const verificationOutput = phaseIVResult.output as { verificationResults: Array<{ status: string }> };
       workflowState.citationCount = verificationOutput?.verificationResults?.filter(
         (r) => r.status === "VERIFIED"
       ).length || 0;
+    }
+    console.log('[Orchestration] Accumulated after IV:', Object.keys(workflowState.phaseOutputs));
+    console.log('[Orchestration] Citation count:', workflowState.citationCount);
 
-      await logPhaseExecution(supabase, workflowState, "IV", result);
-
-      // CP1 Checkpoint - Notify customer about research direction
+    // CP1 Checkpoint - Notify customer about research direction
+    await step.run("checkpoint-cp1", async () => {
       await triggerCheckpoint(workflowState.workflowId, "CP1", {
         checkpoint: "CP1",
         status: "pending",
         triggeredAt: new Date().toISOString(),
-        researchSummary: result.output,
+        researchSummary: phaseIVResult.output,
         citationCount: workflowState.citationCount,
       });
 
@@ -958,8 +980,6 @@ export const generateOrderWorkflow = inngest.createFunction(
         priority: 7,
         status: "pending",
       });
-
-      return result;
     });
 
     // ========================================================================
@@ -968,6 +988,8 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseVResult = await step.run("phase-v-draft-motion", async () => {
       console.log('========== PHASE V START ==========');
       console.log('Order ID:', workflowState.orderId);
+      console.log('[Orchestration] Phase V - has previous:', Object.keys(workflowState.phaseOutputs));
+      console.log('[Orchestration] Phase V - Phase IV present:', !!workflowState.phaseOutputs['IV']);
       const startTime = Date.now();
 
       const input = buildPhaseInput(workflowState);
@@ -988,16 +1010,22 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.error('WARNING: Phase V completed too fast! AI may not have been called.');
       }
 
-      workflowState.phaseOutputs["V"] = result.output;
       await logPhaseExecution(supabase, workflowState, "V", result, result.tokensUsed);
-
       return result;
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseVResult?.output) {
+      workflowState.phaseOutputs["V"] = phaseVResult.output;
+    }
+    console.log('[Orchestration] Accumulated after V:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 7: Phase V.1 - Citation Accuracy Check
     // ========================================================================
     const phaseV1Result = await step.run("phase-v1-citation-accuracy", async () => {
+      console.log('[Orchestration] Phase V.1 - has previous:', Object.keys(workflowState.phaseOutputs));
+      console.log('[Orchestration] Phase V.1 - Phase IV present:', !!workflowState.phaseOutputs['IV']);
+      console.log('[Orchestration] Phase V.1 - Phase V present:', !!workflowState.phaseOutputs['V']);
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("V.1", input);
 
@@ -1006,15 +1034,20 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase V.1 failed: ${result.error || 'No output returned'}`);
       }
 
-      workflowState.phaseOutputs["V.1"] = result.output;
       await logPhaseExecution(supabase, workflowState, "V.1", result, result.tokensUsed);
       return result;
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseV1Result?.output) {
+      workflowState.phaseOutputs["V.1"] = phaseV1Result.output;
+    }
+    console.log('[Orchestration] Accumulated after V.1:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 8: Phase VI - Opposition Anticipation
     // ========================================================================
     const phaseVIResult = await step.run("phase-vi-opposition-anticipation", async () => {
+      console.log('[Orchestration] Phase VI - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("VI", input);
 
@@ -1023,16 +1056,20 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase VI failed: ${result.error || 'No output returned'}`);
       }
 
-      workflowState.phaseOutputs["VI"] = result.output;
       await logPhaseExecution(supabase, workflowState, "VI", result, result.tokensUsed);
-
       return result;
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseVIResult?.output) {
+      workflowState.phaseOutputs["VI"] = phaseVIResult.output;
+    }
+    console.log('[Orchestration] Accumulated after VI:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 9: Phase VII - Judge Simulation + CP2 Checkpoint
     // ========================================================================
     let phaseVIIResult = await step.run("phase-vii-judge-simulation", async () => {
+      console.log('[Orchestration] Phase VII - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("VII", input);
 
@@ -1042,20 +1079,26 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase VII failed: ${result.error || 'No output returned. Check ANTHROPIC_API_KEY is configured.'}`);
       }
 
-      workflowState.phaseOutputs["VII"] = result.output;
-
-      const judgeOutput = result.output as { evaluation?: { grade?: string; numericGrade?: number }; grade?: string } | null;
+      await logPhaseExecution(supabase, workflowState, "VII", result, result.tokensUsed);
+      return result;
+    });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseVIIResult?.output) {
+      workflowState.phaseOutputs["VII"] = phaseVIIResult.output;
+      const judgeOutput = phaseVIIResult.output as { evaluation?: { grade?: string; numericGrade?: number }; grade?: string } | null;
       const grade = judgeOutput?.evaluation?.grade || judgeOutput?.grade;
       workflowState.currentGrade = grade as LetterGrade;
+    }
+    console.log('[Orchestration] Accumulated after VII:', Object.keys(workflowState.phaseOutputs));
+    console.log('[Orchestration] Current grade:', workflowState.currentGrade);
 
-      await logPhaseExecution(supabase, workflowState, "VII", result, result.tokensUsed);
-
-      // CP2 Checkpoint - Customer reviews draft and grade
+    // CP2 Checkpoint - Customer reviews draft and grade
+    await step.run("checkpoint-cp2", async () => {
       await triggerCheckpoint(workflowState.workflowId, "CP2", {
         checkpoint: "CP2",
         status: "pending",
         triggeredAt: new Date().toISOString(),
-        judgeSimulation: result.output,
+        judgeSimulation: phaseVIIResult.output,
         grade: workflowState.currentGrade,
       });
 
@@ -1067,14 +1110,12 @@ export const generateOrderWorkflow = inngest.createFunction(
         template_data: {
           checkpoint: "CP2",
           grade: workflowState.currentGrade,
-          passes: gradePasses(workflowState.currentGrade),
+          passes: workflowState.currentGrade ? gradePasses(workflowState.currentGrade) : false,
           phase: "Judge Simulation",
         },
         priority: 8,
         status: "pending",
       });
-
-      return result;
     });
 
     // ========================================================================
@@ -1090,6 +1131,7 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       // Execute revision
       const revisionResult = await step.run(`phase-vii1-revision-loop-${loopNum}`, async () => {
+        console.log(`[Orchestration] Phase VII.1 Loop ${loopNum} - has previous:`, Object.keys(workflowState.phaseOutputs));
         const input = buildPhaseInput(workflowState);
         input.revisionLoop = loopNum;
         const result = await executePhase("VII.1", input);
@@ -1099,18 +1141,20 @@ export const generateOrderWorkflow = inngest.createFunction(
           throw new Error(`Phase VII.1 revision failed: ${result.error || 'No output returned'}`);
         }
 
-        workflowState.phaseOutputs["VII.1"] = result.output;
-        workflowState.revisionLoopCount = loopNum;
-
         await logPhaseExecution(supabase, workflowState, "VII.1", result, result.tokensUsed);
-
-        // Update the draft in phase VIII output for re-grading
-        if ((result.output as { revisedMotion?: unknown }).revisedMotion) {
-          workflowState.phaseOutputs["VIII"] = result.output;
-        }
-
         return result;
       });
+
+      // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+      if (revisionResult?.output) {
+        workflowState.phaseOutputs["VII.1"] = revisionResult.output;
+        workflowState.revisionLoopCount = loopNum;
+        // Update the draft in phase VIII output for re-grading
+        if ((revisionResult.output as { revisedMotion?: unknown }).revisedMotion) {
+          workflowState.phaseOutputs["VIII"] = revisionResult.output;
+        }
+      }
+      console.log(`[Orchestration] Accumulated after VII.1 Loop ${loopNum}:`, Object.keys(workflowState.phaseOutputs));
 
       // Check if escalated due to max loops
       if ((revisionResult.output as { escalated?: boolean })?.escalated) {
@@ -1119,6 +1163,7 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       // Re-run judge simulation
       phaseVIIResult = await step.run(`phase-vii-regrade-loop-${loopNum}`, async () => {
+        console.log(`[Orchestration] Phase VII Regrade Loop ${loopNum} - has previous:`, Object.keys(workflowState.phaseOutputs));
         const input = buildPhaseInput(workflowState);
         input.revisionLoop = loopNum;
         const result = await executePhase("VII", input);
@@ -1129,21 +1174,26 @@ export const generateOrderWorkflow = inngest.createFunction(
           throw new Error(`Phase VII regrade failed: ${result.error || 'No output returned'}`);
         }
 
-        workflowState.phaseOutputs["VII"] = result.output;
-
-        const judgeOutput = result.output as { evaluation?: { grade?: string }; grade?: string } | null;
-        const grade = judgeOutput?.evaluation?.grade || judgeOutput?.grade;
-        workflowState.currentGrade = grade as LetterGrade;
-
         await logPhaseExecution(supabase, workflowState, "VII", result, result.tokensUsed);
         return result;
       });
+
+      // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+      if (phaseVIIResult?.output) {
+        workflowState.phaseOutputs["VII"] = phaseVIIResult.output;
+        const judgeOutput = phaseVIIResult.output as { evaluation?: { grade?: string }; grade?: string } | null;
+        const grade = judgeOutput?.evaluation?.grade || judgeOutput?.grade;
+        workflowState.currentGrade = grade as LetterGrade;
+      }
+      console.log(`[Orchestration] Accumulated after VII Regrade Loop ${loopNum}:`, Object.keys(workflowState.phaseOutputs));
+      console.log('[Orchestration] Updated grade:', workflowState.currentGrade);
     }
 
     // ========================================================================
     // STEP 11: Phase VIII - Revisions (if needed) / Final Approval
     // ========================================================================
     const phaseVIIIResult = await step.run("phase-viii-revisions", async () => {
+      console.log('[Orchestration] Phase VIII - has previous:', Object.keys(workflowState.phaseOutputs));
       // Check if Phase VII passed - if not, execute Phase VIII for revisions
       const passes = workflowState.currentGrade && gradePasses(workflowState.currentGrade);
 
@@ -1158,7 +1208,6 @@ export const generateOrderWorkflow = inngest.createFunction(
           throw new Error(`Phase VIII failed: ${result.error || 'No output returned'}`);
         }
 
-        workflowState.phaseOutputs["VIII"] = result.output;
         await logPhaseExecution(supabase, workflowState, "VIII", result, result.tokensUsed);
         return result;
       }
@@ -1172,11 +1221,17 @@ export const generateOrderWorkflow = inngest.createFunction(
         nextPhase: "VIII.5" as WorkflowPhaseCode,
       };
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseVIIIResult?.output) {
+      workflowState.phaseOutputs["VIII"] = phaseVIIIResult.output;
+    }
+    console.log('[Orchestration] Accumulated after VIII:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 12: Phase VIII.5 - Caption Validation
     // ========================================================================
     const phaseVIII5Result = await step.run("phase-viii5-caption-validation", async () => {
+      console.log('[Orchestration] Phase VIII.5 - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("VIII.5", input);
 
@@ -1185,15 +1240,20 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase VIII.5 failed: ${result.error || 'No output returned'}`);
       }
 
-      workflowState.phaseOutputs["VIII.5"] = result.output;
       await logPhaseExecution(supabase, workflowState, "VIII.5", result, result.tokensUsed);
       return result;
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseVIII5Result?.output) {
+      workflowState.phaseOutputs["VIII.5"] = phaseVIII5Result.output;
+    }
+    console.log('[Orchestration] Accumulated after VIII.5:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 13: Phase IX - Supporting Documents
     // ========================================================================
     const phaseIXResult = await step.run("phase-ix-supporting-documents", async () => {
+      console.log('[Orchestration] Phase IX - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("IX", input);
 
@@ -1202,15 +1262,20 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase IX failed: ${result.error || 'No output returned'}`);
       }
 
-      workflowState.phaseOutputs["IX"] = result.output;
       await logPhaseExecution(supabase, workflowState, "IX", result, result.tokensUsed);
       return result;
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseIXResult?.output) {
+      workflowState.phaseOutputs["IX"] = phaseIXResult.output;
+    }
+    console.log('[Orchestration] Accumulated after IX:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 14: Phase IX.1 - Separate Statement Check (MSJ/MSA only)
     // ========================================================================
     const phaseIX1Result = await step.run("phase-ix1-separate-statement", async () => {
+      console.log('[Orchestration] Phase IX.1 - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("IX.1", input);
 
@@ -1219,15 +1284,20 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase IX.1 failed: ${result.error || 'No output returned'}`);
       }
 
-      workflowState.phaseOutputs["IX.1"] = result.output;
       await logPhaseExecution(supabase, workflowState, "IX.1", result, result.tokensUsed);
       return result;
     });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseIX1Result?.output) {
+      workflowState.phaseOutputs["IX.1"] = phaseIX1Result.output;
+    }
+    console.log('[Orchestration] Accumulated after IX.1:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 15: Phase X - Final Assembly + CP3 Checkpoint (Admin Approval)
     // ========================================================================
     const phaseXResult = await step.run("phase-x-final-assembly", async () => {
+      console.log('[Orchestration] Phase X - ALL previous outputs:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("X", input);
 
@@ -1236,15 +1306,22 @@ export const generateOrderWorkflow = inngest.createFunction(
         throw new Error(`Phase X failed: ${result.error || 'No output returned'}`);
       }
 
-      workflowState.phaseOutputs["X"] = result.output;
       await logPhaseExecution(supabase, workflowState, "X", result, result.tokensUsed);
+      return result;
+    });
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    if (phaseXResult?.output) {
+      workflowState.phaseOutputs["X"] = phaseXResult.output;
+    }
+    console.log('[Orchestration] FINAL - All accumulated phases:', Object.keys(workflowState.phaseOutputs));
 
-      // CP3 Checkpoint - Requires admin approval before delivery
+    // CP3 Checkpoint - Requires admin approval before delivery
+    await step.run("checkpoint-cp3", async () => {
       await triggerCheckpoint(workflowState.workflowId, "CP3", {
         checkpoint: "CP3",
         status: "pending",
         triggeredAt: new Date().toISOString(),
-        finalQA: result.output,
+        finalQA: phaseXResult.output,
         requiresAdminApproval: true,
       });
 
@@ -1266,8 +1343,6 @@ export const generateOrderWorkflow = inngest.createFunction(
         priority: 10,
         status: "pending",
       });
-
-      return result;
     });
 
     // ========================================================================
