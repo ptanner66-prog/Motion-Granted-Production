@@ -866,8 +866,36 @@ async function executePhaseV1(input: PhaseInput): Promise<PhaseOutput> {
 
   try {
     const client = getAnthropicClient();
-    const phaseIVOutput = input.previousPhaseOutputs['IV'] as Record<string, unknown>;
-    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+
+    // Defensive: Log available phase outputs
+    const availablePhases = Object.keys(input.previousPhaseOutputs ?? {});
+    console.log(`[Phase V.1] Available previous phase outputs: ${availablePhases.join(', ') || 'NONE'}`);
+
+    // Safe extraction of Phase IV output (citation bank)
+    const phaseIVOutput = (input.previousPhaseOutputs?.['IV'] ?? {}) as Record<string, unknown>;
+    console.log(`[Phase V.1] Phase IV keys: ${Object.keys(phaseIVOutput).join(', ') || 'EMPTY'}`);
+
+    // Extract specific citation banks from Phase IV
+    const caseCitationBank = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
+    const statutoryCitationBank = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
+    const allCitations = [...caseCitationBank, ...statutoryCitationBank];
+    console.log(`[Phase V.1] Citation bank: ${caseCitationBank.length} case citations, ${statutoryCitationBank.length} statutory citations`);
+
+    // Safe extraction of Phase V output (draft motion)
+    const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+    console.log(`[Phase V.1] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+
+    // Extract draftMotion from Phase V
+    const draftMotion = phaseVOutput?.draftMotion ?? phaseVOutput;
+    console.log(`[Phase V.1] Draft motion exists: ${!!draftMotion}, keys: ${Object.keys(draftMotion as Record<string, unknown>).join(', ') || 'EMPTY'}`);
+
+    // Check if we have required data
+    if (allCitations.length === 0) {
+      console.warn(`[Phase V.1] WARNING: No citations found in Phase IV output`);
+    }
+    if (!draftMotion || Object.keys(draftMotion as Record<string, unknown>).length === 0) {
+      console.warn(`[Phase V.1] WARNING: No draft motion found in Phase V output`);
+    }
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -904,12 +932,17 @@ OUTPUT FORMAT (JSON only):
     const userMessage = `Audit citations for Phase V.1:
 
 CITATION BANK (Phase IV):
-${JSON.stringify(phaseIVOutput, null, 2)}
+Case Citations (${caseCitationBank.length}):
+${JSON.stringify(caseCitationBank, null, 2)}
+
+Statutory Citations (${statutoryCitationBank.length}):
+${JSON.stringify(statutoryCitationBank, null, 2)}
 
 DRAFT MOTION (Phase V):
-${JSON.stringify(phaseVOutput, null, 2)}
+${JSON.stringify(draftMotion, null, 2)}
 
-Verify all citations. Provide audit as JSON.`;
+Total citations to verify: ${allCitations.length}
+Verify all citations in the draft match the citation bank. Provide audit as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('V.1', input.tier),
@@ -961,7 +994,19 @@ async function executePhaseVI(input: PhaseInput): Promise<PhaseOutput> {
 
   try {
     const client = getAnthropicClient();
-    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+
+    // Defensive: Log available phase outputs
+    const availablePhases = Object.keys(input.previousPhaseOutputs ?? {});
+    console.log(`[Phase VI] Available previous phase outputs: ${availablePhases.join(', ') || 'NONE'}`);
+
+    // Safe extraction of Phase V output
+    const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+    console.log(`[Phase VI] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+
+    // Extract draftMotion from Phase V
+    const draftMotion = phaseVOutput?.draftMotion ?? phaseVOutput;
+    console.log(`[Phase VI] Draft motion exists: ${!!draftMotion}, keys: ${Object.keys(draftMotion as Record<string, unknown>).join(', ') || 'EMPTY'}`);
+
     const thinkingBudget = getThinkingBudget('VI', input.tier);
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
@@ -1000,7 +1045,7 @@ OUTPUT FORMAT (JSON only):
     const userMessage = `Anticipate opposition for Phase VI:
 
 DRAFT MOTION (Phase V):
-${JSON.stringify(phaseVOutput, null, 2)}
+${JSON.stringify(draftMotion, null, 2)}
 
 MOTION TYPE: ${input.motionType}
 JURISDICTION: ${input.jurisdiction}
@@ -1067,14 +1112,27 @@ async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
 
   try {
     const client = getAnthropicClient();
-    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
-    const phaseVIOutput = input.previousPhaseOutputs['VI'] as Record<string, unknown>;
-    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
+
+    // Defensive: Log available phase outputs
+    const availablePhases = Object.keys(input.previousPhaseOutputs ?? {});
+    console.log(`[Phase VII] Available previous phase outputs: ${availablePhases.join(', ') || 'NONE'}`);
+
+    // Safe extraction with defaults
+    const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+    const phaseVIOutput = (input.previousPhaseOutputs?.['VI'] ?? {}) as Record<string, unknown>;
+    const phaseVIIIOutput = (input.previousPhaseOutputs?.['VIII'] ?? null) as Record<string, unknown> | null;
     const loopNumber = input.revisionLoop || 1;
+
+    console.log(`[Phase VII] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase VII] Phase VI keys: ${Object.keys(phaseVIOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase VII] Phase VIII exists: ${!!phaseVIIIOutput}`);
+    console.log(`[Phase VII] Loop number: ${loopNumber}`);
 
     // CRITICAL: Use revised motion if this is a re-evaluation after Phase VIII
     const motionToEvaluate = phaseVIIIOutput?.revisedMotion || phaseVOutput?.draftMotion || phaseVOutput;
-    const isReEvaluation = !!phaseVIIIOutput;
+    const isReEvaluation = !!phaseVIIIOutput?.revisedMotion;
+    console.log(`[Phase VII] Motion source: ${phaseVIIIOutput?.revisedMotion ? 'Phase VIII (revised)' : phaseVOutput?.draftMotion ? 'Phase V (draftMotion)' : 'Phase V (raw)'}`);
+    console.log(`[Phase VII] Is re-evaluation: ${isReEvaluation}`);
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
