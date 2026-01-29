@@ -99,7 +99,7 @@ export async function verifyAnthropicKey(): Promise<CredentialStatus> {
       },
       body: JSON.stringify({
         model: 'claude-3-haiku-20240307',
-        max_tokens: 1,
+        max_tokens: 64000,
         messages: [{ role: 'user', content: 'hi' }],
       }),
       signal: AbortSignal.timeout(10000),

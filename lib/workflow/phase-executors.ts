@@ -214,13 +214,13 @@ ${input.documents?.join('\n') || 'None provided'}
 Provide your Phase I analysis as JSON.`;
 
     const model = getModelForPhase('I', input.tier);
-    console.log(`[Phase I] Calling Claude with model: ${model}, max_tokens: 32000`);
+    console.log(`[Phase I] Calling Claude with model: ${model}, max_tokens: 64000`);
     console.log(`[Phase I] Input context length: ${userMessage.length} chars`);
 
     const callStart = Date.now();
     const response = await createMessageWithStreaming(client, {
       model,
-      max_tokens: 32000, // Phase I: Document intake analysis
+      max_tokens: 64000, // Phase I: Document intake analysis
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -385,7 +385,7 @@ Provide your Phase II legal framework analysis as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('II', input.tier),
-      max_tokens: 32000, // Phase II: Legal framework analysis
+      max_tokens: 64000, // Phase II: Legal framework analysis
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -613,7 +613,7 @@ Find at least ${citationTarget} relevant authorities. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IV', input.tier),
-      max_tokens: 80000, // Phase IV: Deep citation research (Opus for B/C)
+      max_tokens: 64000, // Phase IV: Deep citation research (Opus for B/C)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -743,13 +743,13 @@ JURISDICTION: ${input.jurisdiction}
 Draft the complete motion. Provide as JSON.`;
 
     const model = getModelForPhase('V', input.tier);
-    console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 128000`);
+    console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 64000`);
     console.log(`[Phase V] User message length: ${userMessage.length} chars`);
 
     const callStart = Date.now();
     const response = await createMessageWithStreaming(client, {
       model,
-      max_tokens: 128000, // Phase V: Full motion draft with all arguments
+      max_tokens: 64000, // Phase V: Full motion draft with all arguments
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1009,7 +1009,7 @@ Analyze potential opposition. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModelForPhase('VI', input.tier),
-      max_tokens: 80000, // Phase VI: Opposition anticipation with 8K thinking (Opus for B/C)
+      max_tokens: 64000, // Phase VI: Opposition anticipation with 8K thinking (Opus for B/C)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     };
@@ -1144,7 +1144,7 @@ Provide your judicial evaluation as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('VII', input.tier), // Always Opus
-      max_tokens: 80000, // Phase VII: Judge simulation (always Opus with extended thinking)
+      max_tokens: 64000, // Phase VII: Judge simulation (always Opus with extended thinking)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       thinking: {
@@ -1341,7 +1341,7 @@ Address all weaknesses and revision suggestions. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModelForPhase('VIII', input.tier),
-      max_tokens: 80000, // Phase VIII: Final draft with 8K thinking (Opus for B/C)
+      max_tokens: 64000, // Phase VIII: Final draft with 8K thinking (Opus for B/C)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     };
@@ -1453,7 +1453,7 @@ Validate captions. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('VIII.5', input.tier),
-      max_tokens: 32000,
+      max_tokens: 64000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1555,7 +1555,7 @@ Generate supporting documents. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IX', input.tier),
-      max_tokens: 80000, // Phase IX: Document formatting and assembly
+      max_tokens: 64000, // Phase IX: Document formatting and assembly
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1646,7 +1646,7 @@ Verify Separate Statement. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IX.1', input.tier),
-      max_tokens: 32000,
+      max_tokens: 64000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1760,7 +1760,7 @@ Assemble and check. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('X', input.tier),
-      max_tokens: 128000, // Phase X: Final QA and deliverables - full output needed
+      max_tokens: 64000, // Phase X: Final QA and deliverables - full output needed
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });

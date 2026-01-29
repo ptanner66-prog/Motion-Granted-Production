@@ -438,7 +438,7 @@ export async function executePhaseWithSuperprompt(
       // Use extended thinking with Opus
       response = await client.messages.create({
         model,
-        max_tokens: 80000, // Increased from 16000 - Opus needs full capacity for legal reasoning
+        max_tokens: 64000, // Increased from 16000 - Opus needs full capacity for legal reasoning
         temperature: 1, // Required for extended thinking
         thinking: {
           type: 'enabled',

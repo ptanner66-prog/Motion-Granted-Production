@@ -24,7 +24,7 @@ export const MODELS = {
   //
   // Option 1 (RECOMMENDED): Use GPT-4 Turbo with low temperature
   // - Model: "gpt-4-turbo-2024-04-09" or "gpt-4-turbo"
-  // - Parameters: { temperature: 0.1, max_tokens: 4096 }
+  // - Parameters: { temperature: 0.1, max_tokens: 64000 }
   //
   // Option 2: Use o1-preview/o1-mini reasoning models (if available)
   // - Model: "o1-preview" or "o1-mini"
@@ -33,7 +33,7 @@ export const MODELS = {
   //
   // Option 3: Use GPT-4o (latest)
   // - Model: "gpt-4o-2024-05-13" or "gpt-4o"
-  // - Parameters: { temperature: 0.1, max_tokens: 4096 }
+  // - Parameters: { temperature: 0.1, max_tokens: 64000 }
   //
   // Choose based on your OpenAI API access and cost considerations.
   OPENAI_CITATION_VERIFIER: process.env.OPENAI_CITATION_MODEL || "gpt-4-turbo",
