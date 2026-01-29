@@ -1285,14 +1285,33 @@ Verify any new citations. Provide as JSON.`;
 
 async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase VIII] ========== STARTING PHASE VIII (REVISIONS) ==========`);
 
   try {
     const client = getAnthropicClient();
-    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
-    const phaseVIIOutput = input.previousPhaseOutputs['VII'] as Record<string, unknown>;
+
+    // Defensive: Log available phase outputs
+    const availablePhases = Object.keys(input.previousPhaseOutputs ?? {});
+    console.log(`[Phase VIII] Available previous phase outputs: ${availablePhases.join(', ') || 'NONE'}`);
+
+    // Safe extraction with defaults
+    const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+    const phaseVIIOutput = (input.previousPhaseOutputs?.['VII'] ?? {}) as Record<string, unknown>;
     const thinkingBudget = getThinkingBudget('VIII', input.tier);
 
-    const evaluation = (phaseVIIOutput as { evaluation?: Record<string, unknown> })?.evaluation || phaseVIIOutput;
+    console.log(`[Phase VIII] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase VIII] Phase VII keys: ${Object.keys(phaseVIIOutput).join(', ') || 'EMPTY'}`);
+
+    // Safe extraction of evaluation with multiple fallback paths
+    const evaluation = (phaseVIIOutput?.evaluation ?? phaseVIIOutput?.judgeSimulation ?? phaseVIIOutput ?? {}) as Record<string, unknown>;
+
+    // Safe property access with defaults
+    const weaknesses = (evaluation?.weaknesses ?? evaluation?.concerns ?? []) as unknown[];
+    const specificFeedback = (evaluation?.specificFeedback ?? evaluation?.feedback ?? evaluation?.notes ?? 'No specific feedback provided') as string;
+    const revisionSuggestions = (evaluation?.revisionSuggestions ?? evaluation?.recommendations ?? evaluation?.suggestions ?? []) as unknown[];
+
+    console.log(`[Phase VIII] Weaknesses found: ${weaknesses.length}`);
+    console.log(`[Phase VIII] Revision suggestions found: ${revisionSuggestions.length}`);
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -1302,9 +1321,9 @@ The judge simulation (Phase VII) graded this motion below B+.
 Your task is to revise the motion to address the specific weaknesses.
 
 JUDGE FEEDBACK TO ADDRESS:
-- Weaknesses: ${JSON.stringify((evaluation as Record<string, unknown>).weaknesses || [])}
-- Specific Feedback: ${(evaluation as Record<string, unknown>).specificFeedback || 'None'}
-- Revision Suggestions: ${JSON.stringify((evaluation as Record<string, unknown>).revisionSuggestions || [])}
+- Weaknesses: ${JSON.stringify(weaknesses)}
+- Specific Feedback: ${specificFeedback}
+- Revision Suggestions: ${JSON.stringify(revisionSuggestions)}
 
 ${thinkingBudget ? 'Use extended thinking to carefully address each issue.' : ''}
 
@@ -1402,14 +1421,23 @@ Address all weaknesses and revision suggestions. Provide as JSON.`;
 
 async function executePhaseVIII5(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase VIII.5] ========== STARTING PHASE VIII.5 (CAPTION VALIDATION) ==========`);
 
   try {
     const client = getAnthropicClient();
-    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
-    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
 
-    // Use revised motion if available, otherwise original
-    const motionToCheck = phaseVIIIOutput?.revisedMotion || (phaseVOutput as Record<string, unknown>)?.draftMotion;
+    // Defensive: Log available phase outputs
+    const availablePhases = Object.keys(input.previousPhaseOutputs ?? {});
+    console.log(`[Phase VIII.5] Available previous phase outputs: ${availablePhases.join(', ') || 'NONE'}`);
+
+    // Safe extraction with defaults
+    const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+    const phaseVIIIOutput = (input.previousPhaseOutputs?.['VIII'] ?? {}) as Record<string, unknown>;
+
+    // Use revised motion if available, otherwise original, with safe fallback
+    const motionToCheck = phaseVIIIOutput?.revisedMotion ?? phaseVOutput?.draftMotion ?? phaseVOutput ?? {};
+    console.log(`[Phase VIII.5] Motion source: ${phaseVIIIOutput?.revisedMotion ? 'Phase VIII (revised)' : 'Phase V (original)'}`);
+
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -1498,13 +1526,27 @@ Validate captions. Provide as JSON.`;
 
 async function executePhaseIX(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase IX] ========== STARTING PHASE IX (SUPPORTING DOCUMENTS) ==========`);
 
   try {
     const client = getAnthropicClient();
-    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
-    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
 
-    const finalMotion = phaseVIIIOutput?.revisedMotion || (phaseVOutput as Record<string, unknown>)?.draftMotion;
+    // Defensive: Log available phase outputs
+    const availablePhases = Object.keys(input.previousPhaseOutputs ?? {});
+    console.log(`[Phase IX] Available previous phase outputs: ${availablePhases.join(', ') || 'NONE'}`);
+
+    // Safe extraction with defaults
+    const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+    const phaseVIIIOutput = (input.previousPhaseOutputs?.['VIII'] ?? {}) as Record<string, unknown>;
+
+    console.log(`[Phase IX] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase IX] Phase VIII keys: ${Object.keys(phaseVIIIOutput).join(', ') || 'EMPTY'}`);
+
+    // Safe motion extraction with multiple fallback paths
+    const finalMotion = phaseVIIIOutput?.revisedMotion ?? phaseVOutput?.draftMotion ?? phaseVOutput ?? {};
+    console.log(`[Phase IX] Final motion source: ${phaseVIIIOutput?.revisedMotion ? 'Phase VIII (revised)' : 'Phase V (original)'}`);
+    console.log(`[Phase IX] Final motion keys: ${Object.keys(finalMotion as Record<string, unknown>).join(', ') || 'EMPTY'}`);
+
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -1605,11 +1647,22 @@ Generate supporting documents. Provide as JSON.`;
 
 async function executePhaseIX1(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase IX.1] ========== STARTING PHASE IX.1 (SEPARATE STATEMENT CHECK) ==========`);
 
   try {
     const client = getAnthropicClient();
-    const phaseIVOutput = input.previousPhaseOutputs['IV'] as Record<string, unknown>;
-    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
+
+    // Defensive: Log available phase outputs
+    const availablePhases = Object.keys(input.previousPhaseOutputs ?? {});
+    console.log(`[Phase IX.1] Available previous phase outputs: ${availablePhases.join(', ') || 'NONE'}`);
+
+    // Safe extraction with defaults
+    const phaseIVOutput = (input.previousPhaseOutputs?.['IV'] ?? {}) as Record<string, unknown>;
+    const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+
+    console.log(`[Phase IX.1] Phase IV keys: ${Object.keys(phaseIVOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase IX.1] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -1691,17 +1744,34 @@ Verify Separate Statement. Provide as JSON.`;
 
 async function executePhaseX(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase X] ========== STARTING PHASE X (FINAL ASSEMBLY) ==========`);
 
   try {
     const client = getAnthropicClient();
-    const phaseVOutput = input.previousPhaseOutputs['V'] as Record<string, unknown>;
-    const phaseVIIOutput = input.previousPhaseOutputs['VII'] as Record<string, unknown>;
-    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
-    const phaseIXOutput = input.previousPhaseOutputs['IX'] as Record<string, unknown>;
 
-    // Use revised motion if available
-    const finalMotion = phaseVIIIOutput?.revisedMotion || (phaseVOutput as Record<string, unknown>)?.draftMotion;
-    const evaluation = (phaseVIIOutput as { evaluation?: Record<string, unknown> })?.evaluation || phaseVIIOutput;
+    // Defensive: Log available phase outputs
+    const availablePhases = Object.keys(input.previousPhaseOutputs ?? {});
+    console.log(`[Phase X] Available previous phase outputs: ${availablePhases.join(', ') || 'NONE'}`);
+
+    // Safe extraction with defaults for ALL previous phases
+    const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+    const phaseVIIOutput = (input.previousPhaseOutputs?.['VII'] ?? {}) as Record<string, unknown>;
+    const phaseVIIIOutput = (input.previousPhaseOutputs?.['VIII'] ?? {}) as Record<string, unknown>;
+    const phaseIXOutput = (input.previousPhaseOutputs?.['IX'] ?? {}) as Record<string, unknown>;
+
+    console.log(`[Phase X] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase X] Phase VII keys: ${Object.keys(phaseVIIOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase X] Phase VIII keys: ${Object.keys(phaseVIIIOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase X] Phase IX keys: ${Object.keys(phaseIXOutput).join(', ') || 'EMPTY'}`);
+
+    // Safe motion extraction with multiple fallback paths
+    const finalMotion = phaseVIIIOutput?.revisedMotion ?? phaseVOutput?.draftMotion ?? phaseVOutput ?? {};
+    console.log(`[Phase X] Final motion source: ${phaseVIIIOutput?.revisedMotion ? 'Phase VIII (revised)' : 'Phase V (original)'}`);
+
+    // Safe evaluation extraction with multiple fallback paths
+    const evaluation = (phaseVIIOutput?.evaluation ?? phaseVIIOutput?.judgeSimulation ?? phaseVIIOutput ?? {}) as Record<string, unknown>;
+    console.log(`[Phase X] Evaluation grade: ${evaluation?.grade ?? evaluation?.overallGrade ?? 'Not available'}`);
+
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
