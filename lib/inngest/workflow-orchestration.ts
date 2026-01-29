@@ -744,6 +744,17 @@ export const generateOrderWorkflow = inngest.createFunction(
     const supabase = getSupabase();
 
     // ========================================================================
+    // STEP 0: Verify API Configuration
+    // ========================================================================
+    await step.run("verify-api-config", async () => {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        console.error("[WORKFLOW] CRITICAL: ANTHROPIC_API_KEY is not configured!");
+        throw new Error("ANTHROPIC_API_KEY environment variable is not set. Cannot run AI workflow.");
+      }
+      console.log("[WORKFLOW] API configuration verified. Starting workflow for order:", orderId);
+    });
+
+    // ========================================================================
     // STEP 1: Initialize Workflow State
     // ========================================================================
     const workflowState = await step.run("initialize-workflow", async () => {
@@ -837,8 +848,13 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseIResult = await step.run("phase-i-document-parsing", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("I", input);
-      workflowState.phaseOutputs["I"] = result.output;
 
+      if (!result.success || !result.output) {
+        console.error(`[Phase I] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase I failed: ${result.error || 'No output returned'}`);
+      }
+
+      workflowState.phaseOutputs["I"] = result.output;
       await logPhaseExecution(supabase, workflowState, "I", result);
       return result;
     });
@@ -849,8 +865,13 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseIIResult = await step.run("phase-ii-legal-framework", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("II", input);
-      workflowState.phaseOutputs["II"] = result.output;
 
+      if (!result.success || !result.output) {
+        console.error(`[Phase II] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase II failed: ${result.error || 'No output returned'}`);
+      }
+
+      workflowState.phaseOutputs["II"] = result.output;
       await logPhaseExecution(supabase, workflowState, "II", result, result.tokensUsed);
       return result;
     });
@@ -861,6 +882,11 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseIIIResult = await step.run("phase-iii-legal-research", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("III", input);
+
+      if (!result.success || !result.output) {
+        console.error(`[Phase III] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase III failed: ${result.error || 'No output returned'}`);
+      }
       workflowState.phaseOutputs["III"] = result.output;
 
       await logPhaseExecution(supabase, workflowState, "III", result, result.tokensUsed);
@@ -873,6 +899,12 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseIVResult = await step.run("phase-iv-citation-verification", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("IV", input);
+
+      if (!result.success || !result.output) {
+        console.error(`[Phase IV] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase IV failed: ${result.error || 'No output returned'}`);
+      }
+
       workflowState.phaseOutputs["IV"] = result.output;
 
       // Update citation count
@@ -919,7 +951,6 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("V", input);
-      workflowState.phaseOutputs["V"] = result.output;
 
       const duration = Date.now() - startTime;
       console.log('========== PHASE V END ==========');
@@ -927,10 +958,16 @@ export const generateOrderWorkflow = inngest.createFunction(
       console.log('Success:', result.success);
       console.log('Tokens used:', result.tokensUsed);
 
+      if (!result.success || !result.output) {
+        console.error(`[Phase V] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase V failed: ${result.error || 'No output returned'}`);
+      }
+
       if (duration < 10000) {
         console.error('WARNING: Phase V completed too fast! AI may not have been called.');
       }
 
+      workflowState.phaseOutputs["V"] = result.output;
       await logPhaseExecution(supabase, workflowState, "V", result, result.tokensUsed);
 
       return result;
@@ -942,8 +979,13 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseV1Result = await step.run("phase-v1-citation-accuracy", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("V.1", input);
-      workflowState.phaseOutputs["V.1"] = result.output;
 
+      if (!result.success || !result.output) {
+        console.error(`[Phase V.1] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase V.1 failed: ${result.error || 'No output returned'}`);
+      }
+
+      workflowState.phaseOutputs["V.1"] = result.output;
       await logPhaseExecution(supabase, workflowState, "V.1", result, result.tokensUsed);
       return result;
     });
@@ -954,8 +996,13 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseVIResult = await step.run("phase-vi-opposition-anticipation", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("VI", input);
-      workflowState.phaseOutputs["VI"] = result.output;
 
+      if (!result.success || !result.output) {
+        console.error(`[Phase VI] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase VI failed: ${result.error || 'No output returned'}`);
+      }
+
+      workflowState.phaseOutputs["VI"] = result.output;
       await logPhaseExecution(supabase, workflowState, "VI", result, result.tokensUsed);
 
       return result;
@@ -967,10 +1014,17 @@ export const generateOrderWorkflow = inngest.createFunction(
     let phaseVIIResult = await step.run("phase-vii-judge-simulation", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("VII", input);
+
+      // CRITICAL: Check for phase failure before using output
+      if (!result.success || !result.output) {
+        console.error(`[Phase VII] FAILED: ${result.error || 'No output returned'}`);
+        throw new Error(`Phase VII failed: ${result.error || 'No output returned. Check ANTHROPIC_API_KEY is configured.'}`);
+      }
+
       workflowState.phaseOutputs["VII"] = result.output;
 
-      const judgeOutput = result.output as { evaluation?: { grade?: string; numericGrade?: number }; grade?: string };
-      const grade = judgeOutput.evaluation?.grade || judgeOutput.grade;
+      const judgeOutput = result.output as { evaluation?: { grade?: string; numericGrade?: number }; grade?: string } | null;
+      const grade = judgeOutput?.evaluation?.grade || judgeOutput?.grade;
       workflowState.currentGrade = grade as LetterGrade;
 
       await logPhaseExecution(supabase, workflowState, "VII", result, result.tokensUsed);
@@ -1018,13 +1072,19 @@ export const generateOrderWorkflow = inngest.createFunction(
         const input = buildPhaseInput(workflowState);
         input.revisionLoop = loopNum;
         const result = await executePhase("VII.1", input);
+
+        if (!result.success || !result.output) {
+          console.error(`[Phase VII.1 Loop ${loopNum}] FAILED: ${result.error || 'No output'}`);
+          throw new Error(`Phase VII.1 revision failed: ${result.error || 'No output returned'}`);
+        }
+
         workflowState.phaseOutputs["VII.1"] = result.output;
         workflowState.revisionLoopCount = loopNum;
 
         await logPhaseExecution(supabase, workflowState, "VII.1", result, result.tokensUsed);
 
         // Update the draft in phase VIII output for re-grading
-        if (result.output && (result.output as { revisedMotion?: unknown }).revisedMotion) {
+        if ((result.output as { revisedMotion?: unknown }).revisedMotion) {
           workflowState.phaseOutputs["VIII"] = result.output;
         }
 
@@ -1041,10 +1101,17 @@ export const generateOrderWorkflow = inngest.createFunction(
         const input = buildPhaseInput(workflowState);
         input.revisionLoop = loopNum;
         const result = await executePhase("VII", input);
+
+        // CRITICAL: Check for phase failure before using output
+        if (!result.success || !result.output) {
+          console.error(`[Phase VII Regrade ${loopNum}] FAILED: ${result.error || 'No output returned'}`);
+          throw new Error(`Phase VII regrade failed: ${result.error || 'No output returned'}`);
+        }
+
         workflowState.phaseOutputs["VII"] = result.output;
 
-        const judgeOutput = result.output as { evaluation?: { grade?: string }; grade?: string };
-        const grade = judgeOutput.evaluation?.grade || judgeOutput.grade;
+        const judgeOutput = result.output as { evaluation?: { grade?: string }; grade?: string } | null;
+        const grade = judgeOutput?.evaluation?.grade || judgeOutput?.grade;
         workflowState.currentGrade = grade as LetterGrade;
 
         await logPhaseExecution(supabase, workflowState, "VII", result, result.tokensUsed);
@@ -1064,8 +1131,13 @@ export const generateOrderWorkflow = inngest.createFunction(
         const input = buildPhaseInput(workflowState);
         input.revisionLoop = workflowState.revisionLoopCount;
         const result = await executePhase("VIII", input);
-        workflowState.phaseOutputs["VIII"] = result.output;
 
+        if (!result.success || !result.output) {
+          console.error(`[Phase VIII] FAILED: ${result.error || 'No output'}`);
+          throw new Error(`Phase VIII failed: ${result.error || 'No output returned'}`);
+        }
+
+        workflowState.phaseOutputs["VIII"] = result.output;
         await logPhaseExecution(supabase, workflowState, "VIII", result, result.tokensUsed);
         return result;
       }
@@ -1086,8 +1158,13 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseVIII5Result = await step.run("phase-viii5-caption-validation", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("VIII.5", input);
-      workflowState.phaseOutputs["VIII.5"] = result.output;
 
+      if (!result.success || !result.output) {
+        console.error(`[Phase VIII.5] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase VIII.5 failed: ${result.error || 'No output returned'}`);
+      }
+
+      workflowState.phaseOutputs["VIII.5"] = result.output;
       await logPhaseExecution(supabase, workflowState, "VIII.5", result, result.tokensUsed);
       return result;
     });
@@ -1098,8 +1175,13 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseIXResult = await step.run("phase-ix-supporting-documents", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("IX", input);
-      workflowState.phaseOutputs["IX"] = result.output;
 
+      if (!result.success || !result.output) {
+        console.error(`[Phase IX] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase IX failed: ${result.error || 'No output returned'}`);
+      }
+
+      workflowState.phaseOutputs["IX"] = result.output;
       await logPhaseExecution(supabase, workflowState, "IX", result, result.tokensUsed);
       return result;
     });
@@ -1110,8 +1192,13 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseIX1Result = await step.run("phase-ix1-separate-statement", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("IX.1", input);
-      workflowState.phaseOutputs["IX.1"] = result.output;
 
+      if (!result.success || !result.output) {
+        console.error(`[Phase IX.1] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase IX.1 failed: ${result.error || 'No output returned'}`);
+      }
+
+      workflowState.phaseOutputs["IX.1"] = result.output;
       await logPhaseExecution(supabase, workflowState, "IX.1", result, result.tokensUsed);
       return result;
     });
@@ -1122,8 +1209,13 @@ export const generateOrderWorkflow = inngest.createFunction(
     const phaseXResult = await step.run("phase-x-final-assembly", async () => {
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("X", input);
-      workflowState.phaseOutputs["X"] = result.output;
 
+      if (!result.success || !result.output) {
+        console.error(`[Phase X] FAILED: ${result.error || 'No output'}`);
+        throw new Error(`Phase X failed: ${result.error || 'No output returned'}`);
+      }
+
+      workflowState.phaseOutputs["X"] = result.output;
       await logPhaseExecution(supabase, workflowState, "X", result, result.tokensUsed);
 
       // CP3 Checkpoint - Requires admin approval before delivery
