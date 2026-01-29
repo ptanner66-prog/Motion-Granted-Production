@@ -13,6 +13,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { createMessageWithStreaming } from '@/lib/automation/claude';
+import { getThinkingBudget as getThinkingBudgetFromConfig } from '@/lib/config/token-budgets';
 import type {
   WorkflowPhaseCode,
   MotionTier,
@@ -94,11 +95,11 @@ function getModelForPhase(phase: WorkflowPhaseCode, tier: MotionTier): string {
   return SONNET;
 }
 
-// Extended thinking budget
-function getThinkingBudget(phase: WorkflowPhaseCode, tier: MotionTier): number | null {
-  if (phase === 'VII') return 10000; // Always for judge simulation
-  if (tier !== 'A' && ['VI', 'VIII'].includes(phase)) return 8000;
-  return null;
+// Extended thinking budget - MAXIMIZED for production legal workloads
+function getThinkingBudget(phase: WorkflowPhaseCode, _tier: MotionTier): number | null {
+  // All phases now use extended thinking for better legal reasoning
+  // Complex phases (IV, VI, VII, VIII) get 128K, others get 64K
+  return getThinkingBudgetFromConfig(phase);
 }
 
 // ============================================================================
@@ -837,7 +838,7 @@ Analyze potential opposition. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModelForPhase('VI', input.tier),
-      max_tokens: 80000, // Phase VI: Opposition anticipation with 8K thinking (Opus for B/C)
+      max_tokens: 80000, // Phase VI: Opposition anticipation with 128K extended thinking
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     };
@@ -977,7 +978,7 @@ Provide your judicial evaluation as JSON.`;
       messages: [{ role: 'user', content: userMessage }],
       thinking: {
         type: 'enabled',
-        budget_tokens: 50000, // MAXED OUT - deep judicial reasoning
+        budget_tokens: getThinkingBudgetFromConfig('VII'), // MAXED OUT - 128K for deep judicial reasoning
       },
     } as Anthropic.MessageCreateParams) as Anthropic.Message;
 
@@ -1169,7 +1170,7 @@ Address all weaknesses and revision suggestions. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModelForPhase('VIII', input.tier),
-      max_tokens: 80000, // Phase VIII: Final draft with 8K thinking (Opus for B/C)
+      max_tokens: 80000, // Phase VIII: Final draft with 128K extended thinking
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     };

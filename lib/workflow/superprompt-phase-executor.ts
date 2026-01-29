@@ -15,16 +15,20 @@
  * - Opus 4.5: Phase VII (always), IV/VI/VIII (Tier B/C)
  * - Sonnet 4.5: All Tier A, and I/II/III/V/V.1/VIII.5/IX/IX.1/X for B/C
  *
- * Extended Thinking:
- * - Phase VI (B/C): 8K tokens
- * - Phase VII (all): 10K tokens
- * - Phase VIII (B/C): 8K tokens
+ * Extended Thinking — MAXIMIZED for production legal workloads:
+ * - Complex phases (IV, VI, VII, VIII): 128K tokens
+ * - Supporting phases (all others): 64K tokens
+ * - ALL phases now use extended thinking
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { getAnthropicAPIKey } from '@/lib/api-keys';
 import { logger } from '@/lib/logger';
+import {
+  getThinkingBudget as getThinkingBudgetFromConfig,
+  shouldUseExtendedThinking as shouldUseExtendedThinkingFromConfig,
+} from '@/lib/config/token-budgets';
 import type {
   WorkflowPhaseCode,
   MotionTier,
@@ -39,18 +43,17 @@ import type {
 const SONNET_MODEL = 'claude-sonnet-4-5-20250929';
 const OPUS_MODEL = 'claude-opus-4-5-20251101';
 
-// Extended thinking token budgets
-const EXTENDED_THINKING_BUDGETS = {
-  'VI': 8000,   // Opposition Anticipation (B/C only)
-  'VII': 10000, // Judge Simulation (all tiers)
-  'VIII': 8000, // Revisions (B/C only)
-};
+// Extended thinking token budgets — NOW IMPORTED FROM CENTRALIZED CONFIG
+// Complex phases (IV, VI, VII, VIII): 128K tokens
+// Supporting phases (all others): 64K tokens
 
 // Phases that use Opus
 const OPUS_PHASES: WorkflowPhaseCode[] = ['IV', 'VI', 'VII', 'VIII'];
 
-// Phases that get extended thinking
-const EXTENDED_THINKING_PHASES: WorkflowPhaseCode[] = ['VI', 'VII', 'VIII'];
+// ALL phases now get extended thinking for production legal workloads
+const ALL_PHASES: WorkflowPhaseCode[] = [
+  'I', 'II', 'III', 'IV', 'V', 'V.1', 'VI', 'VII', 'VII.1', 'VIII', 'VIII.5', 'IX', 'IX.1', 'X'
+];
 
 // ============================================================================
 // TYPES
@@ -221,26 +224,19 @@ function getModelForPhase(phaseCode: WorkflowPhaseCode, tier: MotionTier): strin
 
 /**
  * Determine if extended thinking should be used
+ * MAXIMIZED: All phases now use extended thinking for production legal workloads
  */
-function shouldUseExtendedThinking(phaseCode: WorkflowPhaseCode, tier: MotionTier): boolean {
-  // Phase VII always gets extended thinking
-  if (phaseCode === 'VII') {
-    return true;
-  }
-
-  // VI and VIII only get extended thinking for Tier B/C
-  if (tier !== 'A' && (phaseCode === 'VI' || phaseCode === 'VIII')) {
-    return true;
-  }
-
-  return false;
+function shouldUseExtendedThinking(_phaseCode: WorkflowPhaseCode, _tier: MotionTier): boolean {
+  // All phases benefit from extended thinking in legal work
+  return shouldUseExtendedThinkingFromConfig(_phaseCode);
 }
 
 /**
  * Get extended thinking token budget
+ * MAXIMIZED: Complex phases get 128K, supporting phases get 64K
  */
 function getThinkingBudget(phaseCode: WorkflowPhaseCode): number {
-  return EXTENDED_THINKING_BUDGETS[phaseCode as keyof typeof EXTENDED_THINKING_BUDGETS] || 0;
+  return getThinkingBudgetFromConfig(phaseCode);
 }
 
 // ============================================================================

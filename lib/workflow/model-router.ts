@@ -1,5 +1,5 @@
 /**
- * Model Router - v7.2
+ * Model Router - v7.3
  *
  * Handles model selection (Sonnet vs Opus) and extended thinking configuration
  * based on workflow phase and motion tier.
@@ -10,10 +10,10 @@
  * - Tier B/C Phases IV, VI, VIII: Opus
  * - Everything else: Sonnet
  *
- * Extended Thinking:
- * - Phase VI (B/C only): 8K tokens
- * - Phase VII (all tiers): 10K tokens
- * - Phase VIII (B/C only): 8K tokens
+ * Extended Thinking — MAXIMIZED for production legal workloads:
+ * - Complex phases (IV, VI, VII, VIII): 128K tokens
+ * - Supporting phases (all others): 64K tokens
+ * - ALL phases now use extended thinking
  */
 
 import Anthropic from '@anthropic-ai/sdk';

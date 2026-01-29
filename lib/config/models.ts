@@ -44,18 +44,18 @@ export const MODELS = {
 } as const;
 
 // ═══════════════════════════════════════════════════════════════
-// EXTENDED THINKING BUDGETS
+// EXTENDED THINKING BUDGETS — MAXIMIZED FOR PRODUCTION LEGAL WORKLOADS
 // ═══════════════════════════════════════════════════════════════
 
 export const EXTENDED_THINKING = {
-  // Phase VI: Opposition Anticipation (Tier B/C only)
-  PHASE_VI_TIER_BC: 8000,
+  // Complex legal reasoning phases — MAXIMUM (128K)
+  PHASE_IV_ALL: 128000,       // Authority Research
+  PHASE_VI_TIER_BC: 128000,   // Opposition Anticipation
+  PHASE_VII_ALL: 128000,      // Judge Simulation
+  PHASE_VIII_TIER_BC: 128000, // Revisions
 
-  // Phase VII: Judge Simulation (ALL TIERS)
-  PHASE_VII_ALL: 10000,
-
-  // Phase VIII: Revisions (Tier B/C only)
-  PHASE_VIII_TIER_BC: 8000,
+  // Supporting phases — HALF-MAX (64K)
+  PHASE_DEFAULT: 64000,       // All other phases
 } as const;
 
 // ═══════════════════════════════════════════════════════════════
@@ -95,6 +95,7 @@ export function getOpenAIParams(): Record<string, unknown> {
 
 /**
  * Get Claude API parameters based on tier and phase
+ * MAXIMIZED: All phases now use extended thinking for production legal workloads
  */
 export function getClaudeParams(
   tier: 'A' | 'B' | 'C',
@@ -104,14 +105,14 @@ export function getClaudeParams(
   const model = tier === 'A' ? MODELS.SONNET : MODELS.OPUS;
   const maxTokens = tier === 'A' ? TOKEN_LIMITS.SONNET_MAX_TOKENS : TOKEN_LIMITS.OPUS_MAX_TOKENS;
 
-  // Extended thinking for specific phases
-  let extendedThinking: number | undefined;
-  if (phase === 'VI' && (tier === 'B' || tier === 'C')) {
-    extendedThinking = EXTENDED_THINKING.PHASE_VI_TIER_BC;
-  } else if (phase === 'VII') {
-    extendedThinking = EXTENDED_THINKING.PHASE_VII_ALL;
-  } else if (phase === 'VIII' && (tier === 'B' || tier === 'C')) {
-    extendedThinking = EXTENDED_THINKING.PHASE_VIII_TIER_BC;
+  // Extended thinking for ALL phases now — MAXIMIZED
+  // Complex phases (IV, VI, VII, VIII): 128K tokens
+  // Supporting phases: 64K tokens
+  let extendedThinking: number;
+  if (['IV', 'VI', 'VII', 'VIII'].includes(phase)) {
+    extendedThinking = EXTENDED_THINKING.PHASE_VII_ALL; // 128K
+  } else {
+    extendedThinking = EXTENDED_THINKING.PHASE_DEFAULT; // 64K
   }
 
   return { model, maxTokens, extendedThinking };

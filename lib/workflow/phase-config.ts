@@ -68,8 +68,8 @@ export const PHASES = {
     name: 'Intake & Document Processing',
     order: 1,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: null,
     next: 'II',
   },
@@ -77,8 +77,8 @@ export const PHASES = {
     name: 'Legal Standards / Motion Deconstruction',
     order: 2,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: null,
     next: 'III',
   },
@@ -86,8 +86,8 @@ export const PHASES = {
     name: 'Evidence Strategy / Issue Identification',
     order: 3,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: { type: 'HOLD', blocking: true, condition: 'critical_evidence_gaps' },
     next: 'IV',
   },
@@ -95,8 +95,8 @@ export const PHASES = {
     name: 'Authority Research',
     order: 4,
     model: { A: 'SONNET', B: 'OPUS', C: 'OPUS' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 128000, // MAX for complex legal reasoning
     checkpoint: { type: 'NOTIFICATION', blocking: false },
     next: 'V',
   },
@@ -104,8 +104,8 @@ export const PHASES = {
     name: 'Drafting',
     order: 5,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: null,
     next: 'V.1',
   },
@@ -113,8 +113,8 @@ export const PHASES = {
     name: 'Citation Accuracy Check',
     order: 6,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: null,
     next: 'VI',
     citationBatchSize: 2, // ALWAYS 2 for citation check phases
@@ -123,8 +123,8 @@ export const PHASES = {
     name: 'Opposition Anticipation',
     order: 7,
     model: { A: 'SONNET', B: 'OPUS', C: 'OPUS' },
-    extendedThinking: { A: false, B: true, C: true },
-    budget: 8000,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED - ALL TIERS
+    budget: 128000, // MAX for complex legal reasoning
     checkpoint: null,
     next: 'VII',
   },
@@ -133,7 +133,7 @@ export const PHASES = {
     order: 8,
     model: { A: 'OPUS', B: 'OPUS', C: 'OPUS' }, // ALWAYS OPUS
     extendedThinking: { A: true, B: true, C: true }, // ALWAYS ENABLED
-    budget: 10000,
+    budget: 128000, // MAX for complex legal reasoning
     checkpoint: { type: 'NOTIFICATION', blocking: false },
     next: 'VIII.5', // if passes (grade >= B+)
     failNext: 'VIII', // if grade < B+
@@ -144,8 +144,8 @@ export const PHASES = {
     name: 'Post-Revision Citation Check',
     order: 9,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: null,
     next: 'VII', // Back to judge simulation
     citationBatchSize: 2, // ALWAYS 2 for citation check phases
@@ -154,8 +154,8 @@ export const PHASES = {
     name: 'Revisions',
     order: 10,
     model: { A: 'SONNET', B: 'OPUS', C: 'OPUS' }, // Opus for B/C to enable extended thinking
-    extendedThinking: { A: false, B: true, C: true },
-    budget: 8000,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED - ALL TIERS
+    budget: 128000, // MAX for complex legal reasoning
     checkpoint: null,
     next: 'VII.1', // if new citations added
     nextNoCitations: 'VII', // if no new citations
@@ -164,8 +164,8 @@ export const PHASES = {
     name: 'Caption Validation',
     order: 11,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: null,
     next: 'IX',
   },
@@ -173,8 +173,8 @@ export const PHASES = {
     name: 'Supporting Documents',
     order: 12,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: null,
     next: 'IX.1', // for MSJ/MSA
     nextNonMSJ: 'X',
@@ -183,8 +183,8 @@ export const PHASES = {
     name: 'Separate Statement Check',
     order: 13,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: null,
     next: 'X',
     appliesTo: ['Motion for Summary Judgment', 'Motion for Summary Adjudication'],
@@ -193,8 +193,8 @@ export const PHASES = {
     name: 'Final Assembly',
     order: 14,
     model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    extendedThinking: { A: true, B: true, C: true }, // MAXIMIZED
+    budget: 64000, // Half-max for supporting phase
     checkpoint: {
       type: 'BLOCKING',
       blocking: true,
