@@ -735,7 +735,7 @@ async function generateDeliverables(
 export const generateOrderWorkflow = inngest.createFunction(
   {
     id: "generate-order-workflow",
-    concurrency: 10,
+    concurrency: { limit: 5 },  // Inngest plan limit
     retries: 3,
   },
   { event: "order/submitted" },
