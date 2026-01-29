@@ -72,7 +72,7 @@ export interface Step5Result {
 
 const MODELS = {
   TIER_A_B: 'claude-haiku-4-5-20250929',
-  TIER_C: 'claude-sonnet-4-5-20250929',
+  TIER_C: 'claude-sonnet-4-20250514',
 };
 
 // Treatment indicators from CourtListener

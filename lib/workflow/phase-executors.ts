@@ -81,7 +81,7 @@ your output and the workflow will FAIL.
 // Model selection based on phase and tier
 function getModelForPhase(phase: WorkflowPhaseCode, tier: MotionTier): string {
   const OPUS = 'claude-opus-4-5-20251101';
-  const SONNET = 'claude-sonnet-4-5-20250514';
+  const SONNET = 'claude-sonnet-4-20250514';
 
   // Phase VII always uses Opus (quality gate)
   if (phase === 'VII') return OPUS;

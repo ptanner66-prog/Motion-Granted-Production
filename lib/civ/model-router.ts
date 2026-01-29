@@ -22,18 +22,18 @@ export type MotionTier = 'A' | 'B' | 'C';
 export const MODEL_ROUTING = {
   tier_a: {
     stage_1_holding: 'gpt-4o',
-    stage_2_adversarial: 'claude-opus-4-5-20250514',
+    stage_2_adversarial: 'claude-opus-4-5-20251101',
     steps_3_5: 'claude-haiku-4-5-20251001',
   },
   tier_b: {
     stage_1_holding: 'gpt-4o',
-    stage_2_adversarial: 'claude-opus-4-5-20250514',
+    stage_2_adversarial: 'claude-opus-4-5-20251101',
     steps_3_5: 'claude-haiku-4-5-20251001',
   },
   tier_c: {
     stage_1_holding: 'gpt-5.2',
-    stage_2_adversarial: 'claude-opus-4-5-20250514',
-    steps_3_5: 'claude-sonnet-4-5-20250929',
+    stage_2_adversarial: 'claude-opus-4-5-20251101',
+    steps_3_5: 'claude-sonnet-4-20250514',
   },
 } as const;
 

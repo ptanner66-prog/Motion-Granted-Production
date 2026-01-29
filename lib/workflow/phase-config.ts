@@ -13,7 +13,7 @@
 // ============================================================================
 
 export const MODELS = {
-  SONNET: 'claude-sonnet-4-5-20250929',
+  SONNET: 'claude-sonnet-4-20250514',
   OPUS: 'claude-opus-4-5-20251101',
 } as const;
 
