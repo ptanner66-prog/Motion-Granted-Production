@@ -997,7 +997,7 @@ export const executeWorkflowPhase = inngest.createFunction(
     id: "workflow-execute-phase",
     retries: 3,
     concurrency: {
-      limit: 10,
+      limit: 5,  // Inngest plan limit
     },
   },
   { event: "workflow/execute-phase" },
