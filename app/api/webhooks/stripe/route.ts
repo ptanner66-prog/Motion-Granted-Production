@@ -8,6 +8,7 @@ import {
 } from '@/lib/automation';
 import { processRevisionPayment } from '@/lib/workflow/checkpoint-service';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
+import { logWebhookFailure } from '@/lib/services/webhook-logger';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -105,6 +106,11 @@ export async function POST(req: Request) {
   if (!signature) {
     // Log missing signature attempt
     await logInvalidWebhookAttempt(req, 'missing_signature', null);
+    // Also log to webhook_failures table for Task 13 tracking
+    await logWebhookFailure({
+      failure_type: 'MISSING_SIGNATURE',
+      details: 'No stripe-signature header present in webhook request',
+    });
     return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
   }
 
@@ -116,6 +122,12 @@ export async function POST(req: Request) {
     console.error('[Stripe Webhook] Signature verification failed:', err);
     // Log invalid signature attempt and check for potential attack
     await logInvalidWebhookAttempt(req, 'invalid_signature', signature);
+    // Also log to webhook_failures table for Task 13 tracking
+    await logWebhookFailure({
+      failure_type: 'INVALID_SIGNATURE',
+      error_message: err instanceof Error ? err.message : String(err),
+      details: 'Stripe signature verification failed',
+    });
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
@@ -156,6 +168,12 @@ export async function POST(req: Request) {
   // NULL CHECK 2: Event data object
   if (!event.data?.object) {
     console.error('[Stripe Webhook] Missing event.data.object');
+    await logWebhookFailure({
+      failure_type: 'MISSING_DATA',
+      stripe_event_id: event.id,
+      stripe_event_type: event.type,
+      details: 'Event received but event.data.object is missing',
+    });
     return NextResponse.json({ error: 'Invalid event structure' }, { status: 400 });
   }
 
@@ -199,6 +217,15 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error(`[Stripe Webhook] Error processing ${event.type}:`, error);
 
+    // Log to webhook_failures table for Task 13 tracking
+    await logWebhookFailure({
+      failure_type: 'HANDLER_ERROR',
+      stripe_event_id: event.id,
+      stripe_event_type: event.type,
+      error_message: error instanceof Error ? error.message : String(error),
+      details: `Error occurred while processing ${event.type} event`,
+    });
+
     // Store error but don't fail the webhook
     await supabase
       .from('webhook_events')
@@ -224,6 +251,12 @@ async function handlePaymentSucceeded(
 
   if (!orderId) {
     console.warn('[Stripe Webhook] No order_id in payment intent metadata');
+    await logWebhookFailure({
+      failure_type: 'MISSING_ORDER_ID',
+      stripe_event_id: paymentIntent.id,
+      stripe_event_type: 'payment_intent.succeeded',
+      details: 'Payment succeeded but no order_id in metadata - cannot process',
+    });
     return;
   }
 
@@ -279,6 +312,14 @@ async function handlePaymentSucceeded(
 
   if (updateError) {
     console.error('[Stripe Webhook] Failed to update order:', updateError);
+    await logWebhookFailure({
+      failure_type: 'DB_UPDATE_FAILED',
+      stripe_event_id: paymentIntent.id,
+      stripe_event_type: 'payment_intent.succeeded',
+      order_id: orderId,
+      error_message: updateError.message,
+      details: 'Failed to update order status after successful payment',
+    });
     throw updateError;
   }
 
@@ -388,6 +429,16 @@ async function handlePaymentFailed(
       error: paymentIntent.last_payment_error?.message || 'Unknown error',
       errorCode: paymentIntent.last_payment_error?.code,
     },
+  });
+
+  // Also log to webhook_failures table for Task 13 tracking
+  await logWebhookFailure({
+    failure_type: 'PAYMENT_FAILED',
+    stripe_event_id: paymentIntent.id,
+    stripe_event_type: 'payment_intent.payment_failed',
+    order_id: orderId,
+    error_message: paymentIntent.last_payment_error?.message || 'Unknown payment error',
+    details: `Payment failed with code: ${paymentIntent.last_payment_error?.code || 'unknown'}`,
   });
 
   // Queue payment failure notification
