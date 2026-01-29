@@ -10,6 +10,9 @@ import {
   ConflictSeverity,
   PartyInfo,
   CONFLICT_THRESHOLDS,
+  IntakeConflictCheckRequest,
+  IntakeConflictCheckResult,
+  ConflictAction,
 } from '@/types/conflict';
 import {
   normalizePartyName,
@@ -290,4 +293,87 @@ export async function canOrderProceed(orderId: string): Promise<{
   }
 
   return { canProceed: true };
+}
+
+/**
+ * Check for conflicts using intake-specific request format
+ * Adapter function for conflict-integration.ts checkout flow
+ */
+export async function checkForConflicts(
+  request: IntakeConflictCheckRequest
+): Promise<IntakeConflictCheckResult> {
+  const supabase = await createClient();
+
+  // Get client ID from order
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('client_id')
+    .eq('id', request.orderId)
+    .single();
+
+  if (orderError || !order) {
+    console.error('[ConflictCheck] Failed to fetch order:', orderError);
+    // Return safe default - allow to proceed but log error
+    return {
+      action: 'PROCEED',
+      severity: 'NONE',
+      matches: [],
+      message: 'Conflict check skipped - order not found',
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  // Convert intake parties to PartyInfo format
+  const parties: PartyInfo[] = [
+    ...request.plaintiffs.map(name => ({
+      name,
+      normalizedName: normalizePartyName(name),
+      role: 'plaintiff' as const,
+    })),
+    ...request.defendants.map(name => ({
+      name,
+      normalizedName: normalizePartyName(name),
+      role: 'defendant' as const,
+    })),
+  ];
+
+  // Build internal request
+  const internalRequest: ConflictCheckRequest = {
+    orderId: request.orderId,
+    clientId: order.client_id,
+    parties,
+    caseNumber: request.caseNumber,
+    courtName: request.jurisdiction,
+  };
+
+  // Run internal conflict check
+  const checkResult = await runConflictCheck(internalRequest);
+
+  if (!checkResult.success || !checkResult.result) {
+    console.error('[ConflictCheck] Internal check failed:', checkResult.error);
+    return {
+      action: 'PROCEED',
+      severity: 'NONE',
+      matches: [],
+      message: checkResult.error || 'Conflict check failed',
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  // Map severity to action
+  const actionMap: Record<ConflictSeverity, ConflictAction> = {
+    'NONE': 'PROCEED',
+    'SOFT': 'REVIEW',
+    'HARD': 'BLOCK',
+  };
+
+  const result = checkResult.result;
+
+  return {
+    action: actionMap[result.severity],
+    severity: result.severity,
+    matches: result.matches,
+    message: result.message,
+    checkedAt: result.checkedAt,
+  };
 }
