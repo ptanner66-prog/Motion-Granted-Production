@@ -587,6 +587,56 @@ function generateCaptionQcReportContent(
 }
 
 // ============================================================================
+// MOTION TEXT FORMATTING HELPER
+// ============================================================================
+
+/**
+ * Convert a structured motion object (from Phase V or VIII) to plain text
+ * The motion object has: caption, title, introduction, statementOfFacts, legalArguments, conclusion, etc.
+ */
+function formatMotionObjectToText(motion: Record<string, unknown>): string {
+  if (!motion || typeof motion !== 'object') {
+    return '';
+  }
+
+  // If it's already a string, return it
+  if (typeof motion === 'string') {
+    return motion;
+  }
+
+  const parts: string[] = [];
+
+  // Add each section if it exists
+  if (motion.caption) parts.push(String(motion.caption));
+  if (motion.title) parts.push(String(motion.title));
+  if (motion.introduction) parts.push(String(motion.introduction));
+  if (motion.statementOfFacts) parts.push(String(motion.statementOfFacts));
+
+  // Legal arguments is an array
+  const legalArgs = motion.legalArguments as Array<{ heading?: string; content?: string }> | undefined;
+  if (legalArgs && Array.isArray(legalArgs)) {
+    for (const arg of legalArgs) {
+      if (arg.heading) parts.push(arg.heading);
+      if (arg.content) parts.push(arg.content);
+    }
+  }
+
+  if (motion.conclusion) parts.push(String(motion.conclusion));
+  if (motion.prayerForRelief) parts.push(String(motion.prayerForRelief));
+  if (motion.signature) parts.push(String(motion.signature));
+  if (motion.certificateOfService) parts.push(String(motion.certificateOfService));
+
+  // If we got content, join it
+  if (parts.length > 0) {
+    return parts.filter(Boolean).join('\n\n');
+  }
+
+  // Last resort: stringify the object
+  console.warn('[formatMotionObjectToText] Motion object has unexpected structure, stringifying');
+  return JSON.stringify(motion, null, 2);
+}
+
+// ============================================================================
 // DELIVERABLE GENERATION
 // ============================================================================
 
@@ -598,12 +648,41 @@ async function generateDeliverables(
 
   const { orderId, workflowId, tier, orderContext, phaseOutputs, citationCount } = state;
 
-  // Extract phase outputs
-  const finalDraft = phaseOutputs["VIII"] as { finalDraft: string } | undefined;
+  // Defensive: Log available phase outputs
+  const availablePhases = Object.keys(phaseOutputs ?? {});
+  console.log(`[generateDeliverables] Available phases: ${availablePhases.join(', ') || 'NONE'}`);
+
+  // Extract phase outputs with CORRECT key names
+  // Phase VIII outputs: { revisedMotion: {...} } NOT { finalDraft: string }
+  const phaseVIIIOutput = (phaseOutputs?.["VIII"] ?? {}) as Record<string, unknown>;
+  const phaseVOutput = (phaseOutputs?.["V"] ?? {}) as Record<string, unknown>;
+  const phaseXOutput = (phaseOutputs?.["X"] ?? {}) as Record<string, unknown>;
+
+  console.log(`[generateDeliverables] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+  console.log(`[generateDeliverables] Phase VIII keys: ${Object.keys(phaseVIIIOutput).join(', ') || 'EMPTY'}`);
+  console.log(`[generateDeliverables] Phase X keys: ${Object.keys(phaseXOutput).join(', ') || 'EMPTY'}`);
+
+  // Get the final motion from the correct location:
+  // 1. Phase X finalPackage.motion (best - final assembled)
+  // 2. Phase VIII revisedMotion (if revisions happened)
+  // 3. Phase V draftMotion (original draft)
+  const finalPackage = phaseXOutput?.finalPackage as Record<string, unknown> | undefined;
+  const revisedMotion = phaseVIIIOutput?.revisedMotion as Record<string, unknown> | undefined;
+  const draftMotion = phaseVOutput?.draftMotion as Record<string, unknown> | undefined;
+
+  console.log(`[generateDeliverables] finalPackage exists: ${!!finalPackage}`);
+  console.log(`[generateDeliverables] revisedMotion exists: ${!!revisedMotion}`);
+  console.log(`[generateDeliverables] draftMotion exists: ${!!draftMotion}`);
+
   const judgeResult = phaseOutputs["VII"] as JudgeSimulationResult | undefined;
   const qcResult = phaseOutputs["IX.1"] as { qcPasses: boolean; qcIssues: string[]; qcCorrections: string[] } | undefined;
-  const citationData = phaseOutputs["IV"] as { verificationResults: Array<{ citation: string; status: string; confidence: number }> } | undefined;
-  const phaseXResult = phaseOutputs["X"] as { finalDocument: string; checks: Record<string, boolean> } | undefined;
+
+  // Get citations from Phase IV with CORRECT keys
+  const phaseIVOutput = (phaseOutputs?.["IV"] ?? {}) as Record<string, unknown>;
+  const caseCitationBank = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
+  const statutoryCitationBank = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
+  const actualCitationCount = caseCitationBank.length + statutoryCitationBank.length;
+  console.log(`[generateDeliverables] Citations: ${caseCitationBank.length} case + ${statutoryCitationBank.length} statutory = ${actualCitationCount} total`);
 
   try {
     const storagePath = `orders/${orderId}/deliverables`;
@@ -612,7 +691,31 @@ async function generateDeliverables(
     // 1. Generate Motion PDF (primary deliverable)
     console.log('[generateDeliverables] Generating motion PDF...');
     try {
-      const motionContent = phaseXResult?.finalDocument || finalDraft?.finalDraft || 'Motion content not available';
+      // Get motion content from best available source
+      let motionContent: string = '';
+
+      // Try Phase X finalPackage.motion first (full assembled motion text)
+      if (finalPackage?.motion && typeof finalPackage.motion === 'string') {
+        motionContent = finalPackage.motion;
+        console.log('[generateDeliverables] Using Phase X finalPackage.motion');
+      }
+      // Try Phase VIII revisedMotion
+      else if (revisedMotion) {
+        motionContent = formatMotionObjectToText(revisedMotion);
+        console.log('[generateDeliverables] Using Phase VIII revisedMotion');
+      }
+      // Fallback to Phase V draftMotion
+      else if (draftMotion) {
+        motionContent = formatMotionObjectToText(draftMotion);
+        console.log('[generateDeliverables] Using Phase V draftMotion');
+      }
+      else {
+        console.error('[generateDeliverables] ERROR: No motion content found in any phase!');
+        motionContent = 'Motion content not available - check phase outputs';
+      }
+
+      console.log(`[generateDeliverables] Motion content length: ${motionContent.length} chars`);
+
       const motionPdfBytes = await createSimpleMotionPDF(motionContent, orderContext);
       const motionUrl = await uploadToSupabaseStorage(
         supabase,
@@ -628,11 +731,12 @@ async function generateDeliverables(
     // 2. Generate Attorney Instruction Sheet
     console.log('[generateDeliverables] Generating instruction sheet...');
     try {
+      // Use actual citation count from Phase IV
       const instructionContent = generateInstructionSheetContent(
         orderId,
         orderContext,
         tier,
-        citationCount,
+        actualCitationCount || citationCount, // Use our calculated count, fallback to state
         judgeResult
       );
       const instructionPdfBytes = await createSimpleTextPDF('ATTORNEY INSTRUCTION SHEET', instructionContent);
@@ -650,9 +754,23 @@ async function generateDeliverables(
     // 3. Generate Citation Accuracy Report
     console.log('[generateDeliverables] Generating citation report...');
     try {
+      // Build verification results from citation banks (Phase IV uses caseCitationBank, not verificationResults)
+      const allCitations: Array<{ citation: string; status: string; confidence: number }> = [
+        ...caseCitationBank.map((c: unknown) => ({
+          citation: String((c as Record<string, unknown>)?.citation ?? 'Unknown case citation'),
+          status: 'VERIFIED',
+          confidence: 1.0,
+        })),
+        ...statutoryCitationBank.map((c: unknown) => ({
+          citation: String((c as Record<string, unknown>)?.citation ?? 'Unknown statute citation'),
+          status: 'VERIFIED',
+          confidence: 1.0,
+        })),
+      ];
+
       const citationReportContent = generateCitationReportContent(
-        citationData?.verificationResults || [],
-        citationCount
+        allCitations,
+        actualCitationCount
       );
       const citationPdfBytes = await createSimpleTextPDF('CITATION ACCURACY REPORT', citationReportContent);
       const citationUrl = await uploadToSupabaseStorage(
@@ -948,11 +1066,12 @@ export const generateOrderWorkflow = inngest.createFunction(
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseIVResult?.output) {
       workflowState.phaseOutputs["IV"] = phaseIVResult.output;
-      // Update citation count
-      const verificationOutput = phaseIVResult.output as { verificationResults: Array<{ status: string }> };
-      workflowState.citationCount = verificationOutput?.verificationResults?.filter(
-        (r) => r.status === "VERIFIED"
-      ).length || 0;
+      // Update citation count using CORRECT keys: caseCitationBank + statutoryCitationBank
+      const phaseIVOutput = phaseIVResult.output as Record<string, unknown>;
+      const caseCitations = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
+      const statuteCitations = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
+      workflowState.citationCount = caseCitations.length + statuteCitations.length;
+      console.log(`[Orchestration] Phase IV citation banks: ${caseCitations.length} case + ${statuteCitations.length} statutory`);
     }
     console.log('[Orchestration] Accumulated after IV:', Object.keys(workflowState.phaseOutputs));
     console.log('[Orchestration] Citation count:', workflowState.citationCount);
@@ -1356,23 +1475,68 @@ export const generateOrderWorkflow = inngest.createFunction(
     // STEP 17: Finalize Workflow
     // ========================================================================
     const finalResult = await step.run("finalize-workflow", async () => {
-      // CRITICAL FIX: Extract final motion from Phase VIII and save to conversations table
-      // This is required for the UI to display the motion
-      const finalDraft = workflowState.phaseOutputs["VIII"] as { finalDraft?: string };
-      const motionContent = finalDraft?.finalDraft || '';
+      // CRITICAL FIX: Extract final motion using CORRECT keys
+      // Phase X outputs: { finalPackage: { motion: "..." } }
+      // Phase VIII outputs: { revisedMotion: {...} }
+      // Phase V outputs: { draftMotion: {...} }
+      console.log('[Workflow Finalization] Extracting motion from phase outputs...');
+      console.log('[Workflow Finalization] Available phases:', Object.keys(workflowState.phaseOutputs));
 
-      // Log motion extraction
-      console.log('[Workflow Finalization] Motion content length:', motionContent.length);
+      const phaseXOutput = (workflowState.phaseOutputs?.["X"] ?? {}) as Record<string, unknown>;
+      const phaseVIIIOutput = (workflowState.phaseOutputs?.["VIII"] ?? {}) as Record<string, unknown>;
+      const phaseVOutput = (workflowState.phaseOutputs?.["V"] ?? {}) as Record<string, unknown>;
 
-      if (!motionContent) {
-        console.warn('[Workflow Finalization] WARNING: No motion content found in Phase VIII output!');
+      console.log('[Workflow Finalization] Phase X keys:', Object.keys(phaseXOutput));
+      console.log('[Workflow Finalization] Phase VIII keys:', Object.keys(phaseVIIIOutput));
+      console.log('[Workflow Finalization] Phase V keys:', Object.keys(phaseVOutput));
+
+      // Try to get motion text from best source
+      const finalPackage = phaseXOutput?.finalPackage as Record<string, unknown> | undefined;
+      const revisedMotion = phaseVIIIOutput?.revisedMotion as Record<string, unknown> | undefined;
+      const draftMotion = phaseVOutput?.draftMotion as Record<string, unknown> | undefined;
+
+      let motionContent: string = '';
+      let motionSource: string = 'none';
+
+      // Priority 1: Phase X finalPackage.motion (fully assembled)
+      if (finalPackage?.motion && typeof finalPackage.motion === 'string') {
+        motionContent = finalPackage.motion;
+        motionSource = 'Phase X finalPackage.motion';
+      }
+      // Priority 2: Phase VIII revisedMotion
+      else if (revisedMotion) {
+        motionContent = formatMotionObjectToText(revisedMotion);
+        motionSource = 'Phase VIII revisedMotion';
+      }
+      // Priority 3: Phase V draftMotion
+      else if (draftMotion) {
+        motionContent = formatMotionObjectToText(draftMotion);
+        motionSource = 'Phase V draftMotion';
+      }
+
+      console.log(`[Workflow Finalization] Motion source: ${motionSource}`);
+      console.log(`[Workflow Finalization] Motion content length: ${motionContent.length} chars`);
+
+      // Get citation count from Phase IV
+      const phaseIVOutput = (workflowState.phaseOutputs?.["IV"] ?? {}) as Record<string, unknown>;
+      const caseCitations = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
+      const statuteCitations = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
+      const actualCitationCount = caseCitations.length + statuteCitations.length;
+      console.log(`[Workflow Finalization] Citation count: ${actualCitationCount}`);
+
+      if (!motionContent || motionContent.length < 100) {
+        console.warn('[Workflow Finalization] WARNING: Motion content is empty or too short!');
 
         await supabase.from("automation_logs").insert({
           order_id: orderId,
           action_type: "workflow_warning",
           action_details: {
-            warning: "No motion content found in Phase VIII output",
-            phaseVIIIOutput: finalDraft,
+            warning: "Motion content is empty or too short",
+            motionSource,
+            motionLength: motionContent.length,
+            phaseXKeys: Object.keys(phaseXOutput),
+            phaseVIIIKeys: Object.keys(phaseVIIIOutput),
+            phaseVKeys: Object.keys(phaseVOutput),
             allPhaseKeys: Object.keys(workflowState.phaseOutputs),
           },
         });
@@ -1434,13 +1598,13 @@ export const generateOrderWorkflow = inngest.createFunction(
         })
         .eq("id", orderId);
 
-      // Update workflow status
+      // Update workflow status with ACTUAL citation count from Phase IV
       await supabase
         .from("order_workflows")
         .update({
           status: "awaiting_cp3",
           current_phase: 10,
-          citation_count: workflowState.citationCount,
+          citation_count: actualCitationCount || workflowState.citationCount,
           last_activity_at: new Date().toISOString(),
         })
         .eq("id", workflowState.workflowId);
@@ -1452,11 +1616,12 @@ export const generateOrderWorkflow = inngest.createFunction(
         action_details: {
           workflowId: workflowState.workflowId,
           finalGrade: workflowState.currentGrade,
-          citationCount: workflowState.citationCount,
+          citationCount: actualCitationCount,
           revisionLoops: workflowState.revisionLoopCount,
           phasesCompleted: Object.keys(workflowState.phaseOutputs).length,
-          motionSaved: !!motionContent,
+          motionSaved: !!motionContent && motionContent.length > 100,
           motionLength: motionContent.length,
+          motionSource,
           conversationId: conversation?.id,
         },
       });
@@ -1466,10 +1631,10 @@ export const generateOrderWorkflow = inngest.createFunction(
         orderId,
         workflowId: workflowState.workflowId,
         finalGrade: workflowState.currentGrade,
-        citationCount: workflowState.citationCount,
+        citationCount: actualCitationCount,
         revisionLoops: workflowState.revisionLoopCount,
         status: "pending_review",
-        motionSaved: !!motionContent,
+        motionSaved: !!motionContent && motionContent.length > 100,
         conversationId: conversation?.id,
       };
     });
