@@ -747,11 +747,32 @@ export const generateOrderWorkflow = inngest.createFunction(
     // STEP 0: Verify API Configuration
     // ========================================================================
     await step.run("verify-api-config", async () => {
-      if (!process.env.ANTHROPIC_API_KEY) {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+
+      if (!apiKey) {
         console.error("[WORKFLOW] CRITICAL: ANTHROPIC_API_KEY is not configured!");
         throw new Error("ANTHROPIC_API_KEY environment variable is not set. Cannot run AI workflow.");
       }
-      console.log("[WORKFLOW] API configuration verified. Starting workflow for order:", orderId);
+
+      // Validate API key format
+      if (!apiKey.startsWith('sk-ant-')) {
+        console.error("[WORKFLOW] CRITICAL: ANTHROPIC_API_KEY has invalid format!");
+        console.error("[WORKFLOW] Key should start with 'sk-ant-', but starts with:", apiKey.substring(0, 10));
+        throw new Error("ANTHROPIC_API_KEY has invalid format. Must start with 'sk-ant-'. Check Vercel environment variables.");
+      }
+
+      if (apiKey.length < 40) {
+        console.error("[WORKFLOW] CRITICAL: ANTHROPIC_API_KEY is too short!");
+        throw new Error("ANTHROPIC_API_KEY appears to be incomplete. Should be at least 40 characters.");
+      }
+
+      if (apiKey.includes('xxxxx') || apiKey.includes('YOUR_API_KEY') || apiKey.includes('placeholder')) {
+        console.error("[WORKFLOW] CRITICAL: ANTHROPIC_API_KEY appears to be a placeholder!");
+        throw new Error("ANTHROPIC_API_KEY is a placeholder value. Set a real API key in Vercel environment variables.");
+      }
+
+      console.log("[WORKFLOW] API configuration verified (key format valid, length:", apiKey.length, ")");
+      console.log("[WORKFLOW] Starting workflow for order:", orderId);
     });
 
     // ========================================================================
