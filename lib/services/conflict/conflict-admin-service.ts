@@ -252,6 +252,27 @@ export async function getClientConflictHistory(clientId: string): Promise<Confli
 }
 
 /**
+ * Submit conflict decision via email action link
+ * Wrapper for reviewConflict with different parameter interface
+ */
+export async function submitConflictDecision(params: {
+  checkId: string;
+  decision: 'APPROVE' | 'REJECT';
+  reviewedBy: string;
+  reviewedAt: Date;
+  notes?: string;
+}): Promise<ReviewResult> {
+  return reviewConflict(
+    {
+      conflictId: params.checkId,
+      action: params.decision === 'APPROVE' ? 'approve' : 'reject',
+      reviewNotes: params.notes,
+    },
+    params.reviewedBy
+  );
+}
+
+/**
  * Bulk approve soft conflicts older than specified days
  */
 export async function bulkApproveSoftConflicts(
