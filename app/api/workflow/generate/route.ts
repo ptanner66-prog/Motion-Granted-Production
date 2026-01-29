@@ -80,13 +80,13 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', orderId);
 
-    // Trigger 14-phase workflow
+    // Trigger 14-phase workflow (now uses order/submitted event)
     await inngest.send({
-      name: 'workflow/orchestration.start',
+      name: 'order/submitted',
       data: {
         orderId,
-        triggeredBy: 'api_workflow_generate',
-        timestamp: new Date().toISOString(),
+        priority: 1000, // High priority for manual triggers
+        filingDeadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Default 7 days
       },
     });
 

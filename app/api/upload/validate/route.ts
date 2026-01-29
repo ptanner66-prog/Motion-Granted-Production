@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
         .eq('order_id', orderId);
 
       if (docs) {
-        existingOrderSizeMB = docs.reduce((sum, d) => sum + (d.file_size || 0), 0) / (1024 * 1024);
+        existingOrderSizeMB = docs.reduce((sum: number, d: { file_size: number | null }) => sum + (d.file_size || 0), 0) / (1024 * 1024);
       }
     }
 

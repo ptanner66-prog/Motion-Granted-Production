@@ -77,7 +77,7 @@ export async function runConflictCheck(
             currentPartyName: newParty.name,
             currentPartyRole: newParty.role,
             similarityScore: matchResult.similarity,
-            matchType: matchResult.matchType,
+            matchType: matchResult.matchType as 'exact' | 'fuzzy' | 'normalized',
           });
         }
 
@@ -290,4 +290,94 @@ export async function canOrderProceed(orderId: string): Promise<{
   }
 
   return { canProceed: true };
+}
+
+/**
+ * Alternative conflict check interface for intake flow
+ * Used by conflict-integration.ts
+ */
+export interface IntakeConflictRequest {
+  orderId: string;
+  caseNumber: string;
+  jurisdiction: string;
+  plaintiffs: string[];
+  defendants: string[];
+  attorneyUserId: string;
+  attorneySide: 'PLAINTIFF' | 'DEFENDANT';
+}
+
+export interface IntakeConflictResult extends ConflictCheckResult {
+  action: 'PROCEED' | 'REVIEW' | 'BLOCK';
+}
+
+/**
+ * Check for conflicts using intake flow interface
+ * Wrapper for runConflictCheck with simpler input/output
+ */
+export async function checkForConflicts(
+  request: IntakeConflictRequest
+): Promise<IntakeConflictResult> {
+  const supabase = await createClient();
+
+  // Get client ID from user
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', request.attorneyUserId)
+    .single();
+
+  const clientId = profile?.id || request.attorneyUserId;
+
+  // Convert intake parties to PartyInfo format
+  const parties: PartyInfo[] = [
+    ...request.plaintiffs.map(name => ({
+      name,
+      normalizedName: normalizePartyName(name),
+      role: 'plaintiff' as const,
+    })),
+    ...request.defendants.map(name => ({
+      name,
+      normalizedName: normalizePartyName(name),
+      role: 'defendant' as const,
+    })),
+  ];
+
+  // Run the conflict check
+  const result = await runConflictCheck({
+    orderId: request.orderId,
+    clientId,
+    parties,
+    caseNumber: request.caseNumber,
+  });
+
+  if (!result.success || !result.result) {
+    // Return default "proceed" if check fails
+    return {
+      severity: 'NONE',
+      matches: [],
+      requiresReview: false,
+      canProceed: true,
+      message: result.error || 'Conflict check failed, proceeding with caution',
+      checkedAt: new Date().toISOString(),
+      action: 'PROCEED',
+    };
+  }
+
+  // Map severity to action
+  let action: 'PROCEED' | 'REVIEW' | 'BLOCK';
+  switch (result.result.severity) {
+    case 'HARD':
+      action = 'BLOCK';
+      break;
+    case 'SOFT':
+      action = 'REVIEW';
+      break;
+    default:
+      action = 'PROCEED';
+  }
+
+  return {
+    ...result.result,
+    action,
+  };
 }

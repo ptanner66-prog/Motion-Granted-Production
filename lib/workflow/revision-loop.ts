@@ -52,3 +52,21 @@ export async function resetRevisionLoop(orderId: string): Promise<void> {
   const supabase = await createClient();
   await supabase.from('orders').update({ revision_count: 0, protocol_10_disclosure: null, protocol_10_triggered_at: null }).eq('id', orderId);
 }
+
+/**
+ * Check and handle revision loop for a workflow
+ * Wrapper function for phase-executor.ts compatibility
+ */
+export async function checkAndHandleRevisionLoop(orderId: string, workflowId: string): Promise<RevisionResult> {
+  // Get current judge grade from workflow state if available
+  const supabase = await createClient();
+  const { data: workflow } = await supabase
+    .from('workflow_state')
+    .select('phase_outputs')
+    .eq('id', workflowId)
+    .single();
+
+  const judgeGrade = (workflow?.phase_outputs as Record<string, { grade?: string }>)?.['VII']?.grade;
+
+  return incrementRevisionLoop(orderId, judgeGrade);
+}

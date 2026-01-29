@@ -3,14 +3,45 @@
 // VERSION: 1.0 — January 28, 2026
 
 import { createClient } from '@/lib/supabase/server';
-import {
-  MAX_REVISION_LOOPS,
-  shouldTriggerProtocol10,
-  generateProtocol10Disclosure,
-  getRevisionLoopStatus,
-  scoreToGrade,
-  type Grade,
-} from '@/lib/config/workflow-config';
+import { MAX_REVISION_LOOPS, type LetterGrade as Grade } from '@/types/workflow';
+import { FAILURE_THRESHOLDS, isProtocol10Triggered } from '@/lib/config/workflow-config';
+
+// Helper functions
+function shouldTriggerProtocol10(revisionCount: number): boolean {
+  return isProtocol10Triggered(revisionCount);
+}
+
+function generateProtocol10Disclosure(revisionCount: number, grade?: string): string {
+  return `DISCLOSURE (Per Protocol 10):
+This motion underwent ${revisionCount} revision cycles during automated QA.
+${grade ? `Final automated review grade: ${grade}.` : ''}
+Attorney review is recommended before filing.
+This disclosure is provided for transparency per Motion Granted's quality protocols.`;
+}
+
+async function getRevisionLoopStatus(orderId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('orders')
+    .select('revision_count, protocol_10_triggered_at')
+    .eq('id', orderId)
+    .single();
+  const count = data?.revision_count || 0;
+  return { count, max: MAX_REVISION_LOOPS, remaining: Math.max(0, 3 - count), triggered: !!data?.protocol_10_triggered_at };
+}
+
+function scoreToGrade(score: number): Grade {
+  if (score >= 97) return 'A+';
+  if (score >= 93) return 'A';
+  if (score >= 90) return 'A-';
+  if (score >= 87) return 'B+';
+  if (score >= 83) return 'B';
+  if (score >= 80) return 'B-';
+  if (score >= 77) return 'C+';
+  if (score >= 70) return 'C';
+  if (score >= 60) return 'D';
+  return 'F';
+}
 
 export interface RevisionResult {
   orderId: string;
@@ -192,12 +223,14 @@ export async function getRevisionStatus(orderId: string): Promise<RevisionStatus
     return null;
   }
 
-  const status = getRevisionLoopStatus(order.revision_count || 0);
+  const count = order.revision_count || 0;
 
   return {
-    ...status,
+    currentLoop: count,
+    maxLoops: MAX_REVISION_LOOPS,
+    remainingLoops: Math.max(0, MAX_REVISION_LOOPS - count),
     protocol10Triggered: order.protocol_10_triggered || false,
-    disclosure: order.protocol_10_disclosure,
+    disclosure: order.protocol_10_disclosure || null,
   };
 }
 
@@ -217,12 +250,14 @@ export async function getWorkflowRevisionStatus(workflowId: string): Promise<Rev
     return null;
   }
 
-  const status = getRevisionLoopStatus(workflow.current_loop_count || 0);
+  const count = workflow.current_loop_count || 0;
 
   return {
-    ...status,
+    currentLoop: count,
+    maxLoops: MAX_REVISION_LOOPS,
+    remainingLoops: Math.max(0, MAX_REVISION_LOOPS - count),
     protocol10Triggered: workflow.max_loops_reached || false,
-    disclosure: workflow.protocol_10_disclosure,
+    disclosure: workflow.protocol_10_disclosure || null,
   };
 }
 

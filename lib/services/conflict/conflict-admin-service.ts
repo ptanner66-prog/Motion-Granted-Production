@@ -52,13 +52,22 @@ export async function getPendingConflicts(): Promise<ConflictListItem[]> {
 
   if (error || !data) return [];
 
-  return data.map(item => {
+  interface ConflictItem {
+    id: string;
+    order_id: string;
+    check_result: unknown;
+    status: string;
+    created_at: string;
+    orders?: { order_number?: string; clients?: { full_name?: string } };
+  }
+
+  return data.map((item: ConflictItem) => {
     const result = item.check_result as ConflictCheckResult;
     return {
       id: item.id,
       orderId: item.order_id,
-      orderNumber: (item.orders as { order_number: string })?.order_number || 'Unknown',
-      clientName: ((item.orders as { clients: { full_name: string } })?.clients?.full_name) || 'Unknown',
+      orderNumber: item.orders?.order_number || 'Unknown',
+      clientName: item.orders?.clients?.full_name || 'Unknown',
       severity: result.severity,
       matchCount: result.matches.length,
       status: item.status,
@@ -236,12 +245,21 @@ export async function getClientConflictHistory(clientId: string): Promise<Confli
 
   if (error || !data) return [];
 
-  return data.map(item => {
+  interface ConflictHistoryItem {
+    id: string;
+    order_id: string;
+    check_result: unknown;
+    status: string;
+    created_at: string;
+    orders?: { order_number?: string };
+  }
+
+  return data.map((item: ConflictHistoryItem) => {
     const result = item.check_result as ConflictCheckResult;
     return {
       id: item.id,
       orderId: item.order_id,
-      orderNumber: (item.orders as { order_number: string })?.order_number || 'Unknown',
+      orderNumber: item.orders?.order_number || 'Unknown',
       clientName: '', // Not needed for client history
       severity: result.severity,
       matchCount: result.matches.length,

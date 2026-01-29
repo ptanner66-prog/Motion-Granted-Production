@@ -83,7 +83,15 @@ export async function getUserSessions(userId: string, currentSessionId?: string)
     return [];
   }
 
-  return sessions.map(s => ({
+  return sessions.map((s: {
+    id: string;
+    user_id: string;
+    created_at: string;
+    last_activity_at: string;
+    expires_at: string;
+    ip_address: string | null;
+    user_agent: string | null;
+  }) => ({
     id: s.id,
     userId: s.user_id,
     createdAt: new Date(s.created_at),
