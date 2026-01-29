@@ -428,8 +428,8 @@ export interface CIVConfig {
  * Default CIV configuration per spec
  */
 export const DEFAULT_CIV_CONFIG: CIVConfig = {
-  primaryModel: 'claude-sonnet-4-5-20250514',
-  adversarialModel: 'claude-opus-4-5-20250514',
+  primaryModel: 'claude-sonnet-4-20250514',
+  adversarialModel: 'claude-opus-4-5-20251101',
 
   verifiedThreshold: 0.90,
   acceptableThreshold: 0.80,

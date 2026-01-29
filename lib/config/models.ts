@@ -8,10 +8,10 @@ export const MODELS = {
   // ═══════════════════════════════════════════════════════════════
 
   // Primary model for Judge Simulation (Phase VII), complex reasoning
-  OPUS: "claude-opus-4-5-20250514",
+  OPUS: "claude-opus-4-5-20251101",
 
   // Standard model for drafting, CODE MODE phases
-  SONNET: "claude-sonnet-4-5-20250514",
+  SONNET: "claude-sonnet-4-20250514",
 
   // ═══════════════════════════════════════════════════════════════
   // OPENAI MODELS FOR CITATION VERIFICATION

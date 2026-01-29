@@ -36,7 +36,7 @@ import type {
 // ============================================================================
 
 // Model identifiers
-const SONNET_MODEL = 'claude-sonnet-4-5-20250929';
+const SONNET_MODEL = 'claude-sonnet-4-20250514';
 const OPUS_MODEL = 'claude-opus-4-5-20251101';
 
 // Extended thinking token budgets
