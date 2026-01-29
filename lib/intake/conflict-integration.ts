@@ -3,8 +3,8 @@
 // VERSION: 1.0 — January 28, 2026
 
 import { createClient } from '@/lib/supabase/server';
-import { checkForConflicts, type IntakeConflictRequest } from '@/lib/services/conflict/conflict-check-service';
-import type { ConflictCheckResult } from '@/types/conflict';
+import { checkForConflicts } from '@/lib/services/conflict/conflict-check-service';
+import type { IntakeConflictCheckRequest, IntakeConflictCheckResult } from '@/types/conflict';
 
 export interface IntakeParties {
   plaintiffs: string[];
@@ -14,7 +14,7 @@ export interface IntakeParties {
 
 export interface PrePaymentCheckResult {
   canProceed: boolean;
-  conflictResult?: ConflictCheckResult;
+  conflictResult?: IntakeConflictCheckResult;
   blockReason?: string;
   requiresReview?: boolean;
 }
@@ -31,7 +31,7 @@ export async function runPrePaymentConflictCheck(
   userId: string
 ): Promise<PrePaymentCheckResult> {
   // Build conflict check request
-  const request: IntakeConflictRequest = {
+  const request: IntakeConflictCheckRequest = {
     orderId,
     caseNumber,
     jurisdiction,

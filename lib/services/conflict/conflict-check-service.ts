@@ -10,6 +10,9 @@ import {
   ConflictSeverity,
   PartyInfo,
   CONFLICT_THRESHOLDS,
+  IntakeConflictCheckRequest,
+  IntakeConflictCheckResult,
+  ConflictAction,
 } from '@/types/conflict';
 import {
   normalizePartyName,
@@ -293,40 +296,32 @@ export async function canOrderProceed(orderId: string): Promise<{
 }
 
 /**
- * Alternative conflict check interface for intake flow
- * Used by conflict-integration.ts
- */
-export interface IntakeConflictRequest {
-  orderId: string;
-  caseNumber: string;
-  jurisdiction: string;
-  plaintiffs: string[];
-  defendants: string[];
-  attorneyUserId: string;
-  attorneySide: 'PLAINTIFF' | 'DEFENDANT';
-}
-
-export interface IntakeConflictResult extends ConflictCheckResult {
-  action: 'PROCEED' | 'REVIEW' | 'BLOCK';
-}
-
-/**
- * Check for conflicts using intake flow interface
- * Wrapper for runConflictCheck with simpler input/output
+ * Check for conflicts using intake-specific request format
+ * Adapter function for conflict-integration.ts checkout flow
  */
 export async function checkForConflicts(
-  request: IntakeConflictRequest
-): Promise<IntakeConflictResult> {
+  request: IntakeConflictCheckRequest
+): Promise<IntakeConflictCheckResult> {
   const supabase = await createClient();
 
-  // Get client ID from user
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', request.attorneyUserId)
+  // Get client ID from order
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('client_id')
+    .eq('id', request.orderId)
     .single();
 
-  const clientId = profile?.id || request.attorneyUserId;
+  if (orderError || !order) {
+    console.error('[ConflictCheck] Failed to fetch order:', orderError);
+    // Return safe default - allow to proceed but log error
+    return {
+      action: 'PROCEED',
+      severity: 'NONE',
+      matches: [],
+      message: 'Conflict check skipped - order not found',
+      checkedAt: new Date().toISOString(),
+    };
+  }
 
   // Convert intake parties to PartyInfo format
   const parties: PartyInfo[] = [
@@ -342,42 +337,43 @@ export async function checkForConflicts(
     })),
   ];
 
-  // Run the conflict check
-  const result = await runConflictCheck({
+  // Build internal request
+  const internalRequest: ConflictCheckRequest = {
     orderId: request.orderId,
-    clientId,
+    clientId: order.client_id,
     parties,
     caseNumber: request.caseNumber,
-  });
+    courtName: request.jurisdiction,
+  };
 
-  if (!result.success || !result.result) {
-    // Return default "proceed" if check fails
+  // Run internal conflict check
+  const checkResult = await runConflictCheck(internalRequest);
+
+  if (!checkResult.success || !checkResult.result) {
+    console.error('[ConflictCheck] Internal check failed:', checkResult.error);
     return {
+      action: 'PROCEED',
       severity: 'NONE',
       matches: [],
-      requiresReview: false,
-      canProceed: true,
-      message: result.error || 'Conflict check failed, proceeding with caution',
+      message: checkResult.error || 'Conflict check failed',
       checkedAt: new Date().toISOString(),
-      action: 'PROCEED',
     };
   }
 
   // Map severity to action
-  let action: 'PROCEED' | 'REVIEW' | 'BLOCK';
-  switch (result.result.severity) {
-    case 'HARD':
-      action = 'BLOCK';
-      break;
-    case 'SOFT':
-      action = 'REVIEW';
-      break;
-    default:
-      action = 'PROCEED';
-  }
+  const actionMap: Record<ConflictSeverity, ConflictAction> = {
+    'NONE': 'PROCEED',
+    'SOFT': 'REVIEW',
+    'HARD': 'BLOCK',
+  };
+
+  const result = checkResult.result;
 
   return {
-    ...result.result,
-    action,
+    action: actionMap[result.severity],
+    severity: result.severity,
+    matches: result.matches,
+    message: result.message,
+    checkedAt: result.checkedAt,
   };
 }

@@ -54,19 +54,36 @@ export async function resetRevisionLoop(orderId: string): Promise<void> {
 }
 
 /**
- * Check and handle revision loop for a workflow
- * Wrapper function for phase-executor.ts compatibility
+ * Check and handle revision loop during phase execution
+ * Wrapper for phase-executor integration
  */
-export async function checkAndHandleRevisionLoop(orderId: string, workflowId: string): Promise<RevisionResult> {
-  // Get current judge grade from workflow state if available
+export async function checkAndHandleRevisionLoop(
+  orderId: string,
+  workflowId: string
+): Promise<RevisionResult> {
   const supabase = await createClient();
-  const { data: workflow } = await supabase
-    .from('workflow_state')
-    .select('phase_outputs')
-    .eq('id', workflowId)
+
+  // Get current order state to check for grade
+  const { data: order } = await supabase
+    .from('orders')
+    .select('judge_grade')
+    .eq('id', orderId)
     .single();
 
-  const judgeGrade = (workflow?.phase_outputs as Record<string, { grade?: string }>)?.['VII']?.grade;
+  const result = await incrementRevisionLoop(orderId, order?.judge_grade);
 
-  return incrementRevisionLoop(orderId, judgeGrade);
+  // Log revision loop event
+  await supabase.from('workflow_events').insert({
+    order_id: orderId,
+    workflow_id: workflowId,
+    event_type: result.protocol10Triggered ? 'PROTOCOL_10_TRIGGERED' : 'REVISION_LOOP_INCREMENT',
+    phase: 'VIII',
+    data: {
+      revision_count: result.revisionCount,
+      protocol_10_triggered: result.protocol10Triggered,
+    },
+    created_at: new Date().toISOString(),
+  });
+
+  return result;
 }

@@ -62,6 +62,34 @@ export interface ConflictCheckRequest {
   courtName?: string;
 }
 
+/**
+ * Intake-specific conflict check request
+ * Used by conflict-integration.ts for checkout flow
+ */
+export interface IntakeConflictCheckRequest {
+  orderId: string;
+  caseNumber: string;
+  jurisdiction: string;
+  plaintiffs: string[];
+  defendants: string[];
+  attorneyUserId: string;
+  attorneySide: 'PLAINTIFF' | 'DEFENDANT';
+}
+
+export type ConflictAction = 'PROCEED' | 'REVIEW' | 'BLOCK';
+
+/**
+ * Intake-specific conflict check result
+ * Maps severity to action for checkout flow decisions
+ */
+export interface IntakeConflictCheckResult {
+  action: ConflictAction;
+  severity: ConflictSeverity;
+  matches: ConflictMatch[];
+  message: string;
+  checkedAt: string;
+}
+
 export interface ConflictReviewRequest {
   conflictId: string;
   action: 'approve' | 'reject';
