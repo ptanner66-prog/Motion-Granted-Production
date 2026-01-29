@@ -693,15 +693,17 @@ export async function createMessageWithStreaming(
 
     // Standard non-streaming for smaller operations
     console.log(`[Claude API] Starting non-streaming request...`);
-    const response = await client.messages.create(params);
+    const response = await client.messages.create(params) as Anthropic.Message;
     const duration = Date.now() - startTime;
 
     console.log(`[Claude API] Non-streaming complete in ${duration}ms`);
-    console.log(`[Claude API] Input tokens: ${response.usage.input_tokens}`);
-    console.log(`[Claude API] Output tokens: ${response.usage.output_tokens}`);
+    if (response.usage) {
+      console.log(`[Claude API] Input tokens: ${response.usage.input_tokens}`);
+      console.log(`[Claude API] Output tokens: ${response.usage.output_tokens}`);
+    }
     console.log(`[Claude API] Stop reason: ${response.stop_reason}`);
 
-    return response as Anthropic.Message;
+    return response;
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error(`[Claude API] Request FAILED after ${duration}ms`);
