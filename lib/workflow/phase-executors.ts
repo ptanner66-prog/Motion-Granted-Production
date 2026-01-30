@@ -575,7 +575,7 @@ async function logCitationVerification(
   phase: string,
   citationText: string,
   courtlistenerId: number | null,
-  verificationResult: 'verified' | 'not_found' | 'api_error',
+  verificationResult: 'verified' | 'not_found' | 'api_error' | 'plurality_flagged' | 'dissent_blocked' | 'concurrence_flagged',
   apiResponse: Record<string, unknown>
 ): Promise<void> {
   try {
