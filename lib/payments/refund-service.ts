@@ -55,7 +55,7 @@ export interface RefundResult {
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey && !stripeSecretKey.includes('xxxxx')
-  ? new Stripe(stripeSecretKey, { apiVersion: '2025-12-15.clover' })
+  ? new Stripe(stripeSecretKey, { apiVersion: '2026-01-28.clover' })
   : null;
 
 // ============================================================================
