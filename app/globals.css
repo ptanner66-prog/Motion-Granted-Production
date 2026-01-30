@@ -578,3 +578,18 @@ h1, h2, h3, h4, h5, h6 {
 .animate-gradient {
   animation: gradient 3s ease infinite;
 }
+
+/* ========================================
+   ACCESSIBILITY: REDUCED MOTION
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
