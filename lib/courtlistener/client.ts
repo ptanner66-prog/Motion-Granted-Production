@@ -157,24 +157,20 @@ async function makeRequest<T>(
       // Wait for rate limit before making request
       await waitForRateLimit();
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
       const fullUrl = `${COURTLISTENER_BASE_URL}${endpoint}`;
       console.log(`[makeRequest] API call: ${fullUrl.substring(0, 150)}...`);
       console.log(`[makeRequest] Auth header present: ${!!authHeader.Authorization}`);
       console.log(`[makeRequest] Auth header prefix: ${authHeader.Authorization?.substring(0, 15)}...`);
 
+      // Use AbortSignal.timeout() for cleaner timeout handling (Vercel Pro optimization)
       const response = await fetch(fullUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           ...authHeader,
         },
-        signal: controller.signal,
+        signal: AbortSignal.timeout(timeout),
       });
-
-      clearTimeout(timeoutId);
 
       console.log(`[makeRequest] Response status: ${response.status} ${response.statusText}`);
 
@@ -259,9 +255,7 @@ export async function lookupCitation(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
-
+      // Use AbortSignal.timeout() for cleaner timeout handling (Vercel Pro optimization)
       const response = await fetch(`${COURTLISTENER_V3_URL}/citation-lookup/`, {
         method: 'POST',
         headers: {
@@ -269,10 +263,8 @@ export async function lookupCitation(
           ...authHeader,
         },
         body: `text=${encodeURIComponent(citationText)}`,
-        signal: controller.signal,
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT),
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         if (response.status === 429) {
@@ -691,6 +683,39 @@ export async function verifyCitationExists(
       exists: false,
     },
   };
+}
+
+// ============================================================================
+// PARALLEL SEARCH HELPER (Vercel Pro Timeout Optimization)
+// Runs multiple searches in parallel batches to maximize throughput
+// while respecting CourtListener rate limits (60 req/min)
+// ============================================================================
+
+const PARALLEL_BATCH_SIZE = 5; // Number of concurrent requests per batch
+
+/**
+ * Execute searches in parallel batches for better performance
+ * Respects rate limits by processing in small batches
+ */
+async function parallelSearchBatch<T>(
+  items: T[],
+  searchFn: (item: T) => Promise<{ success: boolean; data?: unknown; error?: string }>,
+  batchSize: number = PARALLEL_BATCH_SIZE
+): Promise<Array<{ item: T; result: { success: boolean; data?: unknown; error?: string } }>> {
+  const results: Array<{ item: T; result: { success: boolean; data?: unknown; error?: string } }> = [];
+
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(
+      batch.map(async (item) => {
+        const result = await searchFn(item);
+        return { item, result };
+      })
+    );
+    results.push(...batchResults);
+  }
+
+  return results;
 }
 
 // ============================================================================
@@ -1234,29 +1259,39 @@ export async function buildVerifiedCitationBank(
 
   // ================================================================
   // PHASE 1: Search LOUISIANA STATE COURTS FIRST (highest authority)
+  // Uses parallel batches for faster execution (Vercel Pro optimization)
   // ================================================================
-  console.log(`[buildVerifiedCitationBank] ═══ PHASE 1: Louisiana State Courts ═══`);
+  console.log(`[buildVerifiedCitationBank] ═══ PHASE 1: Louisiana State Courts (PARALLEL) ═══`);
 
-  for (const queryInfo of uniqueQueries.slice(0, 10)) {
-    if (citations.length >= maxCitations) break;
-
-    try {
-      // Search Louisiana state courts only
-      const stateCourtParams = LOUISIANA_STATE_COURTS.map(c => `court=${c}`).join('&');
-      const searchResult = await searchOpinions(queryInfo.query, 'Louisiana', 8);
-      searchesPerformed++;
-
-      if (searchResult.success && searchResult.data?.opinions?.length) {
-        // Filter to only Louisiana state court results
-        const laStateOpinions = searchResult.data.opinions.filter(op =>
-          op.court?.toLowerCase().includes('louisiana') ||
-          op.court === 'la' ||
-          op.court === 'lactapp'
-        );
-        addCitationsFromSearch(laStateOpinions, queryInfo.forElement, 'LA State');
+  // Run searches in parallel batches of 5 for better performance
+  const phase1Queries = uniqueQueries.slice(0, 10);
+  const phase1Results = await parallelSearchBatch(
+    phase1Queries,
+    async (queryInfo) => {
+      try {
+        return await searchOpinions(queryInfo.query, 'Louisiana', 8);
+      } catch (error) {
+        console.error(`[buildVerifiedCitationBank] LA state search failed for "${queryInfo.query}":`, error);
+        return { success: false, error: String(error) };
       }
-    } catch (error) {
-      console.error(`[buildVerifiedCitationBank] LA state search failed for "${queryInfo.query}":`, error);
+    },
+    PARALLEL_BATCH_SIZE
+  );
+
+  // Process results
+  for (const { item: queryInfo, result: searchResult } of phase1Results) {
+    if (citations.length >= maxCitations) break;
+    searchesPerformed++;
+
+    if (searchResult.success && (searchResult.data as { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> })?.opinions?.length) {
+      // Filter to only Louisiana state court results
+      const opinions = (searchResult.data as { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> }).opinions;
+      const laStateOpinions = opinions.filter(op =>
+        op.court?.toLowerCase().includes('louisiana') ||
+        op.court === 'la' ||
+        op.court === 'lactapp'
+      );
+      addCitationsFromSearch(laStateOpinions, queryInfo.forElement, 'LA State');
     }
   }
 
@@ -1264,29 +1299,41 @@ export async function buildVerifiedCitationBank(
 
   // ================================================================
   // PHASE 2: Search FIFTH CIRCUIT FEDERAL (binding federal authority)
+  // Uses parallel batches for faster execution (Vercel Pro optimization)
   // ================================================================
   if (citations.length < maxCitations) {
-    console.log(`[buildVerifiedCitationBank] ═══ PHASE 2: Fifth Circuit Federal ═══`);
+    console.log(`[buildVerifiedCitationBank] ═══ PHASE 2: Fifth Circuit Federal (PARALLEL) ═══`);
 
-    for (const queryInfo of uniqueQueries.slice(0, 8)) {
-      if (citations.length >= maxCitations) break;
-
-      try {
-        const searchResult = await searchOpinions(queryInfo.query, 'fifth circuit', 6);
-        searchesPerformed++;
-
-        if (searchResult.success && searchResult.data?.opinions?.length) {
-          // Filter to Fifth Circuit results
-          const federalOpinions = searchResult.data.opinions.filter(op =>
-            op.court?.toLowerCase().includes('fifth') ||
-            op.court?.toLowerCase().includes('circuit') ||
-            op.court?.toLowerCase().includes('district') ||
-            op.court === 'ca5'
-          );
-          addCitationsFromSearch(federalOpinions, queryInfo.forElement, '5th Cir');
+    // Run searches in parallel batches of 5 for better performance
+    const phase2Queries = uniqueQueries.slice(0, 8);
+    const phase2Results = await parallelSearchBatch(
+      phase2Queries,
+      async (queryInfo) => {
+        try {
+          return await searchOpinions(queryInfo.query, 'fifth circuit', 6);
+        } catch (error) {
+          console.error(`[buildVerifiedCitationBank] Federal search failed for "${queryInfo.query}":`, error);
+          return { success: false, error: String(error) };
         }
-      } catch (error) {
-        console.error(`[buildVerifiedCitationBank] Federal search failed for "${queryInfo.query}":`, error);
+      },
+      PARALLEL_BATCH_SIZE
+    );
+
+    // Process results
+    for (const { item: queryInfo, result: searchResult } of phase2Results) {
+      if (citations.length >= maxCitations) break;
+      searchesPerformed++;
+
+      if (searchResult.success && (searchResult.data as { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> })?.opinions?.length) {
+        // Filter to Fifth Circuit results
+        const opinions = (searchResult.data as { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> }).opinions;
+        const federalOpinions = opinions.filter(op =>
+          op.court?.toLowerCase().includes('fifth') ||
+          op.court?.toLowerCase().includes('circuit') ||
+          op.court?.toLowerCase().includes('district') ||
+          op.court === 'ca5'
+        );
+        addCitationsFromSearch(federalOpinions, queryInfo.forElement, '5th Cir');
       }
     }
   }
@@ -1295,9 +1342,10 @@ export async function buildVerifiedCitationBank(
 
   // ================================================================
   // PHASE 3: Broad search if still under minimum
+  // Uses parallel batches for faster execution (Vercel Pro optimization)
   // ================================================================
   if (citations.length < minCitations) {
-    console.log(`[buildVerifiedCitationBank] ═══ PHASE 3: Broad Search (under ${minCitations} citations) ═══`);
+    console.log(`[buildVerifiedCitationBank] ═══ PHASE 3: Broad Search (PARALLEL, under ${minCitations} citations) ═══`);
 
     const broadQueries = [
       'Louisiana civil procedure',
@@ -1307,19 +1355,27 @@ export async function buildVerifiedCitationBank(
       `${motionType.replace(/_/g, ' ')} Louisiana`,
     ];
 
-    for (const query of broadQueries) {
-      if (citations.length >= minCitations) break;
-
-      try {
-        // Search all Louisiana courts
-        const searchResult = await searchOpinions(query, 'Louisiana', 10);
-        searchesPerformed++;
-
-        if (searchResult.success && searchResult.data?.opinions?.length) {
-          addCitationsFromSearch(searchResult.data.opinions, 'broad', 'Broad');
+    // Run all broad searches in parallel
+    const phase3Results = await Promise.all(
+      broadQueries.map(async (query) => {
+        try {
+          const result = await searchOpinions(query, 'Louisiana', 10);
+          return { query, result };
+        } catch (error) {
+          console.error(`[buildVerifiedCitationBank] Broad search failed for "${query}":`, error);
+          return { query, result: { success: false, error: String(error) } };
         }
-      } catch (error) {
-        console.error(`[buildVerifiedCitationBank] Broad search failed for "${query}":`, error);
+      })
+    );
+
+    // Process results
+    for (const { result: searchResult } of phase3Results) {
+      if (citations.length >= minCitations) break;
+      searchesPerformed++;
+
+      if (searchResult.success && (searchResult as { data?: { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data?.opinions?.length) {
+        const opinions = (searchResult as { data: { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data.opinions;
+        addCitationsFromSearch(opinions, 'broad', 'Broad');
       }
     }
   }
@@ -1328,25 +1384,35 @@ export async function buildVerifiedCitationBank(
 
   // ================================================================
   // PHASE 4: LAST RESORT - Search without jurisdiction filter
+  // Uses parallel execution for faster recovery (Vercel Pro optimization)
   // ================================================================
   if (citations.length < 4) {  // Minimum 4 for any motion
-    console.log(`[buildVerifiedCitationBank] ═══ PHASE 4: LAST RESORT (no filter) ═══`);
+    console.log(`[buildVerifiedCitationBank] ═══ PHASE 4: LAST RESORT (PARALLEL, no filter) ═══`);
 
     const lastResortQueries = ['motion to compel', 'discovery sanctions', 'civil procedure'];
 
-    for (const query of lastResortQueries) {
-      if (citations.length >= 4) break;
-
-      try {
-        // NO JURISDICTION - search all courts
-        const searchResult = await searchOpinions(query, undefined, 15);
-        searchesPerformed++;
-
-        if (searchResult.success && searchResult.data?.opinions?.length) {
-          addCitationsFromSearch(searchResult.data.opinions, 'last_resort', 'Last Resort');
+    // Run all last resort searches in parallel
+    const phase4Results = await Promise.all(
+      lastResortQueries.map(async (query) => {
+        try {
+          // NO JURISDICTION - search all courts
+          const result = await searchOpinions(query, undefined, 15);
+          return { query, result };
+        } catch (error) {
+          console.error(`[buildVerifiedCitationBank] Last resort error:`, error);
+          return { query, result: { success: false, error: String(error) } };
         }
-      } catch (error) {
-        console.error(`[buildVerifiedCitationBank] Last resort error:`, error);
+      })
+    );
+
+    // Process results
+    for (const { result: searchResult } of phase4Results) {
+      if (citations.length >= 4) break;
+      searchesPerformed++;
+
+      if (searchResult.success && (searchResult as { data?: { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data?.opinions?.length) {
+        const opinions = (searchResult as { data: { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data.opinions;
+        addCitationsFromSearch(opinions, 'last_resort', 'Last Resort');
       }
     }
   }
