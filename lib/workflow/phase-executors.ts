@@ -564,6 +564,7 @@ import {
   searchOpinions,
   buildVerifiedCitationBank,
   verifyCitationExists,
+  validateCourtListenerConfig,
   type VerifiedCitation,
 } from '@/lib/courtlistener/client';
 
@@ -601,6 +602,23 @@ async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
   console.log(`[Phase IV] ZERO TOLERANCE FOR HALLUCINATED CITATIONS - Search-first approach`);
 
   try {
+    // =========================================================================
+    // PREREQUISITE: Validate CourtListener API is configured
+    // =========================================================================
+    const courtlistenerConfig = await validateCourtListenerConfig();
+    if (!courtlistenerConfig.configured) {
+      console.error(`[Phase IV] FATAL: CourtListener API not configured`);
+      console.error(`[Phase IV] Error: ${courtlistenerConfig.error}`);
+      return {
+        success: false,
+        phase: 'IV',
+        status: 'failed',
+        output: null,
+        error: `COURTLISTENER NOT CONFIGURED: ${courtlistenerConfig.error}. Citation verification is MANDATORY.`,
+        durationMs: Date.now() - start,
+      };
+    }
+
     const client = getAnthropicClient();
     const phaseIIOutput = input.previousPhaseOutputs['II'] as Record<string, unknown>;
     const phaseIIIOutput = input.previousPhaseOutputs['III'] as Record<string, unknown>;
@@ -816,25 +834,77 @@ OUTPUT FORMAT (JSON only):
     // =========================================================================
     console.log(`[Phase IV] Step 4: Validating all citations have verification proof...`);
 
-    const caseCitations = (phaseOutput.caseCitationBank || []) as Array<{ courtlistener_id?: unknown }>;
+    const caseCitations = (phaseOutput.caseCitationBank || []) as Array<{
+      courtlistener_id?: unknown;
+      citation?: string;
+      caseName?: string;
+    }>;
     const citationsWithoutProof = caseCitations.filter(
       (c) => !c.courtlistener_id
     );
 
+    // STRICT VALIDATION: No unverified citations allowed
     if (citationsWithoutProof.length > 0) {
-      console.error(`[Phase IV] ${citationsWithoutProof.length} citations missing courtlistener_id - REMOVING`);
-      phaseOutput.caseCitationBank = caseCitations.filter(
-        (c) => c.courtlistener_id
-      );
+      console.error(`[Phase IV] FATAL: ${citationsWithoutProof.length} citations missing courtlistener_id`);
+      console.error(`[Phase IV] Unverified citations:`);
+      for (const c of citationsWithoutProof) {
+        console.error(`  - ${c.caseName || c.citation || 'Unknown'}`);
+      }
+
+      // Remove unverified citations but log them all
+      const verifiedCitations = caseCitations.filter((c) => c.courtlistener_id);
+
+      // If MORE THAN HALF of citations are unverified, this is a systemic failure
+      if (citationsWithoutProof.length >= caseCitations.length / 2) {
+        return {
+          success: false,
+          phase: 'IV',
+          status: 'failed',
+          output: {
+            error: 'MAJORITY OF CITATIONS UNVERIFIED',
+            unverifiedCitations: citationsWithoutProof.map(c => c.caseName || c.citation),
+            verifiedCitations: verifiedCitations.length,
+            totalCitations: caseCitations.length,
+          },
+          error: `CITATION VERIFICATION FAILURE: ${citationsWithoutProof.length}/${caseCitations.length} citations lack courtlistener_id verification proof. This indicates a systemic failure.`,
+          durationMs: Date.now() - start,
+        };
+      }
+
+      phaseOutput.caseCitationBank = verifiedCitations;
       phaseOutput.citationsRemoved = citationsWithoutProof.length;
+      phaseOutput.citationsRemovedDetails = citationsWithoutProof.map(c => c.caseName || c.citation);
+    }
+
+    // MINIMUM CITATION CHECK: Ensure we have enough verified citations
+    const verifiedCount = phaseOutput.caseCitationBank?.length || 0;
+    const minRequired = input.tier === 'A' ? 4 : input.tier === 'B' ? 8 : 12; // Tier-based minimums
+
+    if (verifiedCount < minRequired) {
+      console.error(`[Phase IV] FATAL: Insufficient verified citations: ${verifiedCount} < ${minRequired} required for Tier ${input.tier}`);
+      return {
+        success: false,
+        phase: 'IV',
+        status: 'failed',
+        output: {
+          error: 'INSUFFICIENT_VERIFIED_CITATIONS',
+          verifiedCount,
+          minRequired,
+          tier: input.tier,
+        },
+        error: `INSUFFICIENT CITATIONS: Only ${verifiedCount} verified citations found, but Tier ${input.tier} requires at least ${minRequired}. Check CourtListener API access.`,
+        durationMs: Date.now() - start,
+      };
     }
 
     phaseOutput.phaseComplete = 'IV';
     phaseOutput.citationVerificationEnforced = true;
+    phaseOutput.allCitationsVerified = citationsWithoutProof.length === 0;
 
     console.log(`[Phase IV] ========== PHASE IV COMPLETE ==========`);
     console.log(`[Phase IV] Total verified citations: ${phaseOutput.caseCitationBank?.length || 0}`);
     console.log(`[Phase IV] Total statutory citations: ${phaseOutput.statutoryCitationBank?.length || 0}`);
+    console.log(`[Phase IV] All citations verified: ${citationsWithoutProof.length === 0 ? 'YES ✓' : 'NO (some removed)'}`);
     console.log(`[Phase IV] Duration: ${Date.now() - start}ms`);
 
     return {
