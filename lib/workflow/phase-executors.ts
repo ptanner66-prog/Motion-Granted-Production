@@ -830,6 +830,34 @@ OUTPUT FORMAT (JSON only):
     }
 
     // =========================================================================
+    // STEP 3.5: Sanitize Claude's response - strip any fields that shouldn't exist
+    // This prevents Claude from hallucinating fields like "needs_verification"
+    // =========================================================================
+    if (phaseOutput.caseCitationBank && Array.isArray(phaseOutput.caseCitationBank)) {
+      phaseOutput.caseCitationBank = phaseOutput.caseCitationBank.map((citation: Record<string, unknown>) => {
+        // Only keep allowed fields - strip everything else
+        const allowedFields = [
+          'citation', 'caseName', 'court', 'date_filed',
+          'courtlistener_id', 'courtlistener_cluster_id',
+          'verification_timestamp', 'verification_method',
+          'proposition', 'relevantHolding', 'authorityLevel', 'forElement'
+        ];
+        const sanitized: Record<string, unknown> = {};
+        for (const field of allowedFields) {
+          if (citation[field] !== undefined) {
+            sanitized[field] = citation[field];
+          }
+        }
+        // Log if we stripped any unexpected fields
+        const strippedFields = Object.keys(citation).filter(k => !allowedFields.includes(k));
+        if (strippedFields.length > 0) {
+          console.warn(`[Phase IV] Stripped unexpected fields from citation: ${strippedFields.join(', ')}`);
+        }
+        return sanitized;
+      });
+    }
+
+    // =========================================================================
     // STEP 4: Validate all citations have verification proof
     // =========================================================================
     console.log(`[Phase IV] Step 4: Validating all citations have verification proof...`);
