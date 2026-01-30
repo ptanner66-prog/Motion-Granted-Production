@@ -1276,6 +1276,25 @@ export const generateOrderWorkflow = inngest.createFunction(
     // STEP 8: Phase VI - Opposition Anticipation
     // ========================================================================
     const phaseVIResult = await step.run("phase-vi-opposition-anticipation", async () => {
+      // TIER A SKIP: Procedural motions rarely face substantive opposition
+      if (workflowState.tier === 'A') {
+        console.log('[Orchestration] Phase VI SKIPPED - Tier A procedural motion');
+        return {
+          success: true,
+          phase: 'VI' as WorkflowPhaseCode,
+          status: 'skipped' as PhaseStatus,
+          output: {
+            phaseComplete: 'VI',
+            skipped: true,
+            skipReason: 'TIER_A_PROCEDURAL',
+            oppositionAnalysis: null,
+            notes: 'Phase VI skipped for Tier A procedural motion. These motions rarely face substantive opposition.',
+          },
+          nextPhase: 'VII' as WorkflowPhaseCode,
+          durationMs: 0,
+        };
+      }
+
       console.log('[Orchestration] Phase VI - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("VI", input);

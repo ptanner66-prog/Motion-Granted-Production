@@ -1287,6 +1287,304 @@ function extractCitationsFromText(text: string): string[] {
   return citations;
 }
 
+// ============================================================================
+// PROTOCOL 20: PLURALITY OPINION DETECTION
+// ============================================================================
+
+interface Protocol20Result {
+  isPlurality: boolean;
+  opinionType: 'majority' | 'plurality' | 'per_curiam' | 'unknown';
+  pluralityFlag: 'PLURALITY_FOR_STANDARD' | 'PLURALITY_FACTUAL' | null;
+  confidence: number;
+  notes: string;
+}
+
+/**
+ * Check if a citation references a high court (Supreme Court)
+ * Plurality opinions are primarily a concern for Supreme Court cases
+ */
+function isHighCourtCitation(citation: string): boolean {
+  const normalized = citation.toLowerCase();
+  return (
+    normalized.includes('u.s.') ||
+    normalized.includes('s. ct.') ||
+    normalized.includes('s.ct.') ||
+    normalized.includes('l. ed.') ||
+    normalized.includes('l.ed.')
+  );
+}
+
+/**
+ * Protocol 20: Check if a Supreme Court citation is a plurality opinion
+ *
+ * Plurality opinions (where no single rationale commands a majority) have
+ * different precedential value. This protocol detects them for attorney review.
+ */
+async function checkProtocol20Plurality(
+  citation: string,
+  courtlistenerId: number | null
+): Promise<Protocol20Result> {
+  // If not a high court citation, skip plurality check
+  if (!isHighCourtCitation(citation)) {
+    return {
+      isPlurality: false,
+      opinionType: 'unknown',
+      pluralityFlag: null,
+      confidence: 1.0,
+      notes: 'Not a high court citation - plurality check not applicable',
+    };
+  }
+
+  // If no CourtListener ID, we cannot verify
+  if (!courtlistenerId) {
+    return {
+      isPlurality: false,
+      opinionType: 'unknown',
+      pluralityFlag: null,
+      confidence: 0.3,
+      notes: 'No CourtListener ID available - cannot verify plurality status',
+    };
+  }
+
+  try {
+    // Fetch opinion from CourtListener v3 API
+    const response = await fetch(
+      `https://www.courtlistener.com/api/rest/v3/opinions/${courtlistenerId}/`,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+
+    if (!response.ok) {
+      console.log(`[Protocol 20] CourtListener API returned ${response.status} for opinion ${courtlistenerId}`);
+      return {
+        isPlurality: false,
+        opinionType: 'unknown',
+        pluralityFlag: null,
+        confidence: 0.5,
+        notes: `CourtListener API error: ${response.status}`,
+      };
+    }
+
+    const data = await response.json();
+    const opinionType = data.type || '';
+
+    // Check opinion type codes from CourtListener
+    // 020lead = lead opinion (plurality), 025plurality = plurality
+    // unanimous and combined = majority
+    if (opinionType === '020lead' || opinionType === '025plurality' || opinionType.toLowerCase().includes('plural')) {
+      console.log(`[Protocol 20] PLURALITY DETECTED: ${citation} (type: ${opinionType})`);
+      return {
+        isPlurality: true,
+        opinionType: 'plurality',
+        pluralityFlag: 'PLURALITY_FOR_STANDARD',
+        confidence: 0.9,
+        notes: `Plurality opinion detected (CourtListener type: ${opinionType}). Attorney review recommended.`,
+      };
+    }
+
+    if (opinionType === 'unanimous' || opinionType === 'combined' || opinionType.toLowerCase().includes('majority')) {
+      return {
+        isPlurality: false,
+        opinionType: 'majority',
+        pluralityFlag: null,
+        confidence: 0.95,
+        notes: `Majority opinion confirmed (CourtListener type: ${opinionType})`,
+      };
+    }
+
+    if (opinionType.toLowerCase().includes('per curiam')) {
+      return {
+        isPlurality: false,
+        opinionType: 'per_curiam',
+        pluralityFlag: null,
+        confidence: 0.9,
+        notes: 'Per curiam opinion',
+      };
+    }
+
+    // Unknown type - flag for review
+    return {
+      isPlurality: false,
+      opinionType: 'unknown',
+      pluralityFlag: null,
+      confidence: 0.6,
+      notes: `Opinion type unclear (CourtListener type: ${opinionType || 'not specified'})`,
+    };
+  } catch (error) {
+    console.error(`[Protocol 20] Error checking plurality for ${citation}:`, error);
+    return {
+      isPlurality: false,
+      opinionType: 'unknown',
+      pluralityFlag: null,
+      confidence: 0.3,
+      notes: `Error checking plurality: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
+}
+
+// ============================================================================
+// PROTOCOL 21: CONCURRENCE/DISSENT DETECTION
+// ============================================================================
+
+interface Protocol21Result {
+  opinionSection: 'majority' | 'concurrence' | 'dissent' | 'unknown';
+  action: 'VERIFIED' | 'FLAG_CONCURRENCE' | 'BLOCK_DISSENT' | 'NEEDS_REVIEW';
+  confidence: number;
+  authorJustice?: string;
+  notes: string;
+}
+
+/**
+ * Extract pinpoint page from a citation
+ * Patterns:
+ * - Comma: "123 F.3d 456, 462" → "462"
+ * - At: "123 F.3d 456 at 462" → "462"
+ */
+function extractPinpointPage(citation: string): string | null {
+  // Pattern 1: Comma followed by page number
+  const commaPattern = /,\s*(\d+)\s*(?:\(|$|\.)/;
+  const commaMatch = citation.match(commaPattern);
+  if (commaMatch) {
+    return commaMatch[1];
+  }
+
+  // Pattern 2: "at" followed by page number
+  const atPattern = /\bat\s+(\d+)/i;
+  const atMatch = citation.match(atPattern);
+  if (atMatch) {
+    return atMatch[1];
+  }
+
+  return null;
+}
+
+/**
+ * Protocol 21: Check if a pinpoint citation lands in a concurrence or dissent
+ *
+ * Citing a dissenting opinion as if it were the holding is a fatal error.
+ * This protocol detects when a pinpoint citation lands in a concurrence or
+ * dissent and either blocks or flags it.
+ */
+async function checkProtocol21ConcurrenceDissent(
+  citation: string,
+  courtlistenerId: number | null,
+  clusterId?: number | null
+): Promise<Protocol21Result> {
+  const pinpointPage = extractPinpointPage(citation);
+
+  // If no pinpoint, we can't determine which part of the opinion is cited
+  if (!pinpointPage) {
+    return {
+      opinionSection: 'unknown',
+      action: 'NEEDS_REVIEW',
+      confidence: 0.5,
+      notes: 'No pinpoint page found - cannot determine if citing majority, concurrence, or dissent',
+    };
+  }
+
+  // Need cluster ID to check sub-opinions
+  const clusterIdToUse = clusterId || courtlistenerId;
+  if (!clusterIdToUse) {
+    return {
+      opinionSection: 'unknown',
+      action: 'NEEDS_REVIEW',
+      confidence: 0.3,
+      notes: 'No CourtListener cluster ID - cannot verify opinion section',
+    };
+  }
+
+  try {
+    // Fetch cluster from CourtListener v3 API to get sub-opinions
+    const response = await fetch(
+      `https://www.courtlistener.com/api/rest/v3/clusters/${clusterIdToUse}/`,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+
+    if (!response.ok) {
+      console.log(`[Protocol 21] CourtListener API returned ${response.status} for cluster ${clusterIdToUse}`);
+      return {
+        opinionSection: 'unknown',
+        action: 'NEEDS_REVIEW',
+        confidence: 0.4,
+        notes: `CourtListener API error: ${response.status}`,
+      };
+    }
+
+    const data = await response.json();
+    const subOpinions = data.sub_opinions || [];
+
+    // Check each sub-opinion for dissents and concurrences
+    let hasDissent = false;
+    let hasConcurrence = false;
+    let dissentAuthor: string | undefined;
+    let concurrenceAuthor: string | undefined;
+
+    for (const subOp of subOpinions) {
+      const opType = (subOp.type || '').toLowerCase();
+
+      if (opType.includes('dissent')) {
+        hasDissent = true;
+        dissentAuthor = subOp.author || subOp.author_str;
+        console.log(`[Protocol 21] DISSENT DETECTED in cluster ${clusterIdToUse}: author=${dissentAuthor}`);
+      }
+
+      if (opType.includes('concur')) {
+        hasConcurrence = true;
+        concurrenceAuthor = subOp.author || subOp.author_str;
+        console.log(`[Protocol 21] CONCURRENCE DETECTED in cluster ${clusterIdToUse}: author=${concurrenceAuthor}`);
+      }
+    }
+
+    // If dissent exists, block the citation (conservative approach)
+    // In a production system, you'd check if the pinpoint page is actually in the dissent
+    if (hasDissent) {
+      return {
+        opinionSection: 'dissent',
+        action: 'BLOCK_DISSENT',
+        confidence: 0.85,
+        authorJustice: dissentAuthor,
+        notes: `Case has dissenting opinion. Pinpoint citation at page ${pinpointPage} may reference dissent. BLOCKED for attorney review.`,
+      };
+    }
+
+    // If concurrence exists, flag but allow
+    if (hasConcurrence) {
+      return {
+        opinionSection: 'concurrence',
+        action: 'FLAG_CONCURRENCE',
+        confidence: 0.75,
+        authorJustice: concurrenceAuthor,
+        notes: `Case has concurring opinion. Pinpoint citation at page ${pinpointPage} may reference concurrence. Flagged for attorney review.`,
+      };
+    }
+
+    // No dissents or concurrences - verified as majority
+    return {
+      opinionSection: 'majority',
+      action: 'VERIFIED',
+      confidence: 0.9,
+      notes: 'No dissents or concurrences found - citation verified as majority opinion',
+    };
+  } catch (error) {
+    console.error(`[Protocol 21] Error checking concurrence/dissent for ${citation}:`, error);
+    return {
+      opinionSection: 'unknown',
+      action: 'NEEDS_REVIEW',
+      confidence: 0.3,
+      notes: `Error checking opinion section: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
+}
+
+// ============================================================================
+// PHASE V.1: Citation Accuracy Check (with Protocol 20 & 21 Integration)
+// ============================================================================
+
 async function executePhaseV1(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
   console.log(`[Phase V.1] ========== STARTING PHASE V.1 (CITATION VERIFICATION) ==========`);
@@ -1402,6 +1700,76 @@ async function executePhaseV1(input: PhaseInput): Promise<PhaseOutput> {
     }
 
     // =========================================================================
+    // PROTOCOL 20 & 21: Check verified citations for plurality/dissent issues
+    // =========================================================================
+    console.log(`[Phase V.1] Running Protocol 20 (Plurality) and Protocol 21 (Concurrence/Dissent) checks...`);
+
+    const protocol20Results: Array<{ citation: string; result: Protocol20Result }> = [];
+    const protocol21Results: Array<{ citation: string; result: Protocol21Result }> = [];
+    const dissentBlockedCitations: string[] = [];
+    const concurrenceFlaggedCitations: string[] = [];
+    const pluralitiesFlagged: string[] = [];
+
+    for (const vr of verificationResults) {
+      if (vr.verified && vr.courtlistener_id) {
+        // Protocol 20: Check for plurality opinions
+        const p20Result = await checkProtocol20Plurality(vr.citation, vr.courtlistener_id);
+        protocol20Results.push({ citation: vr.citation, result: p20Result });
+
+        if (p20Result.isPlurality) {
+          pluralitiesFlagged.push(vr.citation);
+          console.log(`[Phase V.1] Protocol 20: Plurality flagged - ${vr.citation}`);
+          // Log to audit trail
+          await logCitationVerification(
+            input.orderId,
+            'V.1-Protocol20',
+            vr.citation,
+            vr.courtlistener_id,
+            'plurality_flagged',
+            { protocol: 'Protocol20', ...p20Result }
+          );
+        }
+
+        // Protocol 21: Check for concurrence/dissent
+        const p21Result = await checkProtocol21ConcurrenceDissent(vr.citation, vr.courtlistener_id);
+        protocol21Results.push({ citation: vr.citation, result: p21Result });
+
+        if (p21Result.action === 'BLOCK_DISSENT') {
+          dissentBlockedCitations.push(vr.citation);
+          console.error(`[Phase V.1] Protocol 21: DISSENT BLOCKED - ${vr.citation}`);
+          // Mark for removal
+          vr.action = 'removed';
+          vr.verified = false;
+          unverifiedCitations.push(vr.citation);
+          // Log to audit trail
+          await logCitationVerification(
+            input.orderId,
+            'V.1-Protocol21',
+            vr.citation,
+            vr.courtlistener_id,
+            'dissent_blocked',
+            { protocol: 'Protocol21', ...p21Result }
+          );
+        } else if (p21Result.action === 'FLAG_CONCURRENCE') {
+          concurrenceFlaggedCitations.push(vr.citation);
+          console.log(`[Phase V.1] Protocol 21: Concurrence flagged - ${vr.citation}`);
+          // Log but don't block
+          await logCitationVerification(
+            input.orderId,
+            'V.1-Protocol21',
+            vr.citation,
+            vr.courtlistener_id,
+            'concurrence_flagged',
+            { protocol: 'Protocol21', ...p21Result }
+          );
+        }
+      }
+    }
+
+    console.log(`[Phase V.1] Protocol 20: ${pluralitiesFlagged.length} pluralities flagged`);
+    console.log(`[Phase V.1] Protocol 21: ${dissentBlockedCitations.length} dissents blocked, ${concurrenceFlaggedCitations.length} concurrences flagged`);
+
+    // =========================================================================
     // IF UNVERIFIED CITATIONS FOUND, ASK CLAUDE TO REMOVE THEM
     // =========================================================================
     let cleanedMotion = draftMotion;
@@ -1472,7 +1840,7 @@ OUTPUT FORMAT (JSON only):
     }
 
     // =========================================================================
-    // Build final output
+    // Build final output with Protocol 20 & 21 summaries
     // =========================================================================
     const phaseOutput = {
       phaseComplete: 'V.1',
@@ -1494,12 +1862,49 @@ OUTPUT FORMAT (JSON only):
         removed: verificationResults.filter(r => r.action === 'removed').length,
         timestamp: new Date().toISOString(),
       },
+      // Protocol 20: Plurality Opinion Detection Summary
+      protocol20Summary: {
+        checked: protocol20Results.length,
+        pluralitiesFound: pluralitiesFlagged.length,
+        flaggedCitations: protocol20Results
+          .filter(r => r.result.isPlurality)
+          .map(r => ({
+            citation: r.citation,
+            flag: r.result.pluralityFlag,
+            notes: r.result.notes,
+          })),
+      },
+      // Protocol 21: Concurrence/Dissent Detection Summary
+      protocol21Summary: {
+        checked: protocol21Results.length,
+        dissentsCitationsBlocked: dissentBlockedCitations.length,
+        concurrencesFlagged: concurrenceFlaggedCitations.length,
+        needsReview: protocol21Results.filter(r => r.result.action === 'NEEDS_REVIEW').length,
+        flaggedCitations: [
+          ...protocol21Results
+            .filter(r => r.result.action === 'BLOCK_DISSENT')
+            .map(r => ({
+              citation: r.citation,
+              action: r.result.action,
+              notes: r.result.notes,
+            })),
+          ...protocol21Results
+            .filter(r => r.result.action === 'FLAG_CONCURRENCE')
+            .map(r => ({
+              citation: r.citation,
+              action: r.result.action,
+              notes: r.result.notes,
+            })),
+        ],
+      },
       overallStatus: unverifiedCitations.length === 0 ? 'pass' : 'citations_removed',
     };
 
     console.log(`[Phase V.1] ========== PHASE V.1 COMPLETE ==========`);
     console.log(`[Phase V.1] Verification: ${phaseOutput.citationVerification.verified}/${phaseOutput.citationVerification.totalInDraft} verified`);
     console.log(`[Phase V.1] Removed: ${phaseOutput.citationVerification.removed} unverified citations`);
+    console.log(`[Phase V.1] Protocol 20: ${phaseOutput.protocol20Summary.pluralitiesFound} pluralities flagged`);
+    console.log(`[Phase V.1] Protocol 21: ${phaseOutput.protocol21Summary.dissentsCitationsBlocked} dissents blocked, ${phaseOutput.protocol21Summary.concurrencesFlagged} concurrences flagged`);
 
     return {
       success: true,
@@ -1529,6 +1934,28 @@ OUTPUT FORMAT (JSON only):
 
 async function executePhaseVI(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+
+  // =========================================================================
+  // TIER A SKIP: Procedural motions rarely face substantive opposition
+  // =========================================================================
+  if (input.tier === 'A') {
+    console.log('[Phase VI] SKIPPED - Tier A procedural motion');
+    console.log('[Phase VI] Tier A motions (extensions, continuances, pro hac vice) rarely face substantive opposition');
+    return {
+      success: true,
+      phase: 'VI',
+      status: 'skipped' as PhaseStatus,
+      output: {
+        phaseComplete: 'VI',
+        skipped: true,
+        skipReason: 'TIER_A_PROCEDURAL',
+        oppositionAnalysis: null,
+        notes: 'Phase VI skipped for Tier A procedural motion. These motions rarely face substantive opposition.',
+      },
+      nextPhase: 'VII',
+      durationMs: 0,
+    };
+  }
 
   try {
     const client = getAnthropicClient();
@@ -1637,8 +2064,15 @@ async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
     const phaseVIIIOutput = (input.previousPhaseOutputs?.['VIII'] ?? null) as Record<string, unknown> | null;
     const loopNumber = input.revisionLoop || 1;
 
+    // Check if Phase VI was skipped (Tier A procedural motion)
+    const phaseVISkipped = phaseVIOutput?.skipped === true;
+    if (phaseVISkipped) {
+      console.log('[Phase VII] Phase VI was skipped (Tier A procedural motion)');
+    }
+
     console.log(`[Phase VII] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
     console.log(`[Phase VII] Phase VI keys: ${Object.keys(phaseVIOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase VII] Phase VI skipped: ${phaseVISkipped}`);
     console.log(`[Phase VII] Phase VIII exists: ${!!phaseVIIIOutput}`);
     console.log(`[Phase VII] Loop number: ${loopNumber}`);
 
@@ -1665,16 +2099,22 @@ ${PHASE_PROMPTS.PHASE_VII}
 **Motion Type:** ${input.motionType}
 **Revision Loop:** ${loopNumber} of 3
 **Is Re-evaluation:** ${isReEvaluation ? 'YES - evaluating REVISED motion from Phase VIII' : 'NO - initial evaluation'}
+**Phase VI Skipped:** ${phaseVISkipped ? 'YES - Tier A procedural motion (DO NOT penalize for missing opposition analysis)' : 'NO'}
 
-Use extended thinking to thoroughly analyze before grading.`;
+Use extended thinking to thoroughly analyze before grading.
+${phaseVISkipped ? '\nIMPORTANT: Phase VI (Opposition Anticipation) was skipped because this is a Tier A procedural motion. DO NOT penalize the grade for missing opposition analysis.' : ''}`;
+
+    // Build opposition analysis section based on whether Phase VI was skipped
+    const oppositionSection = phaseVISkipped
+      ? 'OPPOSITION ANALYSIS: Skipped (Tier A procedural motion - these motions rarely face substantive opposition)'
+      : `OPPOSITION ANALYSIS (Phase VI):\n${JSON.stringify(phaseVIOutput, null, 2)}`;
 
     const userMessage = `Evaluate this motion as a judge:
 
 ${isReEvaluation ? 'REVISED MOTION (Phase VIII):' : 'DRAFT MOTION (Phase V):'}
 ${JSON.stringify(motionToEvaluate, null, 2)}
 
-OPPOSITION ANALYSIS (Phase VI):
-${JSON.stringify(phaseVIOutput, null, 2)}
+${oppositionSection}
 
 MOTION TYPE: ${input.motionType}
 JURISDICTION: ${input.jurisdiction}

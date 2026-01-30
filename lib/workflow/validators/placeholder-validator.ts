@@ -9,10 +9,13 @@
  */
 
 // ============================================================================
-// TYPES
+// EXTENDED PLACEHOLDER PATTERNS (for motion validation)
 // ============================================================================
 
-export interface PlaceholderValidationResult {
+/**
+ * Extended PlaceholderValidationResult with more detailed information
+ */
+export interface ExtendedPlaceholderValidationResult {
   valid: boolean;
   placeholders: string[];
   genericNames: string[];
