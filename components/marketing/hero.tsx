@@ -1,6 +1,14 @@
+'use client'
+
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, CheckCircle } from 'lucide-react'
+import { ArrowRight, Clock, CreditCard, RefreshCw } from 'lucide-react'
+
+const trustBadges = [
+  { icon: Clock, label: 'No retainers' },
+  { icon: CreditCard, label: 'Flat-fee pricing' },
+  { icon: RefreshCw, label: 'One revision included' },
+]
 
 export function Hero() {
   return (
@@ -23,7 +31,7 @@ export function Hero() {
       <div className="relative mx-auto max-w-7xl px-4 py-28 sm:px-6 sm:py-36 lg:px-8 lg:py-44">
         <div className="mx-auto max-w-4xl text-center">
           {/* Badge */}
-          <div className="animate-slide-up mb-10 inline-flex items-center gap-2.5 rounded-full border border-teal/20 bg-white/80 px-5 py-2 text-sm font-medium text-navy shadow-sm backdrop-blur-sm">
+          <div className="animate-fade-in mb-10 inline-flex items-center gap-2.5 rounded-full border border-teal/20 bg-white/80 px-5 py-2 text-sm font-medium text-navy shadow-sm backdrop-blur-sm">
             <span className="relative flex h-2.5 w-2.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal opacity-75"></span>
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-teal"></span>
@@ -32,7 +40,7 @@ export function Hero() {
           </div>
 
           {/* Headline - MUCH BIGGER */}
-          <h1 className="animate-slide-up-stagger stagger-1">
+          <h1 className="animate-slide-up">
             <span className="block text-5xl font-bold tracking-tight text-navy sm:text-6xl md:text-7xl lg:text-8xl">
               Stop drafting.
             </span>
@@ -42,13 +50,17 @@ export function Hero() {
           </h1>
 
           {/* Subheadline */}
-          <p className="animate-slide-up-stagger stagger-2 mx-auto mt-8 max-w-2xl text-xl leading-relaxed text-gray-600 sm:text-2xl sm:leading-relaxed">
+          <p className="animate-slide-up-stagger stagger-1 mx-auto mt-8 max-w-2xl text-xl leading-relaxed text-gray-600 sm:text-2xl sm:leading-relaxed">
             We draft. You review. You file. It&apos;s that simple.
           </p>
 
           {/* CTA Buttons */}
-          <div className="animate-slide-up-stagger stagger-3 mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
-            <Button size="xl" className="btn-premium group h-14 px-8 text-lg shadow-lg" asChild>
+          <div className="animate-slide-up-stagger stagger-2 mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
+            <Button 
+              size="xl" 
+              className="btn-premium group h-14 px-8 text-lg shadow-lg shadow-teal/25 ring-1 ring-teal/20" 
+              asChild
+            >
               <Link href="/register">
                 Get Started
                 <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
@@ -64,23 +76,21 @@ export function Hero() {
             </Button>
           </div>
 
-          {/* Trust indicators */}
-          <div className="animate-slide-up-stagger stagger-4 mt-16 flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-            {[
-              'No retainers',
-              'Flat-fee pricing',
-              'One revision included'
-            ].map((item) => (
-              <div
-                key={item}
-                className="flex items-center gap-2.5 text-base text-gray-600"
-              >
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-teal/10">
-                  <CheckCircle className="h-4 w-4 text-teal" />
+          {/* Trust indicators with icons and better separation */}
+          <div className="animate-slide-up-stagger stagger-3 mt-16">
+            <div className="inline-flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-gray-100 bg-white/60 px-6 py-4 shadow-sm backdrop-blur-sm sm:gap-1 sm:divide-x sm:divide-gray-200 sm:px-2">
+              {trustBadges.map((item, index) => (
+                <div
+                  key={item.label}
+                  className="flex items-center gap-2.5 px-4 py-1 text-sm font-medium text-gray-700 sm:text-base"
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal/10">
+                    <item.icon className="h-4 w-4 text-teal" />
+                  </div>
+                  {item.label}
                 </div>
-                {item}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
