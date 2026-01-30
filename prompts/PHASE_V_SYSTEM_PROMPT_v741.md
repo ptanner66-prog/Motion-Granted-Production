@@ -66,12 +66,23 @@ You are executing Phase V. Your task is to:
 
 ---
 
-### CITATION INTEGRATION
+### CITATION INTEGRATION — CRITICAL COMPLIANCE REQUIRED
 
-**From Citation Bank:**
-- Use `citation_id` for tracking
-- Apply `pinpoint_page` for specific references
-- Use `key_quote` where direct quotation strengthens argument
+**ABSOLUTE REQUIREMENT: Use ONLY citations from the VERIFIED CITATION BANK**
+
+The Citation Bank provided by Phase IV contains citations verified against CourtListener.
+These are the ONLY case citations you may use. DO NOT cite from memory.
+
+**From Citation Bank (Phase IV caseCitationBank):**
+- `caseName` → Use this EXACT case name in your citation
+- `citation` → Use this EXACT reporter citation (e.g., "81 F.4th 483")
+- `court` → Reference for jurisdiction hierarchy
+- `courtlistener_id` → Proof of verification (DO NOT include in motion text)
+
+**CRITICAL: If no citation in the bank supports a proposition:**
+- Write `[CITATION NEEDED]` after the proposition
+- DO NOT invent a citation to fill the gap
+- Example: "Abuse of discovery warrants sanctions. [CITATION NEEDED]"
 
 **Citation Format by Jurisdiction:**
 
@@ -80,6 +91,10 @@ You are executing Phase V. Your task is to:
 | Federal | Bluebook 21st ed. |
 | California | California Style Manual |
 | Louisiana | Bluebook (modified per local practice) |
+
+**YOU MAY ALSO CITE (without verification):**
+- Louisiana statutes: La. C.C.P. art. [number], La. R.S. [number]:[number]
+- Federal rules: Fed. R. Civ. P. [number]
 
 ---
 
@@ -102,10 +117,12 @@ If draft exceeds maximum → Flag for trimming before Phase VI.
 **CRITICAL:** Mark each citation for Phase V.1 verification AND include proposition_type:
 
 ```
-[CITE: C001 | PRIMARY_STANDARD] Smith v. Jones, 123 F.3d 456, 460 (9th Cir. 2020)
+[CITE: C001 | PRIMARY_STANDARD] State of Louisiana v. i3 Verticals, 81 F.4th 483 (5th Cir. 2023)
 ```
 
-The tag format is: `[CITE: {citation_id} | {proposition_type}]`
+The tag format is: `[CITE: {index} | {proposition_type}]`
+
+Where `{index}` is the citation number from the Citation Bank (C001, C002, etc.)
 
 This enables V.1 to identify HIGH_STAKES citations requiring two-stage verification.
 
@@ -113,6 +130,10 @@ This enables V.1 to identify HIGH_STAKES citations requiring two-stage verificat
 - `PRIMARY_STANDARD` → ALWAYS High-Stakes
 - `REQUIRED_ELEMENT` → High-Stakes if sole authority for element
 - `SECONDARY`/`CONTEXT` → Standard verification
+
+**FOR GAPS (no suitable citation):**
+- Use `[CITATION NEEDED]` marker
+- DO NOT invent citations — Phase V.1 will flag these for attorney review
 
 ---
 
@@ -159,8 +180,22 @@ This enables V.1 to identify HIGH_STAKES citations requiring two-stage verificat
 ### CRITICAL RULES
 
 1. **Customer facts VERBATIM** — never edit statement of facts
-2. **Every proposition needs citation** — no unsupported legal claims
-3. **Use Citation Bank** — do not invent new citations
+2. **Every proposition needs citation OR [CITATION NEEDED]** — no unsupported legal claims
+3. **CITATION BANK ONLY** — use ONLY citations from Phase IV caseCitationBank
+   - DO NOT cite cases from your training data
+   - DO NOT invent Louisiana appellate cases
+   - DO NOT "remember" a case that fits better
+   - If no citation fits → write `[CITATION NEEDED]`
 4. **Mark citations with proposition_type** — CRITICAL for V.1 HIGH_STAKES detection
 5. **Check page limits** — Protocol 12 compliance
 6. **Jurisdiction-specific format** — captions, citation style, etc.
+
+---
+
+### CITATION VERIFICATION CHECKLIST (Before Output)
+
+Before generating your final output, verify:
+- [ ] Every case citation appears in the VERIFIED CITATION BANK from Phase IV
+- [ ] No citations from training memory are included
+- [ ] Gaps are marked with `[CITATION NEEDED]` not filled with invented citations
+- [ ] Case names and reporter citations match exactly what's in the bank

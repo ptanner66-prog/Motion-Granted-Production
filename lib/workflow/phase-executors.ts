@@ -195,61 +195,106 @@ interface StatutoryCitationEntry {
 /**
  * Build the citation enforcement prompt block
  * This MUST be injected at the TOP of Phase V and VIII prompts
+ *
+ * CHEN MEGAPROMPT PHASE V FIX (2026-01-30):
+ * Strengthened enforcement with explicit [CITATION NEEDED] fallback and
+ * verification checklist to prevent hallucination of citations.
  */
 function buildCitationEnforcementPrompt(
   caseCitationBank: VerifiedCitationEntry[],
   statutoryCitationBank: StatutoryCitationEntry[] = []
 ): string {
-  const caseList = (caseCitationBank || []).map((c, i) =>
-    `  [C${i + 1}] ${c.caseName || 'Unknown'}, ${c.citation || 'No citation'} (${extractCourtAbbrev(c.court || '')} ${extractYear(c.date_filed || '')})`
-  ).join('\n');
+  // Format citations with full detail for Claude to reference
+  const caseList = (caseCitationBank || []).map((c, i) => {
+    const courtAbbrev = extractCourtAbbrev(c.court || '');
+    const year = extractYear(c.date_filed || '');
+    return `  ${i + 1}. ${c.caseName || 'Unknown'}
+     Citation: ${c.citation || 'No citation'}
+     Court: ${courtAbbrev || 'Unknown'}
+     Year: ${year || 'Unknown'}
+     CourtListener ID: ${c.courtlistener_id || 'N/A'}`;
+  }).join('\n\n');
 
   const statuteList = (statutoryCitationBank || []).map((s, i) =>
-    `  [S${i + 1}] ${s.citation || ''} — ${s.name || ''}`
+    `  ${i + 1}. ${s.citation || ''} — ${s.name || ''}`
   ).join('\n');
 
   return `
-╔════════════════════════════════════════════════════════════════════════════╗
-║  CITATION ENFORCEMENT — MANDATORY COMPLIANCE                               ║
-╚════════════════════════════════════════════════════════════════════════════╝
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: CITATION REQUIREMENTS — VIOLATION WILL CAUSE LEGAL MALPRACTICE
+═══════════════════════════════════════════════════════════════════════════════
 
 You have ${caseCitationBank?.length || 0} verified case citations available.
 You have ${statutoryCitationBank?.length || 0} verified statutory citations available.
 
-██████████████████████████████████████████████████████████████████████████████
-█                                                                            █
-█   YOU MAY ONLY USE CITATIONS FROM THE VERIFIED CITATION BANK BELOW.        █
-█                                                                            █
-█   DO NOT INVENT, HALLUCINATE, OR RECALL ANY CITATIONS FROM MEMORY.         █
-█                                                                            █
-█   IF A CITATION IS NOT IN THE BANK BELOW, YOU CANNOT USE IT.               █
-█                                                                            █
-█   VIOLATION OF THIS RULE COULD RESULT IN ATTORNEY SANCTIONS.               █
-█                                                                            █
-██████████████████████████████████████████████████████████████████████████████
+████████████████████████████████████████████████████████████████████████████████
+█                                                                              █
+█   YOU MUST USE ONLY THE CITATIONS FROM THE VERIFIED CITATION BANK BELOW.     █
+█                                                                              █
+█   DO NOT INVENT, HALLUCINATE, OR RECALL ANY CITATIONS FROM YOUR MEMORY.      █
+█                                                                              █
+█   DO NOT USE ANY CITATION THAT IS NOT EXPLICITLY LISTED BELOW.               █
+█                                                                              █
+█   IF NO CITATION IN THE BANK FITS, WRITE "[CITATION NEEDED]" INSTEAD.        █
+█                                                                              █
+█   FAKE CITATIONS = ATTORNEY SANCTIONS + MALPRACTICE LIABILITY + CLIENT HARM  █
+█                                                                              █
+████████████████████████████████████████████████████████████████████████████████
 
-VERIFIED CASE CITATIONS (you may ONLY use these):
-${caseList || '  (none provided)'}
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    VERIFIED CITATION BANK (CourtListener Verified)         ║
+╚════════════════════════════════════════════════════════════════════════════╝
 
-VERIFIED STATUTORY CITATIONS (you may ONLY use these):
-${statuteList || '  (none provided)'}
+CASE CITATIONS (you may ONLY cite these cases):
+${caseList || '  [No case citations available — use statutes only or write [CITATION NEEDED]]'}
 
-RULES:
-1. Every case citation in your motion MUST appear in the bank above
-2. You may use Louisiana Code of Civil Procedure articles (La. C.C.P. art. XXX) — statutes are acceptable
-3. You may NOT cite any case that is not in the VERIFIED CASE CITATION BANK
-4. If you need a citation for a proposition and none in the bank fits, state the legal principle WITHOUT a case citation
-5. It is BETTER to have fewer citations than to hallucinate fake ones
-6. When citing a case, use the exact caseName and citation from the bank
+STATUTORY CITATIONS (you may ALSO cite these statutes):
+${statuteList || '  [No statutory citations in bank]'}
 
-WHAT YOU MUST NOT DO:
-- Do NOT cite any case you "remember" from training unless it appears in the bank above
-- Do NOT invent Louisiana appellate cases even if they would be "more appropriate"
-- Do NOT add citations during revision that are not in the bank
+You may also cite Louisiana statutes directly:
+  - La. C.C.P. art. [number] — Louisiana Code of Civil Procedure
+  - La. R.S. [number]:[number] — Louisiana Revised Statutes
+
+═══════════════════════════════════════════════════════════════════════════════
+ABSOLUTE RULES — READ CAREFULLY
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Every case citation in your motion MUST come from the VERIFIED CITATION BANK above.
+
+2. Do NOT invent, hallucinate, or recall ANY citation from your training data.
+
+3. Do NOT use any citation that is not EXPLICITLY listed in the bank above.
+
+4. If you need a citation for a legal proposition and NO citation in the bank fits:
+   → Write "[CITATION NEEDED]" after the proposition
+   → Example: "Discovery abuse warrants sanctions. [CITATION NEEDED]"
+   → DO NOT invent a citation to fill the gap
+
+5. When citing a case, use the EXACT format from the bank:
+   → Use exact caseName and citation string
+   → Example: "State of Louisiana v. i3 Verticals, 81 F.4th 483"
+   → NOT: "i3 Verticals, 81 F. 4th 483" (spacing matters)
+
+6. It is ALWAYS BETTER to write [CITATION NEEDED] than to hallucinate a fake citation.
+
+═══════════════════════════════════════════════════════════════════════════════
+WHY THIS MATTERS — LEGAL CONSEQUENCES
+═══════════════════════════════════════════════════════════════════════════════
+
+- Every citation in the bank has been VERIFIED against CourtListener's database
+- Citations from your training data are UNVERIFIED and may not exist
+- Fake citations in court filings result in:
+  → Rule 11 sanctions against the filing attorney
+  → Potential malpractice liability
+  → Damage to client's case
+  → Harm to real people
+- This is a legal document filed in a real court. Accuracy is non-negotiable.
 
 ████████████████████████████████████████████████████████████████████████████████
-█  WARNING: Any case citation NOT in the list above will be REJECTED.          █
-█  Post-processing will STRIP unauthorized citations from the final motion.    █
+█  BEFORE FINALIZING YOUR DRAFT:                                               █
+█  ✓ Check EVERY case citation against the VERIFIED CITATION BANK above        █
+█  ✓ If a citation is NOT in the bank, REMOVE IT or replace with [CITATION NEEDED]█
+█  ✓ Post-processing will STRIP any unauthorized citations from the motion     █
 ████████████████████████████████████████████████████████████████████████████████
 `;
 }
@@ -1107,6 +1152,13 @@ async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
 
     // BUILD CITATION ENFORCEMENT PROMPT
     const citationEnforcementBlock = buildCitationEnforcementPrompt(typedCitationBank, statutoryCitationBank);
+
+    // Log confirmation that citation enforcement is being injected
+    console.log('[Phase V] ✅ Citation enforcement block built and will be injected into system prompt');
+    console.log(`[Phase V] Citation enforcement block length: ${citationEnforcementBlock.length} chars`);
+    console.log('[Phase V] Citation enforcement block preview (first 500 chars):');
+    console.log(citationEnforcementBlock.substring(0, 500));
+    console.log('[Phase V] ... (enforcement block continues with full citation bank)');
 
     // =========================================================================
     // Continue with normal Phase V execution
