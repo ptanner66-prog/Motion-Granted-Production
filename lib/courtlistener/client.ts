@@ -22,7 +22,7 @@ import type { CitationDetails, CitationTreatment, CitationReference } from '@/ty
 
 const COURTLISTENER_BASE_URL = 'https://www.courtlistener.com/api/rest/v4';
 const COURTLISTENER_V3_URL = 'https://www.courtlistener.com/api/rest/v3';
-const DEFAULT_TIMEOUT = 90000; // 90 seconds - CourtListener legitimately takes 30-67s per request
+const DEFAULT_TIMEOUT = 150000; // 150s - CourtListener takes 60-97s per request (measured)
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000; // 1s, 2s, 4s exponential backoff
 
