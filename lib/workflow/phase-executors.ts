@@ -25,6 +25,7 @@ import type {
   JudgeSimulationResult,
   LetterGrade,
 } from '@/types/workflow';
+import { PHASE_PROMPTS } from '@/prompts';
 
 // ============================================================================
 // TYPES
@@ -495,51 +496,12 @@ async function executePhaseIII(input: PhaseInput): Promise<PhaseOutput> {
     const phaseIOutput = input.previousPhaseOutputs['I'] as Record<string, unknown>;
     const phaseIIOutput = input.previousPhaseOutputs['II'] as Record<string, unknown>;
 
+    // ========================================================================
+    // SYSTEM PROMPT: Load v7.4.1 methodology prompt
+    // ========================================================================
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE III: EVIDENCE STRATEGY / ISSUE IDENTIFICATION
-
-Your task is to:
-1. Map available evidence to each legal element from Phase II
-2. Identify evidence GAPS that could weaken the motion
-3. Determine which issues are strongest vs weakest
-4. Flag any HOLD conditions (critical missing evidence)
-5. Prioritize issues for argument structure
-
-DO NOT draft any motion language. Only analyze evidence and issues.
-
-If critical evidence is missing, set "holdRequired": true
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "III",
-  "evidenceMapping": [
-    {
-      "element": "string (from Phase II)",
-      "availableEvidence": ["evidence1", "evidence2"],
-      "evidenceStrength": "strong|moderate|weak|none",
-      "gaps": ["gap1", "gap2"]
-    }
-  ],
-  "issueRanking": [
-    {
-      "issue": "string",
-      "strength": 1-10,
-      "strategy": "lead|support|defensive|omit",
-      "reason": "string"
-    }
-  ],
-  "criticalGaps": [
-    {
-      "gap": "string",
-      "impact": "fatal|significant|minor",
-      "resolution": "string"
-    }
-  ],
-  "holdRequired": false,
-  "holdReason": "string|null",
-  "recommendedApproach": "string"
-}`;
+${PHASE_PROMPTS.PHASE_III}`;
 
     const userMessage = `Analyze evidence and issues for Phase III:
 
@@ -1025,15 +987,12 @@ Attorney for ${getRepresentedPartyName()}`.trim();
       ? input.parties.map(p => `  - ${p.name} (${p.role})`).join('\n')
       : '  [Parties not specified in order]';
 
+    // ========================================================================
+    // SYSTEM PROMPT: Load v7.4.1 methodology prompt + case data injection
+    // ========================================================================
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE V: DRAFT MOTION
-
-NOW you will draft the actual motion document. Use ALL the work from previous phases:
-- Phase I: Case information and parties
-- Phase II: Legal standard and elements
-- Phase III: Evidence strategy and issue ranking
-- Phase IV: Citation bank
+${PHASE_PROMPTS.PHASE_V}
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: FILING ATTORNEY INFORMATION (USE EXACTLY - NO PLACEHOLDERS)
@@ -1095,20 +1054,9 @@ CLIENT INSTRUCTIONS:
 ${input.instructions || '[No special instructions]'}
 
 ################################################################################
-#  ABSOLUTE REQUIREMENTS                                                        #
+#  CRITICAL PLACEHOLDER PROHIBITION                                             #
 ################################################################################
 
-1. Start with proper court caption using EXACT case number and caption above
-2. Use the REAL party names - do NOT use "John Doe" or "Jane Smith"
-3. Include Introduction
-4. Address each element with supporting authority from Phase IV
-5. Use citations EXACTLY as provided in Phase IV citation banks
-6. Include Statement of Facts using the CLIENT-PROVIDED facts above
-7. Build arguments following Phase III strategy
-8. Include Conclusion and Prayer for Relief
-9. Include Certificate of Service placeholder
-
-CRITICAL PLACEHOLDER PROHIBITION:
 - Do NOT use [PARISH NAME], [JUDICIAL DISTRICT], or any bracketed placeholders
 - Do NOT use generic names like "John Doe", "Jane Smith", "ABC Corp"
 - Do NOT use placeholder text like "YOUR CLIENT", "OPPOSING PARTY"
@@ -1602,38 +1550,14 @@ async function executePhaseVI(input: PhaseInput): Promise<PhaseOutput> {
 
     const thinkingBudget = getThinkingBudget('VI', input.tier);
 
+    // ========================================================================
+    // SYSTEM PROMPT: Load v7.4.1 methodology prompt
+    // ========================================================================
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE VI: OPPOSITION ANTICIPATION
+${PHASE_PROMPTS.PHASE_VI}
 
-Your task is to:
-1. Predict the strongest arguments the opposing party will make
-2. Identify weaknesses in our motion they will exploit
-3. Prepare counter-arguments for each anticipated opposition point
-4. Suggest preemptive language to add to the motion
-5. Rate the likelihood and severity of each opposition argument
-
-${thinkingBudget ? 'Use extended thinking to deeply analyze potential opposition strategies.' : ''}
-
-DO NOT rewrite the motion. Only analyze opposition strategy.
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "VI",
-  "anticipatedOpposition": [
-    {
-      "argument": "string",
-      "likelihood": "high|medium|low",
-      "severity": "fatal|significant|minor",
-      "ourWeakness": "what they'll attack",
-      "counterArgument": "our response",
-      "preemptiveLanguage": "suggested addition to motion"
-    }
-  ],
-  "overallVulnerability": "low|medium|high",
-  "recommendedStrengthening": ["suggestion1", "suggestion2"],
-  "motionStrengths": ["strength1", "strength2"]
-}`;
+${thinkingBudget ? 'Use extended thinking to deeply analyze potential opposition strategies and vulnerabilities.' : ''}`;
 
     const userMessage = `Anticipate opposition for Phase VI:
 
@@ -1727,58 +1651,25 @@ async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase VII] Motion source: ${phaseVIIIOutput?.revisedMotion ? 'Phase VIII (revised)' : phaseVOutput?.draftMotion ? 'Phase V (draftMotion)' : 'Phase V (raw)'}`);
     console.log(`[Phase VII] Is re-evaluation: ${isReEvaluation}`);
 
+    // ========================================================================
+    // SYSTEM PROMPT: Load v7.4.1 methodology prompt (CRITICAL - Judge Simulation)
+    // ========================================================================
+    const thinkingBudget = getThinkingBudget('VII', input.tier); // Always 10K for Phase VII
+
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE VII: JUDGE SIMULATION (QUALITY GATE)
+${PHASE_PROMPTS.PHASE_VII}
 
-You are an experienced ${input.jurisdiction} judge evaluating this motion.
-Use extended thinking to thoroughly analyze before grading.
+---
 
-${isReEvaluation ? `**RE-EVALUATION**: This is revision loop ${loopNumber}. You are evaluating the REVISED motion after Phase VIII corrections.` : `This is the initial evaluation.`}
+### CONTEXT FOR THIS EVALUATION
 
-GRADING CRITERIA:
-1. Legal soundness (are arguments legally correct?)
-2. Citation quality (real cases used appropriately?)
-3. Organization and clarity
-4. Persuasiveness
-5. Procedural compliance
-6. Anticipation of opposition
+**Jurisdiction:** ${input.jurisdiction}
+**Motion Type:** ${input.motionType}
+**Revision Loop:** ${loopNumber} of 3
+**Is Re-evaluation:** ${isReEvaluation ? 'YES - evaluating REVISED motion from Phase VIII' : 'NO - initial evaluation'}
 
-GRADE SCALE:
-- A+ (4.3): Exceptional, would likely grant
-- A (4.0): Excellent, strong motion
-- A- (3.7): Very good
-- B+ (3.3): MINIMUM ACCEPTABLE - Good, competent motion
-- B (3.0): Below standard, needs work
-- B- (2.7): Significant issues
-- C or below: Major problems
-
-If grade < B+, this motion will go through ${isReEvaluation ? 'another' : ''} revision (Phase VIII).
-This is revision loop ${loopNumber} of max 3.
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "VII",
-  "evaluation": {
-    "grade": "A+|A|A-|B+|B|B-|C+|C|D|F",
-    "numericGrade": 0.0-4.3,
-    "passes": true|false,
-    "criteria": {
-      "legalSoundness": { "score": 1-10, "notes": "string" },
-      "citationQuality": { "score": 1-10, "notes": "string" },
-      "organization": { "score": 1-10, "notes": "string" },
-      "persuasiveness": { "score": 1-10, "notes": "string" },
-      "proceduralCompliance": { "score": 1-10, "notes": "string" },
-      "oppositionAnticipation": { "score": 1-10, "notes": "string" }
-    },
-    "strengths": ["strength1", "strength2"],
-    "weaknesses": ["weakness1", "weakness2"],
-    "specificFeedback": "detailed feedback",
-    "revisionSuggestions": ["if grade < B+, specific fixes"],
-    "loopNumber": ${loopNumber},
-    "isReEvaluation": ${isReEvaluation}
-  }
-}`;
+Use extended thinking to thoroughly analyze before grading.`;
 
     const userMessage = `Evaluate this motion as a judge:
 
@@ -1793,6 +1684,7 @@ JURISDICTION: ${input.jurisdiction}
 
 Provide your judicial evaluation as JSON.`;
 
+    // PHASE VII: ALWAYS Opus, ALWAYS Extended Thinking (10K tokens)
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('VII', input.tier), // Always Opus
       max_tokens: 64000, // Phase VII: Judge simulation (always Opus with extended thinking)
@@ -1800,7 +1692,7 @@ Provide your judicial evaluation as JSON.`;
       messages: [{ role: 'user', content: userMessage }],
       thinking: {
         type: 'enabled',
-        budget_tokens: 50000, // MAXED OUT - deep judicial reasoning
+        budget_tokens: thinkingBudget || 10000, // Use config, fallback to 10K
       },
     } as Anthropic.MessageCreateParams) as Anthropic.Message;
 
@@ -1964,6 +1856,9 @@ async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase VIII] Weaknesses found: ${weaknesses.length}`);
     console.log(`[Phase VIII] Revision suggestions found: ${revisionSuggestions.length}`);
 
+    // ========================================================================
+    // SYSTEM PROMPT: Load v7.4.1 methodology prompt + case data injection
+    // ========================================================================
     // Build attorney signature block for revisions
     const getRepresentedPartyName = () => {
       const represented = input.parties?.find(p => p.isRepresented);
@@ -1983,10 +1878,7 @@ Attorney for ${getRepresentedPartyName()}`.trim();
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE VIII: REVISIONS
-
-The judge simulation (Phase VII) graded this motion below B+.
-Your task is to revise the motion to address the specific weaknesses.
+${PHASE_PROMPTS.PHASE_VIII}
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: ATTORNEY INFO (MUST BE IN REVISED SIGNATURE BLOCK)

@@ -896,8 +896,8 @@ export const EXTENDED_THINKING_CONFIG: ExtendedThinkingConfig[] = [
   { phase: 'V', tierA: null, tierB: null, tierC: 10000 },    // Complex drafting (Tier C only)
   { phase: 'V.1', tierA: null, tierB: null, tierC: null },
   { phase: 'VI', tierA: null, tierB: 8000, tierC: 8000 },
-  { phase: 'VII', tierA: 5000, tierB: 5000, tierC: 10000 },  // Quality grading (all tiers)
-  { phase: 'VII.1', tierA: 5000, tierB: 5000, tierC: 10000 }, // Revision thinking (all tiers)
+  { phase: 'VII', tierA: 10000, tierB: 10000, tierC: 10000 },  // Quality grading (ALL TIERS - 10K)
+  { phase: 'VII.1', tierA: 10000, tierB: 10000, tierC: 10000 }, // Revision thinking (ALL TIERS - 10K)
   { phase: 'VIII', tierA: null, tierB: 8000, tierC: 8000 },
   { phase: 'VIII.5', tierA: null, tierB: null, tierC: null },
   { phase: 'IX', tierA: null, tierB: null, tierC: null },
