@@ -1294,17 +1294,13 @@ OUTPUT FORMAT (JSON only):
     "signature": "EXACT signature block with real attorney name, bar number, and firm info",
     "certificateOfService": "full certificate with attorney signature block"
   },
-  "wordCount": number,
-  "citationsIncluded": number,
-  "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "signature", "cos"]
-    "certificateOfService": "[CERTIFICATE OF SERVICE - to be completed with service details]",
-    "signature": "[ATTORNEY SIGNATURE BLOCK - to be signed]"
-  },
-  "wordCount": number,
-  "citationsIncluded": number,
-  "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "cos"],
+  "wordCount": 0,
+  "citationsIncluded": 0,
+  "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "signature", "cos"],
   "missingDataFlags": ["list any critical data that was missing"]
-}`;
+}
+
+CRITICAL: The "draftMotion" field MUST be an object containing the motion sections. Do NOT use any other field name.`;
 
     const userMessage = `Draft the motion using all previous phase outputs AND the case data provided in the system prompt:
 
@@ -1391,50 +1387,140 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
       };
     }
 
-    // Parse JSON output
-    let phaseOutput;
+    // Parse JSON output with robust handling
+    let phaseOutput: Record<string, unknown> | null = null;
+
+    // ================================================================
+    // ROBUST JSON PARSING (2026-01-30)
+    // Handle multiple ways Claude might return the response
+    // ================================================================
+    console.log(`[Phase V] Attempting to parse JSON from response...`);
+
     try {
+      // Method 1: Try to extract JSON object from response
       const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.error(`[Phase V] No JSON found in Claude response`);
-        console.error(`[Phase V] Response preview: ${outputText.substring(0, 500)}...`);
-        return {
-          success: false,
-          phase: 'V',
-          status: 'failed',
-          output: { raw: outputText },
-          error: 'Claude did not return valid JSON for motion draft. Response may need manual review.',
-          durationMs: Date.now() - start,
-        };
+      if (jsonMatch) {
+        try {
+          phaseOutput = JSON.parse(jsonMatch[0]);
+          console.log(`[Phase V] Parsed JSON via regex extraction`);
+        } catch (e) {
+          console.log(`[Phase V] Direct JSON parse failed, trying cleanup...`);
+          // Try cleaning up common issues
+          let cleaned = jsonMatch[0]
+            .replace(/,\s*}/g, '}')  // Remove trailing commas
+            .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
+            .replace(/[\x00-\x1F\x7F]/g, ' '); // Remove control characters
+          try {
+            phaseOutput = JSON.parse(cleaned);
+            console.log(`[Phase V] Parsed JSON after cleanup`);
+          } catch (e2) {
+            console.log(`[Phase V] Cleanup parse also failed`);
+          }
+        }
       }
-      phaseOutput = JSON.parse(jsonMatch[0]);
-      console.log(`[Phase V] Successfully parsed JSON output`);
+
+      // Method 2: Try extracting from markdown code block
+      if (!phaseOutput) {
+        const codeBlockMatch = outputText.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (codeBlockMatch) {
+          try {
+            phaseOutput = JSON.parse(codeBlockMatch[1].trim());
+            console.log(`[Phase V] Parsed JSON from markdown code block`);
+          } catch (e) {
+            console.log(`[Phase V] Code block JSON parse failed`);
+          }
+        }
+      }
     } catch (parseError) {
       console.error(`[Phase V] JSON parse failed:`, parseError);
-      console.error(`[Phase V] Response preview: ${outputText.substring(0, 500)}...`);
-      return {
-        success: false,
-        phase: 'V',
-        status: 'failed',
-        output: { raw: outputText },
-        error: `Failed to parse motion draft as JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
-        durationMs: Date.now() - start,
-      };
     }
 
-    // Validate motion draft has expected structure
-    if (!phaseOutput.draftMotion) {
-      console.error(`[Phase V] Output missing draftMotion field`);
-      console.error(`[Phase V] Output keys: ${Object.keys(phaseOutput).join(', ')}`);
+    // Log what we found
+    if (phaseOutput) {
+      console.log(`[Phase V] Parsed output keys: ${Object.keys(phaseOutput).join(', ')}`);
+    } else {
+      console.error(`[Phase V] No valid JSON found in response`);
+      console.error(`[Phase V] Response preview: ${outputText.substring(0, 500)}...`);
+    }
+
+    // ================================================================
+    // ROBUST draftMotion EXTRACTION
+    // Handle multiple possible field names Claude might use
+    // ================================================================
+    let draftMotion: Record<string, unknown> | null = null;
+
+    if (phaseOutput) {
+      // Check multiple possible field names
+      draftMotion = (
+        phaseOutput.draftMotion ||
+        phaseOutput.draft_motion ||
+        phaseOutput.motionDraft ||
+        phaseOutput.motion_draft ||
+        phaseOutput.draft ||
+        phaseOutput.motion
+      ) as Record<string, unknown> | null;
+
+      const foundField =
+        phaseOutput.draftMotion ? 'draftMotion' :
+        phaseOutput.draft_motion ? 'draft_motion' :
+        phaseOutput.motionDraft ? 'motionDraft' :
+        phaseOutput.motion_draft ? 'motion_draft' :
+        phaseOutput.draft ? 'draft' :
+        phaseOutput.motion ? 'motion' : 'NONE';
+
+      console.log(`[Phase V] Draft motion found in field: ${foundField}`);
+
+      // If no explicit draft field, check if the entire response IS the draft
+      if (!draftMotion && (phaseOutput.caption || phaseOutput.introduction || phaseOutput.legalArguments)) {
+        console.log(`[Phase V] Response appears to BE the draft motion (no wrapper)`);
+        draftMotion = phaseOutput;
+      }
+    }
+
+    // ================================================================
+    // LAST RESORT: Use raw text if it looks like a motion
+    // ================================================================
+    if (!draftMotion && outputText.length > 1000) {
+      const looksLikeMotion =
+        outputText.includes('MOTION') ||
+        outputText.includes('COURT') ||
+        outputText.includes('Respectfully submitted') ||
+        outputText.includes('WHEREFORE') ||
+        outputText.includes('PRAYER FOR RELIEF');
+
+      if (looksLikeMotion) {
+        console.log(`[Phase V] Using raw response as draft (looks like a motion)`);
+        draftMotion = {
+          rawText: outputText,
+          _note: 'Extracted from raw response - not JSON structured'
+        };
+      }
+    }
+
+    // Final validation
+    if (!draftMotion) {
+      console.error(`[Phase V] ❌ FATAL: Could not extract draftMotion from response`);
+      console.error(`[Phase V] Parsed output keys: ${phaseOutput ? Object.keys(phaseOutput).join(', ') : 'NO PARSED OUTPUT'}`);
+      console.error(`[Phase V] Raw response preview: ${outputText.substring(0, 800)}...`);
       return {
         success: false,
         phase: 'V',
         status: 'failed',
-        output: phaseOutput,
+        output: phaseOutput || { raw: outputText },
         error: 'Claude response missing draftMotion field. Motion draft incomplete.',
         durationMs: Date.now() - start,
       };
     }
+
+    // Ensure draftMotion is on the output
+    if (phaseOutput && !phaseOutput.draftMotion) {
+      phaseOutput.draftMotion = draftMotion;
+    } else if (!phaseOutput) {
+      phaseOutput = { draftMotion };
+    }
+
+    console.log(`[Phase V] ✅ Draft motion extracted successfully`);
+    console.log(`[Phase V] Draft motion keys: ${Object.keys(draftMotion).join(', ')}`)
 
     phaseOutput.phaseComplete = 'V';
 
