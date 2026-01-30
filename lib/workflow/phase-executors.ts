@@ -13,6 +13,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { createMessageWithStreaming } from '@/lib/automation/claude';
+import {
+  validateMotionObject,
+  generateRevisionInstructions,
+  type PlaceholderValidationResult,
+} from './validators/placeholder-validator';
 import type {
   WorkflowPhaseCode,
   MotionTier,
@@ -39,6 +44,10 @@ export interface PhaseInput {
   previousPhaseOutputs: Record<WorkflowPhaseCode, unknown>;
   documents?: string[];
   revisionLoop?: number;
+  // Extended case data for complete motion generation
+  courtDivision?: string;
+  filingDeadline?: string;
+  parties?: Array<{ name: string; role: string }>;
 }
 
 export interface PhaseOutput {
@@ -678,6 +687,16 @@ async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase V] Phase III output exists: ${!!phaseIIIOutput}`);
     console.log(`[Phase V] Phase IV output exists: ${!!phaseIVOutput}`);
 
+    // Extract case data from Phase I output or use input fallbacks
+    const phaseIClassification = (phaseIOutput?.classification ?? {}) as Record<string, unknown>;
+    const phaseICaseIdentifiers = (phaseIOutput?.caseIdentifiers ?? {}) as Record<string, unknown>;
+    const phaseIParties = (phaseIOutput?.parties ?? {}) as Record<string, unknown>;
+
+    // Build parties string from input
+    const partiesText = input.parties && input.parties.length > 0
+      ? input.parties.map(p => `  - ${p.name} (${p.role})`).join('\n')
+      : '  [Parties not specified in order]';
+
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
 PHASE V: DRAFT MOTION
@@ -688,24 +707,59 @@ NOW you will draft the actual motion document. Use ALL the work from previous ph
 - Phase III: Evidence strategy and issue ranking
 - Phase IV: Citation bank
 
-REQUIREMENTS:
-1. Start with proper court caption
-2. Include Introduction
-3. Address each element with supporting authority from Phase IV
-4. Use citations EXACTLY as provided in Phase IV
-5. Include Statement of Facts referencing Phase I facts
-6. Build arguments following Phase III strategy
-7. Include Conclusion and Prayer for Relief
-8. Include Certificate of Service placeholder
+################################################################################
+#  CRITICAL: CASE DATA INJECTION - USE THESE EXACT VALUES                      #
+################################################################################
+
+CASE INFORMATION (USE THESE EXACT DETAILS - NO PLACEHOLDERS):
+- Case Caption: ${input.caseCaption}
+- Case Number: ${input.caseNumber}
+- Jurisdiction: ${input.jurisdiction}
+- Court Division: ${input.courtDivision || '[Not specified]'}
+- Motion Type: ${input.motionType}
+- Filing Deadline: ${input.filingDeadline || '[Not specified]'}
+
+PARTIES (USE THESE EXACT NAMES):
+${partiesText}
+
+STATEMENT OF FACTS FROM CLIENT:
+${input.statementOfFacts || '[Client statement of facts not provided]'}
+
+PROCEDURAL HISTORY FROM CLIENT:
+${input.proceduralHistory || '[Procedural history not provided]'}
+
+CLIENT INSTRUCTIONS:
+${input.instructions || '[No special instructions]'}
+
+################################################################################
+#  ABSOLUTE REQUIREMENTS                                                        #
+################################################################################
+
+1. Start with proper court caption using EXACT case number and caption above
+2. Use the REAL party names - do NOT use "John Doe" or "Jane Smith"
+3. Include Introduction
+4. Address each element with supporting authority from Phase IV
+5. Use citations EXACTLY as provided in Phase IV citation banks
+6. Include Statement of Facts using the CLIENT-PROVIDED facts above
+7. Build arguments following Phase III strategy
+8. Include Conclusion and Prayer for Relief
+9. Include Certificate of Service placeholder
+
+CRITICAL PLACEHOLDER PROHIBITION:
+- Do NOT use [PARISH NAME], [JUDICIAL DISTRICT], or any bracketed placeholders
+- Do NOT use generic names like "John Doe", "Jane Smith", "ABC Corp"
+- Do NOT use placeholder text like "YOUR CLIENT", "OPPOSING PARTY"
+- Use ONLY the actual case data provided above
+- If any required information is missing, flag it in the output but still use best available data
 
 OUTPUT FORMAT (JSON only):
 {
   "phaseComplete": "V",
   "draftMotion": {
-    "caption": "full court caption",
+    "caption": "full court caption with REAL case number and parties",
     "title": "MOTION FOR [TYPE]",
     "introduction": "string",
-    "statementOfFacts": "string",
+    "statementOfFacts": "string using CLIENT-PROVIDED facts",
     "legalArguments": [
       {
         "heading": "I. [ARGUMENT HEADING]",
@@ -715,15 +769,16 @@ OUTPUT FORMAT (JSON only):
     ],
     "conclusion": "string",
     "prayerForRelief": "string",
-    "certificateOfService": "[CERTIFICATE OF SERVICE PLACEHOLDER]",
-    "signature": "[ATTORNEY SIGNATURE BLOCK]"
+    "certificateOfService": "[CERTIFICATE OF SERVICE - to be completed with service details]",
+    "signature": "[ATTORNEY SIGNATURE BLOCK - to be signed]"
   },
   "wordCount": number,
   "citationsIncluded": number,
-  "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "cos"]
+  "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "cos"],
+  "missingDataFlags": ["list any critical data that was missing"]
 }`;
 
-    const userMessage = `Draft the motion using all previous phase outputs:
+    const userMessage = `Draft the motion using all previous phase outputs AND the case data provided in the system prompt:
 
 PHASE I (Case Info):
 ${JSON.stringify(phaseIOutput, null, 2)}
@@ -737,10 +792,13 @@ ${JSON.stringify(phaseIIIOutput, null, 2)}
 PHASE IV (Citation Bank):
 ${JSON.stringify(phaseIVOutput, null, 2)}
 
-MOTION TYPE: ${input.motionType}
-JURISDICTION: ${input.jurisdiction}
+REMINDER - USE THESE EXACT VALUES IN THE MOTION:
+- Case Caption: ${input.caseCaption}
+- Case Number: ${input.caseNumber}
+- Jurisdiction: ${input.jurisdiction}
+- Motion Type: ${input.motionType}
 
-Draft the complete motion. Provide as JSON.`;
+Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON.`;
 
     const model = getModelForPhase('V', input.tier);
     console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 64000`);
@@ -1378,6 +1436,21 @@ PHASE VIII: REVISIONS
 The judge simulation (Phase VII) graded this motion below B+.
 Your task is to revise the motion to address the specific weaknesses.
 
+################################################################################
+#  CRITICAL: CASE DATA - USE THESE EXACT VALUES IN REVISIONS                   #
+################################################################################
+
+CASE INFORMATION (USE THESE EXACT DETAILS - NO PLACEHOLDERS):
+- Case Caption: ${input.caseCaption}
+- Case Number: ${input.caseNumber}
+- Jurisdiction: ${input.jurisdiction}
+- Motion Type: ${input.motionType}
+
+STATEMENT OF FACTS FROM CLIENT:
+${input.statementOfFacts || '[Client statement of facts not provided]'}
+
+################################################################################
+
 JUDGE FEEDBACK TO ADDRESS:
 - Weaknesses: ${JSON.stringify(weaknesses)}
 - Specific Feedback: ${specificFeedback}
@@ -1385,21 +1458,27 @@ JUDGE FEEDBACK TO ADDRESS:
 
 ${thinkingBudget ? 'Use extended thinking to carefully address each issue.' : ''}
 
+CRITICAL PLACEHOLDER PROHIBITION:
+- Do NOT use [PARISH NAME], [JUDICIAL DISTRICT], or any bracketed placeholders
+- Do NOT use generic names like "John Doe", "Jane Smith"
+- Use ONLY the actual case data provided above
+- The revised motion must be ready to file with ZERO placeholder modifications
+
 OUTPUT FORMAT (JSON only):
 {
   "phaseComplete": "VIII",
   "revisedMotion": {
-    "caption": "...",
+    "caption": "full court caption with REAL case data",
     "title": "...",
     "introduction": "revised...",
-    "statementOfFacts": "revised...",
+    "statementOfFacts": "revised using CLIENT-PROVIDED facts...",
     "legalArguments": [...],
     "conclusion": "revised...",
     "prayerForRelief": "...",
-    "certificateOfService": "...",
-    "signature": "..."
+    "certificateOfService": "[CERTIFICATE OF SERVICE - to be completed with service details]",
+    "signature": "[ATTORNEY SIGNATURE BLOCK - to be signed]"
   },
-  "changesMAde": [
+  "changesMade": [
     { "section": "string", "change": "description of revision" }
   ],
   "newCitationsAdded": true|false,
@@ -1906,11 +1985,75 @@ Assemble and check. Provide as JSON.`;
 
     phaseOutput.phaseComplete = 'X';
 
+    // ========================================================================
+    // CRITICAL: PLACEHOLDER VALIDATION GATE
+    // ========================================================================
+    // Validate that the final motion does not contain placeholder text.
+    // If placeholders are found, the motion CANNOT be delivered.
+
+    console.log(`[Phase X] Running placeholder validation...`);
+
+    // Get the final package motion content for validation
+    const finalPackage = phaseOutput?.finalPackage as Record<string, unknown> | undefined;
+    const motionContent = finalPackage?.motion || finalMotion;
+
+    // Run placeholder validation
+    const placeholderValidation = validateMotionObject(
+      typeof motionContent === 'string'
+        ? { content: motionContent }
+        : (motionContent as Record<string, unknown>)
+    );
+
+    console.log(`[Phase X] Placeholder validation result: ${placeholderValidation.valid ? 'PASSED' : 'FAILED'}`);
+    if (!placeholderValidation.valid) {
+      console.log(`[Phase X] Placeholders found: ${placeholderValidation.placeholders.join(', ')}`);
+      console.log(`[Phase X] Generic names found: ${placeholderValidation.genericNames.join(', ')}`);
+    }
+
+    // Add validation result to output
+    phaseOutput.placeholderValidation = placeholderValidation;
+
+    // If placeholders detected, block delivery
+    if (!placeholderValidation.valid && placeholderValidation.severity === 'blocking') {
+      console.error(`[Phase X] BLOCKING: Motion contains placeholders - cannot deliver`);
+
+      // Generate revision instructions
+      const revisionInstructions = generateRevisionInstructions(placeholderValidation);
+
+      return {
+        success: true, // Phase ran successfully, but motion needs revision
+        phase: 'X',
+        status: 'blocked', // Blocked by placeholder validation
+        output: {
+          ...phaseOutput,
+          readyForDelivery: false,
+          blockingReason: 'PLACEHOLDER_DETECTED',
+          placeholderValidation,
+          revisionInstructions,
+          adminSummary: {
+            ...(phaseOutput.adminSummary || {}),
+            notesForAdmin: `CRITICAL: Motion contains ${placeholderValidation.placeholders.length} placeholder(s) and ${placeholderValidation.genericNames.length} generic name(s). Requires revision before delivery. Placeholders: ${placeholderValidation.placeholders.concat(placeholderValidation.genericNames).join(', ')}`,
+          },
+        },
+        requiresReview: true,
+        gapsDetected: placeholderValidation.placeholders.length + placeholderValidation.genericNames.length,
+        tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // Motion passed validation - ready for admin review
+    console.log(`[Phase X] Motion passed placeholder validation - ready for CP3 approval`);
+
     return {
       success: true,
       phase: 'X',
       status: 'requires_review', // Always requires admin approval
-      output: phaseOutput,
+      output: {
+        ...phaseOutput,
+        readyForDelivery: true,
+        placeholderValidation,
+      },
       requiresReview: true, // CP3: Blocking checkpoint
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
