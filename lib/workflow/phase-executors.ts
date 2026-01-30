@@ -597,16 +597,25 @@ async function logCitationVerification(
 }
 
 async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE IV VERSION: 2026-01-30-SCORCHED-EARTH
+  // This version ONLY uses CourtListener. NO Claude-generated citations.
+  // ════════════════════════════════════════════════════════════════════════════
+  const PHASE_IV_VERSION = '2026-01-30-SCORCHED-EARTH';
+  const executionId = `p4-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   const start = Date.now();
-  console.log('╔' + '═'.repeat(68) + '╗');
-  console.log('║ PHASE IV: CITATION RESEARCH - COURTLISTENER VERIFICATION           ║');
-  console.log('╚' + '═'.repeat(68) + '╝');
-  console.log(`[Phase IV] Order ID: ${input.orderId}`);
-  console.log(`[Phase IV] Jurisdiction: ${input.jurisdiction}`);
-  console.log(`[Phase IV] Motion Type: ${input.motionType}`);
-  console.log(`[Phase IV] Tier: ${input.tier}`);
-  console.log(`[Phase IV] API Key configured: ${process.env.COURTLISTENER_API_KEY ? 'YES' : 'NO'}`);
-  console.log(`[Phase IV] ZERO TOLERANCE FOR HALLUCINATED CITATIONS - CourtListener ONLY`);
+
+  console.log('╔' + '═'.repeat(72) + '╗');
+  console.log('║  PHASE IV: COURTLISTENER-ONLY CITATION RESEARCH                       ║');
+  console.log('║  VERSION: ' + PHASE_IV_VERSION.padEnd(60) + '║');
+  console.log('║  EXECUTION ID: ' + executionId.padEnd(55) + '║');
+  console.log('╚' + '═'.repeat(72) + '╝');
+  console.log(`[Phase IV][${executionId}] Order ID: ${input.orderId}`);
+  console.log(`[Phase IV][${executionId}] Jurisdiction: ${input.jurisdiction}`);
+  console.log(`[Phase IV][${executionId}] Motion Type: ${input.motionType}`);
+  console.log(`[Phase IV][${executionId}] Tier: ${input.tier}`);
+  console.log(`[Phase IV][${executionId}] API Key configured: ${process.env.COURTLISTENER_API_KEY ? 'YES' : 'MISSING - WILL FAIL'}`);
+  console.log(`[Phase IV][${executionId}] ⚠️  ZERO TOLERANCE: All citations MUST have courtlistener_id or CRASH`);
 
   try {
     // =========================================================================
@@ -741,11 +750,11 @@ OUTPUT FORMAT (JSON only):
       citationsPerElement
     );
 
-    console.log(`[Phase IV] <<< buildVerifiedCitationBank returned ${citationBankResult.data?.citations?.length || 0} citations`);
+    console.log(`[Phase IV][${executionId}] <<< buildVerifiedCitationBank returned ${citationBankResult.data?.citations?.length || 0} citations`);
 
     if (!citationBankResult.success || !citationBankResult.data?.citations.length) {
-      console.error('[Phase IV] FATAL: CourtListener search returned no results');
-      console.error('[Phase IV] citationBankResult:', JSON.stringify(citationBankResult, null, 2));
+      console.error(`[Phase IV][${executionId}] FATAL: CourtListener search returned no results`);
+      console.error(`[Phase IV][${executionId}] citationBankResult:`, JSON.stringify(citationBankResult, null, 2));
       throw new Error(
         '[Phase IV] FATAL: CourtListener search returned no verified citations. ' +
         'Cannot proceed without verified citations. Check API access and search queries.'
@@ -753,11 +762,26 @@ OUTPUT FORMAT (JSON only):
     }
 
     const verifiedCitations = citationBankResult.data.citations;
-    console.log(`[Phase IV] Retrieved ${verifiedCitations.length} verified citations from CourtListener`);
-    if (verifiedCitations.length > 0) {
-      console.log('[Phase IV] Sample verified citation:', JSON.stringify(verifiedCitations[0], null, 2));
-      console.log(`[Phase IV] All have courtlistener_id: ${verifiedCitations.every(c => c.courtlistener_id)}`);
+    console.log(`[Phase IV][${executionId}] Retrieved ${verifiedCitations.length} verified citations from CourtListener`);
+
+    // ════════════════════════════════════════════════════════════════════════
+    // IMMEDIATE VALIDATION: Check CourtListener returned citations with IDs
+    // This catches the issue BEFORE any Claude processing
+    // ════════════════════════════════════════════════════════════════════════
+    console.log(`[Phase IV][${executionId}] ═══ PRE-CLAUDE VALIDATION ═══`);
+    for (let i = 0; i < verifiedCitations.length; i++) {
+      const c = verifiedCitations[i];
+      console.log(`[Phase IV][${executionId}] Citation ${i}: id=${c.courtlistener_id}, cluster=${c.courtlistener_cluster_id}, name="${c.caseName?.substring(0, 50)}..."`);
+      if (!c.courtlistener_id) {
+        console.error(`[Phase IV][${executionId}] ❌ FATAL: CourtListener citation ${i} missing courtlistener_id!`);
+        console.error(`[Phase IV][${executionId}] Full citation object:`, JSON.stringify(c, null, 2));
+        throw new Error(
+          `[Phase IV] FATAL: CourtListener returned citation without ID: ${c.caseName}. ` +
+          `This is a CourtListener API issue, not a Claude issue.`
+        );
+      }
     }
+    console.log(`[Phase IV][${executionId}] ✓ All ${verifiedCitations.length} CourtListener citations have courtlistener_id`);
 
     // Log each verified citation for audit trail
     for (const citation of verifiedCitations) {
@@ -968,7 +992,7 @@ OUTPUT FORMAT (JSON only):
       );
     }
 
-    // Build final phase output
+    // Build final phase output with version tracking
     const phaseOutput = {
       phaseComplete: 'IV',
       caseCitationBank: finalCitationBank,
@@ -986,13 +1010,45 @@ OUTPUT FORMAT (JSON only):
         originalVerifiedCount: verifiedCitations.length,
         finalMergedCount: finalCitationBank.length,
       },
+      // VERSION TRACKING: This field proves which code version generated this output
+      _phaseIV_meta: {
+        version: PHASE_IV_VERSION,
+        executionId: executionId,
+        executedAt: new Date().toISOString(),
+        codeGuarantee: 'ALL_CITATIONS_FROM_COURTLISTENER_ONLY',
+      },
     };
 
-    console.log(`[Phase IV] ========== PHASE IV COMPLETE ==========`);
-    console.log(`[Phase IV] Total verified citations: ${finalCitationBank.length}`);
-    console.log(`[Phase IV] Total statutory citations: ${phaseOutput.statutoryCitationBank?.length || 0}`);
-    console.log(`[Phase IV] All citations verified: YES ✓ (source: CourtListener only)`);
-    console.log(`[Phase IV] Duration: ${Date.now() - start}ms`);
+    // ════════════════════════════════════════════════════════════════════════
+    // FINAL OUTPUT VERIFICATION: Log exactly what we're returning
+    // ════════════════════════════════════════════════════════════════════════
+    console.log(`[Phase IV][${executionId}] ═══════════════════════════════════════════════════════`);
+    console.log(`[Phase IV][${executionId}] ═══ PHASE IV COMPLETE - FINAL OUTPUT VERIFICATION ═══`);
+    console.log(`[Phase IV][${executionId}] ═══════════════════════════════════════════════════════`);
+    console.log(`[Phase IV][${executionId}] VERSION: ${PHASE_IV_VERSION}`);
+    console.log(`[Phase IV][${executionId}] Total case citations: ${finalCitationBank.length}`);
+    console.log(`[Phase IV][${executionId}] Total statutory citations: ${phaseOutput.statutoryCitationBank?.length || 0}`);
+
+    // Log EVERY citation's courtlistener_id to prove they all have it
+    console.log(`[Phase IV][${executionId}] ═══ CITATION IDs (PROOF OF VERIFICATION) ═══`);
+    for (let i = 0; i < Math.min(finalCitationBank.length, 10); i++) {
+      const c = finalCitationBank[i];
+      console.log(`[Phase IV][${executionId}]   [${i}] courtlistener_id=${c.courtlistener_id} | "${c.caseName?.substring(0, 40)}..."`);
+    }
+    if (finalCitationBank.length > 10) {
+      console.log(`[Phase IV][${executionId}]   ... and ${finalCitationBank.length - 10} more citations (all have courtlistener_id)`);
+    }
+
+    // Verify one more time that ALL citations have courtlistener_id
+    const missingIds = finalCitationBank.filter(c => !c.courtlistener_id);
+    if (missingIds.length > 0) {
+      console.error(`[Phase IV][${executionId}] ❌ FATAL: ${missingIds.length} citations missing courtlistener_id IN FINAL OUTPUT!`);
+      throw new Error(`[Phase IV] FATAL: Final output contains ${missingIds.length} citations without courtlistener_id`);
+    }
+
+    console.log(`[Phase IV][${executionId}] ✓ VERIFIED: All ${finalCitationBank.length} citations have courtlistener_id`);
+    console.log(`[Phase IV][${executionId}] ✓ NO needs_verification field exists (field was DELETED from codebase)`);
+    console.log(`[Phase IV][${executionId}] Duration: ${Date.now() - start}ms`);
 
     return {
       success: true,

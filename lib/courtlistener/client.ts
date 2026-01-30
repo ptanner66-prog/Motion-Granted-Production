@@ -992,16 +992,27 @@ export async function buildVerifiedCitationBank(
       const topOpinions = searchResult.data.opinions.slice(0, minCitationsPerElement);
 
       for (const opinion of topOpinions) {
+        // CRITICAL: Validate that CourtListener returned an ID
+        // This is the source of truth - if no ID here, it's a CourtListener issue
+        if (!opinion.id) {
+          console.error(`[CourtListener] ❌ SKIPPING opinion with NO ID: "${opinion.case_name?.substring(0, 50)}..."`);
+          console.error(`[CourtListener] Full opinion object:`, JSON.stringify(opinion, null, 2));
+          continue; // Skip this one - cannot verify without ID
+        }
+
         // Skip if we already have this citation
         if (citations.some(c => c.courtlistener_id === opinion.id)) {
+          console.log(`[CourtListener] Skipping duplicate: id=${opinion.id}`);
           continue;
         }
+
+        console.log(`[CourtListener] ✓ Adding citation: id=${opinion.id}, name="${opinion.case_name?.substring(0, 40)}..."`);
 
         const verifiedCitation: VerifiedCitation = {
           caseName: opinion.case_name,
           citation: opinion.citation || `${opinion.case_name}`,
-          courtlistener_id: opinion.id,
-          courtlistener_cluster_id: opinion.cluster_id,
+          courtlistener_id: opinion.id,  // GUARANTEED to exist - we checked above
+          courtlistener_cluster_id: opinion.cluster_id || opinion.id,
           verification_timestamp: new Date().toISOString(),
           verification_method: 'search',
           court: opinion.court,
@@ -1021,7 +1032,32 @@ export async function buildVerifiedCitationBank(
     }
   }
 
+  console.log(`[CourtListener] ═══════════════════════════════════════════════════════`);
   console.log(`[CourtListener] Citation bank complete: ${citations.length} citations covering ${elementCoverage.size} elements`);
+
+  // FINAL VALIDATION: Ensure every citation has courtlistener_id
+  const citationsWithoutId = citations.filter(c => !c.courtlistener_id);
+  if (citationsWithoutId.length > 0) {
+    console.error(`[CourtListener] ❌ FATAL: ${citationsWithoutId.length} citations missing courtlistener_id!`);
+    // Remove invalid citations
+    const validCitations = citations.filter(c => c.courtlistener_id);
+    console.log(`[CourtListener] Filtered to ${validCitations.length} valid citations with IDs`);
+
+    return {
+      success: validCitations.length > 0,
+      data: {
+        citations: validCitations,
+        totalVerified: validCitations.length,
+        searchesPerformed,
+        elementsWithCitations: elementCoverage.size,
+      },
+      error: citationsWithoutId.length > 0
+        ? `Filtered out ${citationsWithoutId.length} citations without IDs`
+        : undefined,
+    };
+  }
+
+  console.log(`[CourtListener] ✓ All ${citations.length} citations have courtlistener_id`);
 
   return {
     success: true,
