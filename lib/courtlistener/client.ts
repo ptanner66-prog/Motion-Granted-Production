@@ -18,6 +18,7 @@
 
 import { getCourtListenerAPIKey } from '@/lib/api-keys';
 import { CourtListenerOpinion, CourtListenerSearchResult, CourtListenerCitingOpinion } from './types';
+import type { CitationDetails, CitationTreatment, CitationReference } from '@/types/citations';
 
 const COURTLISTENER_BASE_URL = 'https://www.courtlistener.com/api/rest/v4';
 const COURTLISTENER_V3_URL = 'https://www.courtlistener.com/api/rest/v3';
@@ -1334,6 +1335,290 @@ export async function buildVerifiedCitationBank(
     error: citations.length === 0 ? 'No citations found even with fallbacks' : undefined,
   };
 }
+
+// ============================================================================
+// CITATION VIEWER: Extended API Methods
+// Added: January 30, 2026
+// These methods support the Citation Viewer feature for detailed case display.
+// ============================================================================
+
+/**
+ * Get full citation details for the Citation Viewer modal
+ * Fetches opinion, cluster, and treatment data from CourtListener
+ *
+ * @param opinionId - CourtListener opinion ID
+ * @param options - Include full opinion text, force refresh from API
+ */
+export async function getCitationDetailsForViewer(
+  opinionId: string,
+  options?: { includeText?: boolean; forceRefresh?: boolean }
+): Promise<{
+  success: boolean;
+  data?: CitationDetails;
+  error?: string;
+}> {
+  const includeText = options?.includeText ?? false;
+
+  try {
+    console.log(`[CitationViewer] Fetching details for opinion ${opinionId}`);
+
+    // Fetch opinion data
+    const opinionResult = await makeRequest<{
+      id: number;
+      absolute_url?: string;
+      cluster?: number | string;
+      case_name?: string;
+      case_name_short?: string;
+      date_filed?: string;
+      court?: string;
+      court_id?: string;
+      plain_text?: string;
+      html_with_citations?: string;
+      citation_count?: number;
+      precedential_status?: string;
+    }>(`/opinions/${opinionId}/?fields=id,absolute_url,cluster,case_name,case_name_short,date_filed,court,court_id,plain_text,html_with_citations,citation_count,precedential_status`);
+
+    if (!opinionResult.success || !opinionResult.data) {
+      return { success: false, error: opinionResult.error || 'Opinion not found' };
+    }
+
+    const opinion = opinionResult.data;
+    const clusterId = typeof opinion.cluster === 'number' ? String(opinion.cluster) : opinion.cluster;
+
+    // Fetch cluster data for citations and case metadata
+    let clusterData: {
+      case_name?: string;
+      case_name_short?: string;
+      date_filed?: string;
+      court?: string;
+      court_id?: string;
+      citations?: Array<{ volume: number; reporter: string; page: number }>;
+      citation_count?: number;
+      judges?: string;
+      syllabus?: string;
+      headnotes?: string;
+    } | undefined;
+
+    if (clusterId) {
+      const clusterResult = await makeRequest<typeof clusterData>(`/clusters/${clusterId}/`);
+      if (clusterResult.success && clusterResult.data) {
+        clusterData = clusterResult.data;
+      }
+    }
+
+    // Build citation string
+    let citationString = '';
+    if (clusterData?.citations && clusterData.citations.length > 0) {
+      const c = clusterData.citations[0];
+      citationString = `${c.volume} ${c.reporter} ${c.page}`;
+    }
+
+    // Get treatment data
+    const treatmentResult = await getCitationTreatment(opinionId);
+    const treatment: CitationTreatment = {
+      isGoodLaw: treatmentResult.success ? (treatmentResult.data?.negative ?? 0) === 0 : true,
+      overruledBy: [],
+      distinguishedBy: [],
+      followedBy: [],
+      citedBy: [],
+    };
+
+    if (treatmentResult.success && treatmentResult.data) {
+      // Categorize treatments
+      for (const t of treatmentResult.data.treatments) {
+        const ref: CitationReference = {
+          caseName: '', // Would need additional fetch to get case names
+          citation: '',
+          date: '',
+          treatment: t.treatment,
+          courtlistenerId: String(t.citing_opinion_id),
+        };
+
+        switch (t.treatment.toLowerCase()) {
+          case 'overruled':
+          case 'reversed':
+          case 'vacated':
+          case 'superseded':
+            treatment.overruledBy = treatment.overruledBy || [];
+            treatment.overruledBy.push(ref);
+            treatment.isGoodLaw = false;
+            break;
+          case 'distinguished':
+          case 'criticized':
+          case 'questioned':
+            treatment.distinguishedBy = treatment.distinguishedBy || [];
+            treatment.distinguishedBy.push(ref);
+            break;
+          case 'followed':
+          case 'affirmed':
+          case 'approved':
+            treatment.followedBy = treatment.followedBy || [];
+            treatment.followedBy.push(ref);
+            break;
+          default:
+            treatment.citedBy = treatment.citedBy || [];
+            treatment.citedBy.push(ref);
+        }
+      }
+    }
+
+    // Build response
+    const caseName = opinion.case_name || clusterData?.case_name || 'Unknown Case';
+    const caseNameShort = opinion.case_name_short || clusterData?.case_name_short || extractShortName(caseName);
+    const court = opinion.court || opinion.court_id || clusterData?.court || clusterData?.court_id || 'Unknown Court';
+    const dateFiled = opinion.date_filed || clusterData?.date_filed || '';
+
+    const details: CitationDetails = {
+      opinionId: String(opinion.id),
+      clusterId: clusterId || String(opinion.id),
+
+      caseName,
+      caseNameShort,
+      citation: citationString,
+      court: formatCourtName(court),
+      courtShort: formatCourtShort(court),
+      dateFiled,
+      dateFiledDisplay: dateFiled ? formatDateDisplay(dateFiled) : '',
+
+      syllabus: clusterData?.syllabus || undefined,
+      headnotes: clusterData?.headnotes ? [clusterData.headnotes] : undefined,
+
+      courtlistenerUrl: opinion.absolute_url
+        ? `https://www.courtlistener.com${opinion.absolute_url}`
+        : `https://www.courtlistener.com/opinion/${opinionId}/`,
+
+      citedByCount: clusterData?.citation_count || opinion.citation_count || 0,
+      treatment,
+
+      cachedAt: new Date().toISOString(),
+      source: 'live',
+    };
+
+    // Include opinion text if requested
+    if (includeText) {
+      if (opinion.html_with_citations) {
+        details.opinionText = opinion.html_with_citations;
+        details.opinionTextType = 'html';
+      } else if (opinion.plain_text) {
+        details.opinionText = opinion.plain_text;
+        details.opinionTextType = 'plain';
+      }
+    }
+
+    console.log(`[CitationViewer] Successfully fetched details for ${caseNameShort}`);
+    return { success: true, data: details };
+  } catch (error) {
+    console.error('[CitationViewer] Error fetching citation details:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch citation details',
+    };
+  }
+}
+
+/**
+ * Batch fetch citation details for multiple opinions
+ * Efficient for initial page load
+ *
+ * @param opinionIds - Array of CourtListener opinion IDs
+ */
+export async function batchGetCitationDetails(
+  opinionIds: string[]
+): Promise<{
+  success: boolean;
+  data?: Map<string, CitationDetails>;
+  errors?: string[];
+}> {
+  const results = new Map<string, CitationDetails>();
+  const errors: string[] = [];
+
+  console.log(`[CitationViewer] Batch fetching ${opinionIds.length} citations`);
+
+  // Process in parallel with concurrency limit
+  const CONCURRENCY = 5;
+  for (let i = 0; i < opinionIds.length; i += CONCURRENCY) {
+    const batch = opinionIds.slice(i, i + CONCURRENCY);
+    const promises = batch.map(async (id) => {
+      const result = await getCitationDetailsForViewer(id);
+      if (result.success && result.data) {
+        results.set(id, result.data);
+      } else {
+        errors.push(`Failed to fetch opinion ${id}: ${result.error}`);
+      }
+    });
+    await Promise.all(promises);
+  }
+
+  console.log(`[CitationViewer] Batch complete: ${results.size} success, ${errors.length} errors`);
+  return { success: true, data: results, errors };
+}
+
+/**
+ * Extract short case name from full case name
+ * e.g., "Brumfield v. Louisiana State Board of Education" -> "Brumfield"
+ */
+function extractShortName(caseName: string): string {
+  // Try to get first party name before "v." or "vs."
+  const match = caseName.match(/^([^v]+?)(?:\s+v\.?\s+|\s+vs\.?\s+)/i);
+  if (match) {
+    return match[1].trim().split(/[,\s]/)[0];
+  }
+  // Fallback: first word
+  return caseName.split(/[,\s]/)[0] || caseName;
+}
+
+/**
+ * Format court code to full name
+ */
+function formatCourtName(court: string): string {
+  const courtNames: Record<string, string> = {
+    'scotus': 'Supreme Court of the United States',
+    'ca5': 'United States Court of Appeals for the Fifth Circuit',
+    'ca9': 'United States Court of Appeals for the Ninth Circuit',
+    'la': 'Supreme Court of Louisiana',
+    'lactapp': 'Louisiana Court of Appeal',
+    'cal': 'Supreme Court of California',
+    'calctapp': 'California Court of Appeal',
+  };
+  return courtNames[court.toLowerCase()] || court;
+}
+
+/**
+ * Format court code to short abbreviation
+ */
+function formatCourtShort(court: string): string {
+  const shortNames: Record<string, string> = {
+    'scotus': 'U.S.',
+    'ca5': '5th Cir.',
+    'ca9': '9th Cir.',
+    'la': 'La.',
+    'lactapp': 'La. Ct. App.',
+    'cal': 'Cal.',
+    'calctapp': 'Cal. Ct. App.',
+  };
+  return shortNames[court.toLowerCase()] || court;
+}
+
+/**
+ * Format date for display
+ * e.g., "2015-11-10" -> "November 10, 2015"
+ */
+function formatDateDisplay(dateStr: string): string {
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+// ============================================================================
+// END CITATION VIEWER METHODS
+// ============================================================================
 
 /**
  * Determine if a court's decisions are binding or persuasive for a jurisdiction

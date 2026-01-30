@@ -39,6 +39,7 @@ import { GenerateNowButton } from '@/components/admin/generate-now-button'
 import { TierBadge } from '@/components/workflow/TierBadge'
 import { PhaseProgressTracker } from '@/components/workflow/PhaseProgressTracker'
 import { JudgeSimulationCard } from '@/components/workflow/JudgeSimulationCard'
+import { CitationViewer } from '@/components/citations'
 import type { WorkflowPhaseCode, PhaseStatus, JudgeSimulationResult } from '@/types/workflow'
 
 export const metadata: Metadata = {
@@ -250,6 +251,13 @@ export default async function AdminOrderDetailPage({
                   {documents.length}
                 </span>
               </TabsTrigger>
+              <TabsTrigger
+                value="citations"
+                className="data-[state=active]:bg-teal/10 data-[state=active]:text-teal text-gray-500 rounded-lg px-4 gap-2"
+              >
+                <Scale className="h-4 w-4" />
+                Citations
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="review" className="mt-6">
@@ -460,6 +468,15 @@ export default async function AdminOrderDetailPage({
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="citations" className="mt-6">
+              <CitationViewer
+                orderId={order.id}
+                mode="admin"
+                compact={false}
+                showTitle={true}
+              />
             </TabsContent>
           </Tabs>
         </div>
