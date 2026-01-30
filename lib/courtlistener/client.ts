@@ -65,15 +65,29 @@ interface RequestOptions {
 /**
  * Get API token from database or environment
  * THROWS if no token is configured - citation verification is MANDATORY
+ *
+ * Priority order:
+ * 1. Database (via getCourtListenerAPIKey)
+ * 2. COURTLISTENER_API_KEY env var (Vercel standard)
+ * 3. COURTLISTENER_API_TOKEN env var (legacy fallback)
  */
 async function getAuthHeader(): Promise<Record<string, string>> {
-  const token = await getCourtListenerAPIKey();
-  if (token) {
-    return { Authorization: `Token ${token}` };
+  // 1. Check database first
+  const dbToken = await getCourtListenerAPIKey();
+  if (dbToken) {
+    return { Authorization: `Token ${dbToken}` };
   }
-  // Fallback to env var for backwards compatibility
+
+  // 2. Check COURTLISTENER_API_KEY (Vercel standard)
+  const envKey = process.env.COURTLISTENER_API_KEY;
+  if (envKey) {
+    return { Authorization: `Token ${envKey}` };
+  }
+
+  // 3. Legacy fallback: COURTLISTENER_API_TOKEN
   const envToken = process.env.COURTLISTENER_API_TOKEN;
   if (envToken) {
+    console.warn('[CourtListener] Using legacy COURTLISTENER_API_TOKEN - consider migrating to COURTLISTENER_API_KEY');
     return { Authorization: `Token ${envToken}` };
   }
 
@@ -82,7 +96,7 @@ async function getAuthHeader(): Promise<Record<string, string>> {
     '[CourtListener] FATAL: No API key configured. ' +
     'Citation verification is MANDATORY - cannot proceed without CourtListener access. ' +
     'Set COURTLISTENER_API_KEY environment variable. ' +
-    'Get a free API key at: https://www.courtlistener.com/api/register/'
+    'Get a free API key at: https://www.courtlistener.com/api/rest-info/'
   );
 }
 
@@ -95,19 +109,29 @@ export async function validateCourtListenerConfig(): Promise<{
   error?: string;
 }> {
   try {
-    const token = await getCourtListenerAPIKey();
-    if (token) {
-      console.log('[CourtListener] API key configured ✓');
-      return { configured: true };
-    }
-    const envToken = process.env.COURTLISTENER_API_TOKEN;
-    if (envToken) {
-      console.log('[CourtListener] API key configured via COURTLISTENER_API_TOKEN ✓');
+    // 1. Check database
+    const dbToken = await getCourtListenerAPIKey();
+    if (dbToken) {
+      console.log(`[CourtListener] API key configured (db): ${dbToken.substring(0, 8)}... ✓`);
       return { configured: true };
     }
 
-    const error = 'COURTLISTENER_API_KEY not set. Get a free key at https://www.courtlistener.com/api/register/';
-    console.error(`[CourtListener] ${error}`);
+    // 2. Check COURTLISTENER_API_KEY (Vercel standard)
+    const envKey = process.env.COURTLISTENER_API_KEY;
+    if (envKey) {
+      console.log(`[CourtListener] API key configured (COURTLISTENER_API_KEY): ${envKey.substring(0, 8)}... ✓`);
+      return { configured: true };
+    }
+
+    // 3. Legacy fallback: COURTLISTENER_API_TOKEN
+    const envToken = process.env.COURTLISTENER_API_TOKEN;
+    if (envToken) {
+      console.log(`[CourtListener] API key configured (legacy COURTLISTENER_API_TOKEN): ${envToken.substring(0, 8)}... ✓`);
+      return { configured: true };
+    }
+
+    const error = 'COURTLISTENER_API_KEY not set. Get a free key at https://www.courtlistener.com/api/rest-info/';
+    console.error(`[CourtListener] FATAL: ${error}`);
     return { configured: false, error };
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Failed to check API key';

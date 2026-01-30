@@ -80,7 +80,7 @@ export async function fetchUnpublishedOpinionText(
       `${COURTLISTENER_API_BASE}/opinions/${courtListenerId}/`,
       {
         headers: {
-          'Authorization': `Token ${process.env.COURTLISTENER_API_TOKEN || ''}`,
+          'Authorization': `Token ${process.env.COURTLISTENER_API_KEY || process.env.COURTLISTENER_API_TOKEN || ''}`,
         },
       }
     );
