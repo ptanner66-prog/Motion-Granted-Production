@@ -135,6 +135,7 @@ interface DeliverableResult {
 
 /**
  * Build the phase input object from workflow state
+ * CRITICAL: Include ALL case data so phases can inject it into prompts
  */
 function buildPhaseInput(state: WorkflowState): PhaseInput {
   return {
@@ -170,6 +171,10 @@ function buildPhaseInput(state: WorkflowState): PhaseInput {
     firmPhone: state.orderContext.firmPhone || '',
     firmEmail: state.orderContext.firmEmail || '',
     firmFullAddress: state.orderContext.firmFullAddress || '',
+    // Extended case data for complete motion generation
+    courtDivision: state.orderContext.courtDivision ?? undefined,
+    filingDeadline: state.orderContext.filingDeadline ?? undefined,
+    parties: state.orderContext.parties,
   };
 }
 
@@ -875,6 +880,11 @@ export const generateOrderWorkflow = inngest.createFunction(
     id: "generate-order-workflow",
     concurrency: { limit: 5 },  // Inngest plan limit
     retries: 3,
+    // CRITICAL: Increase timeout for PDF generation and finalization steps
+    // Default is 10min, but deliverables + finalization can take longer
+    timeouts: {
+      finish: "15m",  // Total workflow timeout - increase if needed
+    },
   },
   { event: "order/submitted" },
   async ({ event, step }) => {
@@ -1066,6 +1076,89 @@ export const generateOrderWorkflow = inngest.createFunction(
       workflowState.phaseOutputs["III"] = phaseIIIResult.output;
     }
     console.log('[Orchestration] Accumulated after III:', Object.keys(workflowState.phaseOutputs));
+
+    // ========================================================================
+    // CRITICAL: HOLD CHECKPOINT AFTER PHASE III
+    // ========================================================================
+    // If Phase III detected fatal gaps requiring client input, STOP the workflow.
+    // The client must provide missing information before we can proceed.
+    const phaseIIIOutput = phaseIIIResult?.output as Record<string, unknown> | undefined;
+    const holdRequired = phaseIIIOutput?.holdRequired === true;
+    const holdReason = (phaseIIIOutput?.holdReason ?? 'Critical gaps detected in evidence/case data') as string;
+
+    if (holdRequired) {
+      console.log('[Orchestration] ========== HOLD TRIGGERED ==========');
+      console.log('[Orchestration] Reason:', holdReason);
+
+      // Execute HOLD handling in a step for proper Inngest tracking
+      const holdResult = await step.run("handle-phase-iii-hold", async () => {
+        // Update order status to on_hold
+        await supabase
+          .from("orders")
+          .update({
+            status: "on_hold",
+            hold_triggered_at: new Date().toISOString(),
+            hold_reason: holdReason,
+          })
+          .eq("id", orderId);
+
+        // Update workflow state
+        await supabase
+          .from("workflow_state")
+          .update({
+            phase_status: "HOLD",
+            hold_reason: holdReason,
+            hold_triggered_at: new Date().toISOString(),
+          })
+          .eq("order_id", orderId);
+
+        // Log the hold
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "workflow_hold",
+          action_details: {
+            workflowId: workflowState.workflowId,
+            phase: "III",
+            holdReason,
+            criticalGaps: phaseIIIOutput?.criticalGaps,
+            requiresClientAction: true,
+          },
+        });
+
+        // Queue notification to client
+        await supabase.from("notification_queue").insert({
+          notification_type: "workflow_hold",
+          recipient_email: ADMIN_EMAIL,
+          order_id: orderId,
+          template_data: {
+            orderNumber: workflowState.orderContext.orderNumber,
+            holdReason,
+            phase: "III - Evidence Strategy",
+            criticalGaps: phaseIIIOutput?.criticalGaps,
+            actionRequired: "Please provide missing information to continue",
+          },
+          priority: 10,
+          status: "pending",
+        });
+
+        return {
+          held: true,
+          reason: holdReason,
+        };
+      });
+
+      // STOP WORKFLOW - Return early with on_hold status
+      console.log('[Orchestration] Workflow STOPPED at Phase III due to HOLD');
+      return {
+        success: true,
+        orderId,
+        workflowId: workflowState.workflowId,
+        status: "on_hold",
+        holdPhase: "III",
+        holdReason,
+        message: "Workflow paused - client action required",
+      };
+    }
 
     // ========================================================================
     // STEP 5: Phase IV - Citation Verification + CP1 Checkpoint

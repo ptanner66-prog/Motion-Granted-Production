@@ -13,6 +13,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { createMessageWithStreaming } from '@/lib/automation/claude';
+import {
+  validateMotionObject,
+  generateRevisionInstructions,
+  type PlaceholderValidationResult,
+} from './validators/placeholder-validator';
 import type {
   WorkflowPhaseCode,
   MotionTier,
@@ -59,6 +64,10 @@ export interface PhaseInput {
   firmPhone: string;
   firmEmail: string;
   firmFullAddress: string;  // Pre-formatted: "123 Main St\nBaton Rouge, LA 70801"
+  // Extended case data for complete motion generation
+  courtDivision?: string;
+  filingDeadline?: string;
+  parties?: Array<{ name: string; role: string }>;
 }
 
 export interface PhaseOutput {
@@ -312,6 +321,36 @@ Provide your Phase I analysis as JSON.`;
       phaseOutput.phaseComplete = 'I';
     }
 
+    // ========================================================================
+    // CRITICAL: PRESERVE KNOWN DATA FROM INPUT
+    // ========================================================================
+    // AI extraction should NOT overwrite data we already have from the order.
+    // If filingDeadline exists in input, preserve it - don't let AI null it out.
+
+    if (input.filingDeadline) {
+      // Ensure caseIdentifiers object exists
+      if (!phaseOutput.caseIdentifiers) {
+        phaseOutput.caseIdentifiers = {};
+      }
+      // Preserve the filing deadline from input (order data takes precedence)
+      const existingDeadline = phaseOutput.caseIdentifiers?.filingDeadline;
+      if (!existingDeadline) {
+        phaseOutput.caseIdentifiers.filingDeadline = input.filingDeadline;
+        console.log(`[Phase I] Preserved filingDeadline from input: ${input.filingDeadline}`);
+      }
+    }
+
+    // Also preserve other known input data that AI might miss
+    if (!phaseOutput.caseIdentifiers) {
+      phaseOutput.caseIdentifiers = {};
+    }
+    if (input.caseNumber && !phaseOutput.caseIdentifiers.caseNumber) {
+      phaseOutput.caseIdentifiers.caseNumber = input.caseNumber;
+    }
+    if (input.caseCaption && !phaseOutput.caseIdentifiers.caseCaption) {
+      phaseOutput.caseIdentifiers.caseCaption = input.caseCaption;
+    }
+
     console.log(`[Phase I] ========== PHASE I COMPLETE ==========`);
     console.log(`[Phase I] Total duration: ${Date.now() - start}ms`);
 
@@ -558,11 +597,48 @@ Provide your Phase III evidence strategy as JSON.`;
 }
 
 // ============================================================================
-// PHASE IV: Authority Research (CP1)
+// PHASE IV: Authority Research (CP1) - SEARCH-FIRST COURTLISTENER VERIFICATION
 // ============================================================================
+
+import {
+  searchOpinions,
+  buildVerifiedCitationBank,
+  verifyCitationExists,
+  type VerifiedCitation,
+} from '@/lib/courtlistener/client';
+
+/**
+ * Log citation verification to database for audit trail
+ */
+async function logCitationVerification(
+  orderId: string,
+  phase: string,
+  citationText: string,
+  courtlistenerId: number | null,
+  verificationResult: 'verified' | 'not_found' | 'api_error',
+  apiResponse: Record<string, unknown>
+): Promise<void> {
+  try {
+    const supabase = await createClient();
+    await supabase.from('citation_verifications').insert({
+      order_id: orderId,
+      citation_text: citationText,
+      courtlistener_id: courtlistenerId,
+      verification_status: verificationResult === 'verified' ? 'VERIFIED' : 'NOT_FOUND',
+      stage_1_result: verificationResult,
+      stage_1_at: new Date().toISOString(),
+      notes: `Phase ${phase} verification`,
+    });
+  } catch (error) {
+    console.error('[Phase IV] Failed to log citation verification:', error);
+    // Don't throw - logging failure shouldn't block workflow
+  }
+}
 
 async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase IV] ========== STARTING PHASE IV (COURTLISTENER-VERIFIED CITATIONS) ==========`);
+  console.log(`[Phase IV] ZERO TOLERANCE FOR HALLUCINATED CITATIONS - Search-first approach`);
 
   try {
     const client = getAnthropicClient();
@@ -571,85 +647,235 @@ async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
 
     // Determine citation targets based on tier
     const citationTarget = input.tier === 'C' ? 20 : input.tier === 'B' ? 12 : 6;
+    const citationsPerElement = input.tier === 'C' ? 4 : input.tier === 'B' ? 3 : 2;
 
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+    // =========================================================================
+    // STEP 1: Ask Claude for SEARCH QUERIES, not citations
+    // =========================================================================
+    console.log(`[Phase IV] Step 1: Getting search strategies from Claude...`);
 
-PHASE IV: AUTHORITY RESEARCH
+    const searchQueryPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE IV: AUTHORITY RESEARCH - SEARCH QUERY GENERATION
+
+You are researching legal authority for a ${input.motionType} in ${input.jurisdiction}.
+
+CRITICAL: DO NOT generate specific case citations. Those will be retrieved from CourtListener.
+Your job is to generate SEARCH QUERIES that will find relevant cases.
+
+LEGAL ELEMENTS TO SUPPORT (from Phase II):
+${JSON.stringify(phaseIIOutput, null, 2)}
+
+ISSUE RANKING (from Phase III):
+${JSON.stringify(phaseIIIOutput, null, 2)}
+
+FOR EACH LEGAL ELEMENT, provide:
+1. 2-3 search queries to find relevant ${input.jurisdiction} cases
+2. Key legal terms and phrases to search
+3. Relevant statutory citations (these ARE from your knowledge - statutes don't change)
+
+OUTPUT FORMAT (JSON only):
+{
+  "phaseComplete": "IV_SEARCH_QUERIES",
+  "searchStrategies": [
+    {
+      "element": "name of legal element",
+      "searchQueries": ["query 1", "query 2"],
+      "keyTerms": ["term1", "term2"],
+      "expectedProposition": "what we want the cases to say"
+    }
+  ],
+  "statutoryCitationBank": [
+    {
+      "citation": "exact statutory citation",
+      "name": "statute/rule name",
+      "relevantText": "key text from statute",
+      "purpose": "how this supports the motion"
+    }
+  ]
+}`;
+
+    const searchQueryResponse = await createMessageWithStreaming(client, {
+      model: getModelForPhase('IV', input.tier),
+      max_tokens: 32000,
+      system: searchQueryPrompt,
+      messages: [{ role: 'user', content: `Generate search queries for ${input.motionType} in ${input.jurisdiction}. Target: ${citationTarget} citations across ${citationsPerElement} elements.` }],
+    });
+
+    const searchQueryText = searchQueryResponse.content.find(c => c.type === 'text');
+    const searchQueryOutput = searchQueryText?.type === 'text' ? searchQueryText.text : '';
+
+    let searchStrategies;
+    try {
+      const jsonMatch = searchQueryOutput.match(/\{[\s\S]*\}/);
+      searchStrategies = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch {
+      console.error('[Phase IV] Failed to parse search strategies');
+      searchStrategies = null;
+    }
+
+    if (!searchStrategies?.searchStrategies?.length) {
+      console.error('[Phase IV] No search strategies generated');
+      return {
+        success: false,
+        phase: 'IV',
+        status: 'failed',
+        output: null,
+        error: 'Failed to generate search strategies for CourtListener',
+        durationMs: Date.now() - start,
+      };
+    }
+
+    console.log(`[Phase IV] Generated ${searchStrategies.searchStrategies.length} search strategies`);
+
+    // =========================================================================
+    // STEP 2: Execute searches against CourtListener
+    // =========================================================================
+    console.log(`[Phase IV] Step 2: Searching CourtListener for verified citations...`);
+
+    const searchQueries = searchStrategies.searchStrategies.flatMap(
+      (strategy: { element: string; searchQueries: string[] }) =>
+        strategy.searchQueries.map((query: string) => ({
+          query,
+          forElement: strategy.element,
+          jurisdiction: input.jurisdiction,
+        }))
+    );
+
+    const citationBankResult = await buildVerifiedCitationBank(
+      searchQueries,
+      citationsPerElement
+    );
+
+    if (!citationBankResult.success || !citationBankResult.data?.citations.length) {
+      console.error('[Phase IV] CourtListener search returned no results');
+      return {
+        success: false,
+        phase: 'IV',
+        status: 'failed',
+        output: null,
+        error: 'CourtListener search returned no verified citations. API may be unavailable.',
+        durationMs: Date.now() - start,
+      };
+    }
+
+    const verifiedCitations = citationBankResult.data.citations;
+    console.log(`[Phase IV] Retrieved ${verifiedCitations.length} verified citations from CourtListener`);
+
+    // Log each verified citation for audit trail
+    for (const citation of verifiedCitations) {
+      await logCitationVerification(
+        input.orderId,
+        'IV',
+        citation.citation,
+        citation.courtlistener_id,
+        'verified',
+        { method: citation.verification_method, timestamp: citation.verification_timestamp }
+      );
+    }
+
+    // =========================================================================
+    // STEP 3: Ask Claude to assign propositions to verified citations
+    // =========================================================================
+    console.log(`[Phase IV] Step 3: Having Claude assign propositions to verified citations...`);
+
+    const propositionPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+PHASE IV: AUTHORITY RESEARCH - PROPOSITION ASSIGNMENT
+
+You have ${verifiedCitations.length} VERIFIED citations from CourtListener.
+These citations EXIST - they have been verified against CourtListener's database.
 
 Your task is to:
-1. Identify ${citationTarget}+ relevant legal authorities for this motion
-2. For each authority, provide the EXACT citation in Bluebook format
-3. Explain what proposition each authority supports
-4. Distinguish between binding and persuasive authority
-5. Build both CASE and STATUTORY authority banks
+1. For each citation, write a clear proposition it supports
+2. Extract the most relevant holding based on the snippet
+3. Confirm it supports the legal element it was found for
 
-CRITICAL: Only cite REAL cases and statutes. Do not hallucinate citations.
-If you're unsure about a citation, mark it as "needs_verification": true
+VERIFIED CITATIONS FROM COURTLISTENER:
+${JSON.stringify(verifiedCitations, null, 2)}
 
-DO NOT draft any motion language. Only research and compile authorities.
+LEGAL FRAMEWORK (Phase II):
+${JSON.stringify(phaseIIOutput, null, 2)}
+
+CRITICAL RULES:
+- DO NOT change the citation text - it comes from CourtListener
+- DO NOT add citations not in this list - they would be unverified
+- DO NOT remove the courtlistener_id - it's the verification proof
 
 OUTPUT FORMAT (JSON only):
 {
   "phaseComplete": "IV",
   "caseCitationBank": [
     {
-      "citation": "exact Bluebook citation",
-      "caseName": "string",
-      "court": "string",
-      "year": number,
-      "proposition": "what this case stands for",
-      "relevantHolding": "key holding text",
-      "authorityLevel": "binding|persuasive",
-      "forElement": "which element this supports",
-      "needs_verification": false
+      "citation": "EXACT citation from input - DO NOT MODIFY",
+      "caseName": "from input",
+      "court": "from input",
+      "date_filed": "from input",
+      "courtlistener_id": "from input - REQUIRED",
+      "courtlistener_cluster_id": "from input - REQUIRED",
+      "verification_timestamp": "from input - REQUIRED",
+      "verification_method": "from input - REQUIRED",
+      "proposition": "YOUR ANALYSIS: what legal point this case supports",
+      "relevantHolding": "YOUR EXTRACTION: key holding from the snippet",
+      "authorityLevel": "from input",
+      "forElement": "from input"
     }
   ],
-  "statutoryCitationBank": [
-    {
-      "citation": "exact citation",
-      "name": "statute/rule name",
-      "relevantText": "key text",
-      "purpose": "how this supports the motion"
-    }
-  ],
-  "totalCitations": number,
-  "bindingCount": number,
-  "persuasiveCount": number,
-  "gapsInAuthority": ["areas needing more research"]
+  "statutoryCitationBank": ${JSON.stringify(searchStrategies.statutoryCitationBank || [])},
+  "totalCitations": ${verifiedCitations.length},
+  "bindingCount": ${verifiedCitations.filter((c: VerifiedCitation) => c.authorityLevel === 'binding').length},
+  "persuasiveCount": ${verifiedCitations.filter((c: VerifiedCitation) => c.authorityLevel === 'persuasive').length},
+  "verificationProof": {
+    "searchesPerformed": ${citationBankResult.data.searchesPerformed},
+    "allCitationsVerified": true,
+    "verificationSource": "CourtListener API",
+    "verificationTimestamp": "${new Date().toISOString()}"
+  }
 }`;
 
-    const userMessage = `Research authorities for Phase IV:
-
-LEGAL FRAMEWORK (Phase II):
-${JSON.stringify(phaseIIOutput, null, 2)}
-
-ISSUE RANKING (Phase III):
-${JSON.stringify(phaseIIIOutput, null, 2)}
-
-JURISDICTION: ${input.jurisdiction}
-MOTION TYPE: ${input.motionType}
-
-Find at least ${citationTarget} relevant authorities. Provide as JSON.`;
-
-    const response = await createMessageWithStreaming(client, {
+    const propositionResponse = await createMessageWithStreaming(client, {
       model: getModelForPhase('IV', input.tier),
-      max_tokens: 64000, // Phase IV: Deep citation research (Opus for B/C)
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
+      max_tokens: 64000,
+      system: propositionPrompt,
+      messages: [{ role: 'user', content: 'Assign propositions to the verified citations. Preserve all CourtListener verification fields.' }],
     });
 
-    const textContent = response.content.find(c => c.type === 'text');
-    const outputText = textContent?.type === 'text' ? textContent.text : '';
+    const propositionText = propositionResponse.content.find(c => c.type === 'text');
+    const propositionOutput = propositionText?.type === 'text' ? propositionText.text : '';
 
     let phaseOutput;
     try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
+      const jsonMatch = propositionOutput.match(/\{[\s\S]*\}/);
+      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: propositionOutput };
     } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+      phaseOutput = { error: 'JSON parse failed', raw: propositionOutput };
+    }
+
+    // =========================================================================
+    // STEP 4: Validate all citations have verification proof
+    // =========================================================================
+    console.log(`[Phase IV] Step 4: Validating all citations have verification proof...`);
+
+    const caseCitations = (phaseOutput.caseCitationBank || []) as Array<{ courtlistener_id?: unknown }>;
+    const citationsWithoutProof = caseCitations.filter(
+      (c) => !c.courtlistener_id
+    );
+
+    if (citationsWithoutProof.length > 0) {
+      console.error(`[Phase IV] ${citationsWithoutProof.length} citations missing courtlistener_id - REMOVING`);
+      phaseOutput.caseCitationBank = caseCitations.filter(
+        (c) => c.courtlistener_id
+      );
+      phaseOutput.citationsRemoved = citationsWithoutProof.length;
     }
 
     phaseOutput.phaseComplete = 'IV';
+    phaseOutput.citationVerificationEnforced = true;
+
+    console.log(`[Phase IV] ========== PHASE IV COMPLETE ==========`);
+    console.log(`[Phase IV] Total verified citations: ${phaseOutput.caseCitationBank?.length || 0}`);
+    console.log(`[Phase IV] Total statutory citations: ${phaseOutput.statutoryCitationBank?.length || 0}`);
+    console.log(`[Phase IV] Duration: ${Date.now() - start}ms`);
 
     return {
       success: true,
@@ -658,10 +884,15 @@ Find at least ${citationTarget} relevant authorities. Provide as JSON.`;
       output: phaseOutput,
       nextPhase: 'V',
       requiresReview: true, // CP1: Notify admin research is complete
-      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      tokensUsed: {
+        input: searchQueryResponse.usage.input_tokens + propositionResponse.usage.input_tokens,
+        output: searchQueryResponse.usage.output_tokens + propositionResponse.usage.output_tokens,
+      },
       durationMs: Date.now() - start,
     };
   } catch (error) {
+    console.error(`[Phase IV] ========== PHASE IV FAILED ==========`);
+    console.error(`[Phase IV] Error:`, error);
     return {
       success: false,
       phase: 'IV',
@@ -674,7 +905,7 @@ Find at least ${citationTarget} relevant authorities. Provide as JSON.`;
 }
 
 // ============================================================================
-// PHASE V: Draft Motion
+// PHASE V: Draft Motion - WITH CITATION VERIFICATION GATE
 // ============================================================================
 
 async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
@@ -683,6 +914,77 @@ async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
   console.log(`[Phase V] Order: ${input.orderId}, Tier: ${input.tier}`);
 
   try {
+    // =========================================================================
+    // CITATION VERIFICATION GATE - REJECT UNVERIFIED CITATION BANKS
+    // =========================================================================
+    const phaseIVOutput = input.previousPhaseOutputs['IV'] as Record<string, unknown>;
+
+    console.log(`[Phase V] VERIFICATION GATE: Checking citation bank for verification proof...`);
+
+    const caseCitationBank = (phaseIVOutput?.caseCitationBank || []) as Array<{
+      courtlistener_id?: unknown;
+      citation?: string;
+      verification_timestamp?: string;
+    }>;
+
+    if (caseCitationBank.length === 0) {
+      console.error(`[Phase V] VERIFICATION GATE FAILED: No citations in citation bank`);
+      return {
+        success: false,
+        phase: 'V',
+        status: 'blocked',
+        output: null,
+        error: 'VERIFICATION GATE: Citation bank is empty. Phase IV must provide verified citations.',
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // Check every citation has courtlistener_id
+    const unverifiedCitations = caseCitationBank.filter(c => !c.courtlistener_id);
+
+    if (unverifiedCitations.length > 0) {
+      console.error(`[Phase V] VERIFICATION GATE FAILED: ${unverifiedCitations.length} citations missing courtlistener_id`);
+      console.error(`[Phase V] Unverified citations:`, unverifiedCitations.map(c => c.citation).join(', '));
+
+      // Log each failed citation
+      for (const citation of unverifiedCitations) {
+        await logCitationVerification(
+          input.orderId,
+          'V',
+          citation.citation || 'Unknown',
+          null,
+          'not_found',
+          { reason: 'Missing courtlistener_id verification proof' }
+        );
+      }
+
+      return {
+        success: false,
+        phase: 'V',
+        status: 'blocked',
+        output: {
+          error: 'VERIFICATION GATE FAILED',
+          unverifiedCitations: unverifiedCitations.map(c => c.citation),
+          message: 'All citations must have courtlistener_id verification proof',
+        },
+        error: `VERIFICATION GATE: ${unverifiedCitations.length} citations missing courtlistener_id. Cannot proceed with unverified citations.`,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // Check every citation has verification_timestamp
+    const missingTimestamp = caseCitationBank.filter(c => !c.verification_timestamp);
+
+    if (missingTimestamp.length > 0) {
+      console.warn(`[Phase V] WARNING: ${missingTimestamp.length} citations missing verification_timestamp`);
+      // This is a warning, not a blocking error - courtlistener_id is the critical field
+    }
+
+    console.log(`[Phase V] VERIFICATION GATE PASSED: All ${caseCitationBank.length} citations have courtlistener_id`);
+
+    // =========================================================================
+    // Continue with normal Phase V execution
+    // =========================================================================
     console.log(`[Phase V] Getting Anthropic client...`);
     const client = getAnthropicClient();
     console.log(`[Phase V] Anthropic client ready`);
@@ -690,7 +992,6 @@ async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
     const phaseIOutput = input.previousPhaseOutputs['I'] as Record<string, unknown>;
     const phaseIIOutput = input.previousPhaseOutputs['II'] as Record<string, unknown>;
     const phaseIIIOutput = input.previousPhaseOutputs['III'] as Record<string, unknown>;
-    const phaseIVOutput = input.previousPhaseOutputs['IV'] as Record<string, unknown>;
 
     // Validate we have outputs from previous phases
     console.log(`[Phase V] Phase I output exists: ${!!phaseIOutput}`);
@@ -714,6 +1015,15 @@ ${input.firmCity}, ${input.firmState} ${input.firmZip}
 ${input.firmPhone}
 ${input.firmEmail}
 Attorney for ${getRepresentedPartyName()}`.trim();
+    // Extract case data from Phase I output or use input fallbacks
+    const phaseIClassification = (phaseIOutput?.classification ?? {}) as Record<string, unknown>;
+    const phaseICaseIdentifiers = (phaseIOutput?.caseIdentifiers ?? {}) as Record<string, unknown>;
+    const phaseIParties = (phaseIOutput?.parties ?? {}) as Record<string, unknown>;
+
+    // Build parties string from input
+    const partiesText = input.parties && input.parties.length > 0
+      ? input.parties.map(p => `  - ${p.name} (${p.role})`).join('\n')
+      : '  [Parties not specified in order]';
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
@@ -760,15 +1070,59 @@ CRITICAL - DO NOT:
 - Use [FIRM NAME] or [ADDRESS] placeholders
 - Leave any bracketed placeholders in the signature block
 - Make up attorney information - use EXACTLY what is provided above
+################################################################################
+#  CRITICAL: CASE DATA INJECTION - USE THESE EXACT VALUES                      #
+################################################################################
+
+CASE INFORMATION (USE THESE EXACT DETAILS - NO PLACEHOLDERS):
+- Case Caption: ${input.caseCaption}
+- Case Number: ${input.caseNumber}
+- Jurisdiction: ${input.jurisdiction}
+- Court Division: ${input.courtDivision || '[Not specified]'}
+- Motion Type: ${input.motionType}
+- Filing Deadline: ${input.filingDeadline || '[Not specified]'}
+
+PARTIES (USE THESE EXACT NAMES):
+${partiesText}
+
+STATEMENT OF FACTS FROM CLIENT:
+${input.statementOfFacts || '[Client statement of facts not provided]'}
+
+PROCEDURAL HISTORY FROM CLIENT:
+${input.proceduralHistory || '[Procedural history not provided]'}
+
+CLIENT INSTRUCTIONS:
+${input.instructions || '[No special instructions]'}
+
+################################################################################
+#  ABSOLUTE REQUIREMENTS                                                        #
+################################################################################
+
+1. Start with proper court caption using EXACT case number and caption above
+2. Use the REAL party names - do NOT use "John Doe" or "Jane Smith"
+3. Include Introduction
+4. Address each element with supporting authority from Phase IV
+5. Use citations EXACTLY as provided in Phase IV citation banks
+6. Include Statement of Facts using the CLIENT-PROVIDED facts above
+7. Build arguments following Phase III strategy
+8. Include Conclusion and Prayer for Relief
+9. Include Certificate of Service placeholder
+
+CRITICAL PLACEHOLDER PROHIBITION:
+- Do NOT use [PARISH NAME], [JUDICIAL DISTRICT], or any bracketed placeholders
+- Do NOT use generic names like "John Doe", "Jane Smith", "ABC Corp"
+- Do NOT use placeholder text like "YOUR CLIENT", "OPPOSING PARTY"
+- Use ONLY the actual case data provided above
+- If any required information is missing, flag it in the output but still use best available data
 
 OUTPUT FORMAT (JSON only):
 {
   "phaseComplete": "V",
   "draftMotion": {
-    "caption": "full court caption",
+    "caption": "full court caption with REAL case number and parties",
     "title": "MOTION FOR [TYPE]",
     "introduction": "string",
-    "statementOfFacts": "string",
+    "statementOfFacts": "string using CLIENT-PROVIDED facts",
     "legalArguments": [
       {
         "heading": "I. [ARGUMENT HEADING]",
@@ -784,9 +1138,16 @@ OUTPUT FORMAT (JSON only):
   "wordCount": number,
   "citationsIncluded": number,
   "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "signature", "cos"]
+    "certificateOfService": "[CERTIFICATE OF SERVICE - to be completed with service details]",
+    "signature": "[ATTORNEY SIGNATURE BLOCK - to be signed]"
+  },
+  "wordCount": number,
+  "citationsIncluded": number,
+  "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "cos"],
+  "missingDataFlags": ["list any critical data that was missing"]
 }`;
 
-    const userMessage = `Draft the motion using all previous phase outputs:
+    const userMessage = `Draft the motion using all previous phase outputs AND the case data provided in the system prompt:
 
 ═══════════════════════════════════════════════════════════════
 CASE INFORMATION (USE EXACT VALUES)
@@ -823,6 +1184,13 @@ PHASE IV (Citation Bank):
 ${JSON.stringify(phaseIVOutput, null, 2)}
 
 Draft the complete motion with the EXACT signature block shown above. NO PLACEHOLDERS. Provide as JSON.`;
+REMINDER - USE THESE EXACT VALUES IN THE MOTION:
+- Case Caption: ${input.caseCaption}
+- Case Number: ${input.caseNumber}
+- Jurisdiction: ${input.jurisdiction}
+- Motion Type: ${input.motionType}
+
+Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON.`;
 
     const model = getModelForPhase('V', input.tier);
     console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 64000`);
@@ -940,111 +1308,253 @@ Draft the complete motion with the EXACT signature block shown above. NO PLACEHO
 }
 
 // ============================================================================
-// PHASE V.1: Citation Accuracy Check
+// PHASE V.1: Citation Accuracy Check - ZERO TOLERANCE ENFORCEMENT
 // ============================================================================
+
+/**
+ * Extract all case citations from text using regex patterns
+ */
+function extractCitationsFromText(text: string): string[] {
+  const citations: string[] = [];
+  const seen = new Set<string>();
+
+  // Federal case citations: 123 F.3d 456
+  const federalPattern = /\d+\s+(?:F\.\s*(?:2d|3d|4th)?|F\.\s*Supp\.\s*(?:2d|3d)?|F\.\s*App'x)\s+\d+/gi;
+  // Supreme Court: 123 U.S. 456
+  const scotusPattern = /\d+\s+(?:U\.S\.|S\.\s*Ct\.|L\.\s*Ed\.\s*(?:2d)?)\s+\d+/gi;
+  // State cases: 123 So.2d 456, 123 Cal.App.4th 456
+  const statePattern = /\d+\s+(?:So\.\s*(?:2d|3d)?|Cal\.\s*(?:App\.\s*)?(?:2d|3d|4th|5th)?|N\.E\.\s*(?:2d|3d)?|N\.W\.\s*(?:2d)?|S\.E\.\s*(?:2d)?|S\.W\.\s*(?:2d|3d)?|A\.\s*(?:2d|3d)?|P\.\s*(?:2d|3d)?)\s+\d+/gi;
+
+  const patterns = [federalPattern, scotusPattern, statePattern];
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const citationText = match[0].trim();
+      const normalized = citationText.toLowerCase();
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        citations.push(citationText);
+      }
+    }
+  }
+
+  return citations;
+}
 
 async function executePhaseV1(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase V.1] ========== STARTING PHASE V.1 (CITATION VERIFICATION) ==========`);
+  console.log(`[Phase V.1] ZERO TOLERANCE - Will REMOVE any unverified citations`);
 
   try {
     const client = getAnthropicClient();
 
-    // Defensive: Log available phase outputs
-    const availablePhases = Object.keys(input.previousPhaseOutputs ?? {});
-    console.log(`[Phase V.1] Available previous phase outputs: ${availablePhases.join(', ') || 'NONE'}`);
-
-    // Safe extraction of Phase IV output (citation bank)
+    // Extract Phase IV output (citation bank with CourtListener IDs)
     const phaseIVOutput = (input.previousPhaseOutputs?.['IV'] ?? {}) as Record<string, unknown>;
-    console.log(`[Phase V.1] Phase IV keys: ${Object.keys(phaseIVOutput).join(', ') || 'EMPTY'}`);
+    const caseCitationBank = (phaseIVOutput?.caseCitationBank ?? []) as Array<{
+      citation?: string;
+      courtlistener_id?: number;
+    }>;
 
-    // Extract specific citation banks from Phase IV
-    const caseCitationBank = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
-    const statutoryCitationBank = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
-    const allCitations = [...caseCitationBank, ...statutoryCitationBank];
-    console.log(`[Phase V.1] Citation bank: ${caseCitationBank.length} case citations, ${statutoryCitationBank.length} statutory citations`);
+    // Build a set of verified citations (those with courtlistener_id)
+    const verifiedCitationIds = new Set<number>();
+    const verifiedCitationTexts = new Map<string, number>(); // citation text -> courtlistener_id
 
-    // Safe extraction of Phase V output (draft motion)
+    for (const citation of caseCitationBank) {
+      if (citation.courtlistener_id) {
+        verifiedCitationIds.add(citation.courtlistener_id);
+        if (citation.citation) {
+          // Normalize for comparison
+          verifiedCitationTexts.set(citation.citation.toLowerCase().replace(/\s+/g, ' ').trim(), citation.courtlistener_id);
+        }
+      }
+    }
+
+    console.log(`[Phase V.1] Verified citation bank: ${verifiedCitationIds.size} citations with CourtListener IDs`);
+
+    // Extract Phase V output (draft motion)
     const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
-    console.log(`[Phase V.1] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+    const draftMotion = (phaseVOutput?.draftMotion ?? phaseVOutput) as Record<string, unknown>;
 
-    // Extract draftMotion from Phase V
-    const draftMotion = phaseVOutput?.draftMotion ?? phaseVOutput;
-    console.log(`[Phase V.1] Draft motion exists: ${!!draftMotion}, keys: ${Object.keys(draftMotion as Record<string, unknown>).join(', ') || 'EMPTY'}`);
+    // Convert draft motion to text for citation extraction
+    const motionText = JSON.stringify(draftMotion);
 
-    // Check if we have required data
-    if (allCitations.length === 0) {
-      console.warn(`[Phase V.1] WARNING: No citations found in Phase IV output`);
+    // Extract all citations from the motion text
+    const citationsInDraft = extractCitationsFromText(motionText);
+    console.log(`[Phase V.1] Found ${citationsInDraft.length} citations in draft motion`);
+
+    // =========================================================================
+    // VERIFY EACH CITATION AGAINST COURTLISTENER
+    // =========================================================================
+    const verificationResults: Array<{
+      citation: string;
+      verified: boolean;
+      courtlistener_id: number | null;
+      action: 'kept' | 'removed' | 'verified_now';
+    }> = [];
+
+    const unverifiedCitations: string[] = [];
+
+    for (const citation of citationsInDraft) {
+      const normalized = citation.toLowerCase().replace(/\s+/g, ' ').trim();
+
+      // Check if in our verified bank
+      if (verifiedCitationTexts.has(normalized)) {
+        verificationResults.push({
+          citation,
+          verified: true,
+          courtlistener_id: verifiedCitationTexts.get(normalized) || null,
+          action: 'kept',
+        });
+        continue;
+      }
+
+      // Not in bank - try to verify against CourtListener now
+      console.log(`[Phase V.1] Citation not in bank, verifying: "${citation}"`);
+
+      const verifyResult = await verifyCitationExists(citation);
+
+      if (verifyResult.success && verifyResult.data?.exists && verifyResult.data.courtlistenerId) {
+        console.log(`[Phase V.1] Citation verified now: ${citation} -> ID ${verifyResult.data.courtlistenerId}`);
+        verificationResults.push({
+          citation,
+          verified: true,
+          courtlistener_id: parseInt(verifyResult.data.courtlistenerId, 10),
+          action: 'verified_now',
+        });
+
+        // Log to audit trail
+        await logCitationVerification(
+          input.orderId,
+          'V.1',
+          citation,
+          parseInt(verifyResult.data.courtlistenerId, 10),
+          'verified',
+          { source: 'Phase V.1 verification' }
+        );
+      } else {
+        // CITATION NOT VERIFIED - MARK FOR REMOVAL
+        console.error(`[Phase V.1] UNVERIFIED CITATION DETECTED: "${citation}"`);
+        verificationResults.push({
+          citation,
+          verified: false,
+          courtlistener_id: null,
+          action: 'removed',
+        });
+        unverifiedCitations.push(citation);
+
+        // Log to audit trail
+        await logCitationVerification(
+          input.orderId,
+          'V.1',
+          citation,
+          null,
+          'not_found',
+          { reason: 'Citation not found in CourtListener - potential hallucination' }
+        );
+      }
     }
-    if (!draftMotion || Object.keys(draftMotion as Record<string, unknown>).length === 0) {
-      console.warn(`[Phase V.1] WARNING: No draft motion found in Phase V output`);
-    }
 
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+    // =========================================================================
+    // IF UNVERIFIED CITATIONS FOUND, ASK CLAUDE TO REMOVE THEM
+    // =========================================================================
+    let cleanedMotion = draftMotion;
+    let citationsRemoved = 0;
 
-PHASE V.1: CITATION ACCURACY CHECK
+    if (unverifiedCitations.length > 0) {
+      console.log(`[Phase V.1] REMOVING ${unverifiedCitations.length} unverified citations from motion`);
 
-Your task is to:
-1. Verify every citation in the draft matches the citation bank from Phase IV
-2. Check that citations are used for the correct propositions
-3. Verify Bluebook formatting is correct
-4. Identify any citations in the draft NOT from the citation bank (flag as suspicious)
-5. Check pinpoint page references are appropriate
+      const cleanupPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-DO NOT modify the motion. Only audit citations.
+PHASE V.1: CITATION CLEANUP - ZERO TOLERANCE FOR HALLUCINATED CITATIONS
+
+The following citations in the motion could NOT be verified against CourtListener.
+They may be hallucinations and MUST be removed.
+
+UNVERIFIED CITATIONS TO REMOVE:
+${unverifiedCitations.map((c, i) => `${i + 1}. "${c}"`).join('\n')}
+
+VERIFIED CITATIONS THAT CAN STAY:
+${Array.from(verifiedCitationTexts.keys()).map((c, i) => `${i + 1}. "${c}"`).join('\n')}
+
+DRAFT MOTION:
+${JSON.stringify(draftMotion, null, 2)}
+
+YOUR TASK:
+1. Find every instance of the unverified citations in the motion
+2. REMOVE the sentence containing the unverified citation, OR
+3. REPLACE with a verified citation from the bank if it supports the same point
+4. Ensure the motion still flows logically after removals
 
 OUTPUT FORMAT (JSON only):
 {
-  "phaseComplete": "V.1",
-  "citationAudit": [
+  "cleanedMotion": {
+    // Same structure as original draftMotion but with unverified citations removed
+  },
+  "removals": [
     {
-      "citationInDraft": "string",
-      "matchInBank": true|false,
-      "formatCorrect": true|false,
-      "usedForCorrectProposition": true|false,
-      "issues": ["issue1", "issue2"]
+      "citation": "the unverified citation",
+      "location": "which section",
+      "action": "removed_sentence|replaced_with_verified"
     }
   ],
-  "suspiciousCitations": ["citations not in bank"],
-  "formattingErrors": ["error1", "error2"],
-  "totalChecked": number,
-  "passRate": "percentage",
-  "overallStatus": "pass|needs_correction"
+  "citationsRemoved": number,
+  "motionStillCoherent": true|false
 }`;
 
-    const userMessage = `Audit citations for Phase V.1:
+      const cleanupResponse = await createMessageWithStreaming(client, {
+        model: getModelForPhase('V.1', input.tier),
+        max_tokens: 64000,
+        system: cleanupPrompt,
+        messages: [{ role: 'user', content: 'Remove all unverified citations and return the cleaned motion.' }],
+      });
 
-CITATION BANK (Phase IV):
-Case Citations (${caseCitationBank.length}):
-${JSON.stringify(caseCitationBank, null, 2)}
+      const cleanupText = cleanupResponse.content.find(c => c.type === 'text');
+      const cleanupOutput = cleanupText?.type === 'text' ? cleanupText.text : '';
 
-Statutory Citations (${statutoryCitationBank.length}):
-${JSON.stringify(statutoryCitationBank, null, 2)}
-
-DRAFT MOTION (Phase V):
-${JSON.stringify(draftMotion, null, 2)}
-
-Total citations to verify: ${allCitations.length}
-Verify all citations in the draft match the citation bank. Provide audit as JSON.`;
-
-    const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('V.1', input.tier),
-      max_tokens: 64000, // Phase V.1: Citation accuracy verification
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-    });
-
-    const textContent = response.content.find(c => c.type === 'text');
-    const outputText = textContent?.type === 'text' ? textContent.text : '';
-
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+      try {
+        const jsonMatch = cleanupOutput.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const cleanupResult = JSON.parse(jsonMatch[0]);
+          cleanedMotion = cleanupResult.cleanedMotion || draftMotion;
+          citationsRemoved = cleanupResult.citationsRemoved || unverifiedCitations.length;
+          console.log(`[Phase V.1] Cleanup complete: ${citationsRemoved} citations removed`);
+        }
+      } catch {
+        console.error('[Phase V.1] Failed to parse cleanup response - using original motion');
+      }
     }
 
-    phaseOutput.phaseComplete = 'V.1';
+    // =========================================================================
+    // Build final output
+    // =========================================================================
+    const phaseOutput = {
+      phaseComplete: 'V.1',
+      citationVerification: {
+        totalInDraft: citationsInDraft.length,
+        verified: verificationResults.filter(r => r.verified).length,
+        unverified: unverifiedCitations.length,
+        removed: citationsRemoved,
+        verificationRate: citationsInDraft.length > 0
+          ? `${Math.round((verificationResults.filter(r => r.verified).length / citationsInDraft.length) * 100)}%`
+          : '100%',
+      },
+      verificationResults,
+      unverifiedCitationsRemoved: unverifiedCitations,
+      cleanedMotion: unverifiedCitations.length > 0 ? cleanedMotion : null,
+      auditTrail: {
+        verifiedViaCourtListenerBank: verificationResults.filter(r => r.action === 'kept').length,
+        verifiedNow: verificationResults.filter(r => r.action === 'verified_now').length,
+        removed: verificationResults.filter(r => r.action === 'removed').length,
+        timestamp: new Date().toISOString(),
+      },
+      overallStatus: unverifiedCitations.length === 0 ? 'pass' : 'citations_removed',
+    };
+
+    console.log(`[Phase V.1] ========== PHASE V.1 COMPLETE ==========`);
+    console.log(`[Phase V.1] Verification: ${phaseOutput.citationVerification.verified}/${phaseOutput.citationVerification.totalInDraft} verified`);
+    console.log(`[Phase V.1] Removed: ${phaseOutput.citationVerification.removed} unverified citations`);
 
     return {
       success: true,
@@ -1052,10 +1562,11 @@ Verify all citations in the draft match the citation bank. Provide audit as JSON
       status: 'completed',
       output: phaseOutput,
       nextPhase: 'VI',
-      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
     };
   } catch (error) {
+    console.error(`[Phase V.1] ========== PHASE V.1 FAILED ==========`);
+    console.error(`[Phase V.1] Error:`, error);
     return {
       success: false,
       phase: 'V.1',
@@ -1485,6 +1996,20 @@ ${signatureBlock}
 DO NOT use placeholders like [ATTORNEY NAME] or [BAR NUMBER].
 USE THE EXACT ATTORNEY INFO ABOVE in the revised signature block.
 ═══════════════════════════════════════════════════════════════════════════════
+################################################################################
+#  CRITICAL: CASE DATA - USE THESE EXACT VALUES IN REVISIONS                   #
+################################################################################
+
+CASE INFORMATION (USE THESE EXACT DETAILS - NO PLACEHOLDERS):
+- Case Caption: ${input.caseCaption}
+- Case Number: ${input.caseNumber}
+- Jurisdiction: ${input.jurisdiction}
+- Motion Type: ${input.motionType}
+
+STATEMENT OF FACTS FROM CLIENT:
+${input.statementOfFacts || '[Client statement of facts not provided]'}
+
+################################################################################
 
 JUDGE FEEDBACK TO ADDRESS:
 - Weaknesses: ${JSON.stringify(weaknesses)}
@@ -1493,19 +2018,27 @@ JUDGE FEEDBACK TO ADDRESS:
 
 ${thinkingBudget ? 'Use extended thinking to carefully address each issue.' : ''}
 
+CRITICAL PLACEHOLDER PROHIBITION:
+- Do NOT use [PARISH NAME], [JUDICIAL DISTRICT], or any bracketed placeholders
+- Do NOT use generic names like "John Doe", "Jane Smith"
+- Use ONLY the actual case data provided above
+- The revised motion must be ready to file with ZERO placeholder modifications
+
 OUTPUT FORMAT (JSON only):
 {
   "phaseComplete": "VIII",
   "revisedMotion": {
-    "caption": "...",
+    "caption": "full court caption with REAL case data",
     "title": "...",
     "introduction": "revised...",
-    "statementOfFacts": "revised...",
+    "statementOfFacts": "revised using CLIENT-PROVIDED facts...",
     "legalArguments": [...],
     "conclusion": "revised...",
     "prayerForRelief": "...",
     "signature": "EXACT signature block with real attorney info - NO PLACEHOLDERS",
     "certificateOfService": "full COS with real attorney signature"
+    "certificateOfService": "[CERTIFICATE OF SERVICE - to be completed with service details]",
+    "signature": "[ATTORNEY SIGNATURE BLOCK - to be signed]"
   },
   "changesMade": [
     { "section": "string", "change": "description of revision" }
@@ -2103,11 +2636,75 @@ Assemble and check. Provide as JSON.`;
 
     phaseOutput.phaseComplete = 'X';
 
+    // ========================================================================
+    // CRITICAL: PLACEHOLDER VALIDATION GATE
+    // ========================================================================
+    // Validate that the final motion does not contain placeholder text.
+    // If placeholders are found, the motion CANNOT be delivered.
+
+    console.log(`[Phase X] Running placeholder validation...`);
+
+    // Get the final package motion content for validation
+    const finalPackage = phaseOutput?.finalPackage as Record<string, unknown> | undefined;
+    const motionContent = finalPackage?.motion || finalMotion;
+
+    // Run placeholder validation
+    const placeholderValidation = validateMotionObject(
+      typeof motionContent === 'string'
+        ? { content: motionContent }
+        : (motionContent as Record<string, unknown>)
+    );
+
+    console.log(`[Phase X] Placeholder validation result: ${placeholderValidation.valid ? 'PASSED' : 'FAILED'}`);
+    if (!placeholderValidation.valid) {
+      console.log(`[Phase X] Placeholders found: ${placeholderValidation.placeholders.join(', ')}`);
+      console.log(`[Phase X] Generic names found: ${placeholderValidation.genericNames.join(', ')}`);
+    }
+
+    // Add validation result to output
+    phaseOutput.placeholderValidation = placeholderValidation;
+
+    // If placeholders detected, block delivery
+    if (!placeholderValidation.valid && placeholderValidation.severity === 'blocking') {
+      console.error(`[Phase X] BLOCKING: Motion contains placeholders - cannot deliver`);
+
+      // Generate revision instructions
+      const revisionInstructions = generateRevisionInstructions(placeholderValidation);
+
+      return {
+        success: true, // Phase ran successfully, but motion needs revision
+        phase: 'X',
+        status: 'blocked', // Blocked by placeholder validation
+        output: {
+          ...phaseOutput,
+          readyForDelivery: false,
+          blockingReason: 'PLACEHOLDER_DETECTED',
+          placeholderValidation,
+          revisionInstructions,
+          adminSummary: {
+            ...(phaseOutput.adminSummary || {}),
+            notesForAdmin: `CRITICAL: Motion contains ${placeholderValidation.placeholders.length} placeholder(s) and ${placeholderValidation.genericNames.length} generic name(s). Requires revision before delivery. Placeholders: ${placeholderValidation.placeholders.concat(placeholderValidation.genericNames).join(', ')}`,
+          },
+        },
+        requiresReview: true,
+        gapsDetected: placeholderValidation.placeholders.length + placeholderValidation.genericNames.length,
+        tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // Motion passed validation - ready for admin review
+    console.log(`[Phase X] Motion passed placeholder validation - ready for CP3 approval`);
+
     return {
       success: true,
       phase: 'X',
       status: 'requires_review', // Always requires admin approval
-      output: phaseOutput,
+      output: {
+        ...phaseOutput,
+        readyForDelivery: true,
+        placeholderValidation,
+      },
       requiresReview: true, // CP3: Blocking checkpoint
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,

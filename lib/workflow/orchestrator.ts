@@ -28,6 +28,47 @@ import { alertBypassAttempt } from './violation-alerts';
 import type { OperationResult } from '@/types/automation';
 import type { WorkflowPath, MotionTier } from '@/types/workflow';
 
+// ============================================================================
+// TIER NORMALIZATION
+// ============================================================================
+
+/**
+ * Normalize motion tier to letter format (A, B, C).
+ * Database may store as numeric (0/1/2/3) or letter - this ensures letter output.
+ *
+ * Mapping: 0→A, 1→A, 2→B, 3→C (0 treated as A for safety)
+ * Already-letter values pass through unchanged.
+ */
+function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' {
+  // If already a valid letter, return it
+  if (tier === 'A' || tier === 'B' || tier === 'C') {
+    return tier;
+  }
+
+  // Convert numeric to letter
+  if (typeof tier === 'number') {
+    if (tier === 1 || tier === 0) return 'A';
+    if (tier === 2) return 'B';
+    if (tier === 3) return 'C';
+  }
+
+  // Handle string numbers
+  if (typeof tier === 'string') {
+    if (tier === '1' || tier === '0') return 'A';
+    if (tier === '2') return 'B';
+    if (tier === '3') return 'C';
+    // Check for lowercase letters
+    const upper = tier.toUpperCase();
+    if (upper === 'A' || upper === 'B' || upper === 'C') {
+      return upper as 'A' | 'B' | 'C';
+    }
+  }
+
+  // Default to B (Motion to Compel tier)
+  console.warn(`[normalizeMotionTier] Unknown tier value: ${tier}, defaulting to B`);
+  return 'B';
+}
+
 // Create admin client with service role key (bypasses RLS for server-side operations)
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -202,7 +243,7 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
 
       // Case info
       motionType: order.motion_type || 'general',
-      motionTier: order.motion_tier || 'B',
+      motionTier: normalizeMotionTier(order.motion_tier),
       jurisdiction: order.jurisdiction || 'Federal',
       courtDivision: order.court_division,
       caseNumber: order.case_number || '[CASE NUMBER]',
