@@ -856,6 +856,12 @@ import {
   type VerifiedCitation,
 } from '@/lib/courtlistener/client';
 
+// Legal-Grade Citation Research System (Phase IV-A/B/C)
+import {
+  executeLegalGradeResearch,
+  mapMotionType,
+} from '@/lib/workflow/phase-iv';
+
 /**
  * Log citation verification to database for audit trail
  */
@@ -886,193 +892,69 @@ async function logCitationVerification(
 
 async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
   // ════════════════════════════════════════════════════════════════════════════
-  // PHASE IV VERSION: 2026-01-30-SCORCHED-EARTH
-  // This version ONLY uses CourtListener. NO Claude-generated citations.
+  // PHASE IV VERSION: 2026-01-30-LEGAL-GRADE
+  // Legal-Grade Citation Research System (Chen Megaprompt Specification)
+  // Three sub-phases: IV-A (Element Extraction), IV-B (Parallel Search), IV-C (Holding Verification)
   // ════════════════════════════════════════════════════════════════════════════
-  const PHASE_IV_VERSION = '2026-01-30-SCORCHED-EARTH';
-  const executionId = `p4-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   const start = Date.now();
 
   console.log('╔' + '═'.repeat(72) + '╗');
-  console.log('║  PHASE IV: COURTLISTENER-ONLY CITATION RESEARCH                       ║');
-  console.log('║  VERSION: ' + PHASE_IV_VERSION.padEnd(60) + '║');
-  console.log('║  EXECUTION ID: ' + executionId.padEnd(55) + '║');
+  console.log('║  PHASE IV: LEGAL-GRADE CITATION RESEARCH                              ║');
+  console.log('║  VERSION: 2026-01-30-LEGAL-GRADE (Chen Megaprompt Spec)              ║');
   console.log('╚' + '═'.repeat(72) + '╝');
-  console.log(`[Phase IV][${executionId}] Order ID: ${input.orderId}`);
-  console.log(`[Phase IV][${executionId}] Jurisdiction: ${input.jurisdiction}`);
-  console.log(`[Phase IV][${executionId}] Motion Type: ${input.motionType}`);
-  console.log(`[Phase IV][${executionId}] Tier: ${input.tier}`);
-  console.log(`[Phase IV][${executionId}] API Key configured: ${process.env.COURTLISTENER_API_KEY ? 'YES' : 'MISSING - WILL FAIL'}`);
-  console.log(`[Phase IV][${executionId}] ⚠️  ZERO TOLERANCE: All citations MUST have courtlistener_id or CRASH`);
+  console.log(`[Phase IV] Order ID: ${input.orderId}`);
+  console.log(`[Phase IV] Jurisdiction: ${input.jurisdiction}`);
+  console.log(`[Phase IV] Motion Type: ${input.motionType}`);
+  console.log(`[Phase IV] Tier: ${input.tier}`);
 
   try {
-    // =========================================================================
-    // PREREQUISITE: Validate CourtListener API is configured
-    // =========================================================================
-    const courtlistenerConfig = await validateCourtListenerConfig();
-    if (!courtlistenerConfig.configured) {
-      console.error(`[Phase IV] FATAL: CourtListener API not configured`);
-      console.error(`[Phase IV] Error: ${courtlistenerConfig.error}`);
-      return {
-        success: false,
-        phase: 'IV',
-        status: 'failed',
-        output: null,
-        error: `COURTLISTENER NOT CONFIGURED: ${courtlistenerConfig.error}. Citation verification is MANDATORY.`,
-        durationMs: Date.now() - start,
-      };
-    }
-
     const client = getAnthropicClient();
     const phaseIIOutput = input.previousPhaseOutputs['II'] as Record<string, unknown>;
     const phaseIIIOutput = input.previousPhaseOutputs['III'] as Record<string, unknown>;
 
-    // Determine citation targets based on tier
-    const citationTarget = input.tier === 'C' ? 20 : input.tier === 'B' ? 12 : 6;
-    const citationsPerElement = input.tier === 'C' ? 4 : input.tier === 'B' ? 3 : 2;
-
     // =========================================================================
-    // STEP 1: Ask Claude for SEARCH QUERIES, not citations
+    // EXECUTE LEGAL-GRADE CITATION RESEARCH (3 sub-phases)
     // =========================================================================
-    console.log(`[Phase IV] Step 1: Getting search strategies from Claude...`);
+    const result = await executeLegalGradeResearch({
+      orderId: input.orderId,
+      motionType: mapMotionType(input.motionType),
+      jurisdiction: input.jurisdiction,
+      tier: input.tier,
+      statementOfFacts: input.statementOfFacts,
+      phaseIIOutput,
+      phaseIIIOutput,
+    }, client);
 
-    const searchQueryPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-PHASE IV: AUTHORITY RESEARCH - SEARCH QUERY GENERATION
-
-You are researching legal authority for a ${input.motionType} in ${input.jurisdiction}.
-
-CRITICAL: DO NOT generate specific case citations. Those will be retrieved from CourtListener.
-Your job is to generate SEARCH QUERIES that will find relevant cases.
-
-LEGAL ELEMENTS TO SUPPORT (from Phase II):
-${JSON.stringify(phaseIIOutput, null, 2)}
-
-ISSUE RANKING (from Phase III):
-${JSON.stringify(phaseIIIOutput, null, 2)}
-
-FOR EACH LEGAL ELEMENT, provide:
-1. 2-3 search queries to find relevant ${input.jurisdiction} cases
-2. Key legal terms and phrases to search
-3. Relevant statutory citations (these ARE from your knowledge - statutes don't change)
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "IV_SEARCH_QUERIES",
-  "searchStrategies": [
-    {
-      "element": "name of legal element",
-      "searchQueries": ["query 1", "query 2"],
-      "keyTerms": ["term1", "term2"],
-      "expectedProposition": "what we want the cases to say"
-    }
-  ],
-  "statutoryCitationBank": [
-    {
-      "citation": "exact statutory citation",
-      "name": "statute/rule name",
-      "relevantText": "key text from statute",
-      "purpose": "how this supports the motion"
-    }
-  ]
-}`;
-
-    const searchQueryResponse = await createMessageWithStreaming(client, {
-      model: getModelForPhase('IV', input.tier),
-      max_tokens: 32000,
-      system: searchQueryPrompt,
-      messages: [{ role: 'user', content: `Generate search queries for ${input.motionType} in ${input.jurisdiction}. Target: ${citationTarget} citations across ${citationsPerElement} elements.` }],
-    });
-
-    const searchQueryText = searchQueryResponse.content.find(c => c.type === 'text');
-    const searchQueryOutput = searchQueryText?.type === 'text' ? searchQueryText.text : '';
-
-    let searchStrategies;
-    try {
-      const jsonMatch = searchQueryOutput.match(/\{[\s\S]*\}/);
-      searchStrategies = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch {
-      console.error('[Phase IV] Failed to parse search strategies');
-      searchStrategies = null;
-    }
-
-    if (!searchStrategies?.searchStrategies?.length) {
-      console.error('[Phase IV] No search strategies generated');
+    if (!result.success) {
+      console.error(`[Phase IV] Legal-Grade Research failed: ${result.error}`);
       return {
         success: false,
         phase: 'IV',
         status: 'failed',
         output: null,
-        error: 'Failed to generate search strategies for CourtListener',
+        error: result.error || 'Legal-Grade Citation Research failed',
         durationMs: Date.now() - start,
       };
     }
 
-    console.log(`[Phase IV] Generated ${searchStrategies.searchStrategies.length} search strategies`);
-
     // =========================================================================
-    // STEP 2: Execute searches against CourtListener
+    // NUCLEAR VALIDATION: Every citation MUST have courtlistener_id
     // =========================================================================
-    console.log(`[Phase IV] Step 2: Searching CourtListener for verified citations...`);
-
-    const searchQueries = searchStrategies.searchStrategies.flatMap(
-      (strategy: { element: string; searchQueries: string[] }) =>
-        strategy.searchQueries.map((query: string) => ({
-          query,
-          forElement: strategy.element,
-          jurisdiction: input.jurisdiction,
-        }))
-    );
-
-    console.log('[Phase IV] >>> Calling buildVerifiedCitationBank...');
-    console.log(`[Phase IV] Search queries: ${searchQueries.length} total`);
-    console.log('[Phase IV] Search params:', JSON.stringify({
-      queryCount: searchQueries.length,
-      jurisdiction: input.jurisdiction,
-      minCitationsPerElement: citationsPerElement,
-      sampleQueries: searchQueries.slice(0, 3).map((q: { query: string }) => q.query),
-    }, null, 2));
-
-    const citationBankResult = await buildVerifiedCitationBank(
-      searchQueries,
-      citationsPerElement
-    );
-
-    console.log(`[Phase IV][${executionId}] <<< buildVerifiedCitationBank returned ${citationBankResult.data?.citations?.length || 0} citations`);
-
-    if (!citationBankResult.success || !citationBankResult.data?.citations.length) {
-      console.error(`[Phase IV][${executionId}] FATAL: CourtListener search returned no results`);
-      console.error(`[Phase IV][${executionId}] citationBankResult:`, JSON.stringify(citationBankResult, null, 2));
-      throw new Error(
-        '[Phase IV] FATAL: CourtListener search returned no verified citations. ' +
-        'Cannot proceed without verified citations. Check API access and search queries.'
-      );
-    }
-
-    const verifiedCitations = citationBankResult.data.citations;
-    console.log(`[Phase IV][${executionId}] Retrieved ${verifiedCitations.length} verified citations from CourtListener`);
-
-    // ════════════════════════════════════════════════════════════════════════
-    // IMMEDIATE VALIDATION: Check CourtListener returned citations with IDs
-    // This catches the issue BEFORE any Claude processing
-    // ════════════════════════════════════════════════════════════════════════
-    console.log(`[Phase IV][${executionId}] ═══ PRE-CLAUDE VALIDATION ═══`);
-    for (let i = 0; i < verifiedCitations.length; i++) {
-      const c = verifiedCitations[i];
-      console.log(`[Phase IV][${executionId}] Citation ${i}: id=${c.courtlistener_id}, cluster=${c.courtlistener_cluster_id}, name="${c.caseName?.substring(0, 50)}..."`);
-      if (!c.courtlistener_id) {
-        console.error(`[Phase IV][${executionId}] ❌ FATAL: CourtListener citation ${i} missing courtlistener_id!`);
-        console.error(`[Phase IV][${executionId}] Full citation object:`, JSON.stringify(c, null, 2));
-        throw new Error(
-          `[Phase IV] FATAL: CourtListener returned citation without ID: ${c.caseName}. ` +
-          `This is a CourtListener API issue, not a Claude issue.`
-        );
+    for (const citation of result.caseCitationBank) {
+      if (!citation.courtlistener_id) {
+        throw new Error(`FATAL: Citation "${citation.caseName}" missing courtlistener_id`);
       }
     }
-    console.log(`[Phase IV][${executionId}] ✓ All ${verifiedCitations.length} CourtListener citations have courtlistener_id`);
+
+    // MINIMUM CITATION CHECK
+    const minRequired = input.tier === 'A' ? 4 : input.tier === 'B' ? 8 : 12;
+    if (result.caseCitationBank.length < minRequired) {
+      console.error(`[Phase IV] FATAL: Insufficient citations: ${result.caseCitationBank.length} < ${minRequired} required for Tier ${input.tier}`);
+      throw new Error(`Only ${result.caseCitationBank.length} verified citations found, but Tier ${input.tier} requires at least ${minRequired}.`);
+    }
 
     // Log each verified citation for audit trail
-    for (const citation of verifiedCitations) {
+    for (const citation of result.caseCitationBank) {
       await logCitationVerification(
         input.orderId,
         'IV',
@@ -1083,260 +965,23 @@ OUTPUT FORMAT (JSON only):
       );
     }
 
-    // =========================================================================
-    // STEP 3: Ask Claude to assign propositions to verified citations
-    // =========================================================================
-    console.log(`[Phase IV] Step 3: Having Claude assign propositions to verified citations...`);
-
-    const propositionPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-PHASE IV: AUTHORITY RESEARCH - PROPOSITION ASSIGNMENT
-
-You have ${verifiedCitations.length} VERIFIED citations from CourtListener.
-These citations EXIST - they have been verified against CourtListener's database.
-
-Your task is to:
-1. For each citation, write a clear proposition it supports
-2. Extract the most relevant holding based on the snippet
-3. Confirm it supports the legal element it was found for
-
-VERIFIED CITATIONS FROM COURTLISTENER:
-${JSON.stringify(verifiedCitations, null, 2)}
-
-LEGAL FRAMEWORK (Phase II):
-${JSON.stringify(phaseIIOutput, null, 2)}
-
-CRITICAL RULES:
-- DO NOT change the citation text - it comes from CourtListener
-- DO NOT add citations not in this list - they would be unverified
-- DO NOT remove the courtlistener_id - it's the verification proof
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "IV",
-  "caseCitationBank": [
-    {
-      "citation": "EXACT citation from input - DO NOT MODIFY",
-      "caseName": "from input",
-      "court": "from input",
-      "date_filed": "from input",
-      "courtlistener_id": "from input - REQUIRED",
-      "courtlistener_cluster_id": "from input - REQUIRED",
-      "verification_timestamp": "from input - REQUIRED",
-      "verification_method": "from input - REQUIRED",
-      "proposition": "YOUR ANALYSIS: what legal point this case supports",
-      "relevantHolding": "YOUR EXTRACTION: key holding from the snippet",
-      "authorityLevel": "from input",
-      "forElement": "from input"
-    }
-  ],
-  "statutoryCitationBank": ${JSON.stringify(searchStrategies.statutoryCitationBank || [])},
-  "totalCitations": ${verifiedCitations.length},
-  "bindingCount": ${verifiedCitations.filter((c: VerifiedCitation) => c.authorityLevel === 'binding').length},
-  "persuasiveCount": ${verifiedCitations.filter((c: VerifiedCitation) => c.authorityLevel === 'persuasive').length},
-  "verificationProof": {
-    "searchesPerformed": ${citationBankResult.data.searchesPerformed},
-    "allCitationsVerified": true,
-    "verificationSource": "CourtListener API",
-    "verificationTimestamp": "${new Date().toISOString()}"
-  }
-}`;
-
-    const propositionResponse = await createMessageWithStreaming(client, {
-      model: getModelForPhase('IV', input.tier),
-      max_tokens: 64000,
-      system: propositionPrompt,
-      messages: [{ role: 'user', content: 'Assign propositions to the verified citations. Preserve all CourtListener verification fields.' }],
-    });
-
-    const propositionText = propositionResponse.content.find(c => c.type === 'text');
-    const propositionOutput = propositionText?.type === 'text' ? propositionText.text : '';
-
-    let claudeOutput: Record<string, unknown>;
-    try {
-      const jsonMatch = propositionOutput.match(/\{[\s\S]*\}/);
-      claudeOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: propositionOutput };
-    } catch {
-      claudeOutput = { error: 'JSON parse failed', raw: propositionOutput };
-    }
-
-    // =========================================================================
-    // STEP 4: MERGE Claude's propositions with ORIGINAL verified citations
-    // =========================================================================
-    // CRITICAL: DO NOT trust Claude to preserve courtlistener_id!
-    // Use the ORIGINAL verified citations as the source of truth.
-    // Claude's output is ONLY used for proposition and relevantHolding.
-    // =========================================================================
-    console.log(`[Phase IV] Step 4: MERGING Claude's analysis with ORIGINAL verified citations...`);
-    console.log(`[Phase IV] Original verified citations count: ${verifiedCitations.length}`);
-
-    // Build a map of Claude's propositions by courtlistener_id or case name
-    const claudePropositions = new Map<string | number, {
-      proposition?: string;
-      relevantHolding?: string;
-    }>();
-
-    const claudeCitations = (claudeOutput.caseCitationBank || []) as Array<{
-      courtlistener_id?: number;
-      caseName?: string;
-      citation?: string;
-      proposition?: string;
-      relevantHolding?: string;
-    }>;
-
-    for (const c of claudeCitations) {
-      // Index by courtlistener_id if available, otherwise by case name
-      const key = c.courtlistener_id || c.caseName || c.citation || '';
-      if (key) {
-        claudePropositions.set(key, {
-          proposition: c.proposition,
-          relevantHolding: c.relevantHolding,
-        });
-        // Also index by normalized case name for fuzzy matching
-        if (c.caseName) {
-          claudePropositions.set(c.caseName.toLowerCase().trim(), {
-            proposition: c.proposition,
-            relevantHolding: c.relevantHolding,
-          });
-        }
-      }
-    }
-
-    // MERGE: Start with ORIGINAL verified citations (guaranteed to have courtlistener_id)
-    // Then enrich with Claude's propositions
-    const finalCitationBank = verifiedCitations.map(original => {
-      // Try to find Claude's proposition for this citation
-      let claudeAnalysis = claudePropositions.get(original.courtlistener_id);
-      if (!claudeAnalysis) {
-        claudeAnalysis = claudePropositions.get(original.caseName.toLowerCase().trim());
-      }
-      if (!claudeAnalysis) {
-        claudeAnalysis = claudePropositions.get(original.caseName);
-      }
-
-      return {
-        // PRESERVED FROM COURTLISTENER (source of truth):
-        caseName: original.caseName,
-        citation: original.citation,
-        courtlistener_id: original.courtlistener_id,  // REQUIRED - from CourtListener
-        courtlistener_cluster_id: original.courtlistener_cluster_id,  // REQUIRED - from CourtListener
-        verification_timestamp: original.verification_timestamp,  // REQUIRED - from CourtListener
-        verification_method: original.verification_method,  // REQUIRED - from CourtListener
-        court: original.court,
-        date_filed: original.date_filed,
-        forElement: original.forElement,
-        authorityLevel: original.authorityLevel,
-
-        // ENRICHED FROM CLAUDE (analysis only):
-        proposition: claudeAnalysis?.proposition || original.proposition || '',
-        relevantHolding: claudeAnalysis?.relevantHolding || original.relevantHolding || '',
-      };
-    });
-
-    console.log(`[Phase IV] Merged citation bank: ${finalCitationBank.length} citations`);
-
-    // ════════════════════════════════════════════════════════════════════════
-    // NUCLEAR VALIDATION: Every citation MUST have courtlistener_id
-    // This is not optional. This is not negotiable. Unverified = CRASH.
-    // ════════════════════════════════════════════════════════════════════════
-    console.log(`[Phase IV] Step 5: NUCLEAR VALIDATION - checking all citations have courtlistener_id...`);
-
-    if (finalCitationBank.length === 0) {
-      console.error('[Phase IV] FATAL: Citation bank is empty after merge');
-      throw new Error('[Phase IV] FATAL: Citation bank is empty. CourtListener search returned no results.');
-    }
-
-    for (let i = 0; i < finalCitationBank.length; i++) {
-      const citation = finalCitationBank[i];
-
-      if (!citation.courtlistener_id) {
-        console.error(`[Phase IV] FATAL: Citation ${i} missing courtlistener_id:`, JSON.stringify(citation, null, 2));
-        throw new Error(
-          `[Phase IV] FATAL: Citation "${citation.caseName || 'unknown'}" has no courtlistener_id. ` +
-          `All citations MUST be verified via CourtListener. ` +
-          `This citation will NOT be included in the motion.`
-        );
-      }
-
-      if (!citation.verification_timestamp) {
-        console.error(`[Phase IV] FATAL: Citation ${i} missing verification_timestamp:`, JSON.stringify(citation, null, 2));
-        throw new Error(
-          `[Phase IV] FATAL: Citation "${citation.caseName}" has no verification_timestamp. ` +
-          `Verification proof is required.`
-        );
-      }
-    }
-
-    console.log(`[Phase IV] ✓ VERIFIED: All ${finalCitationBank.length} citations have courtlistener_id`);
-
-    // MINIMUM CITATION CHECK: Ensure we have enough verified citations
-    const minRequired = input.tier === 'A' ? 4 : input.tier === 'B' ? 8 : 12; // Tier-based minimums
-
-    if (finalCitationBank.length < minRequired) {
-      console.error(`[Phase IV] FATAL: Insufficient verified citations: ${finalCitationBank.length} < ${minRequired} required for Tier ${input.tier}`);
-      throw new Error(
-        `[Phase IV] FATAL: Only ${finalCitationBank.length} verified citations found, ` +
-        `but Tier ${input.tier} requires at least ${minRequired}. CourtListener may have limited results.`
-      );
-    }
-
-    // Build final phase output with version tracking
+    // Build phase output (compatible with existing Phase V expectations)
     const phaseOutput = {
       phaseComplete: 'IV',
-      caseCitationBank: finalCitationBank,
-      statutoryCitationBank: claudeOutput.statutoryCitationBank || searchStrategies.statutoryCitationBank || [],
-      totalCitations: finalCitationBank.length,
-      bindingCount: finalCitationBank.filter(c => c.authorityLevel === 'binding').length,
-      persuasiveCount: finalCitationBank.filter(c => c.authorityLevel === 'persuasive').length,
+      caseCitationBank: result.caseCitationBank,
+      statutoryCitationBank: result.statutoryCitationBank,
+      totalCitations: result.totalCitations,
+      bindingCount: result.bindingCount,
+      persuasiveCount: result.persuasiveCount,
       citationVerificationEnforced: true,
-      allCitationsVerified: true,  // Guaranteed - we only use CourtListener citations
-      verificationProof: {
-        searchesPerformed: citationBankResult.data.searchesPerformed,
-        allCitationsVerified: true,
-        verificationSource: 'CourtListener API',
-        verificationTimestamp: new Date().toISOString(),
-        originalVerifiedCount: verifiedCitations.length,
-        finalMergedCount: finalCitationBank.length,
-      },
-      // VERSION TRACKING: This field proves which code version generated this output
-      _phaseIV_meta: {
-        version: PHASE_IV_VERSION,
-        executionId: executionId,
-        executedAt: new Date().toISOString(),
-        codeGuarantee: 'ALL_CITATIONS_FROM_COURTLISTENER_ONLY',
-      },
+      allCitationsVerified: true,
+      verificationProof: result.verificationProof,
+      _phaseIV_meta: result._phaseIV_meta,
     };
 
-    // ════════════════════════════════════════════════════════════════════════
-    // FINAL OUTPUT VERIFICATION: Log exactly what we're returning
-    // ════════════════════════════════════════════════════════════════════════
-    console.log(`[Phase IV][${executionId}] ═══════════════════════════════════════════════════════`);
-    console.log(`[Phase IV][${executionId}] ═══ PHASE IV COMPLETE - FINAL OUTPUT VERIFICATION ═══`);
-    console.log(`[Phase IV][${executionId}] ═══════════════════════════════════════════════════════`);
-    console.log(`[Phase IV][${executionId}] VERSION: ${PHASE_IV_VERSION}`);
-    console.log(`[Phase IV][${executionId}] Total case citations: ${finalCitationBank.length}`);
-    console.log(`[Phase IV][${executionId}] Total statutory citations: ${phaseOutput.statutoryCitationBank?.length || 0}`);
-
-    // Log EVERY citation's courtlistener_id to prove they all have it
-    console.log(`[Phase IV][${executionId}] ═══ CITATION IDs (PROOF OF VERIFICATION) ═══`);
-    for (let i = 0; i < Math.min(finalCitationBank.length, 10); i++) {
-      const c = finalCitationBank[i];
-      console.log(`[Phase IV][${executionId}]   [${i}] courtlistener_id=${c.courtlistener_id} | "${c.caseName?.substring(0, 40)}..."`);
-    }
-    if (finalCitationBank.length > 10) {
-      console.log(`[Phase IV][${executionId}]   ... and ${finalCitationBank.length - 10} more citations (all have courtlistener_id)`);
-    }
-
-    // Verify one more time that ALL citations have courtlistener_id
-    const missingIds = finalCitationBank.filter(c => !c.courtlistener_id);
-    if (missingIds.length > 0) {
-      console.error(`[Phase IV][${executionId}] ❌ FATAL: ${missingIds.length} citations missing courtlistener_id IN FINAL OUTPUT!`);
-      throw new Error(`[Phase IV] FATAL: Final output contains ${missingIds.length} citations without courtlistener_id`);
-    }
-
-    console.log(`[Phase IV][${executionId}] ✓ VERIFIED: All ${finalCitationBank.length} citations have courtlistener_id`);
-    console.log(`[Phase IV][${executionId}] ✓ NO needs_verification field exists (field was DELETED from codebase)`);
-    console.log(`[Phase IV][${executionId}] Duration: ${Date.now() - start}ms`);
+    console.log(`[Phase IV] ✓ VERIFIED: All ${result.caseCitationBank.length} citations have courtlistener_id`);
+    console.log(`[Phase IV] Louisiana: ${result.louisianaCitations}, Federal: ${result.federalCitations}`);
+    console.log(`[Phase IV] Duration: ${Date.now() - start}ms`);
 
     return {
       success: true,
@@ -1345,10 +990,6 @@ OUTPUT FORMAT (JSON only):
       output: phaseOutput,
       nextPhase: 'V',
       requiresReview: true, // CP1: Notify admin research is complete
-      tokensUsed: {
-        input: searchQueryResponse.usage.input_tokens + propositionResponse.usage.input_tokens,
-        output: searchQueryResponse.usage.output_tokens + propositionResponse.usage.output_tokens,
-      },
       durationMs: Date.now() - start,
     };
   } catch (error) {
