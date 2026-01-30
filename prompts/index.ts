@@ -6,7 +6,8 @@ import fs from 'fs';
 import path from 'path';
 
 const loadPrompt = (filename: string): string => {
-  const filePath = path.join(__dirname, filename);
+  // Use process.cwd() for Next.js compatibility (works in both dev and production build)
+  const filePath = path.join(process.cwd(), 'prompts', filename);
   return fs.readFileSync(filePath, 'utf-8');
 };
 
