@@ -64,6 +64,7 @@ interface RequestOptions {
 
 /**
  * Get API token from database or environment
+ * THROWS if no token is configured - citation verification is MANDATORY
  */
 async function getAuthHeader(): Promise<Record<string, string>> {
   const token = await getCourtListenerAPIKey();
@@ -75,7 +76,43 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   if (envToken) {
     return { Authorization: `Token ${envToken}` };
   }
-  return {};
+
+  // FATAL: No API key configured
+  throw new Error(
+    '[CourtListener] FATAL: No API key configured. ' +
+    'Citation verification is MANDATORY - cannot proceed without CourtListener access. ' +
+    'Set COURTLISTENER_API_KEY environment variable. ' +
+    'Get a free API key at: https://www.courtlistener.com/api/register/'
+  );
+}
+
+/**
+ * Validate CourtListener API key is configured
+ * Call this at startup to fail fast if misconfigured
+ */
+export async function validateCourtListenerConfig(): Promise<{
+  configured: boolean;
+  error?: string;
+}> {
+  try {
+    const token = await getCourtListenerAPIKey();
+    if (token) {
+      console.log('[CourtListener] API key configured ✓');
+      return { configured: true };
+    }
+    const envToken = process.env.COURTLISTENER_API_TOKEN;
+    if (envToken) {
+      console.log('[CourtListener] API key configured via COURTLISTENER_API_TOKEN ✓');
+      return { configured: true };
+    }
+
+    const error = 'COURTLISTENER_API_KEY not set. Get a free key at https://www.courtlistener.com/api/register/';
+    console.error(`[CourtListener] ${error}`);
+    return { configured: false, error };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'Failed to check API key';
+    return { configured: false, error };
+  }
 }
 
 /**
