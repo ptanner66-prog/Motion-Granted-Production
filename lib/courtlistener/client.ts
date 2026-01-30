@@ -61,6 +61,7 @@ async function waitForRateLimit(): Promise<void> {
 interface RequestOptions {
   timeout?: number;
   retries?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -142,18 +143,26 @@ export async function validateCourtListenerConfig(): Promise<{
 
 /**
  * Make a request with retry logic and rate limiting
+ *
+ * MODIFIED: 2026-01-30-CHEN-TIMEOUT-FIX
+ * - Added external AbortSignal support for caller-controlled timeouts
  */
 async function makeRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<{ success: boolean; data?: T; error?: string }> {
-  const { timeout = DEFAULT_TIMEOUT, retries = MAX_RETRIES } = options;
+  const { timeout = DEFAULT_TIMEOUT, retries = MAX_RETRIES, signal: externalSignal } = options;
   const authHeader = await getAuthHeader();
 
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      // Check if external signal was already aborted
+      if (externalSignal?.aborted) {
+        throw new Error('Request aborted by caller');
+      }
+
       // Wait for rate limit before making request
       await waitForRateLimit();
 
@@ -162,14 +171,17 @@ async function makeRequest<T>(
       console.log(`[makeRequest] Auth header present: ${!!authHeader.Authorization}`);
       console.log(`[makeRequest] Auth header prefix: ${authHeader.Authorization?.substring(0, 15)}...`);
 
-      // Use AbortSignal.timeout() for cleaner timeout handling (Vercel Pro optimization)
+      // CHEN-TIMEOUT-FIX: Combine external signal with timeout signal
+      // If external signal provided, use it; otherwise use timeout
+      const effectiveSignal = externalSignal || AbortSignal.timeout(timeout);
+
       const response = await fetch(fullUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           ...authHeader,
         },
-        signal: AbortSignal.timeout(timeout),
+        signal: effectiveSignal,
       });
 
       console.log(`[makeRequest] Response status: ${response.status} ${response.statusText}`);
@@ -751,19 +763,33 @@ export interface VerifiedCitation {
 }
 
 /**
+ * Search options for searchOpinions
+ */
+export interface SearchOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/**
  * Search opinions by query with jurisdiction filter
  *
  * This is the PRIMARY method for Phase IV to find real citations.
  * Instead of Claude generating citations, we search CourtListener first.
  *
+ * MODIFIED: 2026-01-30-CHEN-TIMEOUT-FIX
+ * - Added AbortSignal support for timeout handling
+ * - Added request timeout (15s default)
+ *
  * @param query - Search query (e.g., "discovery compel Louisiana")
  * @param jurisdiction - Court filter (e.g., "la" for Louisiana)
  * @param limit - Max results to return
+ * @param options - Optional settings including abort signal
  */
 export async function searchOpinions(
   query: string,
   jurisdiction?: string,
-  limit: number = 20
+  limit: number = 20,
+  options: SearchOptions = {}
 ): Promise<{
   success: boolean;
   data?: {
@@ -782,6 +808,8 @@ export async function searchOpinions(
   };
   error?: string;
 }> {
+  const { signal, timeoutMs } = options;
+
   try {
     // Build search endpoint
     let endpoint = `/search/?q=${encodeURIComponent(query)}&type=o`;
@@ -834,7 +862,10 @@ export async function searchOpinions(
         }>;
         sibling_ids?: number[];
       }>;
-    }>(endpoint);
+    }>(endpoint, {
+      signal,
+      timeout: timeoutMs,
+    });
 
     // DIAGNOSTIC: Log raw API response
     console.log(`[searchOpinions] API call success: ${result.success}`);

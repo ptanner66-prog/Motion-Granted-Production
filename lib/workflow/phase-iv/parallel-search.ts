@@ -4,22 +4,24 @@
  * Legal-Grade Citation Research System
  * Chen Megaprompt Specification — January 30, 2026
  *
- * CRITICAL: All searches run IN PARALLEL via Promise.all
+ * MODIFIED: 2026-01-30-CHEN-TIMEOUT-FIX
+ * Changed from pure parallel to BATCHED execution to prevent:
+ * - Rate limit violations (CourtListener: 60 req/min)
+ * - Vercel function timeouts (5 min max)
+ * - Server overload
  *
- * For EACH element, search THREE tiers IN PARALLEL:
+ * For EACH element, search THREE tiers in CONTROLLED BATCHES:
  * - Tier 1: Louisiana Supreme Court (binding)
  * - Tier 2: Louisiana Courts of Appeal (binding)
  * - Tier 3: Fifth Circuit (persuasive)
  *
+ * Batch Configuration:
+ * - Batch size: 5 concurrent requests
+ * - Inter-batch delay: 1.5 seconds
+ * - Per-request timeout: 15 seconds
+ * - Max total duration: 4 minutes (1 min buffer for Vercel)
+ *
  * OUTPUT: 30-60 raw candidate citations
- *
- * WRONG (current):
- * for (query of queries) {
- *   await search(query);  // 3 sec each × 10 = 30 sec
- * }
- *
- * RIGHT (required):
- * await Promise.all(queries.map(q => search(q)));  // 3 sec total
  */
 
 import {
@@ -30,6 +32,11 @@ import {
   type CourtTier,
 } from '@/types/citation-research';
 import { searchOpinions } from '@/lib/courtlistener/client';
+import {
+  executeBatchedSearches,
+  collectUniqueCandidates,
+  type BatchSearchTask,
+} from '@/lib/courtlistener/batched-search';
 
 // ============================================================================
 // COURT CODES BY TIER
@@ -81,50 +88,43 @@ export async function executeParallelSearch(
     console.log(`[Phase IV-B] Searches by tier: T1=${searchesByTier.tier1}, T2=${searchesByTier.tier2}, T3=${searchesByTier.tier3}`);
 
     // ═══════════════════════════════════════════════════════════════════════
-    // CRITICAL: Execute ALL searches in parallel using Promise.allSettled
-    // This is the key performance optimization per Chen's spec
+    // CHEN-TIMEOUT-FIX (2026-01-30): BATCHED EXECUTION
+    // Replaced parallel Promise.all with controlled batches to prevent:
+    // - Rate limit violations (60/min)
+    // - Vercel function timeouts (5 min)
+    // - CourtListener server overload
     // ═══════════════════════════════════════════════════════════════════════
     const searchStart = Date.now();
-    console.log(`[Phase IV-B] >>> LAUNCHING ${searchTasks.length} PARALLEL SEARCHES...`);
+    console.log(`[Phase IV-B] >>> LAUNCHING BATCHED SEARCHES (NOT parallel)...`);
+    console.log(`[Phase IV-B] Total tasks: ${searchTasks.length}, Batch size: 5, Inter-batch delay: 1.5s`);
 
-    const searchPromises = searchTasks.map(task =>
-      executeSearchTask(task).catch(error => {
-        console.warn(`[Phase IV-B] Search failed for "${task.query}":`, error);
-        return [] as RawCandidate[];
-      })
-    );
+    // Convert to BatchSearchTask format
+    const batchTasks: BatchSearchTask[] = searchTasks.map((task, idx) => ({
+      id: `task-${idx + 1}`,
+      query: task.query,
+      jurisdiction: input.jurisdiction,
+      elementName: task.forElement,
+      tier: task.tier,
+    }));
 
-    // Use Promise.allSettled to handle partial failures gracefully
-    const results = await Promise.allSettled(searchPromises);
+    // Execute with batching and rate limiting
+    const batchSummary = await executeBatchedSearches(batchTasks);
 
     const searchDuration = Date.now() - searchStart;
-    console.log(`[Phase IV-B] <<< PARALLEL SEARCHES COMPLETE in ${searchDuration}ms`);
+    console.log(`[Phase IV-B] <<< BATCHED SEARCHES COMPLETE in ${searchDuration}ms`);
 
-    // Collect all candidates
-    const allCandidates: RawCandidate[] = [];
-    const seenIds = new Set<number>();
-    let successfulSearches = 0;
-    let failedSearches = 0;
+    // Collect unique candidates from batch results
+    const allCandidates = collectUniqueCandidates(batchSummary.results);
 
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        successfulSearches++;
-        for (const candidate of result.value) {
-          // Deduplicate by ID
-          if (candidate.id && !seenIds.has(candidate.id)) {
-            seenIds.add(candidate.id);
-            allCandidates.push(candidate);
-          }
-        }
-      } else {
-        failedSearches++;
-        console.warn(`[Phase IV-B] Search rejected:`, result.reason);
-      }
-    }
+    const successfulSearches = batchSummary.succeeded;
+    const failedSearches = batchSummary.failed + batchSummary.timedOut;
 
     console.log(`[Phase IV-B] Successful searches: ${successfulSearches}/${searchTasks.length}`);
     if (failedSearches > 0) {
-      console.warn(`[Phase IV-B] Failed searches: ${failedSearches}`);
+      console.warn(`[Phase IV-B] Failed searches: ${failedSearches} (${batchSummary.timedOut} timeouts)`);
+    }
+    if (batchSummary.partialResults) {
+      console.warn(`[Phase IV-B] PARTIAL RESULTS: ${batchSummary.abortReason}`);
     }
     console.log(`[Phase IV-B] Unique candidates found: ${allCandidates.length}`);
 
