@@ -175,8 +175,7 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
         *,
         parties (
           party_name,
-          party_role,
-          is_represented_party
+          party_role
         ),
         profiles:client_id (
           full_name,
@@ -256,10 +255,13 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
       filingDeadline: order.filing_deadline,
 
       // Parties
-      parties: (order.parties || []).map((p: { party_name: string; party_role: string; is_represented_party?: boolean }) => ({
+      // NOTE: is_represented_party column removed from query (doesn't exist in DB)
+      // To enable represented party detection, add column to Supabase:
+      // ALTER TABLE parties ADD COLUMN is_represented_party BOOLEAN DEFAULT false;
+      parties: (order.parties || []).map((p: { party_name: string; party_role: string }) => ({
         name: p.party_name,
         role: p.party_role,
-        isRepresented: p.is_represented_party || false,
+        isRepresented: false, // Default until column added to DB
       })),
 
       // ATTORNEY INFO - For signature blocks
