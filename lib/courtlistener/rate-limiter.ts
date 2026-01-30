@@ -163,15 +163,23 @@ export async function withRateLimit<T>(fn: () => Promise<T>, label: string = 're
   const waitTime = await acquireToken();
 
   if (waitTime > DEFAULT_CONFIG.minDelayMs) {
-    logger.debug(`[RateLimiter] Waiting ${waitTime}ms before ${label}`);
+    console.log(`[RateLimiter] Waiting ${waitTime}ms before ${label}`);
     await new Promise((resolve) => setTimeout(resolve, waitTime));
   }
 
+  console.log(`[RateLimiter] Executing ${label}...`);
+  const startTime = Date.now();
+
   try {
     const result = await fn();
+    const duration = Date.now() - startTime;
+    console.log(`[RateLimiter] ${label} completed in ${duration}ms`);
     recordSuccess();
     return result;
   } catch (error) {
+    const duration = Date.now() - startTime;
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[RateLimiter] ${label} FAILED after ${duration}ms: ${errorMsg}`);
     recordFailure();
     throw error;
   }

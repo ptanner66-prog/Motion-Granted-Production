@@ -62,6 +62,8 @@ const TIER_JURISDICTION_MAP: Record<CourtTier, string> = {
 async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSearchResult> {
   const startTime = Date.now();
 
+  console.log(`[executeSearchWithTimeout] Starting task ${task.id}: query="${task.query}", tier=${task.tier}`);
+
   try {
     // Create abort controller for timeout
     const controller = new AbortController();
@@ -69,18 +71,21 @@ async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSea
 
     // Execute with rate limiting
     const searchResult = await withRateLimit(async () => {
+      console.log(`[executeSearchWithTimeout] Calling searchOpinions for task ${task.id}`);
       const result = await searchOpinions(
         task.query,
         TIER_JURISDICTION_MAP[task.tier],
         10, // Max results per search
         { signal: controller.signal }
       );
+      console.log(`[executeSearchWithTimeout] searchOpinions returned for task ${task.id}: success=${result.success}, opinions=${result.data?.opinions?.length || 0}`);
       return result;
     }, `search:${task.id}`);
 
     clearTimeout(timeoutId);
 
     if (!searchResult.success || !searchResult.data?.opinions) {
+      console.log(`[executeSearchWithTimeout] Task ${task.id} returned no results: success=${searchResult.success}, error=${searchResult.error}`);
       return {
         taskId: task.id,
         elementName: task.elementName,
@@ -106,6 +111,20 @@ async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSea
       forElement: task.elementName,
       searchTier: task.tier,
     }));
+
+    // DIAGNOSTIC: Check for candidates without IDs
+    // FIX: Use proper null/undefined check, not falsy check (ID 0 is valid)
+    const candidatesWithId = candidates.filter(c => c.id !== undefined && c.id !== null);
+    const candidatesWithoutId = candidates.filter(c => c.id === undefined || c.id === null);
+    console.log(`[executeSearchWithTimeout] Task ${task.id} transformed ${candidates.length} candidates:`);
+    console.log(`  - With valid ID: ${candidatesWithId.length}`);
+    console.log(`  - WITHOUT ID (will be dropped): ${candidatesWithoutId.length}`);
+    if (candidatesWithoutId.length > 0) {
+      console.warn(`[executeSearchWithTimeout] ⚠️ DROPPING ${candidatesWithoutId.length} candidates without ID!`);
+      candidatesWithoutId.slice(0, 3).forEach((c, i) => {
+        console.warn(`  [${i}] caseName="${c.caseName}", clusterId=${c.clusterId}`);
+      });
+    }
 
     return {
       taskId: task.id,
@@ -314,16 +333,41 @@ export function collectUniqueCandidates(results: BatchSearchResult[]): RawCandid
   const seenIds = new Set<number>();
   const candidates: RawCandidate[] = [];
 
+  // DIAGNOSTIC: Log input state
+  console.log(`[collectUniqueCandidates] Total batch results: ${results.length}`);
+  const successfulResults = results.filter(r => r.success);
+  console.log(`[collectUniqueCandidates] Successful results: ${successfulResults.length}`);
+
+  let totalCandidatesBeforeFilter = 0;
+  let candidatesWithoutId = 0;
+  let duplicateCandidates = 0;
+
   for (const result of results) {
     if (result.success) {
+      console.log(`[collectUniqueCandidates] Result ${result.taskId}: ${result.results.length} candidates`);
       for (const candidate of result.results) {
-        if (candidate.id && !seenIds.has(candidate.id)) {
+        totalCandidatesBeforeFilter++;
+        // FIX: Use typeof check instead of falsy check - ID 0 is valid!
+        if (candidate.id === undefined || candidate.id === null) {
+          candidatesWithoutId++;
+          console.warn(`[collectUniqueCandidates] ⚠️ Candidate without ID: ${candidate.caseName || 'unknown'}, clusterId=${candidate.clusterId}`);
+        } else if (seenIds.has(candidate.id)) {
+          duplicateCandidates++;
+        } else {
           seenIds.add(candidate.id);
           candidates.push(candidate);
         }
       }
+    } else {
+      console.log(`[collectUniqueCandidates] Result ${result.taskId} FAILED: ${result.error}`);
     }
   }
+
+  console.log(`[collectUniqueCandidates] SUMMARY:`);
+  console.log(`  - Total candidates before filter: ${totalCandidatesBeforeFilter}`);
+  console.log(`  - Candidates without ID (DROPPED): ${candidatesWithoutId}`);
+  console.log(`  - Duplicate candidates: ${duplicateCandidates}`);
+  console.log(`  - Final unique candidates: ${candidates.length}`);
 
   // Sort by authority: LA Supreme > LA App > 5th Cir > District > Other
   return candidates.sort((a, b) => {
