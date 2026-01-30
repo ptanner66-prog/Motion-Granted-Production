@@ -22,7 +22,7 @@ import type { CitationDetails, CitationTreatment, CitationReference } from '@/ty
 
 const COURTLISTENER_BASE_URL = 'https://www.courtlistener.com/api/rest/v4';
 const COURTLISTENER_V3_URL = 'https://www.courtlistener.com/api/rest/v3';
-const DEFAULT_TIMEOUT = 60000; // 60 seconds (CourtListener can be very slow)
+const DEFAULT_TIMEOUT = 90000; // 90 seconds - CourtListener legitimately takes 30-67s per request
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000; // 1s, 2s, 4s exponential backoff
 
@@ -202,6 +202,13 @@ async function makeRequest<T>(
         if (response.status === 404) {
           console.log(`[makeRequest] 404 Not Found - returning empty result`);
           return { success: true, data: undefined }; // Not found is valid result
+        }
+
+        // CHEN-FIX: CourtListener returns 502/503/504 sometimes - retry with delay
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          console.warn(`[makeRequest] ⚠️ Got ${response.status} (server error), retrying after 2s delay...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue; // This will retry the request
         }
 
         throw new Error(`CourtListener API error: ${response.status} ${response.statusText} - ${errorBody.substring(0, 200)}`);
