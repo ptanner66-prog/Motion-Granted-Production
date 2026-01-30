@@ -25,6 +25,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import {
   type PhaseIVInput,
   type PhaseIVOutput,
@@ -38,10 +39,62 @@ import { countByCourtType } from './scoring';
 import { validateCourtListenerConfig } from '@/lib/courtlistener/client';
 
 // ============================================================================
+// GRACEFUL DEGRADATION HELPER
+// ============================================================================
+
+/**
+ * Flag an order for manual review in Supabase
+ *
+ * Instead of hard-failing when citation count is low, we flag the order
+ * for manual review by a human attorney.
+ */
+async function flagForManualReview(
+  orderId: string,
+  reason: string,
+  citationCount: number
+): Promise<boolean> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.warn('[Phase IV] Cannot flag for manual review: Supabase not configured');
+    return false;
+  }
+
+  try {
+    const supabase = createSupabaseClient(supabaseUrl, supabaseServiceKey);
+
+    const qualityNotes = `[AUTO-FLAGGED] Phase IV Citation Research: ${reason}. ` +
+      `Citations found: ${citationCount}. ` +
+      `Flagged at: ${new Date().toISOString()}. ` +
+      `Requires attorney review before delivery.`;
+
+    const { error } = await supabase
+      .from('orders')
+      .update({
+        needs_manual_review: true,
+        quality_notes: qualityNotes,
+      })
+      .eq('id', orderId);
+
+    if (error) {
+      console.error('[Phase IV] Failed to flag order for manual review:', error);
+      return false;
+    }
+
+    console.warn(`[Phase IV] ⚠️ Order ${orderId} flagged for manual review: ${reason}`);
+    return true;
+  } catch (error) {
+    console.error('[Phase IV] Error flagging for manual review:', error);
+    return false;
+  }
+}
+
+// ============================================================================
 // VERSION TRACKING
 // ============================================================================
 
-const PHASE_IV_VERSION = '2026-01-30-LEGAL-GRADE';
+const PHASE_IV_VERSION = '2026-01-30-CHEN-TIMEOUT-FIX';
 const PHASE_IV_GUARANTEE = 'LEGAL_GRADE_CITATION_RESEARCH';
 
 // ============================================================================
@@ -122,8 +175,11 @@ export async function executeLegalGradeResearch(
 
     const phaseBDuration = Date.now() - phaseBStart;
 
+    // GRACEFUL DEGRADATION: Flag for manual review instead of hard throw
     if (!searchResult.success || searchResult.candidates.length === 0) {
-      throw new Error(`Parallel search failed: ${searchResult.error || 'No candidates found'}`);
+      const reason = 'No candidates found from CourtListener search';
+      await flagForManualReview(input.orderId, reason, 0);
+      throw new Error(`Phase IV failed: ${reason}. Order flagged for manual review.`);
     }
 
     console.log(`[Phase IV-B] Candidates: ${searchResult.totalCandidates}`);
@@ -144,8 +200,29 @@ export async function executeLegalGradeResearch(
 
     const phaseCDuration = Date.now() - phaseCStart;
 
-    if (!verificationResult.success || verificationResult.selectedCitations.length < 6) {
-      console.warn(`[Phase IV-C] Only ${verificationResult.selectedCitations.length} citations selected`);
+    // ═══════════════════════════════════════════════════════════════════════
+    // GRACEFUL DEGRADATION: Citation count thresholds
+    // ═══════════════════════════════════════════════════════════════════════
+    const citationCount = verificationResult.selectedCitations.length;
+
+    if (citationCount === 0) {
+      // FATAL: No citations at all - flag and throw
+      const reason = 'No citations survived verification (all NO_SUPPORT or failed)';
+      await flagForManualReview(input.orderId, reason, 0);
+      throw new Error(`Phase IV failed: ${reason}. Order flagged for manual review.`);
+    } else if (citationCount >= 1 && citationCount <= 3) {
+      // INSUFFICIENT: Flag and throw - too few for quality document
+      const reason = `Insufficient citations (${citationCount}/6 minimum)`;
+      await flagForManualReview(input.orderId, reason, citationCount);
+      throw new Error(`Phase IV failed: ${reason}. Order flagged for manual review.`);
+    } else if (citationCount >= 4 && citationCount <= 5) {
+      // MARGINAL: Flag but continue - document can proceed with warning
+      const reason = `Marginal citation count (${citationCount}/6 target)`;
+      await flagForManualReview(input.orderId, reason, citationCount);
+      console.warn(`[Phase IV-C] ⚠️ ${reason} - proceeding with flagged order`);
+    } else {
+      // 6+ citations - proceed normally
+      console.log(`[Phase IV-C] ✓ Citation count OK: ${citationCount} citations`);
     }
 
     console.log(`[Phase IV-C] Verified: ${verificationResult.totalVerified}`);
@@ -208,8 +285,10 @@ Total Duration: ${totalDuration}ms
     // ═══════════════════════════════════════════════════════════════════════
     // BUILD OUTPUT
     // ═══════════════════════════════════════════════════════════════════════
+    // With graceful degradation, 4+ citations is considered success
+    // (4-5 will have needs_manual_review=true in Supabase)
     return {
-      success: selectedCitations.length >= 6,
+      success: selectedCitations.length >= 4,
 
       // Citation banks
       caseCitationBank: selectedCitations,
@@ -251,8 +330,9 @@ Total Duration: ${totalDuration}ms
         codeGuarantee: PHASE_IV_GUARANTEE,
       },
 
+      // With graceful degradation: 4-5 citations = warning, <4 would have thrown
       error: selectedCitations.length < 6
-        ? `Only ${selectedCitations.length} citations selected, minimum is 6`
+        ? `Marginal citation count: ${selectedCitations.length}/6 target (order flagged for review)`
         : undefined,
     };
   } catch (error) {

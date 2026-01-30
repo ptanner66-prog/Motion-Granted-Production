@@ -15,11 +15,11 @@ import { searchOpinions } from './client';
 import type { CourtTier, RawCandidate } from '@/types/citation-research';
 
 // Batch configuration
-// CRITICAL FIX: CourtListener is SLOW - 15s timeout was killing requests before they complete
+// CRITICAL FIX: CourtListener is SLOW - takes 30-67 seconds per request
 const BATCH_SIZE = 3; // Reduced from 5 - fewer concurrent = less server load = faster responses
-const INTER_BATCH_DELAY_MS = 2000; // 2s between batches (was 1.5s)
-const PER_REQUEST_TIMEOUT_MS = 60000; // 60s per request (was 15s - CL often takes 20-40s!)
-const MAX_TOTAL_DURATION_MS = 270000; // 4.5 min max (leave 30s buffer for Vercel)
+const INTER_BATCH_DELAY_MS = 2000; // 2s between batches
+const PER_REQUEST_TIMEOUT_MS = 90000; // 90s per request - CL legitimately takes 30-67s!
+const MAX_TOTAL_DURATION_MS = 270000; // 4.5 min max (leave 30s buffer for Vercel's 5min limit)
 
 export interface BatchSearchTask {
   id: string;
