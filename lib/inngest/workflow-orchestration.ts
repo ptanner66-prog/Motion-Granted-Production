@@ -135,6 +135,7 @@ interface DeliverableResult {
 
 /**
  * Build the phase input object from workflow state
+ * CRITICAL: Include ALL case data so phases can inject it into prompts
  */
 function buildPhaseInput(state: WorkflowState): PhaseInput {
   return {
@@ -150,6 +151,10 @@ function buildPhaseInput(state: WorkflowState): PhaseInput {
     instructions: state.orderContext.instructions,
     previousPhaseOutputs: state.phaseOutputs as Record<WorkflowPhaseCode, unknown>,
     documents: state.orderContext.documents.parsed.map((d) => d.summary),
+    // Extended case data for complete motion generation
+    courtDivision: state.orderContext.courtDivision ?? undefined,
+    filingDeadline: state.orderContext.filingDeadline ?? undefined,
+    parties: state.orderContext.parties,
   };
 }
 
