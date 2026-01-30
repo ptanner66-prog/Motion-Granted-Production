@@ -159,9 +159,12 @@ async function makeRequest<T>(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      console.log(`[CourtListener] API call: ${endpoint.substring(0, 100)}...`);
+      const fullUrl = `${COURTLISTENER_BASE_URL}${endpoint}`;
+      console.log(`[makeRequest] API call: ${fullUrl.substring(0, 150)}...`);
+      console.log(`[makeRequest] Auth header present: ${!!authHeader.Authorization}`);
+      console.log(`[makeRequest] Auth header prefix: ${authHeader.Authorization?.substring(0, 15)}...`);
 
-      const response = await fetch(`${COURTLISTENER_BASE_URL}${endpoint}`, {
+      const response = await fetch(fullUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -172,22 +175,31 @@ async function makeRequest<T>(
 
       clearTimeout(timeoutId);
 
+      console.log(`[makeRequest] Response status: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
+        // Log error response body for debugging
+        const errorBody = await response.text();
+        console.error(`[makeRequest] ❌ HTTP ${response.status} error body: ${errorBody.substring(0, 500)}`);
+
         if (response.status === 429) {
           // Rate limited - wait and retry
           const waitTime = BACKOFF_BASE_MS * Math.pow(2, attempt);
+          console.log(`[makeRequest] Rate limited, waiting ${waitTime}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         }
 
         if (response.status === 404) {
+          console.log(`[makeRequest] 404 Not Found - returning empty result`);
           return { success: true, data: undefined }; // Not found is valid result
         }
 
-        throw new Error(`CourtListener API error: ${response.status} ${response.statusText}`);
+        throw new Error(`CourtListener API error: ${response.status} ${response.statusText} - ${errorBody.substring(0, 200)}`);
       }
 
       const data = await response.json();
+      console.log(`[makeRequest] ✓ Success - received ${JSON.stringify(data).length} bytes`);
       return { success: true, data };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -749,17 +761,22 @@ export async function searchOpinions(
     let endpoint = `/search/?q=${encodeURIComponent(query)}&type=o`;
 
     // Add jurisdiction filter if provided
-    if (jurisdiction) {
-      // Map common jurisdiction names to CourtListener court codes
-      const courtCode = mapJurisdictionToCourtCode(jurisdiction);
-      if (courtCode) {
-        endpoint += `&court=${courtCode}`;
-      }
+    const courtCode = jurisdiction ? mapJurisdictionToCourtCode(jurisdiction) : null;
+    if (courtCode) {
+      endpoint += `&court=${courtCode}`;
     }
 
     endpoint += `&page_size=${limit}`;
 
-    console.log(`[CourtListener] Searching opinions: "${query}" in ${jurisdiction || 'all courts'}`);
+    // DIAGNOSTIC LOGGING
+    console.log(`╔══════════════════════════════════════════════════════════════╗`);
+    console.log(`║  [searchOpinions] DEBUG                                      ║`);
+    console.log(`╚══════════════════════════════════════════════════════════════╝`);
+    console.log(`[searchOpinions] Query: "${query}"`);
+    console.log(`[searchOpinions] Jurisdiction input: "${jurisdiction}"`);
+    console.log(`[searchOpinions] Mapped court codes: "${courtCode}"`);
+    console.log(`[searchOpinions] Full endpoint: ${endpoint}`);
+    console.log(`[searchOpinions] Full URL: ${COURTLISTENER_BASE_URL}${endpoint}`);
 
     const result = await makeRequest<{
       count: number;
@@ -780,11 +797,20 @@ export async function searchOpinions(
       }>;
     }>(endpoint);
 
+    // DIAGNOSTIC: Log raw API response
+    console.log(`[searchOpinions] API call success: ${result.success}`);
+    console.log(`[searchOpinions] API error: ${result.error || 'none'}`);
+    console.log(`[searchOpinions] Raw count: ${result.data?.count ?? 'undefined'}`);
+    console.log(`[searchOpinions] Results array length: ${result.data?.results?.length ?? 'undefined'}`);
+
     if (!result.success) {
+      console.error(`[searchOpinions] ❌ API CALL FAILED: ${result.error}`);
       return { success: false, error: result.error };
     }
 
     if (!result.data || result.data.count === 0) {
+      console.log(`[searchOpinions] ⚠️ ZERO RESULTS returned for query: "${query}"`);
+      console.log(`[searchOpinions] Full response data:`, JSON.stringify(result.data, null, 2));
       return {
         success: true,
         data: { opinions: [], total_count: 0 },
@@ -835,33 +861,48 @@ export async function searchOpinions(
 
 /**
  * Map jurisdiction name to CourtListener court codes
+ *
+ * IMPORTANT: Court codes must match CourtListener's exact IDs.
+ * See: https://www.courtlistener.com/api/rest/v4/courts/
+ *
+ * Louisiana courts (verified 2024):
+ *   - la: Supreme Court of Louisiana
+ *   - lactapp: Louisiana Court of Appeal
+ *   - laag: Louisiana Attorney General Reports
+ *   - ca5: Fifth Circuit (federal appeals covering LA)
  */
 function mapJurisdictionToCourtCode(jurisdiction: string): string | null {
   const normalized = jurisdiction.toLowerCase().trim();
 
-  // Louisiana courts
+  // Louisiana courts - FIXED: was using invalid 'lasc', now using correct codes
   if (normalized.includes('louisiana') || normalized === 'la') {
-    return 'lasc,la,laag'; // LA Supreme Court, LA appellate, LA AG
+    // la = Supreme Court, lactapp = Court of Appeal, ca5 = Fifth Circuit
+    return 'la,lactapp,ca5';
   }
 
   // California courts
   if (normalized.includes('california') || normalized === 'ca') {
-    return 'cal,calctapp';
+    return 'cal,calctapp,ca9';
   }
 
   // Texas courts
   if (normalized.includes('texas') || normalized === 'tx') {
-    return 'tex,texapp,texcrimapp';
+    return 'tex,texapp,texcrimapp,ca5';
   }
 
   // Federal courts
   if (normalized.includes('federal') || normalized === 'fed') {
-    return 'scotus,ca5,ca9,cadc'; // Common federal courts
+    return 'scotus,ca5,ca9,cadc';
   }
 
-  // Fifth Circuit (covers Louisiana)
+  // Fifth Circuit (covers Louisiana, Texas, Mississippi)
   if (normalized.includes('fifth circuit') || normalized === 'ca5') {
     return 'ca5';
+  }
+
+  // Ninth Circuit (covers California and western states)
+  if (normalized.includes('ninth circuit') || normalized === 'ca9') {
+    return 'ca9';
   }
 
   return null;
@@ -966,11 +1007,32 @@ export async function buildVerifiedCitationBank(
   };
   error?: string;
 }> {
+  // COMPREHENSIVE DIAGNOSTIC LOGGING
+  console.log(`╔══════════════════════════════════════════════════════════════╗`);
+  console.log(`║  buildVerifiedCitationBank - DEBUG                          ║`);
+  console.log(`╚══════════════════════════════════════════════════════════════╝`);
+  console.log(`[buildVerifiedCitationBank] Total queries received: ${queries.length}`);
+  console.log(`[buildVerifiedCitationBank] Min citations per element: ${minCitationsPerElement}`);
+  console.log(`[buildVerifiedCitationBank] API Key present: ${!!process.env.COURTLISTENER_API_KEY}`);
+  if (process.env.COURTLISTENER_API_KEY) {
+    console.log(`[buildVerifiedCitationBank] API Key prefix: ${process.env.COURTLISTENER_API_KEY.substring(0, 8)}...`);
+  }
+
+  // Log sample queries
+  console.log(`[buildVerifiedCitationBank] Sample queries:`);
+  for (let i = 0; i < Math.min(3, queries.length); i++) {
+    const q = queries[i];
+    console.log(`  [${i}] query="${q.query.substring(0, 60)}..." element="${q.forElement}" jurisdiction="${q.jurisdiction}"`);
+  }
+  if (queries.length > 3) {
+    console.log(`  ... and ${queries.length - 3} more queries`);
+  }
+
   const citations: VerifiedCitation[] = [];
   let searchesPerformed = 0;
   const elementCoverage = new Set<string>();
 
-  console.log(`[CourtListener] Building verified citation bank for ${queries.length} elements`);
+  console.log(`[buildVerifiedCitationBank] Starting search loop...`);
 
   for (const queryInfo of queries) {
     try {
@@ -1072,6 +1134,14 @@ export async function buildVerifiedCitationBank(
 
 /**
  * Determine if a court's decisions are binding or persuasive for a jurisdiction
+ *
+ * CourtListener court codes:
+ *   - la: Supreme Court of Louisiana
+ *   - lactapp: Louisiana Court of Appeal
+ *   - ca5: Fifth Circuit (federal, covers LA/TX/MS)
+ *   - cal: Supreme Court of California
+ *   - calctapp: California Court of Appeal
+ *   - ca9: Ninth Circuit (federal, covers CA)
  */
 function determineAuthorityLevel(court: string, jurisdiction: string): 'binding' | 'persuasive' {
   const normalizedCourt = court.toLowerCase();
@@ -1084,19 +1154,42 @@ function determineAuthorityLevel(court: string, jurisdiction: string): 'binding'
 
   // State supreme courts are binding in their state
   if (normalizedJurisdiction.includes('louisiana')) {
-    if (normalizedCourt.includes('louisiana supreme') || normalizedCourt === 'lasc') {
+    // Louisiana Supreme Court (court code: la)
+    if (normalizedCourt.includes('louisiana supreme') || normalizedCourt === 'la' || normalizedCourt.includes('supreme court of louisiana')) {
       return 'binding';
     }
+    // Louisiana Court of Appeal is persuasive but important (court code: lactapp)
+    if (normalizedCourt.includes('louisiana court of appeal') || normalizedCourt === 'lactapp') {
+      return 'persuasive'; // Appellate courts are persuasive, not binding
+    }
+    // Fifth Circuit federal court (covers Louisiana)
     if (normalizedCourt.includes('fifth circuit') || normalizedCourt === 'ca5') {
-      return 'binding'; // Federal circuit covering Louisiana
+      return 'binding';
     }
   }
 
   if (normalizedJurisdiction.includes('california')) {
-    if (normalizedCourt.includes('california supreme') || normalizedCourt === 'cal') {
+    // California Supreme Court (court code: cal)
+    if (normalizedCourt.includes('california supreme') || normalizedCourt === 'cal' || normalizedCourt.includes('supreme court of california')) {
       return 'binding';
     }
+    // California Court of Appeal (court code: calctapp)
+    if (normalizedCourt.includes('california court of appeal') || normalizedCourt === 'calctapp') {
+      return 'persuasive';
+    }
+    // Ninth Circuit federal court (covers California)
     if (normalizedCourt.includes('ninth circuit') || normalizedCourt === 'ca9') {
+      return 'binding';
+    }
+  }
+
+  if (normalizedJurisdiction.includes('texas')) {
+    // Texas Supreme Court
+    if (normalizedCourt.includes('texas supreme') || normalizedCourt === 'tex' || normalizedCourt.includes('supreme court of texas')) {
+      return 'binding';
+    }
+    // Fifth Circuit federal court (covers Texas)
+    if (normalizedCourt.includes('fifth circuit') || normalizedCourt === 'ca5') {
       return 'binding';
     }
   }
