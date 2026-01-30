@@ -9,6 +9,11 @@
  *
  * IMPORTANT: For citation verification (hallucination detection), use the
  * v3 citation-lookup endpoint, NOT the v4 search endpoint.
+ *
+ * ZERO TOLERANCE FOR HALLUCINATED CITATIONS:
+ * - Every citation must come from CourtListener or be verified against it
+ * - No verification = No citation in the final motion
+ * - All verifications logged to database for audit trail
  */
 
 import { getCourtListenerAPIKey } from '@/lib/api-keys';
@@ -19,6 +24,38 @@ const COURTLISTENER_V3_URL = 'https://www.courtlistener.com/api/rest/v3';
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000; // 1s, 2s, 4s exponential backoff
+
+// Rate limiting: 60 requests/minute for free tier
+const RATE_LIMIT_PER_MINUTE = 60;
+const RATE_LIMIT_WINDOW_MS = 60000;
+
+// Track API calls for rate limiting
+let apiCallTimestamps: number[] = [];
+
+/**
+ * Rate limiter - ensures we don't exceed 60 requests/minute
+ */
+async function waitForRateLimit(): Promise<void> {
+  const now = Date.now();
+
+  // Remove timestamps older than 1 minute
+  apiCallTimestamps = apiCallTimestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+
+  if (apiCallTimestamps.length >= RATE_LIMIT_PER_MINUTE) {
+    // Calculate wait time until oldest call expires
+    const oldestCall = apiCallTimestamps[0];
+    const waitTime = RATE_LIMIT_WINDOW_MS - (now - oldestCall) + 100; // +100ms buffer
+
+    console.log(`[CourtListener] Rate limit reached, waiting ${waitTime}ms...`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+
+    // Recurse to check again after waiting
+    return waitForRateLimit();
+  }
+
+  // Record this call
+  apiCallTimestamps.push(now);
+}
 
 interface RequestOptions {
   timeout?: number;
@@ -42,7 +79,7 @@ async function getAuthHeader(): Promise<Record<string, string>> {
 }
 
 /**
- * Make a request with retry logic
+ * Make a request with retry logic and rate limiting
  */
 async function makeRequest<T>(
   endpoint: string,
@@ -55,8 +92,13 @@ async function makeRequest<T>(
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      // Wait for rate limit before making request
+      await waitForRateLimit();
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      console.log(`[CourtListener] API call: ${endpoint.substring(0, 100)}...`);
 
       const response = await fetch(`${COURTLISTENER_BASE_URL}${endpoint}`, {
         method: 'GET',
@@ -575,4 +617,393 @@ export async function verifyCitationExists(
       exists: false,
     },
   };
+}
+
+// ============================================================================
+// PHASE IV: SEARCH-FIRST CITATION RETRIEVAL
+// These functions are used by Phase IV to find REAL citations from CourtListener
+// instead of having Claude generate potentially hallucinated citations.
+// ============================================================================
+
+/**
+ * Verified Citation interface - REQUIRED for Phase IV output
+ * Every citation must have verification proof
+ */
+export interface VerifiedCitation {
+  // Identification
+  caseName: string;
+  citation: string;
+
+  // VERIFICATION PROOF (REQUIRED - without these, citation is INVALID)
+  courtlistener_id: number;
+  courtlistener_cluster_id: number;
+  verification_timestamp: string;
+  verification_method: 'search' | 'citation_lookup';
+
+  // Metadata from CourtListener
+  court: string;
+  date_filed: string;
+
+  // Usage
+  forElement: string;
+  proposition: string;
+  relevantHolding: string;
+  authorityLevel: 'binding' | 'persuasive';
+}
+
+/**
+ * Search opinions by query with jurisdiction filter
+ *
+ * This is the PRIMARY method for Phase IV to find real citations.
+ * Instead of Claude generating citations, we search CourtListener first.
+ *
+ * @param query - Search query (e.g., "discovery compel Louisiana")
+ * @param jurisdiction - Court filter (e.g., "la" for Louisiana)
+ * @param limit - Max results to return
+ */
+export async function searchOpinions(
+  query: string,
+  jurisdiction?: string,
+  limit: number = 20
+): Promise<{
+  success: boolean;
+  data?: {
+    opinions: Array<{
+      id: number;
+      cluster_id: number;
+      case_name: string;
+      citation: string;
+      court: string;
+      date_filed: string;
+      snippet: string;
+      absolute_url: string;
+      precedential_status: string;
+    }>;
+    total_count: number;
+  };
+  error?: string;
+}> {
+  try {
+    // Build search endpoint
+    let endpoint = `/search/?q=${encodeURIComponent(query)}&type=o`;
+
+    // Add jurisdiction filter if provided
+    if (jurisdiction) {
+      // Map common jurisdiction names to CourtListener court codes
+      const courtCode = mapJurisdictionToCourtCode(jurisdiction);
+      if (courtCode) {
+        endpoint += `&court=${courtCode}`;
+      }
+    }
+
+    endpoint += `&page_size=${limit}`;
+
+    console.log(`[CourtListener] Searching opinions: "${query}" in ${jurisdiction || 'all courts'}`);
+
+    const result = await makeRequest<{
+      count: number;
+      results: Array<{
+        id: number;
+        cluster_id: number;
+        caseName?: string;
+        case_name?: string;
+        citation?: string[];
+        citations?: Array<{ volume: number; reporter: string; page: number }>;
+        court?: string;
+        court_id?: string;
+        dateFiled?: string;
+        date_filed?: string;
+        snippet?: string;
+        absolute_url?: string;
+        precedential_status?: string;
+      }>;
+    }>(endpoint);
+
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+
+    if (!result.data || result.data.count === 0) {
+      return {
+        success: true,
+        data: { opinions: [], total_count: 0 },
+      };
+    }
+
+    // Transform results to consistent format
+    const opinions = result.data.results.map(op => {
+      // Build citation string from citation array
+      let citationStr = '';
+      if (op.citations && op.citations.length > 0) {
+        const c = op.citations[0];
+        citationStr = `${c.volume} ${c.reporter} ${c.page}`;
+      } else if (op.citation && op.citation.length > 0) {
+        citationStr = op.citation[0];
+      }
+
+      return {
+        id: op.id,
+        cluster_id: op.cluster_id || op.id,
+        case_name: op.caseName || op.case_name || 'Unknown Case',
+        citation: citationStr,
+        court: op.court || op.court_id || 'Unknown Court',
+        date_filed: op.dateFiled || op.date_filed || '',
+        snippet: op.snippet || '',
+        absolute_url: op.absolute_url || '',
+        precedential_status: op.precedential_status || 'Unknown',
+      };
+    });
+
+    console.log(`[CourtListener] Found ${opinions.length} opinions for query: "${query}"`);
+
+    return {
+      success: true,
+      data: {
+        opinions,
+        total_count: result.data.count,
+      },
+    };
+  } catch (error) {
+    console.error('[CourtListener] Search error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Search failed',
+    };
+  }
+}
+
+/**
+ * Map jurisdiction name to CourtListener court codes
+ */
+function mapJurisdictionToCourtCode(jurisdiction: string): string | null {
+  const normalized = jurisdiction.toLowerCase().trim();
+
+  // Louisiana courts
+  if (normalized.includes('louisiana') || normalized === 'la') {
+    return 'lasc,la,laag'; // LA Supreme Court, LA appellate, LA AG
+  }
+
+  // California courts
+  if (normalized.includes('california') || normalized === 'ca') {
+    return 'cal,calctapp';
+  }
+
+  // Texas courts
+  if (normalized.includes('texas') || normalized === 'tx') {
+    return 'tex,texapp,texcrimapp';
+  }
+
+  // Federal courts
+  if (normalized.includes('federal') || normalized === 'fed') {
+    return 'scotus,ca5,ca9,cadc'; // Common federal courts
+  }
+
+  // Fifth Circuit (covers Louisiana)
+  if (normalized.includes('fifth circuit') || normalized === 'ca5') {
+    return 'ca5';
+  }
+
+  return null;
+}
+
+/**
+ * Get full opinion text for holding extraction
+ *
+ * Used after searchOpinions to get the full text for:
+ * 1. Verifying the holding supports the proposition
+ * 2. Extracting relevant quotes
+ */
+export async function getOpinionText(
+  opinionId: number
+): Promise<{
+  success: boolean;
+  data?: {
+    id: number;
+    case_name: string;
+    plain_text: string;
+    html_with_citations?: string;
+    date_filed: string;
+    court: string;
+    citation: string;
+  };
+  error?: string;
+}> {
+  try {
+    console.log(`[CourtListener] Fetching opinion text for ID: ${opinionId}`);
+
+    const result = await makeRequest<{
+      id: number;
+      case_name?: string;
+      plain_text?: string;
+      html_with_citations?: string;
+      date_filed?: string;
+      court?: string;
+      court_id?: string;
+      cluster?: {
+        case_name?: string;
+        citations?: Array<{ volume: number; reporter: string; page: number }>;
+      };
+    }>(`/opinions/${opinionId}/?fields=id,case_name,plain_text,html_with_citations,date_filed,court,cluster`);
+
+    if (!result.success || !result.data) {
+      return { success: false, error: result.error || 'Opinion not found' };
+    }
+
+    const op = result.data;
+
+    // Build citation from cluster if available
+    let citation = '';
+    if (op.cluster?.citations && op.cluster.citations.length > 0) {
+      const c = op.cluster.citations[0];
+      citation = `${c.volume} ${c.reporter} ${c.page}`;
+    }
+
+    return {
+      success: true,
+      data: {
+        id: op.id,
+        case_name: op.case_name || op.cluster?.case_name || 'Unknown',
+        plain_text: op.plain_text || '',
+        html_with_citations: op.html_with_citations,
+        date_filed: op.date_filed || '',
+        court: op.court || op.court_id || 'Unknown',
+        citation,
+      },
+    };
+  } catch (error) {
+    console.error('[CourtListener] Get opinion text error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get opinion text',
+    };
+  }
+}
+
+/**
+ * Build a verified citation bank from CourtListener search results
+ *
+ * This is the main entry point for Phase IV citation retrieval.
+ * Given a list of search queries (one per legal element), it:
+ * 1. Executes searches against CourtListener
+ * 2. Builds a citation bank from REAL results only
+ * 3. Returns citations with full verification proof
+ */
+export async function buildVerifiedCitationBank(
+  queries: Array<{
+    query: string;
+    forElement: string;
+    jurisdiction: string;
+  }>,
+  minCitationsPerElement: number = 2
+): Promise<{
+  success: boolean;
+  data?: {
+    citations: VerifiedCitation[];
+    totalVerified: number;
+    searchesPerformed: number;
+    elementsWithCitations: number;
+  };
+  error?: string;
+}> {
+  const citations: VerifiedCitation[] = [];
+  let searchesPerformed = 0;
+  const elementCoverage = new Set<string>();
+
+  console.log(`[CourtListener] Building verified citation bank for ${queries.length} elements`);
+
+  for (const queryInfo of queries) {
+    try {
+      // Search CourtListener
+      const searchResult = await searchOpinions(
+        queryInfo.query,
+        queryInfo.jurisdiction,
+        minCitationsPerElement * 2 // Get extra in case some don't have holdings
+      );
+
+      searchesPerformed++;
+
+      if (!searchResult.success || !searchResult.data?.opinions.length) {
+        console.log(`[CourtListener] No results for: "${queryInfo.query}"`);
+        continue;
+      }
+
+      // Take top results for this element
+      const topOpinions = searchResult.data.opinions.slice(0, minCitationsPerElement);
+
+      for (const opinion of topOpinions) {
+        // Skip if we already have this citation
+        if (citations.some(c => c.courtlistener_id === opinion.id)) {
+          continue;
+        }
+
+        const verifiedCitation: VerifiedCitation = {
+          caseName: opinion.case_name,
+          citation: opinion.citation || `${opinion.case_name}`,
+          courtlistener_id: opinion.id,
+          courtlistener_cluster_id: opinion.cluster_id,
+          verification_timestamp: new Date().toISOString(),
+          verification_method: 'search',
+          court: opinion.court,
+          date_filed: opinion.date_filed,
+          forElement: queryInfo.forElement,
+          proposition: '', // To be filled by Claude in Phase IV
+          relevantHolding: opinion.snippet || '', // Search snippet as initial holding
+          authorityLevel: determineAuthorityLevel(opinion.court, queryInfo.jurisdiction),
+        };
+
+        citations.push(verifiedCitation);
+        elementCoverage.add(queryInfo.forElement);
+      }
+    } catch (error) {
+      console.error(`[CourtListener] Error searching for element "${queryInfo.forElement}":`, error);
+      // Continue with other elements
+    }
+  }
+
+  console.log(`[CourtListener] Citation bank complete: ${citations.length} citations covering ${elementCoverage.size} elements`);
+
+  return {
+    success: true,
+    data: {
+      citations,
+      totalVerified: citations.length,
+      searchesPerformed,
+      elementsWithCitations: elementCoverage.size,
+    },
+  };
+}
+
+/**
+ * Determine if a court's decisions are binding or persuasive for a jurisdiction
+ */
+function determineAuthorityLevel(court: string, jurisdiction: string): 'binding' | 'persuasive' {
+  const normalizedCourt = court.toLowerCase();
+  const normalizedJurisdiction = jurisdiction.toLowerCase();
+
+  // U.S. Supreme Court is binding everywhere
+  if (normalizedCourt.includes('supreme court of the united states') || normalizedCourt === 'scotus') {
+    return 'binding';
+  }
+
+  // State supreme courts are binding in their state
+  if (normalizedJurisdiction.includes('louisiana')) {
+    if (normalizedCourt.includes('louisiana supreme') || normalizedCourt === 'lasc') {
+      return 'binding';
+    }
+    if (normalizedCourt.includes('fifth circuit') || normalizedCourt === 'ca5') {
+      return 'binding'; // Federal circuit covering Louisiana
+    }
+  }
+
+  if (normalizedJurisdiction.includes('california')) {
+    if (normalizedCourt.includes('california supreme') || normalizedCourt === 'cal') {
+      return 'binding';
+    }
+    if (normalizedCourt.includes('ninth circuit') || normalizedCourt === 'ca9') {
+      return 'binding';
+    }
+  }
+
+  // Everything else is persuasive
+  return 'persuasive';
 }
