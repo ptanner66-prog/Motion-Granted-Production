@@ -117,6 +117,10 @@ export const generateOrderDraft = inngest.createFunction(
     },
     // Retry configuration
     retries: 3,
+    // AI draft generation + PDF/deliverables can be slow
+    timeouts: {
+      finish: "15m",
+    },
   },
   { event: "order/submitted" },
   async ({ event, step }) => {
@@ -998,6 +1002,10 @@ export const executeWorkflowPhase = inngest.createFunction(
     retries: 3,
     concurrency: {
       limit: 5,  // Inngest plan limit
+    },
+    // Individual phases (especially V and X) can take time for AI processing
+    timeouts: {
+      finish: "10m",
     },
   },
   { event: "workflow/execute-phase" },

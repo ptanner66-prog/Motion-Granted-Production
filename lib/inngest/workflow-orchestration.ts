@@ -860,6 +860,11 @@ export const generateOrderWorkflow = inngest.createFunction(
     id: "generate-order-workflow",
     concurrency: { limit: 5 },  // Inngest plan limit
     retries: 3,
+    // CRITICAL: Increase timeout for PDF generation and finalization steps
+    // Default is 10min, but deliverables + finalization can take longer
+    timeouts: {
+      finish: "15m",  // Total workflow timeout - increase if needed
+    },
   },
   { event: "order/submitted" },
   async ({ event, step }) => {
