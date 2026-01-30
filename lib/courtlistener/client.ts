@@ -781,7 +781,7 @@ export async function searchOpinions(
     const result = await makeRequest<{
       count: number;
       results: Array<{
-        id: number;
+        id: number | null;  // NOTE: id is NULL at search result level!
         cluster_id: number;
         caseName?: string;
         case_name?: string;
@@ -794,6 +794,14 @@ export async function searchOpinions(
         snippet?: string;
         absolute_url?: string;
         precedential_status?: string;
+        // CRITICAL: The actual opinion ID is in the nested opinions array
+        opinions?: Array<{
+          id: number;
+          author_id?: number | null;
+          type?: string;
+          snippet?: string;
+        }>;
+        sibling_ids?: number[];
       }>;
     }>(endpoint);
 
@@ -818,7 +826,12 @@ export async function searchOpinions(
     }
 
     // Transform results to consistent format
-    const opinions = result.data.results.map(op => {
+    // CRITICAL FIX (2026-01-30): CourtListener search returns id=null at result level!
+    // The actual opinion ID is in op.opinions[0].id (nested array)
+    // We MUST extract from the nested opinions array or use cluster_id as fallback
+    console.log(`[searchOpinions] ═══ TRANSFORMING ${result.data.results.length} RESULTS ═══`);
+
+    const opinions = result.data.results.map((op, idx) => {
       // Build citation string from citation array
       let citationStr = '';
       if (op.citations && op.citations.length > 0) {
@@ -828,25 +841,61 @@ export async function searchOpinions(
         citationStr = op.citation[0];
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: Extract opinion ID from nested opinions array
+      // CourtListener search API returns id=null at result level!
+      // The actual ID is in result.opinions[0].id
+      // ═══════════════════════════════════════════════════════════════════════
+      const nestedOpinionId = op.opinions?.[0]?.id;
+      const siblingId = op.sibling_ids?.[0];
+      const clusterId = op.cluster_id;
+
+      // Priority: nested opinion ID > sibling_ids > cluster_id
+      // All are valid CourtListener identifiers
+      const resolvedId = nestedOpinionId || siblingId || clusterId;
+
+      if (idx < 3) {
+        console.log(`[searchOpinions] Result[${idx}] ID resolution:`);
+        console.log(`  - op.id (TOP LEVEL - USUALLY NULL): ${op.id}`);
+        console.log(`  - op.opinions[0].id (NESTED): ${nestedOpinionId}`);
+        console.log(`  - op.sibling_ids[0]: ${siblingId}`);
+        console.log(`  - op.cluster_id: ${clusterId}`);
+        console.log(`  - RESOLVED ID: ${resolvedId}`);
+      }
+
+      if (!resolvedId) {
+        console.error(`[searchOpinions] ❌ FATAL: Could not resolve ID for result ${idx}!`);
+        console.error(`[searchOpinions] Full result object:`, JSON.stringify(op, null, 2).substring(0, 500));
+      }
+
       return {
-        id: op.id,
-        cluster_id: op.cluster_id || op.id,
+        id: resolvedId,  // Use resolved ID, NOT op.id which is null!
+        cluster_id: clusterId,
         case_name: op.caseName || op.case_name || 'Unknown Case',
         citation: citationStr,
         court: op.court || op.court_id || 'Unknown Court',
         date_filed: op.dateFiled || op.date_filed || '',
-        snippet: op.snippet || '',
+        snippet: op.opinions?.[0]?.snippet || op.snippet || '',
         absolute_url: op.absolute_url || '',
         precedential_status: op.precedential_status || 'Unknown',
       };
     });
 
-    console.log(`[CourtListener] Found ${opinions.length} opinions for query: "${query}"`);
+    // Filter out any results without valid IDs
+    const validOpinions = opinions.filter(op => op.id);
+    if (validOpinions.length < opinions.length) {
+      console.warn(`[searchOpinions] ⚠️ Filtered out ${opinions.length - validOpinions.length} results without valid IDs`);
+    }
+
+    console.log(`[searchOpinions] ✅ Found ${validOpinions.length} valid opinions for query: "${query}"`);
+    console.log(`[searchOpinions] First opinion ID: ${validOpinions[0]?.id || 'NONE'}`);
+    console.log(`[searchOpinions] First opinion case_name: ${validOpinions[0]?.case_name || 'NONE'}`);
+    console.log(`[searchOpinions] All IDs: [${validOpinions.slice(0, 5).map(o => o.id).join(', ')}${validOpinions.length > 5 ? '...' : ''}]`);
 
     return {
       success: true,
       data: {
-        opinions,
+        opinions: validOpinions,  // Use filtered opinions with valid IDs
         total_count: result.data.count,
       },
     };
