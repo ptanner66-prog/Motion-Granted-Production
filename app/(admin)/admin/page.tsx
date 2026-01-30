@@ -110,6 +110,31 @@ export default async function AdminDashboardPage() {
   let workflowTablesExist = true
 
   try {
+    // PRIMARY: Query v7.2 workflow_state table (where actual workflow engine tracks state)
+    const { count: v72InProgress, error: v72Error } = await supabase
+      .from('workflow_state')
+      .select('*', { count: 'exact', head: true })
+      .in('phase_status', ['PENDING', 'RUNNING', 'CHECKPOINT', 'HOLD'])
+      .is('completed_at', null)
+
+    const { count: v72Completed } = await supabase
+      .from('workflow_state')
+      .select('*', { count: 'exact', head: true })
+      .eq('phase_status', 'COMPLETE')
+
+    const { count: v72Blocked } = await supabase
+      .from('workflow_state')
+      .select('*', { count: 'exact', head: true })
+      .in('phase_status', ['ERROR', 'CANCELLED'])
+
+    if (!v72Error) {
+      // Use v7.2 workflow_state counts
+      workflowsInProgress = v72InProgress || 0
+      workflowsCompleted = v72Completed || 0
+      workflowsBlocked = v72Blocked || 0
+    }
+
+    // FALLBACK: Query legacy order_workflows table for display data
     const { data: wfData, error: wfError } = await supabase
       .from('order_workflows')
       .select(`
@@ -140,25 +165,26 @@ export default async function AdminDashboardPage() {
         .eq('status', 'requires_review')
       phasesNeedingReview = (reviewData || []) as PhaseRow[]
 
-      // Count workflows by status - include pending and awaiting checkpoints as "active"
-      const { count: inProgress } = await supabase
-        .from('order_workflows')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['in_progress', 'pending', 'awaiting_cp1', 'awaiting_cp2', 'awaiting_cp3'])
-      workflowsInProgress = inProgress || 0
+      // If v7.2 query failed, fall back to legacy counts
+      if (v72Error) {
+        const { count: inProgress } = await supabase
+          .from('order_workflows')
+          .select('*', { count: 'exact', head: true })
+          .in('status', ['in_progress', 'pending', 'awaiting_cp1', 'awaiting_cp2', 'awaiting_cp3'])
+        workflowsInProgress = inProgress || 0
 
-      const { count: completed } = await supabase
-        .from('order_workflows')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'completed')
-      workflowsCompleted = completed || 0
+        const { count: completed } = await supabase
+          .from('order_workflows')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'completed')
+        workflowsCompleted = completed || 0
 
-      // Blocked includes workflows in blocked, failed, or error states
-      const { count: blocked } = await supabase
-        .from('order_workflows')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['blocked', 'failed', 'error'])
-      workflowsBlocked = blocked || 0
+        const { count: blocked } = await supabase
+          .from('order_workflows')
+          .select('*', { count: 'exact', head: true })
+          .in('status', ['blocked', 'failed', 'error'])
+        workflowsBlocked = blocked || 0
+      }
     }
   } catch {
     // Workflow tables not available
