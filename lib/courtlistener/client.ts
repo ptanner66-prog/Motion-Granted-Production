@@ -944,7 +944,8 @@ export async function searchOpinions(
     });
 
     // Filter out any results without valid IDs
-    const validOpinions = opinions.filter(op => op.id);
+    // FIX: Use proper null/undefined check - ID 0 is a valid CourtListener ID!
+    const validOpinions = opinions.filter(op => op.id !== undefined && op.id !== null);
     if (validOpinions.length < opinions.length) {
       console.warn(`[searchOpinions] ⚠️ Filtered out ${opinions.length - validOpinions.length} results without valid IDs`);
     }

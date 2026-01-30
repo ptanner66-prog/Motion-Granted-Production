@@ -113,8 +113,9 @@ async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSea
     }));
 
     // DIAGNOSTIC: Check for candidates without IDs
-    const candidatesWithId = candidates.filter(c => c.id);
-    const candidatesWithoutId = candidates.filter(c => !c.id);
+    // FIX: Use proper null/undefined check, not falsy check (ID 0 is valid)
+    const candidatesWithId = candidates.filter(c => c.id !== undefined && c.id !== null);
+    const candidatesWithoutId = candidates.filter(c => c.id === undefined || c.id === null);
     console.log(`[executeSearchWithTimeout] Task ${task.id} transformed ${candidates.length} candidates:`);
     console.log(`  - With valid ID: ${candidatesWithId.length}`);
     console.log(`  - WITHOUT ID (will be dropped): ${candidatesWithoutId.length}`);
@@ -346,9 +347,10 @@ export function collectUniqueCandidates(results: BatchSearchResult[]): RawCandid
       console.log(`[collectUniqueCandidates] Result ${result.taskId}: ${result.results.length} candidates`);
       for (const candidate of result.results) {
         totalCandidatesBeforeFilter++;
-        if (!candidate.id) {
+        // FIX: Use typeof check instead of falsy check - ID 0 is valid!
+        if (candidate.id === undefined || candidate.id === null) {
           candidatesWithoutId++;
-          console.warn(`[collectUniqueCandidates] ⚠️ Candidate without ID: ${candidate.caseName || 'unknown'}`);
+          console.warn(`[collectUniqueCandidates] ⚠️ Candidate without ID: ${candidate.caseName || 'unknown'}, clusterId=${candidate.clusterId}`);
         } else if (seenIds.has(candidate.id)) {
           duplicateCandidates++;
         } else {
