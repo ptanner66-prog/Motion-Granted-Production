@@ -1,5 +1,5 @@
 /**
- * POST /api/admin/orders/[orderId]/citations/save
+ * POST /api/admin/orders/[id]/citations/save
  *
  * Called by workflow after Phase V to persist citations.
  *
@@ -55,10 +55,10 @@ interface SaveCitationsRequestBody {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ orderId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { orderId } = await params;
+    const { id: orderId } = await params;
 
     if (!orderId) {
       return NextResponse.json(

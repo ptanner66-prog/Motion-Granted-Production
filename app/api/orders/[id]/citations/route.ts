@@ -1,10 +1,10 @@
 /**
- * GET /api/orders/[orderId]/citations
+ * GET /api/orders/[id]/citations
  *
  * Returns all citations associated with an order.
  *
  * Path params:
- *   orderId: UUID of the order
+ *   id: UUID of the order
  *
  * Query params:
  *   type: 'case' | 'statute' | 'all' (default: 'all')
@@ -20,10 +20,10 @@ import { getOrderCitations } from '@/lib/services/citations/citation-service';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ orderId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { orderId } = await params;
+    const { id: orderId } = await params;
 
     if (!orderId) {
       return NextResponse.json(
