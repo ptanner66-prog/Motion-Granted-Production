@@ -150,7 +150,7 @@ function getTimeRemaining(deadline: string | null): {
 export default function DownloadPortal() {
   const params = useParams();
   const router = useRouter();
-  const orderId = params.orderId as string;
+  const orderId = params.id as string;
 
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [documents, setDocuments] = useState<DownloadableDocument[]>([]);
