@@ -104,18 +104,40 @@ export function validateNoPlaceholders(content: string): PlaceholderValidationRe
           attorneyFound.push('Incomplete signature block (underscores followed by placeholder)');
         }
       }
- * Validates that motion content does not contain placeholder text.
- * This is a BLOCKING check before Phase X can complete.
- *
- * CRITICAL: Motions with placeholders cannot be delivered to clients.
- * They must be sent back for revision with specific error messages.
+    }
+  }
+
+  // Determine category
+  let category: 'case_data' | 'attorney_data' | 'mixed' | 'none' = 'none';
+  if (caseDataFound.length > 0 && attorneyFound.length > 0) {
+    category = 'mixed';
+  } else if (caseDataFound.length > 0) {
+    category = 'case_data';
+  } else if (attorneyFound.length > 0) {
+    category = 'attorney_data';
+  }
+
+  const allPlaceholders = [...caseDataFound, ...attorneyFound];
+
+  return {
+    valid: allPlaceholders.length === 0,
+    placeholders: allPlaceholders,
+    category,
+    details: {
+      caseDataPlaceholders: caseDataFound,
+      attorneyPlaceholders: attorneyFound,
+    },
+  };
+}
+
+// ============================================================================
+// EXTENDED PLACEHOLDER PATTERNS (for motion validation)
+// ============================================================================
+
+/**
+ * Extended PlaceholderValidationResult with more detailed information
  */
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-export interface PlaceholderValidationResult {
+export interface ExtendedPlaceholderValidationResult {
   valid: boolean;
   placeholders: string[];
   genericNames: string[];
@@ -394,50 +416,6 @@ export function extractAndValidateSignatureBlock(motionContent: string): {
   }
 
   return { found: false };
-}
-  const uniquePlaceholders = [...new Set(placeholders)];
-  const uniqueGenericNames = [...new Set(genericNames)];
-  const uniqueTemplateInstructions = [...new Set(templateInstructions)];
-
-  // Determine severity
-  const totalIssues = uniquePlaceholders.length + uniqueGenericNames.length + uniqueTemplateInstructions.length;
-  let severity: PlaceholderValidationResult['severity'] = 'none';
-
-  if (totalIssues === 0) {
-    severity = 'none';
-  } else if (uniquePlaceholders.length > 0 || uniqueGenericNames.length > 0) {
-    // Bracketed placeholders or generic names are BLOCKING
-    severity = 'blocking';
-  } else if (uniqueTemplateInstructions.length > 0) {
-    severity = 'major';
-  }
-
-  // Build summary
-  let summary = '';
-  if (totalIssues === 0) {
-    summary = 'Motion content validated - no placeholder text detected';
-  } else {
-    const parts: string[] = [];
-    if (uniquePlaceholders.length > 0) {
-      parts.push(`${uniquePlaceholders.length} bracketed placeholder(s)`);
-    }
-    if (uniqueGenericNames.length > 0) {
-      parts.push(`${uniqueGenericNames.length} generic name(s)`);
-    }
-    if (uniqueTemplateInstructions.length > 0) {
-      parts.push(`${uniqueTemplateInstructions.length} template instruction(s)`);
-    }
-    summary = `PLACEHOLDER DETECTED: ${parts.join(', ')}. Motion requires revision before delivery.`;
-  }
-
-  return {
-    valid: totalIssues === 0,
-    placeholders: uniquePlaceholders,
-    genericNames: uniqueGenericNames,
-    templateInstructions: uniqueTemplateInstructions,
-    severity,
-    summary,
-  };
 }
 
 /**
