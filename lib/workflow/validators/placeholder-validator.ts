@@ -24,6 +24,9 @@ export interface ExtendedPlaceholderValidationResult {
   summary: string;
 }
 
+// Type alias for backwards compatibility
+export type PlaceholderValidationResult = ExtendedPlaceholderValidationResult;
+
 // ============================================================================
 // PLACEHOLDER PATTERNS
 // ============================================================================
