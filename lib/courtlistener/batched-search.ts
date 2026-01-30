@@ -17,7 +17,7 @@ import type { CourtTier, RawCandidate } from '@/types/citation-research';
 // Batch configuration
 // CRITICAL FIX: CourtListener is SLOW - takes 60-97 seconds per request
 // Multi-step architecture allows each batch to run as its own Inngest step
-export const BATCH_SIZE = 2; // Reduced from 3 - fewer concurrent = less server load
+export const BATCH_SIZE = 1; // ONE search per step - CourtListener is too slow for batching
 export const INTER_BATCH_DELAY_MS = 2000; // 2s between batches
 export const PER_REQUEST_TIMEOUT_MS = 150000; // 150s per request - CL can take 60-97s!
 export const MAX_BATCH_DURATION_MS = 240000; // 4 min max per batch (leave buffer for Vercel)
