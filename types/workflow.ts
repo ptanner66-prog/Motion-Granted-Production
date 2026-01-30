@@ -1074,16 +1074,6 @@ export function isVerifiedCitation(citation: unknown): citation is VerifiedCitat
 export const MINIMUM_VERIFIED_CITATIONS = 4;
 
 /**
- * Citation verification result from Phase V.1
- */
-export interface CitationVerificationResult {
-  citation: string;
-  verified: boolean;
-  courtlistener_id: number | null;
-  action: 'kept' | 'removed' | 'verified_now';
-}
-
-/**
  * Phase V.1 citation verification output
  */
 export interface PhaseV1VerificationOutput {

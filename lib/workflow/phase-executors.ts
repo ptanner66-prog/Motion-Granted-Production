@@ -66,9 +66,7 @@ export interface PhaseInput {
   firmEmail: string;
   firmFullAddress: string;  // Pre-formatted: "123 Main St\nBaton Rouge, LA 70801"
   // Extended case data for complete motion generation
-  courtDivision?: string;
   filingDeadline?: string;
-  parties?: Array<{ name: string; role: string }>;
 }
 
 export interface PhaseOutput {
@@ -1131,7 +1129,13 @@ ${JSON.stringify(phaseIIIOutput, null, 2)}
 PHASE IV (Citation Bank):
 ${JSON.stringify(phaseIVOutput, null, 2)}
 
-Draft the complete motion with the EXACT signature block shown above. NO PLACEHOLDERS. Provide as JSON.`;
+REMINDER - USE THESE EXACT VALUES IN THE MOTION:
+- Case Caption: ${input.caseCaption}
+- Case Number: ${input.caseNumber}
+- Jurisdiction: ${input.jurisdiction}
+- Motion Type: ${input.motionType}
+
+Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON.`;
 
     const model = getModelForPhase('V', input.tier);
     console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 64000`);

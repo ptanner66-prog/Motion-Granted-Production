@@ -171,10 +171,7 @@ function buildPhaseInput(state: WorkflowState): PhaseInput {
     firmPhone: state.orderContext.firmPhone || '',
     firmEmail: state.orderContext.firmEmail || '',
     firmFullAddress: state.orderContext.firmFullAddress || '',
-    // Extended case data for complete motion generation
-    courtDivision: state.orderContext.courtDivision ?? undefined,
     filingDeadline: state.orderContext.filingDeadline ?? undefined,
-    parties: state.orderContext.parties,
   };
 }
 

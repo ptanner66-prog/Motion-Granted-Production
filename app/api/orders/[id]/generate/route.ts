@@ -285,6 +285,18 @@ export async function POST(
               previousPhaseOutputs: phaseOutputs,
               documents: [],
               revisionLoop: revisionLoopCount || undefined,
+              // Attorney info - required by PhaseInput interface
+              // Note: Direct generation route uses defaults; normal flow via Inngest populates from profile
+              attorneyName: '',
+              barNumber: '',
+              firmName: '',
+              firmAddress: '',
+              firmCity: '',
+              firmState: 'LA',
+              firmZip: '',
+              firmPhone: '',
+              firmEmail: '',
+              firmFullAddress: '',
             };
 
             const result = await executePhase(currentPhase as any, phaseInput);
