@@ -66,7 +66,20 @@ export interface OrderContext {
   parties: Array<{
     name: string;
     role: string;
+    isRepresented?: boolean;
   }>;
+
+  // ATTORNEY INFO - For signature blocks (from profiles table)
+  attorneyName: string;
+  barNumber: string;
+  firmName: string;
+  firmAddress: string;
+  firmCity: string;
+  firmState: string;
+  firmZip: string;
+  firmPhone: string;
+  firmEmail: string;
+  firmFullAddress: string;  // Pre-formatted multi-line address
 
   // Extracted document content
   documents: {
@@ -114,14 +127,26 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
   }
 
   try {
-    // Get order details with parties
+    // Get order details with parties AND client profile for attorney info
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select(`
         *,
         parties (
           party_name,
-          party_role
+          party_role,
+          is_represented_party
+        ),
+        profiles:client_id (
+          full_name,
+          bar_number,
+          firm_name,
+          firm_address,
+          firm_city,
+          firm_state,
+          firm_zip,
+          firm_phone,
+          email
         )
       `)
       .eq('id', orderId)
@@ -130,6 +155,24 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
     if (orderError || !order) {
       return { success: false, error: orderError?.message || 'Order not found' };
     }
+
+    // Extract attorney info from profile (with fallbacks)
+    const profile = order.profiles as Record<string, string | null> | null;
+    const attorneyName = profile?.full_name || '';
+    const barNumber = profile?.bar_number || '';
+    const firmName = profile?.firm_name || '';
+    const firmAddress = profile?.firm_address || '';
+    const firmCity = profile?.firm_city || '';
+    const firmState = profile?.firm_state || 'LA';
+    const firmZip = profile?.firm_zip || '';
+    const firmPhone = profile?.firm_phone || '';
+    const firmEmail = profile?.email || '';
+
+    // Build formatted full address for signature blocks
+    const firmFullAddress = [
+      firmAddress,
+      `${firmCity}, ${firmState} ${firmZip}`.trim()
+    ].filter(Boolean).join('\n');
 
     // Extract document content
     const extractResult = await extractOrderDocuments(orderId);
@@ -172,10 +215,23 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
       filingDeadline: order.filing_deadline,
 
       // Parties
-      parties: (order.parties || []).map((p: { party_name: string; party_role: string }) => ({
+      parties: (order.parties || []).map((p: { party_name: string; party_role: string; is_represented_party?: boolean }) => ({
         name: p.party_name,
         role: p.party_role,
+        isRepresented: p.is_represented_party || false,
       })),
+
+      // ATTORNEY INFO - For signature blocks
+      attorneyName,
+      barNumber,
+      firmName,
+      firmAddress,
+      firmCity,
+      firmState,
+      firmZip,
+      firmPhone,
+      firmEmail,
+      firmFullAddress,
 
       // Documents
       documents: {

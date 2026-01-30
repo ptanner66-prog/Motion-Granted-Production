@@ -33,12 +33,32 @@ export interface PhaseInput {
   motionType: string;
   caseCaption: string;
   caseNumber: string;
+  courtDivision?: string;
   statementOfFacts: string;
   proceduralHistory: string;
   instructions: string;
   previousPhaseOutputs: Record<WorkflowPhaseCode, unknown>;
   documents?: string[];
   revisionLoop?: number;
+
+  // Party information
+  parties?: Array<{
+    name: string;
+    role: 'plaintiff' | 'defendant' | 'petitioner' | 'respondent';
+    isRepresented?: boolean;
+  }>;
+
+  // ATTORNEY INFO - REQUIRED FOR SIGNATURE BLOCKS
+  attorneyName: string;
+  barNumber: string;
+  firmName: string;
+  firmAddress: string;
+  firmCity: string;
+  firmState: string;
+  firmZip: string;
+  firmPhone: string;
+  firmEmail: string;
+  firmFullAddress: string;  // Pre-formatted: "123 Main St\nBaton Rouge, LA 70801"
 }
 
 export interface PhaseOutput {
@@ -678,6 +698,23 @@ async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase V] Phase III output exists: ${!!phaseIIIOutput}`);
     console.log(`[Phase V] Phase IV output exists: ${!!phaseIVOutput}`);
 
+    // Build the attorney signature block - CRITICAL: NO PLACEHOLDERS
+    const getRepresentedPartyName = () => {
+      const represented = input.parties?.find(p => p.isRepresented);
+      return represented?.name || input.parties?.[0]?.name || 'Movant';
+    };
+
+    const signatureBlock = `
+_________________________
+${input.attorneyName}
+Bar Roll No. ${input.barNumber}
+${input.firmName}
+${input.firmAddress}
+${input.firmCity}, ${input.firmState} ${input.firmZip}
+${input.firmPhone}
+${input.firmEmail}
+Attorney for ${getRepresentedPartyName()}`.trim();
+
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
 PHASE V: DRAFT MOTION
@@ -688,15 +725,41 @@ NOW you will draft the actual motion document. Use ALL the work from previous ph
 - Phase III: Evidence strategy and issue ranking
 - Phase IV: Citation bank
 
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: FILING ATTORNEY INFORMATION (USE EXACTLY - NO PLACEHOLDERS)
+═══════════════════════════════════════════════════════════════════════════════
+
+Attorney Name: ${input.attorneyName}
+Bar Roll Number: ${input.barNumber}
+Firm Name: ${input.firmName}
+Street Address: ${input.firmAddress}
+City, State ZIP: ${input.firmCity}, ${input.firmState} ${input.firmZip}
+Phone: ${input.firmPhone}
+Email: ${input.firmEmail}
+Representing: ${getRepresentedPartyName()}
+
+THE SIGNATURE BLOCK IN THE MOTION MUST APPEAR EXACTLY AS:
+${signatureBlock}
+
+═══════════════════════════════════════════════════════════════════════════════
+
 REQUIREMENTS:
-1. Start with proper court caption
+1. Start with proper court caption using EXACT case number and party names
 2. Include Introduction
 3. Address each element with supporting authority from Phase IV
 4. Use citations EXACTLY as provided in Phase IV
 5. Include Statement of Facts referencing Phase I facts
 6. Build arguments following Phase III strategy
 7. Include Conclusion and Prayer for Relief
-8. Include Certificate of Service placeholder
+8. Include signature block with the EXACT attorney information above
+9. Include Certificate of Service with the EXACT attorney information
+
+CRITICAL - DO NOT:
+- Use [ATTORNEY NAME] or similar placeholders
+- Use [BAR ROLL NUMBER] or [BAR NUMBER] placeholders
+- Use [FIRM NAME] or [ADDRESS] placeholders
+- Leave any bracketed placeholders in the signature block
+- Make up attorney information - use EXACTLY what is provided above
 
 OUTPUT FORMAT (JSON only):
 {
@@ -715,16 +778,38 @@ OUTPUT FORMAT (JSON only):
     ],
     "conclusion": "string",
     "prayerForRelief": "string",
-    "certificateOfService": "[CERTIFICATE OF SERVICE PLACEHOLDER]",
-    "signature": "[ATTORNEY SIGNATURE BLOCK]"
+    "signature": "EXACT signature block with real attorney name, bar number, and firm info",
+    "certificateOfService": "full certificate with attorney signature block"
   },
   "wordCount": number,
   "citationsIncluded": number,
-  "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "cos"]
+  "sectionsComplete": ["caption", "intro", "facts", "arguments", "conclusion", "prayer", "signature", "cos"]
 }`;
 
     const userMessage = `Draft the motion using all previous phase outputs:
 
+═══════════════════════════════════════════════════════════════
+CASE INFORMATION (USE EXACT VALUES)
+═══════════════════════════════════════════════════════════════
+Case Number: ${input.caseNumber}
+Case Caption: ${input.caseCaption}
+Court/Division: ${input.courtDivision || input.jurisdiction}
+Motion Type: ${input.motionType}
+Jurisdiction: ${input.jurisdiction}
+
+═══════════════════════════════════════════════════════════════
+FILING ATTORNEY (USE IN SIGNATURE BLOCK)
+═══════════════════════════════════════════════════════════════
+${input.attorneyName}
+Bar Roll No. ${input.barNumber}
+${input.firmName}
+${input.firmAddress}
+${input.firmCity}, ${input.firmState} ${input.firmZip}
+${input.firmPhone}
+${input.firmEmail}
+Attorney for ${getRepresentedPartyName()}
+
+═══════════════════════════════════════════════════════════════
 PHASE I (Case Info):
 ${JSON.stringify(phaseIOutput, null, 2)}
 
@@ -737,10 +822,7 @@ ${JSON.stringify(phaseIIIOutput, null, 2)}
 PHASE IV (Citation Bank):
 ${JSON.stringify(phaseIVOutput, null, 2)}
 
-MOTION TYPE: ${input.motionType}
-JURISDICTION: ${input.jurisdiction}
-
-Draft the complete motion. Provide as JSON.`;
+Draft the complete motion with the EXACT signature block shown above. NO PLACEHOLDERS. Provide as JSON.`;
 
     const model = getModelForPhase('V', input.tier);
     console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 64000`);
@@ -1371,12 +1453,38 @@ async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase VIII] Weaknesses found: ${weaknesses.length}`);
     console.log(`[Phase VIII] Revision suggestions found: ${revisionSuggestions.length}`);
 
+    // Build attorney signature block for revisions
+    const getRepresentedPartyName = () => {
+      const represented = input.parties?.find(p => p.isRepresented);
+      return represented?.name || input.parties?.[0]?.name || 'Movant';
+    };
+
+    const signatureBlock = `
+_________________________
+${input.attorneyName}
+Bar Roll No. ${input.barNumber}
+${input.firmName}
+${input.firmAddress}
+${input.firmCity}, ${input.firmState} ${input.firmZip}
+${input.firmPhone}
+${input.firmEmail}
+Attorney for ${getRepresentedPartyName()}`.trim();
+
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
 PHASE VIII: REVISIONS
 
 The judge simulation (Phase VII) graded this motion below B+.
 Your task is to revise the motion to address the specific weaknesses.
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: ATTORNEY INFO (MUST BE IN REVISED SIGNATURE BLOCK)
+═══════════════════════════════════════════════════════════════════════════════
+${signatureBlock}
+
+DO NOT use placeholders like [ATTORNEY NAME] or [BAR NUMBER].
+USE THE EXACT ATTORNEY INFO ABOVE in the revised signature block.
+═══════════════════════════════════════════════════════════════════════════════
 
 JUDGE FEEDBACK TO ADDRESS:
 - Weaknesses: ${JSON.stringify(weaknesses)}
@@ -1396,10 +1504,10 @@ OUTPUT FORMAT (JSON only):
     "legalArguments": [...],
     "conclusion": "revised...",
     "prayerForRelief": "...",
-    "certificateOfService": "...",
-    "signature": "..."
+    "signature": "EXACT signature block with real attorney info - NO PLACEHOLDERS",
+    "certificateOfService": "full COS with real attorney signature"
   },
-  "changesMAde": [
+  "changesMade": [
     { "section": "string", "change": "description of revision" }
   ],
   "newCitationsAdded": true|false,
@@ -1408,13 +1516,26 @@ OUTPUT FORMAT (JSON only):
 
     const userMessage = `Revise the motion based on judge feedback:
 
+═══════════════════════════════════════════════════════════════
+FILING ATTORNEY (USE IN REVISED SIGNATURE BLOCK)
+═══════════════════════════════════════════════════════════════
+${input.attorneyName}
+Bar Roll No. ${input.barNumber}
+${input.firmName}
+${input.firmAddress}
+${input.firmCity}, ${input.firmState} ${input.firmZip}
+${input.firmPhone}
+${input.firmEmail}
+Attorney for ${getRepresentedPartyName()}
+
+═══════════════════════════════════════════════════════════════
 ORIGINAL DRAFT (Phase V):
 ${JSON.stringify(phaseVOutput, null, 2)}
 
 JUDGE EVALUATION (Phase VII):
 ${JSON.stringify(phaseVIIOutput, null, 2)}
 
-Address all weaknesses and revision suggestions. Provide as JSON.`;
+Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in the signature block. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModelForPhase('VIII', input.tier),
@@ -1606,15 +1727,60 @@ async function executePhaseIX(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase IX] Final motion keys: ${Object.keys(finalMotion as Record<string, unknown>).join(', ') || 'EMPTY'}`);
 
 
+    // Build attorney signature block for supporting documents
+    const getRepresentedPartyName = () => {
+      const represented = input.parties?.find(p => p.isRepresented);
+      return represented?.name || input.parties?.[0]?.name || 'Movant';
+    };
+
+    const signatureBlock = `
+_________________________
+${input.attorneyName}
+Bar Roll No. ${input.barNumber}
+${input.firmName}
+${input.firmAddress}
+${input.firmCity}, ${input.firmState} ${input.firmZip}
+${input.firmPhone}
+${input.firmEmail}
+Attorney for ${getRepresentedPartyName()}`.trim();
+
+    const todayDate = new Date().toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
+
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
 PHASE IX: SUPPORTING DOCUMENTS
 
 Your task is to generate supporting documents:
 1. Proposed Order (for judge to sign if motion granted)
-2. Certificate of Service (with placeholders for service details)
+2. Certificate of Service (WITH EXACT ATTORNEY INFO - see below)
 3. Declaration/Affidavit outline (if needed)
 4. Exhibit list (if applicable)
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: ATTORNEY INFO FOR CERTIFICATE OF SERVICE
+═══════════════════════════════════════════════════════════════════════════════
+
+${signatureBlock}
+
+The Certificate of Service MUST include this EXACT signature block.
+DO NOT use [ATTORNEY NAME] or similar placeholders.
+═══════════════════════════════════════════════════════════════════════════════
+
+CERTIFICATE OF SERVICE FORMAT:
+
+CERTIFICATE OF SERVICE
+
+I hereby certify that a true and correct copy of the foregoing [MOTION TYPE] has been served upon all counsel of record by [electronic mail/United States Mail/hand delivery] on this date.
+
+[OPPOSING COUNSEL INFO - may use placeholder for opposing counsel only]
+
+Dated: ${todayDate}
+
+${signatureBlock}
 
 OUTPUT FORMAT (JSON only):
 {
@@ -1626,7 +1792,7 @@ OUTPUT FORMAT (JSON only):
     },
     "certificateOfService": {
       "title": "CERTIFICATE OF SERVICE",
-      "content": "full COS text with placeholders"
+      "content": "full COS text with REAL attorney signature - NO PLACEHOLDERS for our attorney"
     },
     "declarationOutline": {
       "needed": true|false,
@@ -1644,14 +1810,31 @@ OUTPUT FORMAT (JSON only):
 
     const userMessage = `Generate supporting documents for:
 
-MOTION:
-${JSON.stringify(finalMotion, null, 2)}
-
+═══════════════════════════════════════════════════════════════
+CASE INFORMATION
+═══════════════════════════════════════════════════════════════
 CASE: ${input.caseCaption}
 CASE NUMBER: ${input.caseNumber}
 MOTION TYPE: ${input.motionType}
+JURISDICTION: ${input.jurisdiction}
 
-Generate supporting documents. Provide as JSON.`;
+═══════════════════════════════════════════════════════════════
+FILING ATTORNEY (USE IN CERTIFICATE OF SERVICE)
+═══════════════════════════════════════════════════════════════
+${input.attorneyName}
+Bar Roll No. ${input.barNumber}
+${input.firmName}
+${input.firmAddress}
+${input.firmCity}, ${input.firmState} ${input.firmZip}
+${input.firmPhone}
+${input.firmEmail}
+Attorney for ${getRepresentedPartyName()}
+
+═══════════════════════════════════════════════════════════════
+MOTION:
+${JSON.stringify(finalMotion, null, 2)}
+
+Generate supporting documents. The Certificate of Service MUST include the exact attorney signature block shown above. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IX', input.tier),
@@ -1722,6 +1905,15 @@ async function executePhaseIX1(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase IX.1] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
 
 
+    // Determine jurisdiction-specific rules
+    const isLouisiana = input.jurisdiction === 'la_state' || input.jurisdiction?.toLowerCase().includes('louisiana');
+    const isCalifornia = input.jurisdiction === 'ca_state' || input.jurisdiction?.toLowerCase().includes('california');
+    const formatRules = isCalifornia
+      ? 'CRC 3.1350 (California Rules of Court)'
+      : isLouisiana
+        ? 'Louisiana Code of Civil Procedure'
+        : 'applicable local rules';
+
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
 PHASE IX.1: SEPARATE STATEMENT CHECK (MSJ/MSA)
@@ -1730,7 +1922,9 @@ For Motion for Summary Judgment, verify the Separate Statement:
 1. Each material fact is numbered
 2. Each fact has supporting evidence citation
 3. Evidence citations match the citation bank
-4. Format complies with CRC 3.1350 (California) or local rules
+4. Format complies with ${formatRules}
+
+JURISDICTION: ${input.jurisdiction}
 
 OUTPUT FORMAT (JSON only):
 {
@@ -1747,13 +1941,16 @@ OUTPUT FORMAT (JSON only):
 
     const userMessage = `Check Separate Statement for MSJ/MSA:
 
+JURISDICTION: ${input.jurisdiction}
+APPLICABLE RULES: ${formatRules}
+
 CITATION BANK (Phase IV):
 ${JSON.stringify(phaseIVOutput, null, 2)}
 
 MOTION (Phase V):
 ${JSON.stringify(phaseVOutput, null, 2)}
 
-Verify Separate Statement. Provide as JSON.`;
+Verify Separate Statement complies with ${formatRules}. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModelForPhase('IX.1', input.tier),

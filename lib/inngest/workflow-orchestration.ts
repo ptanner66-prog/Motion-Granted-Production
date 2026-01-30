@@ -145,11 +145,31 @@ function buildPhaseInput(state: WorkflowState): PhaseInput {
     motionType: state.orderContext.motionType,
     caseCaption: state.orderContext.caseCaption,
     caseNumber: state.orderContext.caseNumber,
+    courtDivision: state.orderContext.courtDivision || undefined,
     statementOfFacts: state.orderContext.statementOfFacts,
     proceduralHistory: state.orderContext.proceduralHistory,
     instructions: state.orderContext.instructions,
     previousPhaseOutputs: state.phaseOutputs as Record<WorkflowPhaseCode, unknown>,
     documents: state.orderContext.documents.parsed.map((d) => d.summary),
+
+    // Party information for caption and signature blocks
+    parties: state.orderContext.parties.map((p) => ({
+      name: p.name,
+      role: p.role as 'plaintiff' | 'defendant' | 'petitioner' | 'respondent',
+      isRepresented: p.isRepresented,
+    })),
+
+    // ATTORNEY INFO - CRITICAL for signature blocks
+    attorneyName: state.orderContext.attorneyName || '',
+    barNumber: state.orderContext.barNumber || '',
+    firmName: state.orderContext.firmName || '',
+    firmAddress: state.orderContext.firmAddress || '',
+    firmCity: state.orderContext.firmCity || '',
+    firmState: state.orderContext.firmState || 'LA',
+    firmZip: state.orderContext.firmZip || '',
+    firmPhone: state.orderContext.firmPhone || '',
+    firmEmail: state.orderContext.firmEmail || '',
+    firmFullAddress: state.orderContext.firmFullAddress || '',
   };
 }
 
