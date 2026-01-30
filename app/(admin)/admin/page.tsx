@@ -140,11 +140,11 @@ export default async function AdminDashboardPage() {
         .eq('status', 'requires_review')
       phasesNeedingReview = (reviewData || []) as PhaseRow[]
 
-      // Count workflows by status
+      // Count workflows by status - include pending and awaiting checkpoints as "active"
       const { count: inProgress } = await supabase
         .from('order_workflows')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'in_progress')
+        .in('status', ['in_progress', 'pending', 'awaiting_cp1', 'awaiting_cp2', 'awaiting_cp3'])
       workflowsInProgress = inProgress || 0
 
       const { count: completed } = await supabase
@@ -153,10 +153,11 @@ export default async function AdminDashboardPage() {
         .eq('status', 'completed')
       workflowsCompleted = completed || 0
 
+      // Blocked includes workflows in blocked, failed, or error states
       const { count: blocked } = await supabase
         .from('order_workflows')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'blocked')
+        .in('status', ['blocked', 'failed', 'error'])
       workflowsBlocked = blocked || 0
     }
   } catch {
@@ -170,11 +171,11 @@ export default async function AdminDashboardPage() {
   ).length || 0
 
   const inProgressOrders = allOrders?.filter((o: { status: string }) =>
-    ['in_progress', 'in_review'].includes(o.status)
+    ['in_progress', 'under_review', 'pending_review'].includes(o.status)
   ).length || 0
 
   const completedOrders = allOrders?.filter((o: { status: string }) =>
-    o.status === 'completed'
+    ['completed', 'draft_delivered', 'revision_delivered'].includes(o.status)
   ) || []
 
   // Calculate average turnaround time for completed orders
