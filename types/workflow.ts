@@ -1018,3 +1018,91 @@ export const COURTLISTENER_CITATION_LOOKUP = 'citation-lookup/';
 export const COURTLISTENER_RATE_LIMIT = 60; // per minute
 export const COURTLISTENER_MAX_CITATIONS_PER_REQUEST = 128;
 export const COURTLISTENER_MAX_CHARS_PER_REQUEST = 64000;
+
+// ============================================================================
+// VERIFIED CITATION - ZERO TOLERANCE FOR HALLUCINATIONS
+// ============================================================================
+
+/**
+ * VerifiedCitation - A citation that has been verified against CourtListener
+ *
+ * CRITICAL: Every citation in a Motion Granted motion MUST have:
+ * - courtlistener_id: Proof the citation exists
+ * - verification_timestamp: When it was verified
+ * - verification_method: How it was verified ('search' or 'citation_lookup')
+ *
+ * Citations without these fields are INVALID and will be rejected by Phase V.
+ */
+export interface VerifiedCitation {
+  // Identification
+  caseName: string;
+  citation: string;
+
+  // VERIFICATION PROOF (REQUIRED - without these, citation is INVALID)
+  courtlistener_id: number;
+  courtlistener_cluster_id: number;
+  verification_timestamp: string;
+  verification_method: 'search' | 'citation_lookup';
+
+  // Metadata from CourtListener
+  court: string;
+  date_filed: string;
+
+  // Usage in motion
+  forElement: string;
+  proposition: string;
+  relevantHolding: string;
+  authorityLevel: 'binding' | 'persuasive';
+}
+
+/**
+ * Check if a citation has valid verification proof
+ */
+export function isVerifiedCitation(citation: unknown): citation is VerifiedCitation {
+  if (!citation || typeof citation !== 'object') return false;
+  const c = citation as Record<string, unknown>;
+  return (
+    typeof c.courtlistener_id === 'number' &&
+    typeof c.verification_timestamp === 'string' &&
+    (c.verification_method === 'search' || c.verification_method === 'citation_lookup')
+  );
+}
+
+/**
+ * Minimum verified citations required for a motion (hard stop)
+ */
+export const MINIMUM_VERIFIED_CITATIONS = 4;
+
+/**
+ * Citation verification result from Phase V.1
+ */
+export interface CitationVerificationResult {
+  citation: string;
+  verified: boolean;
+  courtlistener_id: number | null;
+  action: 'kept' | 'removed' | 'verified_now';
+}
+
+/**
+ * Phase V.1 citation verification output
+ */
+export interface PhaseV1VerificationOutput {
+  phaseComplete: 'V.1';
+  citationVerification: {
+    totalInDraft: number;
+    verified: number;
+    unverified: number;
+    removed: number;
+    verificationRate: string;
+  };
+  verificationResults: CitationVerificationResult[];
+  unverifiedCitationsRemoved: string[];
+  cleanedMotion: Record<string, unknown> | null;
+  auditTrail: {
+    verifiedViaCourtListenerBank: number;
+    verifiedNow: number;
+    removed: number;
+    timestamp: string;
+  };
+  overallStatus: 'pass' | 'citations_removed';
+}
