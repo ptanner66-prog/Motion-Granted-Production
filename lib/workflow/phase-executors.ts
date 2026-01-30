@@ -168,6 +168,292 @@ function getAnthropicClient(): Anthropic {
 }
 
 // ============================================================================
+// CITATION ENFORCEMENT — ZERO TOLERANCE FOR HALLUCINATED CITATIONS
+// ============================================================================
+
+/**
+ * Citation from the verified bank
+ */
+interface VerifiedCitationEntry {
+  caseName?: string;
+  citation?: string;
+  court?: string;
+  date_filed?: string;
+  courtlistener_id?: number | string;
+}
+
+/**
+ * Statutory citation entry
+ */
+interface StatutoryCitationEntry {
+  citation?: string;
+  name?: string;
+}
+
+/**
+ * Build the citation enforcement prompt block
+ * This MUST be injected at the TOP of Phase V and VIII prompts
+ */
+function buildCitationEnforcementPrompt(
+  caseCitationBank: VerifiedCitationEntry[],
+  statutoryCitationBank: StatutoryCitationEntry[] = []
+): string {
+  const caseList = (caseCitationBank || []).map((c, i) =>
+    `  [C${i + 1}] ${c.caseName || 'Unknown'}, ${c.citation || 'No citation'} (${extractCourtAbbrev(c.court || '')} ${extractYear(c.date_filed || '')})`
+  ).join('\n');
+
+  const statuteList = (statutoryCitationBank || []).map((s, i) =>
+    `  [S${i + 1}] ${s.citation || ''} — ${s.name || ''}`
+  ).join('\n');
+
+  return `
+╔════════════════════════════════════════════════════════════════════════════╗
+║  CITATION ENFORCEMENT — MANDATORY COMPLIANCE                               ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+You have ${caseCitationBank?.length || 0} verified case citations available.
+You have ${statutoryCitationBank?.length || 0} verified statutory citations available.
+
+██████████████████████████████████████████████████████████████████████████████
+█                                                                            █
+█   YOU MAY ONLY USE CITATIONS FROM THE VERIFIED CITATION BANK BELOW.        █
+█                                                                            █
+█   DO NOT INVENT, HALLUCINATE, OR RECALL ANY CITATIONS FROM MEMORY.         █
+█                                                                            █
+█   IF A CITATION IS NOT IN THE BANK BELOW, YOU CANNOT USE IT.               █
+█                                                                            █
+█   VIOLATION OF THIS RULE COULD RESULT IN ATTORNEY SANCTIONS.               █
+█                                                                            █
+██████████████████████████████████████████████████████████████████████████████
+
+VERIFIED CASE CITATIONS (you may ONLY use these):
+${caseList || '  (none provided)'}
+
+VERIFIED STATUTORY CITATIONS (you may ONLY use these):
+${statuteList || '  (none provided)'}
+
+RULES:
+1. Every case citation in your motion MUST appear in the bank above
+2. You may use Louisiana Code of Civil Procedure articles (La. C.C.P. art. XXX) — statutes are acceptable
+3. You may NOT cite any case that is not in the VERIFIED CASE CITATION BANK
+4. If you need a citation for a proposition and none in the bank fits, state the legal principle WITHOUT a case citation
+5. It is BETTER to have fewer citations than to hallucinate fake ones
+6. When citing a case, use the exact caseName and citation from the bank
+
+WHAT YOU MUST NOT DO:
+- Do NOT cite any case you "remember" from training unless it appears in the bank above
+- Do NOT invent Louisiana appellate cases even if they would be "more appropriate"
+- Do NOT add citations during revision that are not in the bank
+
+████████████████████████████████████████████████████████████████████████████████
+█  WARNING: Any case citation NOT in the list above will be REJECTED.          █
+█  Post-processing will STRIP unauthorized citations from the final motion.    █
+████████████████████████████████████████████████████████████████████████████████
+`;
+}
+
+/**
+ * Extract court abbreviation from full court name
+ */
+function extractCourtAbbrev(court: string): string {
+  if (!court) return '';
+  const c = court.toLowerCase();
+  if (c.includes('fifth circuit') || c === 'ca5') return '5th Cir.';
+  if (c.includes('supreme court of louisiana') || c === 'la') return 'La.';
+  if (c.includes('court of appeal') && c.includes('first')) return 'La. App. 1 Cir.';
+  if (c.includes('court of appeal') && c.includes('second')) return 'La. App. 2 Cir.';
+  if (c.includes('court of appeal') && c.includes('third')) return 'La. App. 3 Cir.';
+  if (c.includes('court of appeal') && c.includes('fourth')) return 'La. App. 4 Cir.';
+  if (c.includes('court of appeal') && c.includes('fifth')) return 'La. App. 5 Cir.';
+  if (c.includes('louisiana') && c.includes('appeal')) return 'La. App.';
+  if (c.includes('district court')) return 'D. La.';
+  if (c.includes('eastern district')) return 'E.D. La.';
+  if (c.includes('western district')) return 'W.D. La.';
+  if (c.includes('middle district')) return 'M.D. La.';
+  return court.substring(0, 20);
+}
+
+/**
+ * Extract year from date_filed string
+ */
+function extractYear(dateFiled: string): string {
+  if (!dateFiled) return '';
+  return dateFiled.substring(0, 4);
+}
+
+/**
+ * Result of citation validation
+ */
+interface CitationValidationResult {
+  isValid: boolean;
+  authorizedCitations: string[];
+  unauthorizedCitations: string[];
+  warnings: string[];
+}
+
+/**
+ * Validate that all citations in a draft motion are from the authorized bank
+ * This is a POST-GENERATION check to catch hallucinated citations
+ */
+function validateDraftCitations(
+  draftMotion: string,
+  caseCitationBank: VerifiedCitationEntry[],
+  statutoryCitationBank: StatutoryCitationEntry[] = []
+): CitationValidationResult {
+  console.log('[CitationValidator] Starting validation...');
+
+  // Build list of authorized citation patterns
+  const authorizedPatterns: RegExp[] = [];
+  const authorizedNames: Set<string> = new Set();
+
+  // Add case citations - build patterns from case names and citations
+  for (const c of caseCitationBank || []) {
+    // Extract first significant name word (e.g., "Brumfield" from "Brumfield v. Louisiana State Board")
+    if (c.caseName) {
+      const nameWords = c.caseName.split(/\s+v\.?\s+/i);
+      if (nameWords[0]) {
+        const firstName = nameWords[0].split(/\s+/)[0].replace(/[^a-zA-Z]/g, '');
+        if (firstName.length > 2) {
+          authorizedPatterns.push(new RegExp(firstName, 'i'));
+          authorizedNames.add(firstName.toLowerCase());
+        }
+      }
+    }
+    // Match citation volume/reporter (e.g., "806 F.3d")
+    if (c.citation) {
+      const citeParts = c.citation.match(/(\d+)\s+([A-Za-z.\d]+)\s+(\d+)/);
+      if (citeParts) {
+        const escapedReporter = citeParts[2].replace(/\./g, '\\.?');
+        authorizedPatterns.push(new RegExp(`${citeParts[1]}\\s*${escapedReporter}\\s*${citeParts[3]}`, 'i'));
+      }
+    }
+  }
+
+  // Add statutory citations (these are always allowed)
+  for (const s of statutoryCitationBank || []) {
+    if (s.citation) {
+      authorizedPatterns.push(new RegExp(s.citation.replace(/\./g, '\\.').replace(/\s+/g, '\\s*'), 'i'));
+    }
+  }
+
+  // Also allow generic La. C.C.P. articles (statutory - not cases)
+  authorizedPatterns.push(/La\.?\s*C\.?C\.?P\.?\s*[Aa]rt\.?\s*\d+/i);
+  authorizedPatterns.push(/Louisiana\s+Code\s+of\s+Civil\s+Procedure/i);
+  authorizedPatterns.push(/La\.?\s*R\.?S\.?\s*\d+:\d+/i);  // Louisiana Revised Statutes
+
+  // Find all case citations in the draft
+  // Pattern matches: "Case Name, 123 F.3d 456 (Court Year)" or similar
+  const citationRegex = /([A-Z][a-zA-Z'\-]+(?:\s+(?:v\.?|vs\.?)\s+[A-Z][a-zA-Z'\-\s&,\.]+)?),?\s*(\d+\s+(?:F\.\d+[a-z]?|So\.\s*\d*d?|S\.?\s*Ct\.?|U\.S\.|La\.?\s*App\.?|La\.)\s*\d+)(?:\s*\([^)]+\d{4}\))?/gi;
+
+  const foundCitations: string[] = [];
+  let match;
+  while ((match = citationRegex.exec(draftMotion)) !== null) {
+    foundCitations.push(match[0]);
+  }
+
+  console.log('[CitationValidator] Found citations in draft:', foundCitations.length);
+
+  // Check each citation against authorized list
+  const authorizedCitations: string[] = [];
+  const unauthorizedCitations: string[] = [];
+  const warnings: string[] = [];
+
+  for (const citation of foundCitations) {
+    let isAuthorized = false;
+
+    // Check against all authorized patterns
+    for (const pattern of authorizedPatterns) {
+      if (pattern.test(citation)) {
+        isAuthorized = true;
+        break;
+      }
+    }
+
+    // Double-check by looking for known case names
+    if (!isAuthorized) {
+      const citationLower = citation.toLowerCase();
+      for (const name of authorizedNames) {
+        if (citationLower.includes(name)) {
+          isAuthorized = true;
+          break;
+        }
+      }
+    }
+
+    if (isAuthorized) {
+      authorizedCitations.push(citation);
+      console.log('[CitationValidator] ✅ Authorized:', citation.substring(0, 60));
+    } else {
+      unauthorizedCitations.push(citation);
+      console.log('[CitationValidator] ❌ UNAUTHORIZED:', citation.substring(0, 60));
+      warnings.push(`Unauthorized citation found: "${citation.substring(0, 80)}..."`);
+    }
+  }
+
+  const isValid = unauthorizedCitations.length === 0;
+
+  console.log('[CitationValidator] Results:');
+  console.log(`  Authorized: ${authorizedCitations.length}`);
+  console.log(`  Unauthorized: ${unauthorizedCitations.length}`);
+  console.log(`  Valid: ${isValid}`);
+
+  return {
+    isValid,
+    authorizedCitations,
+    unauthorizedCitations,
+    warnings,
+  };
+}
+
+/**
+ * Escape special regex characters in a string
+ */
+function escapeRegex(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Strip unauthorized citations from draft
+ * This is a safety measure - removes citations that slipped through
+ */
+function stripUnauthorizedCitations(
+  draftMotion: string,
+  unauthorizedCitations: string[]
+): string {
+  if (unauthorizedCitations.length === 0) return draftMotion;
+
+  console.log(`[CitationValidator] Stripping ${unauthorizedCitations.length} unauthorized citations...`);
+
+  let cleanedDraft = draftMotion;
+
+  for (const badCitation of unauthorizedCitations) {
+    // Remove the citation and surrounding "See" or "citing" language
+    const patterns = [
+      // "See BadCase, 123 F.3d 456 (5th Cir. 2020)."
+      new RegExp(`See\\s+${escapeRegex(badCitation)}[^.]*\\.?\\s*`, 'gi'),
+      // Just the citation itself
+      new RegExp(`${escapeRegex(badCitation)}[^.]*\\.?\\s*`, 'gi'),
+      // "(citing BadCase, 123 F.3d 456)"
+      new RegExp(`\\s*\\([Cc]iting\\s+${escapeRegex(badCitation)}[^)]*\\)`, 'gi'),
+    ];
+
+    for (const pattern of patterns) {
+      cleanedDraft = cleanedDraft.replace(pattern, ' ');
+    }
+  }
+
+  // Clean up double spaces and punctuation issues
+  cleanedDraft = cleanedDraft.replace(/\s{2,}/g, ' ');
+  cleanedDraft = cleanedDraft.replace(/\.\s+\./g, '.');
+  cleanedDraft = cleanedDraft.replace(/\s+,/g, ',');
+  cleanedDraft = cleanedDraft.replace(/\s+\./g, '.');
+
+  console.log(`[CitationValidator] Stripped citations, draft reduced from ${draftMotion.length} to ${cleanedDraft.length} chars`);
+
+  return cleanedDraft;
+}
+
+// ============================================================================
 // PHASE I: Intake & Classification
 // ============================================================================
 
@@ -1156,6 +1442,30 @@ async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase V] VERIFICATION GATE PASSED: All ${caseCitationBank.length} citations have courtlistener_id`);
 
     // =========================================================================
+    // LOG CITATION BANK FOR DEBUGGING — CITATION ENFORCEMENT ACTIVE
+    // =========================================================================
+    console.log('╔══════════════════════════════════════════════════════════════╗');
+    console.log('║  PHASE V: DRAFT MOTION — CITATION ENFORCEMENT ACTIVE         ║');
+    console.log('╚══════════════════════════════════════════════════════════════╝');
+    console.log(`[Phase V] Citation bank size: ${caseCitationBank.length}`);
+
+    // Cast to proper type for enforcement functions
+    const typedCitationBank = caseCitationBank as VerifiedCitationEntry[];
+    const statutoryCitationBank = (phaseIVOutput?.statutoryCitationBank || []) as StatutoryCitationEntry[];
+
+    console.log(`[Phase V] Statutory bank size: ${statutoryCitationBank.length}`);
+
+    if (typedCitationBank.length > 0) {
+      console.log('[Phase V] Available citations for this motion:');
+      typedCitationBank.forEach((c, i) => {
+        console.log(`  ${i + 1}. ${c.caseName || 'Unknown'}, ${c.citation || 'No citation'} (ID: ${c.courtlistener_id})`);
+      });
+    }
+
+    // BUILD CITATION ENFORCEMENT PROMPT
+    const citationEnforcementBlock = buildCitationEnforcementPrompt(typedCitationBank, statutoryCitationBank);
+
+    // =========================================================================
     // Continue with normal Phase V execution
     // =========================================================================
     console.log(`[Phase V] Getting Anthropic client...`);
@@ -1200,8 +1510,11 @@ Attorney for ${getRepresentedPartyName()}`.trim();
 
     // ========================================================================
     // SYSTEM PROMPT: Load v7.4.1 methodology prompt + case data injection
+    // CITATION ENFORCEMENT BLOCK INJECTED AT TOP
     // ========================================================================
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+${citationEnforcementBlock}
 
 ${PHASE_PROMPTS.PHASE_V}
 
@@ -1522,11 +1835,82 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
     console.log(`[Phase V] ✅ Draft motion extracted successfully`);
     console.log(`[Phase V] Draft motion keys: ${Object.keys(draftMotion).join(', ')}`)
 
+    // =========================================================================
+    // POST-GENERATION CITATION VALIDATION — ZERO TOLERANCE FOR HALLUCINATIONS
+    // =========================================================================
+    console.log('[Phase V] Running post-generation citation validation...');
+
+    // Convert draftMotion to string for validation
+    const draftMotionText = typeof draftMotion === 'string'
+      ? draftMotion
+      : JSON.stringify(draftMotion);
+
+    const validationResult = validateDraftCitations(
+      draftMotionText,
+      typedCitationBank,
+      statutoryCitationBank
+    );
+
+    // Build validation metadata object
+    const citationValidationData: Record<string, unknown> = {
+      authorized: validationResult.authorizedCitations.length,
+      unauthorized: validationResult.unauthorizedCitations.length,
+      isValid: validationResult.isValid,
+      warnings: validationResult.warnings,
+    };
+
+    if (!validationResult.isValid) {
+      console.log('[Phase V] ⚠️ UNAUTHORIZED CITATIONS DETECTED');
+      console.log('[Phase V] Unauthorized citations:', validationResult.unauthorizedCitations);
+
+      // Log each unauthorized citation (use 'not_found' status for hallucinated citations)
+      for (const badCite of validationResult.unauthorizedCitations) {
+        await logCitationVerification(
+          input.orderId,
+          'V',
+          badCite.substring(0, 100),
+          null,
+          'not_found',  // Hallucinated citation not in verified bank
+          { reason: 'HALLUCINATED - Citation not in verified bank - removed from draft' }
+        );
+      }
+
+      // Strip unauthorized citations from the draft
+      console.log('[Phase V] Stripping unauthorized citations from draft...');
+      const cleanedDraftText = stripUnauthorizedCitations(draftMotionText, validationResult.unauthorizedCitations);
+
+      // Update draftMotion with cleaned version
+      if (typeof draftMotion === 'string') {
+        phaseOutput.draftMotion = cleanedDraftText;
+      } else {
+        // Try to update string fields in the object
+        for (const key of Object.keys(draftMotion)) {
+          const value = (draftMotion as Record<string, unknown>)[key];
+          if (typeof value === 'string' && value.length > 100) {
+            (draftMotion as Record<string, unknown>)[key] = stripUnauthorizedCitations(
+              value,
+              validationResult.unauthorizedCitations
+            );
+          }
+        }
+        phaseOutput.draftMotion = draftMotion;
+      }
+
+      citationValidationData.strippedCitations = validationResult.unauthorizedCitations;
+      console.log('[Phase V] ✅ Unauthorized citations stripped');
+    } else {
+      console.log('[Phase V] ✅ Citation validation PASSED — all citations from verified bank');
+    }
+
+    // Add validation to phaseOutput
+    phaseOutput.citationValidation = citationValidationData;
+
     phaseOutput.phaseComplete = 'V';
 
     console.log(`[Phase V] ========== PHASE V COMPLETE ==========`);
     console.log(`[Phase V] Total duration: ${Date.now() - start}ms`);
     console.log(`[Phase V] Motion word count: ${phaseOutput.wordCount || 'N/A'}`);
+    console.log(`[Phase V] Citation validation: ${validationResult.isValid ? 'PASSED' : 'FAILED (stripped unauthorized)'}`);
 
     return {
       success: true,
@@ -2592,6 +2976,22 @@ async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase VIII] Weaknesses found: ${weaknesses.length}`);
     console.log(`[Phase VIII] Revision suggestions found: ${revisionSuggestions.length}`);
 
+    // =========================================================================
+    // CITATION ENFORCEMENT — GET CITATION BANK FROM PHASE IV
+    // =========================================================================
+    const phaseIVOutput = (input.previousPhaseOutputs?.['IV'] ?? {}) as Record<string, unknown>;
+    const caseCitationBankVIII = (phaseIVOutput?.caseCitationBank || []) as VerifiedCitationEntry[];
+    const statutoryCitationBankVIII = (phaseIVOutput?.statutoryCitationBank || []) as StatutoryCitationEntry[];
+
+    console.log('╔══════════════════════════════════════════════════════════════╗');
+    console.log('║  PHASE VIII: REVISIONS — CITATION ENFORCEMENT ACTIVE         ║');
+    console.log('╚══════════════════════════════════════════════════════════════╝');
+    console.log(`[Phase VIII] Citation bank available: ${caseCitationBankVIII.length} cases`);
+    console.log(`[Phase VIII] Statutory bank available: ${statutoryCitationBankVIII.length} statutes`);
+
+    // Build citation enforcement block for revisions
+    const citationEnforcementVIII = buildCitationEnforcementPrompt(caseCitationBankVIII, statutoryCitationBankVIII);
+
     // ========================================================================
     // SYSTEM PROMPT: Load v7.4.1 methodology prompt + case data injection
     // ========================================================================
@@ -2613,6 +3013,8 @@ ${input.firmEmail}
 Attorney for ${getRepresentedPartyName()}`.trim();
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+
+${citationEnforcementVIII}
 
 ${PHASE_PROMPTS.PHASE_VIII}
 
@@ -2728,8 +3130,64 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
 
     phaseOutput.phaseComplete = 'VIII';
 
+    // =========================================================================
+    // POST-GENERATION CITATION VALIDATION — ENFORCE BANK-ONLY CITATIONS
+    // =========================================================================
+    console.log('[Phase VIII] Running post-generation citation validation...');
+
+    // Get the revised motion text for validation
+    const revisedMotionText = phaseOutput.revisedMotion
+      ? JSON.stringify(phaseOutput.revisedMotion)
+      : outputText;
+
+    const validationResultVIII = validateDraftCitations(
+      revisedMotionText,
+      caseCitationBankVIII,
+      statutoryCitationBankVIII
+    );
+
+    // Build validation metadata object
+    const citationValidationDataVIII: Record<string, unknown> = {
+      authorized: validationResultVIII.authorizedCitations.length,
+      unauthorized: validationResultVIII.unauthorizedCitations.length,
+      isValid: validationResultVIII.isValid,
+      warnings: validationResultVIII.warnings,
+    };
+
+    if (!validationResultVIII.isValid) {
+      console.log('[Phase VIII] ⚠️ UNAUTHORIZED CITATIONS DETECTED IN REVISION');
+      console.log('[Phase VIII] Unauthorized citations:', validationResultVIII.unauthorizedCitations);
+
+      // Strip unauthorized citations
+      console.log('[Phase VIII] Stripping unauthorized citations from revised draft...');
+
+      if (phaseOutput.revisedMotion && typeof phaseOutput.revisedMotion === 'object') {
+        for (const key of Object.keys(phaseOutput.revisedMotion)) {
+          const value = (phaseOutput.revisedMotion as Record<string, unknown>)[key];
+          if (typeof value === 'string' && value.length > 100) {
+            (phaseOutput.revisedMotion as Record<string, unknown>)[key] = stripUnauthorizedCitations(
+              value,
+              validationResultVIII.unauthorizedCitations
+            );
+          }
+        }
+      }
+
+      citationValidationDataVIII.strippedCitations = validationResultVIII.unauthorizedCitations;
+      console.log('[Phase VIII] ✅ Unauthorized citations stripped from revision');
+    } else {
+      console.log('[Phase VIII] ✅ Citation validation PASSED — all citations from verified bank');
+    }
+
+    // Add validation to phaseOutput
+    phaseOutput.citationValidation = citationValidationDataVIII;
+
     // Check if new citations were added (triggers VII.1)
-    const newCitations = phaseOutput.newCitationsAdded === true;
+    // IMPORTANT: If we stripped citations, there are no NEW citations to verify
+    const newCitations = validationResultVIII.isValid && phaseOutput.newCitationsAdded === true;
+
+    console.log(`[Phase VIII] ========== PHASE VIII COMPLETE ==========`);
+    console.log(`[Phase VIII] Citation validation: ${validationResultVIII.isValid ? 'PASSED' : 'FAILED (stripped unauthorized)'}`);
 
     return {
       success: true,

@@ -1045,42 +1045,76 @@ export async function getOpinionText(
  * 3. Returns citations with full verification proof
  */
 // ================================================================
-// HARDCODED FALLBACK QUERIES - These ALWAYS return results
+// EXPANDED FALLBACK QUERIES - TARGET 12-20 CITATIONS
 // ================================================================
-const FALLBACK_QUERIES: Record<string, string[]> = {
+const EXPANDED_FALLBACK_QUERIES: Record<string, string[]> = {
   'motion_to_compel': [
+    // General discovery
     'motion to compel',
+    'compel discovery',
     'discovery sanctions',
     'failure respond discovery',
-    'compel discovery',
+    // Louisiana specific
+    'Louisiana discovery',
+    'Louisiana motion compel',
+    'Louisiana interrogatories',
+    'Louisiana requests production',
+    // Insurance (common in LA)
+    'insurance discovery Louisiana',
+    'bad faith discovery',
+    // Procedural
+    'discovery deadline',
+    'discovery abuse',
+    'discovery sanctions Louisiana',
+    'discovery order',
     'discovery dispute',
-    'interrogatories response',
   ],
   'motion_to_dismiss': [
     'motion to dismiss',
-    'failure state claim',
+    'dismiss failure state claim',
+    'Louisiana motion dismiss',
+    '12(b)(6) motion',
+    'peremptory exception',  // Louisiana term
+    'no cause action Louisiana',
+    'prescription Louisiana',  // Louisiana statute of limitations
     'dismiss Louisiana',
-    'pleading standard',
-    'dismiss complaint',
+    'pleading standard Louisiana',
     'exception no cause action',
+    'dismiss complaint failure',
+    'motion dismiss federal',
   ],
   'summary_judgment': [
     'summary judgment',
+    'summary judgment Louisiana',
     'genuine issue material fact',
-    'summary judgment motion',
     'no genuine dispute',
-    'judgment matter law',
-    'summary judgment standard',
+    'motion summary judgment',
+    'partial summary judgment',
+    'Louisiana summary judgment standard',
+    'summary judgment evidence',
+    'summary judgment discovery',
+    'motion summary judgment denied',
+    'summary judgment granted',
   ],
   'default': [
     'Louisiana civil procedure',
     'Louisiana court appeal',
+    'Louisiana Supreme Court',
     'Louisiana discovery',
-    'civil procedure',
     'Louisiana motion',
-    'court appeal Louisiana',
+    'Fifth Circuit Louisiana',
+    'Louisiana sanctions',
+    'Louisiana procedural',
+    'civil procedure Louisiana',
+    'Louisiana attorney fees',
+    'Louisiana litigation',
+    'Louisiana judgment',
   ],
 };
+
+// LOUISIANA COURT CODES for CourtListener
+const LOUISIANA_STATE_COURTS = ['la', 'lactapp'];  // Supreme Court + Courts of Appeal
+const FEDERAL_LOUISIANA_COURTS = ['ca5', 'laed', 'lamd', 'lawd'];  // 5th Circuit + District Courts
 
 /**
  * Simplify a search query by removing complex legal jargon
@@ -1113,7 +1147,8 @@ export async function buildVerifiedCitationBank(
     forElement: string;
     jurisdiction: string;
   }>,
-  minCitationsPerElement: number = 2
+  minCitations: number = 12,  // INCREASED from 2 per element to 12 total minimum
+  maxCitations: number = 20   // NEW: cap to avoid over-fetching
 ): Promise<{
   success: boolean;
   data?: {
@@ -1121,15 +1156,18 @@ export async function buildVerifiedCitationBank(
     totalVerified: number;
     searchesPerformed: number;
     elementsWithCitations: number;
+    louisianaCitations: number;
+    federalCitations: number;
   };
   error?: string;
 }> {
-  // COMPREHENSIVE DIAGNOSTIC LOGGING
+  // EXPANDED CITATION RESEARCH — TARGET 12-20 CITATIONS
   console.log(`╔══════════════════════════════════════════════════════════════╗`);
-  console.log(`║  buildVerifiedCitationBank - DEBUG (v2026-01-30-FALLBACK)   ║`);
+  console.log(`║  EXPANDED CITATION RESEARCH — TARGET: 12-20 CITATIONS       ║`);
+  console.log(`║  Version: 2026-01-30-CITATION-ENFORCEMENT                   ║`);
   console.log(`╚══════════════════════════════════════════════════════════════╝`);
   console.log(`[buildVerifiedCitationBank] Total queries received: ${queries.length}`);
-  console.log(`[buildVerifiedCitationBank] Min citations per element: ${minCitationsPerElement}`);
+  console.log(`[buildVerifiedCitationBank] Target citations: ${minCitations}-${maxCitations}`);
   console.log(`[buildVerifiedCitationBank] API Key present: ${!!process.env.COURTLISTENER_API_KEY}`);
 
   const citations: VerifiedCitation[] = [];
@@ -1140,165 +1178,171 @@ export async function buildVerifiedCitationBank(
   // Get jurisdiction from first query (they're all the same)
   const jurisdiction = queries[0]?.jurisdiction || 'Louisiana';
 
-  // ================================================================
-  // STEP 1: Try provided queries (simplified)
-  // ================================================================
-  console.log(`[buildVerifiedCitationBank] Step 1: Trying ${queries.length} provided queries (simplified)...`);
+  // Detect motion type from queries for fallback selection
+  const queryText = queries.map(q => q.query.toLowerCase()).join(' ');
+  let motionType = 'default';
+  if (queryText.includes('compel') || queryText.includes('discovery')) {
+    motionType = 'motion_to_compel';
+  } else if (queryText.includes('dismiss')) {
+    motionType = 'motion_to_dismiss';
+  } else if (queryText.includes('summary') || queryText.includes('judgment')) {
+    motionType = 'summary_judgment';
+  }
+  console.log(`[buildVerifiedCitationBank] Motion type detected: ${motionType}`);
 
-  for (const queryInfo of queries) {
-    // Simplify the query to increase chances of results
-    const originalQuery = queryInfo.query;
-    const simplifiedQuery = simplifyQuery(originalQuery);
+  // Get expanded fallback queries
+  const fallbackQueries = EXPANDED_FALLBACK_QUERIES[motionType] || EXPANDED_FALLBACK_QUERIES['default'];
 
-    if (simplifiedQuery.length < 3) {
-      console.log(`[buildVerifiedCitationBank] Skipping empty query after simplification: "${originalQuery}"`);
-      continue;
+  // Combine provided queries with fallbacks
+  const allQueries = [
+    ...(queries || []).map(q => ({ query: simplifyQuery(q.query), forElement: q.forElement })),
+    ...fallbackQueries.map(q => ({ query: q, forElement: 'fallback' })),
+  ].filter(q => q.query.length > 2);
+  const uniqueQueries = [...new Map(allQueries.map(q => [q.query, q])).values()];
+  console.log(`[buildVerifiedCitationBank] ${uniqueQueries.length} unique queries to search`);
+
+  // Helper function to add citations from search results
+  const addCitationsFromSearch = (
+    opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }>,
+    forElement: string,
+    source: string
+  ) => {
+    for (const opinion of opinions) {
+      if (citations.length >= maxCitations) break;
+      if (!opinion.id || seenIds.has(opinion.id)) continue;
+      seenIds.add(opinion.id);
+
+      citations.push({
+        caseName: opinion.case_name,
+        citation: opinion.citation || opinion.case_name,
+        courtlistener_id: opinion.id,
+        courtlistener_cluster_id: opinion.cluster_id || opinion.id,
+        verification_timestamp: new Date().toISOString(),
+        verification_method: 'search',
+        court: opinion.court,
+        date_filed: opinion.date_filed,
+        forElement,
+        proposition: '',
+        relevantHolding: opinion.snippet || '',
+        authorityLevel: determineAuthorityLevel(opinion.court, jurisdiction),
+      });
+      console.log(`[buildVerifiedCitationBank] ✅ ${source}: ${opinion.case_name?.substring(0, 50)}...`);
+      elementCoverage.add(forElement);
     }
+  };
 
-    if (originalQuery !== simplifiedQuery) {
-      console.log(`[buildVerifiedCitationBank] Simplified: "${originalQuery.substring(0, 50)}..." → "${simplifiedQuery}"`);
-    }
+  // ================================================================
+  // PHASE 1: Search LOUISIANA STATE COURTS FIRST (highest authority)
+  // ================================================================
+  console.log(`[buildVerifiedCitationBank] ═══ PHASE 1: Louisiana State Courts ═══`);
+
+  for (const queryInfo of uniqueQueries.slice(0, 10)) {
+    if (citations.length >= maxCitations) break;
 
     try {
-      const searchResult = await searchOpinions(
-        simplifiedQuery,
-        jurisdiction,
-        minCitationsPerElement * 2
-      );
+      // Search Louisiana state courts only
+      const stateCourtParams = LOUISIANA_STATE_COURTS.map(c => `court=${c}`).join('&');
+      const searchResult = await searchOpinions(queryInfo.query, 'Louisiana', 8);
       searchesPerformed++;
 
       if (searchResult.success && searchResult.data?.opinions?.length) {
-        for (const opinion of searchResult.data.opinions.slice(0, minCitationsPerElement)) {
-          if (!opinion.id || seenIds.has(opinion.id)) continue;
-          seenIds.add(opinion.id);
-
-          citations.push({
-            caseName: opinion.case_name,
-            citation: opinion.citation || opinion.case_name,
-            courtlistener_id: opinion.id,
-            courtlistener_cluster_id: opinion.cluster_id || opinion.id,
-            verification_timestamp: new Date().toISOString(),
-            verification_method: 'search',
-            court: opinion.court,
-            date_filed: opinion.date_filed,
-            forElement: queryInfo.forElement,
-            proposition: '',
-            relevantHolding: opinion.snippet || '',
-            authorityLevel: determineAuthorityLevel(opinion.court, jurisdiction),
-          });
-          console.log(`[buildVerifiedCitationBank] ✅ Added: ${opinion.case_name?.substring(0, 40)}... (ID: ${opinion.id})`);
-          elementCoverage.add(queryInfo.forElement);
-        }
-      } else {
-        console.log(`[buildVerifiedCitationBank] ⚠️ No results for: "${simplifiedQuery}"`);
+        // Filter to only Louisiana state court results
+        const laStateOpinions = searchResult.data.opinions.filter(op =>
+          op.court?.toLowerCase().includes('louisiana') ||
+          op.court === 'la' ||
+          op.court === 'lactapp'
+        );
+        addCitationsFromSearch(laStateOpinions, queryInfo.forElement, 'LA State');
       }
     } catch (error) {
-      console.error(`[buildVerifiedCitationBank] Error for "${simplifiedQuery}":`, error);
-    }
-
-    // Stop early if we have enough
-    if (citations.length >= minCitationsPerElement * 3) {
-      console.log(`[buildVerifiedCitationBank] Have ${citations.length} citations, stopping early`);
-      break;
+      console.error(`[buildVerifiedCitationBank] LA state search failed for "${queryInfo.query}":`, error);
     }
   }
 
-  console.log(`[buildVerifiedCitationBank] After Step 1: ${citations.length} citations`);
+  console.log(`[buildVerifiedCitationBank] After Phase 1 (LA State): ${citations.length} citations`);
 
   // ================================================================
-  // STEP 2: If not enough citations, try fallback queries
+  // PHASE 2: Search FIFTH CIRCUIT FEDERAL (binding federal authority)
   // ================================================================
-  if (citations.length < minCitationsPerElement) {
-    console.log(`[buildVerifiedCitationBank] Step 2: Trying fallback queries (need ${minCitationsPerElement}, have ${citations.length})...`);
+  if (citations.length < maxCitations) {
+    console.log(`[buildVerifiedCitationBank] ═══ PHASE 2: Fifth Circuit Federal ═══`);
 
-    // Detect motion type from queries
-    const queryText = queries.map(q => q.query.toLowerCase()).join(' ');
-    let motionType = 'default';
-    if (queryText.includes('compel') || queryText.includes('discovery')) {
-      motionType = 'motion_to_compel';
-    } else if (queryText.includes('dismiss')) {
-      motionType = 'motion_to_dismiss';
-    } else if (queryText.includes('summary') || queryText.includes('judgment')) {
-      motionType = 'summary_judgment';
-    }
-
-    const fallbacks = FALLBACK_QUERIES[motionType] || FALLBACK_QUERIES['default'];
-    console.log(`[buildVerifiedCitationBank] Using ${motionType} fallbacks: ${fallbacks.join(', ')}`);
-
-    for (const fallbackQuery of fallbacks) {
-      if (citations.length >= minCitationsPerElement * 2) break;
+    for (const queryInfo of uniqueQueries.slice(0, 8)) {
+      if (citations.length >= maxCitations) break;
 
       try {
-        const searchResult = await searchOpinions(fallbackQuery, jurisdiction, 5);
+        const searchResult = await searchOpinions(queryInfo.query, 'fifth circuit', 6);
         searchesPerformed++;
 
         if (searchResult.success && searchResult.data?.opinions?.length) {
-          for (const opinion of searchResult.data.opinions) {
-            if (!opinion.id || seenIds.has(opinion.id)) continue;
-            seenIds.add(opinion.id);
-
-            citations.push({
-              caseName: opinion.case_name,
-              citation: opinion.citation || opinion.case_name,
-              courtlistener_id: opinion.id,
-              courtlistener_cluster_id: opinion.cluster_id || opinion.id,
-              verification_timestamp: new Date().toISOString(),
-              verification_method: 'search',
-              court: opinion.court,
-              date_filed: opinion.date_filed,
-              forElement: 'fallback',
-              proposition: '',
-              relevantHolding: opinion.snippet || '',
-              authorityLevel: determineAuthorityLevel(opinion.court, jurisdiction),
-            });
-            console.log(`[buildVerifiedCitationBank] ✅ Fallback: ${opinion.case_name?.substring(0, 40)}... (ID: ${opinion.id})`);
-          }
+          // Filter to Fifth Circuit results
+          const federalOpinions = searchResult.data.opinions.filter(op =>
+            op.court?.toLowerCase().includes('fifth') ||
+            op.court?.toLowerCase().includes('circuit') ||
+            op.court?.toLowerCase().includes('district') ||
+            op.court === 'ca5'
+          );
+          addCitationsFromSearch(federalOpinions, queryInfo.forElement, '5th Cir');
         }
       } catch (error) {
-        console.error(`[buildVerifiedCitationBank] Fallback error for "${fallbackQuery}":`, error);
+        console.error(`[buildVerifiedCitationBank] Federal search failed for "${queryInfo.query}":`, error);
       }
     }
   }
 
-  console.log(`[buildVerifiedCitationBank] After Step 2: ${citations.length} citations`);
+  console.log(`[buildVerifiedCitationBank] After Phase 2 (Federal): ${citations.length} citations`);
 
   // ================================================================
-  // STEP 3: LAST RESORT - Search without court filter
+  // PHASE 3: Broad search if still under minimum
   // ================================================================
-  if (citations.length < minCitationsPerElement) {
-    console.log(`[buildVerifiedCitationBank] Step 3: LAST RESORT - searching without court filter...`);
+  if (citations.length < minCitations) {
+    console.log(`[buildVerifiedCitationBank] ═══ PHASE 3: Broad Search (under ${minCitations} citations) ═══`);
 
-    const lastResortQueries = ['motion to compel', 'discovery sanctions', 'Louisiana civil'];
+    const broadQueries = [
+      'Louisiana civil procedure',
+      'discovery Louisiana',
+      'motion Louisiana',
+      'Louisiana appeal',
+      `${motionType.replace(/_/g, ' ')} Louisiana`,
+    ];
+
+    for (const query of broadQueries) {
+      if (citations.length >= minCitations) break;
+
+      try {
+        // Search all Louisiana courts
+        const searchResult = await searchOpinions(query, 'Louisiana', 10);
+        searchesPerformed++;
+
+        if (searchResult.success && searchResult.data?.opinions?.length) {
+          addCitationsFromSearch(searchResult.data.opinions, 'broad', 'Broad');
+        }
+      } catch (error) {
+        console.error(`[buildVerifiedCitationBank] Broad search failed for "${query}":`, error);
+      }
+    }
+  }
+
+  console.log(`[buildVerifiedCitationBank] After Phase 3 (Broad): ${citations.length} citations`);
+
+  // ================================================================
+  // PHASE 4: LAST RESORT - Search without jurisdiction filter
+  // ================================================================
+  if (citations.length < 4) {  // Minimum 4 for any motion
+    console.log(`[buildVerifiedCitationBank] ═══ PHASE 4: LAST RESORT (no filter) ═══`);
+
+    const lastResortQueries = ['motion to compel', 'discovery sanctions', 'civil procedure'];
 
     for (const query of lastResortQueries) {
-      if (citations.length >= minCitationsPerElement) break;
+      if (citations.length >= 4) break;
 
       try {
         // NO JURISDICTION - search all courts
-        const searchResult = await searchOpinions(query, undefined, 10);
+        const searchResult = await searchOpinions(query, undefined, 15);
         searchesPerformed++;
 
         if (searchResult.success && searchResult.data?.opinions?.length) {
-          for (const opinion of searchResult.data.opinions) {
-            if (!opinion.id || seenIds.has(opinion.id)) continue;
-            seenIds.add(opinion.id);
-
-            citations.push({
-              caseName: opinion.case_name,
-              citation: opinion.citation || opinion.case_name,
-              courtlistener_id: opinion.id,
-              courtlistener_cluster_id: opinion.cluster_id || opinion.id,
-              verification_timestamp: new Date().toISOString(),
-              verification_method: 'search',
-              court: opinion.court,
-              date_filed: opinion.date_filed,
-              forElement: 'last_resort',
-              proposition: '',
-              relevantHolding: opinion.snippet || '',
-              authorityLevel: 'persuasive',
-            });
-            console.log(`[buildVerifiedCitationBank] ✅ Last resort: ${opinion.case_name?.substring(0, 40)}... (ID: ${opinion.id})`);
-          }
+          addCitationsFromSearch(searchResult.data.opinions, 'last_resort', 'Last Resort');
         }
       } catch (error) {
         console.error(`[buildVerifiedCitationBank] Last resort error:`, error);
@@ -1307,31 +1351,71 @@ export async function buildVerifiedCitationBank(
   }
 
   // ================================================================
+  // SORT: Louisiana state first, then federal, then by date (recent first)
+  // ================================================================
+  citations.sort((a, b) => {
+    // Priority: LA Supreme > LA App > 5th Cir > District > Other
+    const getPriority = (c: VerifiedCitation) => {
+      const court = (c.court || '').toLowerCase();
+      if (court.includes('supreme') && court.includes('louisiana')) return 1;
+      if (court.includes('louisiana') && court.includes('appeal')) return 2;
+      if (court === 'la') return 1;  // LA Supreme Court code
+      if (court === 'lactapp') return 2;  // LA Court of Appeal code
+      if (court.includes('fifth circuit') || court === 'ca5') return 3;
+      if (court.includes('district')) return 4;
+      return 5;
+    };
+
+    const priorityDiff = getPriority(a) - getPriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    // Same priority — sort by date (recent first)
+    const dateA = new Date(a.date_filed || '1900-01-01').getTime();
+    const dateB = new Date(b.date_filed || '1900-01-01').getTime();
+    return dateB - dateA;
+  });
+
+  // Count Louisiana vs federal citations
+  const louisianaCitations = citations.filter(c =>
+    (c.court || '').toLowerCase().includes('louisiana') ||
+    c.court === 'la' ||
+    c.court === 'lactapp'
+  ).length;
+  const federalCitations = citations.length - louisianaCitations;
+
+  // ================================================================
   // FINAL REPORT
   // ================================================================
   console.log(`╔══════════════════════════════════════════════════════════════╗`);
-  console.log(`║  buildVerifiedCitationBank COMPLETE                         ║`);
+  console.log(`║  CITATION BANK COMPLETE                                      ║`);
   console.log(`╚══════════════════════════════════════════════════════════════╝`);
   console.log(`[buildVerifiedCitationBank] Total citations: ${citations.length}`);
+  console.log(`[buildVerifiedCitationBank] Louisiana citations: ${louisianaCitations}`);
+  console.log(`[buildVerifiedCitationBank] Federal citations: ${federalCitations}`);
   console.log(`[buildVerifiedCitationBank] Searches performed: ${searchesPerformed}`);
   console.log(`[buildVerifiedCitationBank] Elements covered: ${elementCoverage.size}`);
 
   if (citations.length > 0) {
-    console.log(`[buildVerifiedCitationBank] First citation: ${citations[0].caseName} (ID: ${citations[0].courtlistener_id})`);
-    console.log(`[buildVerifiedCitationBank] All IDs: [${citations.slice(0, 5).map(c => c.courtlistener_id).join(', ')}${citations.length > 5 ? '...' : ''}]`);
+    console.log(`[buildVerifiedCitationBank] Top citations by authority:`);
+    citations.slice(0, 5).forEach((c, i) => {
+      console.log(`  ${i + 1}. ${c.caseName?.substring(0, 50)}... (${c.court})`);
+    });
+    console.log(`[buildVerifiedCitationBank] All IDs: [${citations.slice(0, 8).map(c => c.courtlistener_id).join(', ')}${citations.length > 8 ? '...' : ''}]`);
   } else {
     console.error(`[buildVerifiedCitationBank] ❌ FATAL: No citations found!`);
   }
 
   return {
-    success: citations.length > 0,
+    success: citations.length >= 4,  // Minimum 4 for any motion
     data: {
       citations,
       totalVerified: citations.length,
       searchesPerformed,
       elementsWithCitations: elementCoverage.size,
+      louisianaCitations,
+      federalCitations,
     },
-    error: citations.length === 0 ? 'No citations found even with fallbacks' : undefined,
+    error: citations.length < 4 ? 'Not enough citations found - need at least 4' : undefined,
   };
 }
 
