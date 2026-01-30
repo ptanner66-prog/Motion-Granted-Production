@@ -138,6 +138,8 @@ export default async function HealthDashboardPage() {
     { data: recentErrors },
     // Claude API usage (from automation logs)
     { data: claudeUsageLogs },
+    // Phase executions for accurate token counts
+    { data: phaseExecutionTokens },
     // Database health check
     dbHealthResult,
   ] = await Promise.all([
@@ -246,9 +248,16 @@ export default async function HealthDashboardPage() {
     supabase
       .from('automation_logs')
       .select('action_details, created_at')
-      .or('action_type.ilike.%claude%,action_type.ilike.%generation%')
+      .or('action_type.ilike.%claude%,action_type.ilike.%generation%,action_type.eq.phase_executed')
       .gte('created_at', todayStart)
       .order('created_at', { ascending: false }),
+
+    // Phase executions for accurate token counts (v7.2 workflow)
+    supabase
+      .from('phase_executions')
+      .select('input_tokens, output_tokens, created_at')
+      .gte('created_at', todayStart)
+      .not('input_tokens', 'is', null),
 
     // Database health check (simple query with timing)
     (async () => {
@@ -303,15 +312,47 @@ export default async function HealthDashboardPage() {
   let claudeErrors = 0;
 
   claudeUsageLogs?.forEach((log: { action_details: Record<string, unknown>; created_at: string }) => {
-    const details = log.action_details as { tokensUsed?: number; error?: string };
+    const details = log.action_details as {
+      tokensUsed?: number | { input: number; output: number };
+      error?: string;
+      input_tokens?: number;
+      output_tokens?: number;
+    };
+
+    // Handle tokensUsed as either a number or {input, output} object
     if (details?.tokensUsed) {
-      totalTokens += details.tokensUsed;
+      if (typeof details.tokensUsed === 'number') {
+        totalTokens += details.tokensUsed;
+      } else if (typeof details.tokensUsed === 'object' && details.tokensUsed !== null) {
+        totalTokens += (details.tokensUsed.input || 0) + (details.tokensUsed.output || 0);
+      }
     }
+    // Also check for separate input_tokens/output_tokens fields
+    if (details?.input_tokens) {
+      totalTokens += details.input_tokens;
+    }
+    if (details?.output_tokens) {
+      totalTokens += details.output_tokens;
+    }
+
     if (details?.error) {
       claudeErrors++;
     }
     if (!lastUsed && log.created_at) {
       lastUsed = log.created_at;
+    }
+  });
+
+  // Also sum tokens from phase_executions table (v7.2 workflow)
+  phaseExecutionTokens?.forEach((exec: { input_tokens: number | null; output_tokens: number | null; created_at: string }) => {
+    if (exec.input_tokens) {
+      totalTokens += exec.input_tokens;
+    }
+    if (exec.output_tokens) {
+      totalTokens += exec.output_tokens;
+    }
+    if (!lastUsed && exec.created_at) {
+      lastUsed = exec.created_at;
     }
   });
 

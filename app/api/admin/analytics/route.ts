@@ -61,13 +61,17 @@ async function getOrderSummary(supabase: Awaited<ReturnType<typeof createClient>
   const totalOrders = orders?.length || 0;
   const totalRevenue = orders?.reduce((sum: number, o: OrderRow) => sum + (o.total_price || 0), 0) || 0;
 
-  // Calculate completion rate
-  const completed = orders?.filter((o: OrderRow) => o.status === 'completed').length || 0;
+  // Calculate completion rate - include draft_delivered and revision_delivered as "completed"
+  const completed = orders?.filter((o: OrderRow) =>
+    ['completed', 'draft_delivered', 'revision_delivered'].includes(o.status)
+  ).length || 0;
   const total = orders?.filter((o: OrderRow) => !['cancelled', 'refunded'].includes(o.status)).length || 1;
   const completionRate = Math.round((completed / total) * 100);
 
-  // Calculate average turnaround
-  const completedOrders = orders?.filter((o: OrderRow) => o.status === 'completed') || [];
+  // Calculate average turnaround - include all "completed" states
+  const completedOrders = orders?.filter((o: OrderRow) =>
+    ['completed', 'draft_delivered', 'revision_delivered'].includes(o.status)
+  ) || [];
   const avgTurnaroundDays = completedOrders.length > 0
     ? completedOrders.reduce((sum: number, o: OrderRow) => {
         const created = new Date(o.created_at);
@@ -106,10 +110,11 @@ async function getWorkflowMetrics(supabase: Awaited<ReturnType<typeof createClie
     .select('*', { count: 'exact', head: true })
     .in('status', ['pending', 'in_progress']);
 
+  // Count orders awaiting review - includes multiple states that indicate "needs review"
   const { count: pendingReviewCount } = await supabase
     .from('orders')
     .select('*', { count: 'exact', head: true })
-    .eq('status', 'pending_review');
+    .in('status', ['pending_review', 'under_review', 'revision_requested']);
 
   // Get completed workflows for metrics
   const { data: completedWorkflows } = await supabase
