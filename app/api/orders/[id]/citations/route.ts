@@ -14,6 +14,9 @@
  * Citation Viewer Feature — January 30, 2026
  */
 
+// Vercel Pro: Extended timeout for database queries and potential CourtListener lookups
+export const maxDuration = 60;
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getOrderCitations } from '@/lib/services/citations/citation-service';

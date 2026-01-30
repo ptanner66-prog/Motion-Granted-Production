@@ -15,6 +15,9 @@
  * Citation Viewer Feature — January 30, 2026
  */
 
+// Vercel Pro: Extended timeout for batch external API calls to CourtListener
+export const maxDuration = 60;
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { batchGetCitationDetailsService } from '@/lib/services/citations/citation-service';
