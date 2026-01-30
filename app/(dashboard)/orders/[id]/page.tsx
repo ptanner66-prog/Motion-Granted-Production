@@ -32,6 +32,7 @@ import {
 import { RevisionRequestForm } from '@/components/orders/revision-request-form'
 import { CopyButton } from '@/components/ui/copy-button'
 import { QueueStatusCard } from '@/components/orders/queue-status-card'
+import { CitationViewer } from '@/components/citations'
 
 interface Party {
   party_name: string
@@ -404,6 +405,16 @@ export default async function OrderDetailPage({
                   )}
                 </CardContent>
               </Card>
+
+              {/* Citations Section - Show when motion has been generated */}
+              {deliverables.length > 0 && (
+                <CitationViewer
+                  orderId={order.id}
+                  mode="client"
+                  compact={true}
+                  showTitle={true}
+                />
+              )}
 
               {/* Client Uploads Section */}
               <Card className="border-0 shadow-sm overflow-hidden">

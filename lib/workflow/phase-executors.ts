@@ -26,6 +26,8 @@ import type {
   LetterGrade,
 } from '@/types/workflow';
 import { PHASE_PROMPTS } from '@/prompts';
+import { saveOrderCitations } from '@/lib/services/citations/citation-service';
+import type { SaveCitationInput } from '@/types/citations';
 
 // ============================================================================
 // TYPES
@@ -1527,6 +1529,96 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
     console.log(`[Phase V] ========== PHASE V COMPLETE ==========`);
     console.log(`[Phase V] Total duration: ${Date.now() - start}ms`);
     console.log(`[Phase V] Motion word count: ${phaseOutput.wordCount || 'N/A'}`);
+
+    // =========================================================================
+    // SAVE CITATIONS TO DATABASE - Citation Viewer Feature
+    // =========================================================================
+    console.log(`[Phase V] Saving citations to order_citations table...`);
+
+    try {
+      // Get the full citation banks from Phase IV
+      const fullCaseCitationBank = (phaseIVOutput?.caseCitationBank || []) as Array<{
+        caseName?: string;
+        citation?: string;
+        courtlistener_id?: number;
+        courtlistener_cluster_id?: number;
+        court?: string;
+        date_filed?: string;
+        proposition?: string;
+        authorityLevel?: string;
+        verification_timestamp?: string;
+        verification_method?: string;
+      }>;
+
+      const statutoryCitationBank = (phaseIVOutput?.statutoryCitationBank || []) as Array<{
+        citation?: string;
+        name?: string;
+        relevantText?: string;
+        purpose?: string;
+      }>;
+
+      // Transform case citations to SaveCitationInput format
+      const caseCitationInputs: SaveCitationInput[] = fullCaseCitationBank.map((c, index) => ({
+        citationString: c.citation || '',
+        caseName: c.caseName || 'Unknown Case',
+        courtlistenerOpinionId: c.courtlistener_id?.toString(),
+        courtlistenerClusterId: c.courtlistener_cluster_id?.toString(),
+        courtlistenerUrl: c.courtlistener_id
+          ? `https://www.courtlistener.com/opinion/${c.courtlistener_id}/`
+          : undefined,
+        court: c.court,
+        dateFiled: c.date_filed,
+        citationType: 'case' as const,
+        proposition: c.proposition,
+        authorityLevel: c.authorityLevel === 'binding' ? 'binding' : 'persuasive',
+        verificationStatus: c.courtlistener_id ? 'verified' : 'unverified',
+        verificationMethod: c.verification_method || 'courtlistener_api',
+        displayOrder: index + 1,
+      }));
+
+      // Transform statutory citations to SaveCitationInput format
+      const statutoryCitationInputs: SaveCitationInput[] = statutoryCitationBank.map((s, index) => ({
+        citationString: s.citation || s.name || '',
+        caseName: s.name || s.citation || 'Statutory Reference',
+        citationType: 'statute' as const,
+        proposition: s.purpose || s.relevantText,
+        verificationStatus: 'verified' as const, // Statutes are presumed valid
+        displayOrder: caseCitationInputs.length + index + 1,
+      }));
+
+      // Combine and save all citations
+      const allCitations = [...caseCitationInputs, ...statutoryCitationInputs];
+
+      if (allCitations.length > 0) {
+        const saveResult = await saveOrderCitations(input.orderId, allCitations);
+
+        if (saveResult.success) {
+          console.log(`[Phase V] ✅ Citations saved: ${saveResult.data?.savedCitations} total`);
+          console.log(`[Phase V]    - Case citations: ${saveResult.data?.caseCitations}`);
+          console.log(`[Phase V]    - Statutory citations: ${saveResult.data?.statutoryCitations}`);
+
+          // Add citation save info to phase output
+          phaseOutput.citationsSaved = {
+            total: saveResult.data?.savedCitations || 0,
+            caseCitations: saveResult.data?.caseCitations || 0,
+            statutoryCitations: saveResult.data?.statutoryCitations || 0,
+          };
+        } else {
+          console.error(`[Phase V] ⚠️ Failed to save citations: ${saveResult.error}`);
+          // Don't fail the phase - citations are nice-to-have for viewer
+          phaseOutput.citationsSaved = { total: 0, error: saveResult.error };
+        }
+      } else {
+        console.log(`[Phase V] No citations to save`);
+        phaseOutput.citationsSaved = { total: 0 };
+      }
+    } catch (citationError) {
+      console.error(`[Phase V] ⚠️ Citation save error (non-fatal):`, citationError);
+      phaseOutput.citationsSaved = {
+        total: 0,
+        error: citationError instanceof Error ? citationError.message : 'Unknown error',
+      };
+    }
 
     return {
       success: true,
@@ -3324,6 +3416,45 @@ Assemble and check. Provide as JSON.`;
     // Motion passed validation - ready for admin review
     console.log(`[Phase X] Motion passed placeholder validation - ready for CP3 approval`);
 
+    // =========================================================================
+    // ADD CITATION METADATA TO FINAL OUTPUT - Citation Viewer Feature
+    // =========================================================================
+    const phaseIVOutput = (input.previousPhaseOutputs?.['IV'] ?? {}) as Record<string, unknown>;
+    const caseCitationBank = (phaseIVOutput?.caseCitationBank || []) as Array<{
+      caseName?: string;
+      citation?: string;
+      courtlistener_id?: number;
+      court?: string;
+      date_filed?: string;
+      authorityLevel?: string;
+    }>;
+    const statutoryCitationBank = (phaseIVOutput?.statutoryCitationBank || []) as Array<{
+      citation?: string;
+      name?: string;
+    }>;
+    const citationsSaved = (phaseVOutput?.citationsSaved || {}) as Record<string, unknown>;
+
+    // Build citation metadata for the final package
+    const citationMetadata = {
+      totalCitations: caseCitationBank.length + statutoryCitationBank.length,
+      caseCitations: caseCitationBank.length,
+      statutoryCitations: statutoryCitationBank.length,
+      bindingAuthority: caseCitationBank.filter(c => c.authorityLevel === 'binding').length,
+      persuasiveAuthority: caseCitationBank.filter(c => c.authorityLevel === 'persuasive').length,
+      verifiedViaCourtListener: caseCitationBank.filter(c => c.courtlistener_id).length,
+      savedToDatabase: citationsSaved?.total || 0,
+      // Include citation list for quick reference
+      citationList: caseCitationBank.slice(0, 20).map(c => ({
+        caseName: c.caseName,
+        citation: c.citation,
+        court: c.court,
+        dateFiled: c.date_filed,
+        opinionId: c.courtlistener_id?.toString(),
+      })),
+    };
+
+    console.log(`[Phase X] Citation metadata: ${citationMetadata.totalCitations} total citations`);
+
     return {
       success: true,
       phase: 'X',
@@ -3332,6 +3463,7 @@ Assemble and check. Provide as JSON.`;
         ...phaseOutput,
         readyForDelivery: true,
         placeholderValidation,
+        citationMetadata, // Citation Viewer Feature
       },
       requiresReview: true, // CP3: Blocking checkpoint
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
