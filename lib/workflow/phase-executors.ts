@@ -301,6 +301,36 @@ Provide your Phase I analysis as JSON.`;
       phaseOutput.phaseComplete = 'I';
     }
 
+    // ========================================================================
+    // CRITICAL: PRESERVE KNOWN DATA FROM INPUT
+    // ========================================================================
+    // AI extraction should NOT overwrite data we already have from the order.
+    // If filingDeadline exists in input, preserve it - don't let AI null it out.
+
+    if (input.filingDeadline) {
+      // Ensure caseIdentifiers object exists
+      if (!phaseOutput.caseIdentifiers) {
+        phaseOutput.caseIdentifiers = {};
+      }
+      // Preserve the filing deadline from input (order data takes precedence)
+      const existingDeadline = phaseOutput.caseIdentifiers?.filingDeadline;
+      if (!existingDeadline) {
+        phaseOutput.caseIdentifiers.filingDeadline = input.filingDeadline;
+        console.log(`[Phase I] Preserved filingDeadline from input: ${input.filingDeadline}`);
+      }
+    }
+
+    // Also preserve other known input data that AI might miss
+    if (!phaseOutput.caseIdentifiers) {
+      phaseOutput.caseIdentifiers = {};
+    }
+    if (input.caseNumber && !phaseOutput.caseIdentifiers.caseNumber) {
+      phaseOutput.caseIdentifiers.caseNumber = input.caseNumber;
+    }
+    if (input.caseCaption && !phaseOutput.caseIdentifiers.caseCaption) {
+      phaseOutput.caseIdentifiers.caseCaption = input.caseCaption;
+    }
+
     console.log(`[Phase I] ========== PHASE I COMPLETE ==========`);
     console.log(`[Phase I] Total duration: ${Date.now() - start}ms`);
 
