@@ -1,6 +1,6 @@
 export const siteConfig = {
   name: "Motion Granted",
-  description: "Professional legal motion drafting services for solo practitioners and small law firms",
+  description: "High-fidelity motion production for the Louisiana practitioner.",
   url: "https://motiongranted.com",
   ogImage: "https://motiongranted.com/og-image.png",
   links: {

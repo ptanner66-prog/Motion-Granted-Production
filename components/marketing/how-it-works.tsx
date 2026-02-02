@@ -1,99 +1,39 @@
-import { Upload, PenTool, CheckCircle } from 'lucide-react'
-
-const steps = [
+const protocolSteps = [
   {
-    icon: Upload,
-    title: 'Submit',
-    description:
-      'Tell us what you need. Upload your case documents, select your motion type, and provide your instructions.',
+    phase: "I-III",
+    name: "Intake & Issue ID",
+    desc: "Automated document processing and deconstruction of legal standards for Louisiana compliance."
   },
   {
-    icon: PenTool,
-    title: 'We Draft',
-    description:
-      'Our law clerks prepare a polished draft based on your direction. Track progress in your dashboard.',
+    phase: "IV-VI",
+    name: "Authority & Strategy",
+    desc: "Parallel research paths using Opus 4.5 to anticipate opposition arguments and verify holding vs. dicta."
   },
   {
-    icon: CheckCircle,
-    title: 'You File',
-    description:
-      'Download, review, and file under your name. One round of revisions included.',
+    phase: "VII-VIII",
+    name: "Judge Simulation",
+    desc: "Work product is graded by a simulation engine. Drafts below a 3.3 (B+) are automatically routed for revision."
   },
-]
+  {
+    phase: "IX-X",
+    name: "Final Assembly",
+    desc: "Production of supporting documents, caption validation, and delivery of file-ready work product."
+  }
+];
 
 export function HowItWorks() {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-[#f8f7f4] to-[#faf9f7] py-28 sm:py-36">
-      {/* Decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-1/4 h-72 w-72 rounded-full bg-teal/5 blur-3xl" />
-        <div className="absolute bottom-20 right-1/4 h-72 w-72 rounded-full bg-navy/5 blur-3xl" />
-      </div>
-
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Section header */}
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="mb-4 inline-flex items-center rounded-full bg-teal/10 px-4 py-1.5 text-sm font-medium text-navy">
-            Simple Process
-          </div>
-          <h2 className="text-3xl font-bold tracking-tight text-navy sm:text-4xl lg:text-5xl">
-            How It Works
-          </h2>
-          <p className="mt-5 text-lg text-gray-600 sm:text-xl">
-            Three simple steps to professional motion drafts
-          </p>
-        </div>
-
-        {/* Steps */}
-        <div className="mx-auto mt-20 max-w-5xl">
-          <div className="relative">
-            {/* Connecting line - desktop */}
-            <div className="absolute left-0 right-0 top-[60px] hidden h-0.5 sm:block">
-              <div className="mx-auto h-full max-w-3xl bg-gradient-to-r from-transparent via-teal/30 to-transparent" />
+    <section className="bg-white py-24">
+      <div className="mx-auto max-w-6xl px-6">
+        <h2 className="text-4xl text-navy mb-16">The 14-Phase Protocol</h2>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
+          {protocolSteps.map((step) => (
+            <div key={step.phase} className="flex flex-col border-t-2 border-gold pt-6">
+              <span className="text-gold font-bold mb-4 font-sans text-sm">PHASE {step.phase}</span>
+              <h3 className="text-xl mb-3 text-navy">{step.name}</h3>
+              <p className="text-gray-600 text-sm leading-relaxed font-sans">{step.desc}</p>
             </div>
-
-            <div className="grid gap-12 sm:grid-cols-3 sm:gap-8">
-              {steps.map((step, index) => (
-                <div key={step.title} className="relative">
-                  <div className="flex flex-col items-center text-center">
-                    {/* Step number and icon container */}
-                    <div className="relative">
-                      {/* Outer glow ring */}
-                      <div className="absolute -inset-3 rounded-full bg-gradient-to-br from-teal/20 to-teal/5 opacity-0 blur-lg transition-opacity duration-500 group-hover:opacity-100" />
-
-                      {/* Main icon circle */}
-                      <div className="relative flex h-[120px] w-[120px] items-center justify-center rounded-full bg-white shadow-lg ring-1 ring-gray-100 transition-all duration-500 hover:shadow-xl hover:ring-teal/20">
-                        {/* Inner gradient */}
-                        <div className="absolute inset-2 rounded-full bg-gradient-to-br from-teal/5 to-transparent" />
-
-                        <step.icon className="relative h-10 w-10 text-teal" />
-                      </div>
-
-                      {/* Step number badge */}
-                      <span className="absolute -right-1 -top-1 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-navy to-navy/90 text-sm font-bold text-white shadow-lg ring-4 ring-white">
-                        {index + 1}
-                      </span>
-                    </div>
-
-                    {/* Content */}
-                    <h3 className="mt-8 text-xl font-semibold text-navy lg:text-2xl">
-                      {step.title}
-                    </h3>
-                    <p className="mt-3 max-w-xs text-gray-600 leading-relaxed lg:text-lg">
-                      {step.description}
-                    </p>
-                  </div>
-
-                  {/* Mobile connector arrow */}
-                  {index < steps.length - 1 && (
-                    <div className="mt-8 flex justify-center sm:hidden">
-                      <div className="h-8 w-0.5 bg-gradient-to-b from-teal/30 to-transparent" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </section>
