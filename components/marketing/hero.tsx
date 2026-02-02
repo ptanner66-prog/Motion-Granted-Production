@@ -1,51 +1,58 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { siteConfig } from '@/config/site'
 
 export function Hero() {
   return (
-    <section className="relative bg-cream pt-24 pb-20 border-b-8 border-navy">
-      <div className="mx-auto max-w-6xl px-6 lg:px-8">
-        <div className="flex flex-col items-start text-left">
-          <div className="mb-6 flex items-center gap-3">
-            <span className="h-px w-8 bg-gold" />
-            <span className="text-sm font-bold uppercase tracking-[0.2em] text-gold">
-              Authorized Louisiana Jurisdictional Engine
-            </span>
-          </div>
+    <section className="bg-[#fdfcfb] pt-32 pb-24 border-b-[12px] border-navy">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="border-l-4 border-gold pl-6 mb-12">
+          <span className="text-sm font-bold uppercase tracking-[0.3em] text-gold">
+            Louisiana Jurisdictional Production Standard
+          </span>
+        </div>
 
-          <h1 className="text-6xl md:text-8xl text-navy leading-[1.1] mb-8">
-            High-Fidelity Drafting. <br />
-            <span className="italic font-normal text-slate-gray">Professional Production.</span>
-          </h1>
+        <h1 className="font-serif text-7xl md:text-9xl text-navy leading-[0.95] mb-12">
+          Precision Drafting. <br />
+          <span className="italic font-normal text-gray-500 text-6xl md:text-8xl">Professional Results.</span>
+        </h1>
 
-          <p className="max-w-2xl text-xl leading-relaxed text-navy/80 mb-12 font-sans">
-            Motion Granted executes the production of complex motions, briefs, and exceptions
-            through a rigorous 14-phase verification protocol. Built specifically for the
-            {siteConfig.address.state} Bar.
-          </p>
+        <p className="max-w-2xl text-2xl leading-relaxed text-navy/90 mb-16 font-sans">
+          Motion Granted executes complex legal drafting through a 14-phase
+          verification protocol. Every deliverable is graded against judicial
+          standards and verified for Louisiana-specific statutory compliance.
+        </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-            <Button size="lg" className="bg-navy hover:bg-navy/90 text-white px-10 py-7 text-lg rounded-none shadow-none" asChild>
-              <Link href="/register">Open a Production Case</Link>
-            </Button>
-            <Button variant="outline" size="lg" className="border-navy text-navy px-10 py-7 text-lg rounded-none hover:bg-navy/5 shadow-none" asChild>
-              <Link href="/pricing">Review Fee Schedule</Link>
-            </Button>
-          </div>
+        <div className="flex flex-col sm:flex-row gap-6">
+          <Button className="bg-navy text-white px-12 py-8 text-xl rounded-none hover:bg-black transition-all shadow-none" asChild>
+            <Link href="/register">Initiate Production</Link>
+          </Button>
+          <Button variant="outline" className="border-2 border-navy text-navy px-12 py-8 text-xl rounded-none hover:bg-navy/5 shadow-none" asChild>
+            <Link href="#protocol">Review Protocol</Link>
+          </Button>
+        </div>
 
-          <div className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-8 border-t border-navy/10 pt-8 w-full">
+        {/* Institutional Trust Indicators */}
+        <div className="mt-20 pt-10 border-t border-navy/10">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="flex flex-col">
-              <span className="text-gold font-bold text-xs uppercase tracking-widest mb-2">Compliance</span>
-              <span className="text-navy text-sm">ABA Formal Opinion 512 Disclosures</span>
+              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3">Protocol</span>
+              <span className="text-navy font-serif text-lg">14-Phase Verification</span>
+              <span className="text-gray-500 text-sm mt-1">Every draft systematically reviewed</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-gold font-bold text-xs uppercase tracking-widest mb-2">Protocol</span>
-              <span className="text-navy text-sm">14-Phase Production Workflow</span>
+              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3">Judicial Review</span>
+              <span className="text-navy font-serif text-lg">B+ Minimum Standard</span>
+              <span className="text-gray-500 text-sm mt-1">Phase VII simulation gate</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-gold font-bold text-xs uppercase tracking-widest mb-2">Verification</span>
-              <span className="text-navy text-sm">Multi-Step Judge Simulation</span>
+              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3">Citation Integrity</span>
+              <span className="text-navy font-serif text-lg">Batch Verification</span>
+              <span className="text-gray-500 text-sm mt-1">2-per-pass hallucination prevention</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3">Compliance</span>
+              <span className="text-navy font-serif text-lg">ABA Opinion 512</span>
+              <span className="text-gray-500 text-sm mt-1">Built-in disclosure engine</span>
             </div>
           </div>
         </div>

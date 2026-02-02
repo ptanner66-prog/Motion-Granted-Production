@@ -1,99 +1,126 @@
-import { CalendarX, Shield, Compass, DollarSign } from 'lucide-react'
+import Link from 'next/link'
 
-const props = [
+const productionProtocols = [
   {
-    icon: CalendarX,
-    title: 'No Commitment',
-    description:
-      'Order what you need, when you need it. No retainers, no subscriptions, no minimums.',
-    gradient: 'from-rose-500/10 to-orange-500/10',
-    iconBg: 'bg-gradient-to-br from-rose-500/20 to-orange-500/10',
-    iconColor: 'text-rose-600',
+    protocol: "Summary Judgment",
+    deliverables: [
+      "Motion for Summary Judgment",
+      "Separate Statement of Undisputed Material Facts",
+      "Memorandum in Support",
+      "Proposed Order"
+    ],
+    statutes: "La. C.C.P. Art. 966"
   },
   {
-    icon: Shield,
-    title: 'Confidential & Secure',
-    description:
-      'Your case information stays protected. All staff bound by confidentiality obligations.',
-    gradient: 'from-blue-500/10 to-cyan-500/10',
-    iconBg: 'bg-gradient-to-br from-blue-500/20 to-cyan-500/10',
-    iconColor: 'text-blue-600',
+    protocol: "Discovery Enforcement",
+    deliverables: [
+      "Motion to Compel Discovery",
+      "Rule 37 Certification",
+      "Discovery Response Log",
+      "Fee Affidavit"
+    ],
+    statutes: "La. C.C.P. Art. 1469"
   },
   {
-    icon: Compass,
-    title: 'You Stay in Control',
-    description:
-      'You direct the strategy. You provide the arguments. We execute the drafting.',
-    gradient: 'from-violet-500/10 to-purple-500/10',
-    iconBg: 'bg-gradient-to-br from-violet-500/20 to-purple-500/10',
-    iconColor: 'text-violet-600',
+    protocol: "Peremptory Exceptions",
+    deliverables: [
+      "Exception of No Cause of Action",
+      "Exception of Prescription",
+      "Exception of Res Judicata",
+      "Supporting Memorandum"
+    ],
+    statutes: "La. C.C.P. Art. 927"
   },
   {
-    icon: DollarSign,
-    title: 'Flat-Fee Pricing',
-    description:
-      'Know your cost upfront. No hourly surprises. See our full pricing menu.',
-    gradient: 'from-emerald-500/10 to-teal-500/10',
-    iconBg: 'bg-gradient-to-br from-emerald-500/20 to-teal-500/10',
-    iconColor: 'text-emerald-600',
+    protocol: "Dilatory Exceptions",
+    deliverables: [
+      "Exception of Prematurity",
+      "Exception of Lis Pendens",
+      "Exception of Vagueness",
+      "Proposed Order"
+    ],
+    statutes: "La. C.C.P. Art. 926"
   },
-]
+  {
+    protocol: "Appellate Support",
+    deliverables: [
+      "Writ of Certiorari Application",
+      "Appellate Brief",
+      "Record Appendix",
+      "Designation of Record"
+    ],
+    statutes: "La. C.C.P. Art. 2161"
+  },
+  {
+    protocol: "Trial Preparation",
+    deliverables: [
+      "Pre-Trial Memorandum",
+      "Proposed Jury Instructions",
+      "Witness & Exhibit Lists",
+      "Trial Brief"
+    ],
+    statutes: "Local Court Rules"
+  }
+];
 
 export function ValueProps() {
   return (
-    <section className="relative bg-white py-28 sm:py-36">
-      {/* Subtle background pattern */}
-      <div className="absolute inset-0 opacity-[0.02]" style={{
-        backgroundImage: `radial-gradient(circle at 1px 1px, #0f172a 1px, transparent 0)`,
-        backgroundSize: '32px 32px',
-      }} />
-
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Section header */}
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="mb-4 inline-flex items-center rounded-full bg-navy/5 px-4 py-1.5 text-sm font-medium text-navy">
-            Why Choose Us
+    <section className="bg-[#fdfcfb] py-28 border-t border-navy/10">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="mb-16">
+          <div className="border-l-4 border-gold pl-6 mb-8">
+            <span className="text-sm font-bold uppercase tracking-[0.3em] text-gold">
+              Production Protocols
+            </span>
           </div>
-          <h2 className="text-3xl font-bold tracking-tight text-navy sm:text-4xl lg:text-5xl">
-            Why Motion Granted?
-          </h2>
-          <p className="mt-5 text-lg text-gray-600 sm:text-xl">
-            Built for busy attorneys who need reliable support
+          <h2 className="font-serif text-5xl md:text-6xl text-navy mb-6">Drafting Menu</h2>
+          <p className="text-xl text-gray-600 max-w-3xl">
+            Each protocol produces a complete set of file-ready documents formatted for
+            Louisiana state courts. Select your matter type below.
           </p>
         </div>
 
-        {/* Props grid */}
-        <div className="mx-auto mt-20 max-w-6xl">
-          <div className="grid gap-6 sm:grid-cols-2 lg:gap-8">
-            {props.map((prop, index) => (
-              <div
-                key={prop.title}
-                className="group relative overflow-hidden rounded-2xl border border-gray-100 bg-white p-8 shadow-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-xl lg:p-10"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                {/* Gradient background on hover */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${prop.gradient} opacity-0 transition-opacity duration-500 group-hover:opacity-100`} />
-
-                {/* Content */}
-                <div className="relative">
-                  {/* Icon */}
-                  <div className={`inline-flex h-14 w-14 items-center justify-center rounded-xl ${prop.iconBg} transition-transform duration-500 group-hover:scale-110`}>
-                    <prop.icon className={`h-7 w-7 ${prop.iconColor}`} />
-                  </div>
-
-                  <h3 className="mt-6 text-xl font-semibold text-navy lg:text-2xl">
-                    {prop.title}
-                  </h3>
-                  <p className="mt-3 text-gray-600 leading-relaxed lg:text-lg">
-                    {prop.description}
-                  </p>
-                </div>
-
-                {/* Decorative corner accent */}
-                <div className="absolute -bottom-2 -right-2 h-24 w-24 rounded-full bg-gradient-to-br from-teal/5 to-transparent opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
+        {/* Protocol Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {productionProtocols.map((item) => (
+            <div
+              key={item.protocol}
+              className="border border-navy/10 bg-white p-8 hover:border-gold/50 transition-colors"
+            >
+              <div className="flex items-start justify-between mb-6">
+                <h3 className="font-serif text-2xl text-navy">{item.protocol}</h3>
               </div>
-            ))}
-          </div>
+
+              <ul className="space-y-3 mb-6">
+                {item.deliverables.map((deliverable) => (
+                  <li key={deliverable} className="flex items-start gap-3 text-gray-600">
+                    <span className="text-gold mt-1.5">—</span>
+                    <span className="text-sm">{deliverable}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="pt-4 border-t border-navy/10">
+                <span className="text-xs font-medium text-gold uppercase tracking-wider">
+                  {item.statutes}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <div className="mt-16 text-center">
+          <p className="text-gray-600 mb-6">
+            Don&apos;t see your motion type? We produce custom work product for complex matters.
+          </p>
+          <Link
+            href="/pricing"
+            className="inline-flex items-center gap-2 text-navy font-medium hover:text-gold transition-colors"
+          >
+            View Complete Fee Schedule
+            <span aria-hidden="true">→</span>
+          </Link>
         </div>
       </div>
     </section>
