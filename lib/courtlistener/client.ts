@@ -902,12 +902,20 @@ export async function searchOpinions(
 
     const opinions = result.data.results.map((op, idx) => {
       // Build citation string from citation array
+      // CHEN CIV FIX (2026-02-02): Validate citations to reject bare numbers (opinion IDs)
       let citationStr = '';
       if (op.citations && op.citations.length > 0) {
         const c = op.citations[0];
         citationStr = `${c.volume} ${c.reporter} ${c.page}`;
       } else if (op.citation && op.citation.length > 0) {
         citationStr = op.citation[0];
+      }
+
+      // VALIDATION: Reject citation if it's just a bare number (opinion ID, not a legal citation)
+      // Valid citations look like "884 F.3d 546" not "9402549"
+      if (citationStr && /^\d+$/.test(citationStr.trim())) {
+        console.warn(`[searchOpinions] ⚠️ INVALID CITATION: "${citationStr}" is a bare number (likely opinion ID), not a legal citation. Case: ${op.caseName || op.case_name}`);
+        citationStr = ''; // Clear invalid citation - better to have no citation than a fake one
       }
 
       // ═══════════════════════════════════════════════════════════════════════
@@ -993,13 +1001,42 @@ export async function searchOpinions(
 function mapJurisdictionToCourtCode(jurisdiction: string): string | null {
   const normalized = jurisdiction.toLowerCase().trim();
 
-  // Louisiana courts - FIXED: was using invalid 'lasc', now using correct codes
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHEN CIV FIX (2026-02-02): Separate state-only vs state+federal filters
+  // For Louisiana STATE court motions, we want So. 3d citations (state courts)
+  // not F.3d/F.4th citations (federal courts) dominating the results.
+  //
+  // Use "louisiana_state" for state courts only (binding authority)
+  // Use "louisiana" for state + federal (includes persuasive federal)
+  // Use "louisiana_federal" for federal courts only
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Louisiana STATE courts only (for binding authority in state court motions)
+  // Returns So. 3d citations from LA Supreme Court and Courts of Appeal
+  if (normalized === 'louisiana_state' || normalized === 'la_state') {
+    console.log('[mapJurisdictionToCourtCode] Louisiana STATE courts only (binding authority)');
+    return 'la,lactapp';
+  }
+
+  // Louisiana ALL courts (state + Fifth Circuit for persuasive authority)
   if (normalized.includes('louisiana') || normalized === 'la') {
     // la = Supreme Court, lactapp = Court of Appeal, ca5 = Fifth Circuit
+    console.log('[mapJurisdictionToCourtCode] Louisiana ALL courts (state + federal)');
     return 'la,lactapp,ca5';
   }
 
-  // California courts
+  // Louisiana FEDERAL courts only
+  if (normalized === 'louisiana_federal' || normalized === 'la_federal') {
+    console.log('[mapJurisdictionToCourtCode] Louisiana FEDERAL courts only');
+    return 'ca5,laed,lamd,lawd';
+  }
+
+  // California STATE courts only
+  if (normalized === 'california_state' || normalized === 'ca_state') {
+    return 'cal,calctapp';
+  }
+
+  // California courts (state + federal)
   if (normalized.includes('california') || normalized === 'ca') {
     return 'cal,calctapp,ca9';
   }
