@@ -3,56 +3,61 @@ import { Button } from '@/components/ui/button'
 
 export function Hero() {
   return (
-    <section className="bg-[#fdfcfb] pt-32 pb-24 border-b-[12px] border-navy">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="border-l-4 border-gold pl-6 mb-12">
-          <span className="text-sm font-bold uppercase tracking-[0.3em] text-gold">
-            Louisiana Jurisdictional Production Standard
-          </span>
-        </div>
+    <section className="relative bg-cream pt-32 pb-24 border-b-[16px] border-navy overflow-hidden">
+      <div className="subtle-grid absolute inset-0 pointer-events-none" />
+      <div className="mx-auto max-w-7xl px-6 relative z-10">
+        <div className="flex flex-col items-start">
+          <div className="inline-flex items-center gap-4 mb-10">
+            <div className="h-[2px] w-12 bg-gold" />
+            <span className="text-xs font-bold uppercase tracking-[0.4em] text-gold">
+              Universal Jurisdictional Production Engine
+            </span>
+          </div>
 
-        <h1 className="font-serif text-7xl md:text-9xl text-navy leading-[0.95] mb-12">
-          Precision Drafting. <br />
-          <span className="italic font-normal text-gray-500 text-6xl md:text-8xl">Professional Results.</span>
-        </h1>
+          <h1 className="text-7xl md:text-9xl text-navy leading-[0.9] mb-12 font-serif max-w-5xl">
+            High-Fidelity Drafting. <br />
+            <span className="italic font-normal text-gray-400">Validated work product.</span>
+          </h1>
 
-        <p className="max-w-2xl text-2xl leading-relaxed text-navy/90 mb-16 font-sans">
-          Motion Granted executes complex legal drafting through a 14-phase
-          verification protocol. Every deliverable is graded against judicial
-          standards and verified for Louisiana-specific statutory compliance.
-        </p>
-
-        <div className="flex flex-col sm:flex-row gap-6">
-          <Button className="bg-navy text-white px-12 py-8 text-xl rounded-none hover:bg-black transition-all shadow-none" asChild>
-            <Link href="/register">Initiate Production</Link>
-          </Button>
-          <Button variant="outline" className="border-2 border-navy text-navy px-12 py-8 text-xl rounded-none hover:bg-navy/5 shadow-none" asChild>
-            <Link href="#protocol">Review Protocol</Link>
-          </Button>
-        </div>
-
-        {/* Institutional Trust Indicators */}
-        <div className="mt-20 pt-10 border-t border-navy/10">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div className="flex flex-col">
-              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3">Protocol</span>
-              <span className="text-navy font-serif text-lg">14-Phase Verification</span>
-              <span className="text-gray-500 text-sm mt-1">Every draft systematically reviewed</span>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end w-full">
+            <div className="lg:col-span-7">
+              <p className="text-2xl leading-relaxed text-navy/90 font-sans mb-12">
+                Motion Granted executes complex legal production through a proprietary 14-phase
+                verification protocol. Every deliverable is graded against a B+ judicial
+                standard and cross-verified against state and federal statutory codes.
+              </p>
+              <div className="flex flex-wrap gap-8">
+                <Button size="lg" className="bg-navy text-white px-12 py-8 text-xl hover:bg-gold transition-all duration-500 rounded-none shadow-none" asChild>
+                  <Link href="/register">Initiate Production</Link>
+                </Button>
+                <Link
+                  href="#protocol"
+                  className="text-navy text-xl font-serif italic border-b border-navy hover:border-gold hover:text-gold transition-colors inline-flex items-center py-4"
+                >
+                  Review the 14-Phase Protocol
+                </Link>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3">Judicial Review</span>
-              <span className="text-navy font-serif text-lg">B+ Minimum Standard</span>
-              <span className="text-gray-500 text-sm mt-1">Phase VII simulation gate</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3">Citation Integrity</span>
-              <span className="text-navy font-serif text-lg">Batch Verification</span>
-              <span className="text-gray-500 text-sm mt-1">2-per-pass hallucination prevention</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3">Compliance</span>
-              <span className="text-navy font-serif text-lg">ABA Opinion 512</span>
-              <span className="text-gray-500 text-sm mt-1">Built-in disclosure engine</span>
+
+            <div className="lg:col-span-5 border-l border-navy/10 pl-12 pb-2">
+              <div className="space-y-8">
+                <div className="flex flex-col">
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Compliance</span>
+                  <span className="text-navy text-lg italic font-serif">ABA Formal Opinion 512 Disclosures</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Verification</span>
+                  <span className="text-navy text-lg italic font-serif">Phase VII Judge Simulation Engine</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Citation Integrity</span>
+                  <span className="text-navy text-lg italic font-serif">Phase V Batch Verification System</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Jurisdiction</span>
+                  <span className="text-navy text-lg italic font-serif">State & Federal Code Compliance</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

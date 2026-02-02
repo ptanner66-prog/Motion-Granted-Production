@@ -1,17 +1,20 @@
 @import "tailwindcss";
 
 @theme inline {
+  /* Institutional Palette */
   --color-navy: #0a1128;
   --color-gold: #c5a059; /* Judicial Gold */
   --color-cream: #fdfcfb;
+  --color-charcoal: #1e1e1e;
   --color-slate-gray: #4a5568;
 
+  /* Typography */
   --font-serif: "EB Garamond", serif;
   --font-sans: "Inter", sans-serif;
 
-  /* High-end legal services use sharp corners */
+  /* Sharp Geometry signifies professional, institutional stability */
   --radius: 0px;
-  --radius-lg: 2px;
+  --radius-lg: 0px;
 
   /* Semantic Colors */
   --color-success: #10b981;
@@ -65,10 +68,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, .legal-heading {
+h1, h2, h3, .legal-heading, .judicial-heading {
   font-family: var(--font-serif);
   font-weight: 600;
   letter-spacing: -0.01em;
+  text-rendering: optimizeLegibility;
 }
 
 h4, h5, h6 {
@@ -81,6 +85,13 @@ h4, h5, h6 {
   height: 1px;
   background: linear-gradient(90deg, transparent, #c5a059, transparent);
   opacity: 0.3;
+}
+
+/* Subtle, formal complex background */
+.subtle-grid {
+  background-image: radial-gradient(circle, #0a1128 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.03;
 }
 
 /* Custom scrollbar */

@@ -9,7 +9,7 @@ const protocolPhases = [
     phase: "II",
     name: "Issue Identification",
     desc: "Extraction of legal issues, causes of action, and affirmative defenses.",
-    detail: "La. C.C.P. mapping"
+    detail: "State & Federal mapping"
   },
   {
     phase: "III",
@@ -21,13 +21,13 @@ const protocolPhases = [
     phase: "IV",
     name: "Authority Research",
     desc: "Parallel research paths for binding precedent and persuasive authority.",
-    detail: "Louisiana Supreme Court priority"
+    detail: "Jurisdictional hierarchy"
   },
   {
     phase: "V",
-    name: "Citation Batching",
-    desc: "Small-batch verification (2 citations per pass) to eliminate hallucinations.",
-    detail: "100% accuracy standard",
+    name: "Citation Integrity Audit",
+    desc: "Hallucinations structurally eliminated by processing citations in batches of two.",
+    detail: "Live precedent verification",
     highlight: true
   },
   {
@@ -39,15 +39,15 @@ const protocolPhases = [
   {
     phase: "VII",
     name: "Judge Simulation",
-    desc: "Draft graded by judicial simulation engine. Minimum B+ (3.3) required to proceed.",
-    detail: "Automatic revision routing",
+    desc: "Production gated by minimum GPA of 3.3 (B+). Below-threshold drafts routed for revision.",
+    detail: "Three revision cycles max",
     highlight: true
   },
   {
     phase: "VIII",
     name: "Holding vs. Dicta",
     desc: "Verification that cited authority supports proposition as holding, not dicta.",
-    detail: "Precedential integrity check"
+    detail: "Precedential integrity"
   },
   {
     phase: "IX",
@@ -59,13 +59,14 @@ const protocolPhases = [
     phase: "X",
     name: "Caption Validation",
     desc: "Verification of case caption, court designation, and party names.",
-    detail: "Louisiana district compliance"
+    detail: "Jurisdictional compliance"
   },
   {
     phase: "XI",
-    name: "ABA Disclosure",
-    desc: "Integration of AI-assisted drafting disclosure per ABA Formal Opinion 512.",
-    detail: "Professional responsibility"
+    name: "National Compliance",
+    desc: "Jurisdiction-specific AI disclosures (CA, TX, NY, Federal) per ABA Opinion 512.",
+    detail: "Multi-state compliance",
+    highlight: true
   },
   {
     phase: "XII",
@@ -81,30 +82,99 @@ const protocolPhases = [
   },
   {
     phase: "XIV",
-    name: "Data Retention",
-    desc: "Automated anonymization and secure archival per retention policy.",
-    detail: "Client data sovereignty"
+    name: "Data Sovereignty",
+    desc: "Automated anonymization and scrubbing of sensitive case data upon completion.",
+    detail: "Professional retention",
+    highlight: true
   }
 ];
 
 export function HowItWorks() {
   return (
     <section id="protocol" className="bg-white py-28">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="mb-16">
-          <div className="border-l-4 border-gold pl-6 mb-8">
-            <span className="text-sm font-bold uppercase tracking-[0.3em] text-gold">
+      <div className="max-w-7xl mx-auto px-6">
+        {/* Section Header */}
+        <div className="mb-20">
+          <div className="inline-flex items-center gap-4 mb-8">
+            <div className="h-[2px] w-12 bg-gold" />
+            <span className="text-xs font-bold uppercase tracking-[0.4em] text-gold">
               Production Methodology
             </span>
           </div>
-          <h2 className="font-serif text-5xl md:text-6xl text-navy mb-6">The 14-Phase Protocol</h2>
-          <p className="text-xl text-gray-600 max-w-3xl">
+          <h2 className="font-serif text-5xl md:text-7xl text-navy mb-6">The 14-Phase Protocol</h2>
+          <p className="text-xl text-gray-600 max-w-3xl leading-relaxed">
             Every motion, brief, and exception passes through a rigorous verification workflow
             before reaching your desk. No shortcuts. No exceptions.
           </p>
         </div>
 
-        {/* Phase Grid */}
+        {/* Institutional Trust Pillars - Featured Section */}
+        <div className="mb-20 border-l-4 border-gold pl-8 py-4">
+          <h3 className="font-serif text-3xl text-navy mb-8">Institutional Trust Pillars</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-gold font-bold text-sm">PHASE VII</span>
+                  <span className="text-navy/30">—</span>
+                  <span className="text-navy font-serif text-lg">The Judge Simulation</span>
+                </div>
+                <p className="text-gray-600 leading-relaxed">
+                  Every document undergoes a simulated judicial review. Production is gated by a
+                  <strong className="text-navy"> minimum GPA of 3.3 (B+)</strong>; drafts falling below
+                  this threshold are automatically routed for up to three cycles of internal revision
+                  before any work product reaches your desk.
+                </p>
+              </div>
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-gold font-bold text-sm">PHASE V</span>
+                  <span className="text-navy/30">—</span>
+                  <span className="text-navy font-serif text-lg">Citation Integrity Audit</span>
+                </div>
+                <p className="text-gray-600 leading-relaxed">
+                  Hallucinations are structurally eliminated by processing citations in
+                  <strong className="text-navy"> batches of two</strong>. Every authority is cross-verified
+                  against a live precedent index to ensure current validity and correct citation format.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-gold font-bold text-sm">PHASE XI</span>
+                  <span className="text-navy/30">—</span>
+                  <span className="text-navy font-serif text-lg">National Compliance Engine</span>
+                </div>
+                <p className="text-gray-600 leading-relaxed">
+                  The system generates jurisdiction-specific AI disclosures for
+                  <strong className="text-navy"> California, Texas, New York, and Federal courts</strong> in
+                  strict accordance with ABA Formal Opinion 512. Disclosure language is automatically
+                  calibrated to local bar requirements.
+                </p>
+              </div>
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-gold font-bold text-sm">PHASE XIV</span>
+                  <span className="text-navy/30">—</span>
+                  <span className="text-navy font-serif text-lg">Institutional Data Sovereignty</span>
+                </div>
+                <p className="text-gray-600 leading-relaxed">
+                  A professional retention service provides <strong className="text-navy">automated
+                  anonymization and scrubbing</strong> of sensitive case data upon project completion.
+                  You control retention periods, deletion schedules, and data export formats.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Full Phase Grid */}
+        <div className="mb-8">
+          <h3 className="font-serif text-2xl text-navy mb-8">Complete Protocol Breakdown</h3>
+        </div>
+
+        {/* Phase Grid - Row 1 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {protocolPhases.slice(0, 8).map((phase) => (
             <div
@@ -123,7 +193,7 @@ export function HowItWorks() {
           ))}
         </div>
 
-        {/* Second Row */}
+        {/* Phase Grid - Row 2 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
           {protocolPhases.slice(8, 11).map((phase) => (
             <div
@@ -142,7 +212,7 @@ export function HowItWorks() {
           ))}
         </div>
 
-        {/* Final Row */}
+        {/* Phase Grid - Row 3 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
           {protocolPhases.slice(11).map((phase) => (
             <div
@@ -159,37 +229,6 @@ export function HowItWorks() {
               <span className="text-xs font-medium text-gold uppercase tracking-wider">{phase.detail}</span>
             </div>
           ))}
-        </div>
-
-        {/* Critical Gates Callout */}
-        <div className="mt-16 border border-navy/10 p-8 bg-navy/[0.02]">
-          <h3 className="font-serif text-2xl text-navy mb-6">Critical Quality Gates</h3>
-          <div className="grid md:grid-cols-2 gap-8">
-            <div className="flex gap-4">
-              <div className="flex-shrink-0 w-12 h-12 bg-gold/10 flex items-center justify-center">
-                <span className="font-bold text-gold">V</span>
-              </div>
-              <div>
-                <h4 className="font-semibold text-navy mb-1">Citation Batch Verification</h4>
-                <p className="text-gray-600 text-sm">
-                  Citations are verified in batches of 2 to ensure 100% accuracy.
-                  This prevents the "hallucination" problem common in AI-assisted research.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-4">
-              <div className="flex-shrink-0 w-12 h-12 bg-gold/10 flex items-center justify-center">
-                <span className="font-bold text-gold">VII</span>
-              </div>
-              <div>
-                <h4 className="font-semibold text-navy mb-1">Judicial Simulation Gate</h4>
-                <p className="text-gray-600 text-sm">
-                  Every draft is graded by a simulation engine calibrated to judicial standards.
-                  Work product scoring below B+ (3.3/4.0) is automatically routed for revision.
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </section>
