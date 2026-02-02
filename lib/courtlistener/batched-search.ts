@@ -53,10 +53,12 @@ export interface BatchSearchSummary {
 }
 
 // Map tier to jurisdiction for searchOpinions
+// CHEN CIV FIX (2026-02-02): Prioritize Louisiana STATE courts for tier1 (binding authority)
+// This ensures we get So. 3d citations (state appellate) before F.3d/F.4th (federal)
 const TIER_JURISDICTION_MAP: Record<CourtTier, string> = {
-  tier1: 'Louisiana', // Will map to la,lactapp,ca5
-  tier2: 'Louisiana',
-  tier3: 'fifth circuit',
+  tier1: 'louisiana_state',  // la,lactapp ONLY - binding authority (So. 3d citations)
+  tier2: 'Louisiana',        // la,lactapp,ca5 - includes persuasive federal
+  tier3: 'fifth circuit',    // ca5 - federal persuasive only
 };
 
 /**
@@ -100,20 +102,30 @@ async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSea
     }
 
     // Transform to RawCandidate format
-    const candidates: RawCandidate[] = searchResult.data.opinions.map((op) => ({
-      id: op.id,
-      clusterId: op.cluster_id,
-      caseName: op.case_name,
-      citation: op.citation || '',
-      court: op.court,
-      courtCode: extractCourtCode(op.court),
-      dateFiled: op.date_filed,
-      snippet: op.snippet,
-      absoluteUrl: op.absolute_url,
-      precedentialStatus: op.precedential_status,
-      forElement: task.elementName,
-      searchTier: task.tier,
-    }));
+    // CHEN CIV FIX (2026-02-02): Validate citation strings to reject bare numbers (opinion IDs)
+    const candidates: RawCandidate[] = searchResult.data.opinions.map((op) => {
+      // Validate citation - reject if it's just a bare number (opinion ID)
+      let citation = op.citation || '';
+      if (citation && /^\d+$/.test(citation.trim())) {
+        console.warn(`[executeSearchWithTimeout] ⚠️ INVALID CITATION: "${citation}" is a bare number (opinion ID), not a legal citation. Case: ${op.case_name}`);
+        citation = ''; // Clear invalid citation
+      }
+
+      return {
+        id: op.id,
+        clusterId: op.cluster_id,
+        caseName: op.case_name,
+        citation,
+        court: op.court,
+        courtCode: extractCourtCode(op.court),
+        dateFiled: op.date_filed,
+        snippet: op.snippet,
+        absoluteUrl: op.absolute_url,
+        precedentialStatus: op.precedential_status,
+        forElement: task.elementName,
+        searchTier: task.tier,
+      };
+    });
 
     // DIAGNOSTIC: Check for candidates without IDs
     // FIX: Use proper null/undefined check, not falsy check (ID 0 is valid)
