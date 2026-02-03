@@ -62,7 +62,7 @@ export function Hero() {
 
             <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mb-6 leading-relaxed">
               Court-ready motions and briefs delivered to your inbox.
-              Every citation verified. Flat-fee pricing you can quote to clients.
+              Every citation verified. <span className="text-navy font-medium">Starting at $750.</span>
             </p>
 
             {/* Rotating Pain Point */}

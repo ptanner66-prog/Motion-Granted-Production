@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Star, Quote } from 'lucide-react'
 
 const testimonials = [
@@ -37,42 +37,51 @@ const metrics = [
 function AnimatedCounter({ target, suffix, duration = 2000 }: { target: number; suffix: string; duration?: number }) {
   const [count, setCount] = useState(0)
   const [hasAnimated, setHasAnimated] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
-    if (hasAnimated) return
+    if (hasAnimated || !ref.current) return
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
+        if (entries[0].isIntersecting && !hasAnimated) {
           setHasAnimated(true)
+          observer.disconnect()
+
           const startTime = Date.now()
           const animate = () => {
             const elapsed = Date.now() - startTime
             const progress = Math.min(elapsed / duration, 1)
-            // Easing function for smooth deceleration
             const eased = 1 - Math.pow(1 - progress, 3)
-            setCount(Math.floor(eased * target))
+
+            // Handle decimals properly
+            if (target % 1 !== 0) {
+              setCount(parseFloat((eased * target).toFixed(1)))
+            } else {
+              setCount(Math.floor(eased * target))
+            }
+
             if (progress < 1) {
               requestAnimationFrame(animate)
+            } else {
+              // Ensure final value is exact
+              setCount(target)
             }
           }
           animate()
         }
       },
-      { threshold: 0.5 }
+      { threshold: 0.2 }
     )
 
-    const element = document.getElementById(`counter-${target}`)
-    if (element) observer.observe(element)
-
+    observer.observe(ref.current)
     return () => observer.disconnect()
   }, [target, duration, hasAnimated])
 
-  // Format number with commas
   const formatted = count.toLocaleString()
 
   return (
-    <span id={`counter-${target}`}>
+    <span ref={ref}>
       {formatted}{suffix}
     </span>
   )
