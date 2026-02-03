@@ -107,3 +107,50 @@ Before including any citation, verify:
 3. Case law is from appropriate hierarchy
 
 ---
+
+### CITATION QUALITY REQUIREMENTS (CRITICAL)
+
+When selecting case authorities, you MUST ensure:
+
+#### 1. CIVIL CASES ONLY
+- For civil procedure motions, ONLY cite civil cases
+- NEVER cite criminal cases (State v. Defendant format)
+- Criminal cases are NOT authority for civil procedure rules
+
+**RED FLAGS (Criminal Case Patterns - DO NOT INCLUDE):**
+- "State of Louisiana v. [Name]"
+- "State v. [Name]"
+- "United States v. [Name]"
+- "People v. [Name]"
+- "Commonwealth v. [Name]"
+
+**VALID (Civil Case Patterns):**
+- "Smith v. Jones" (party v. party)
+- "In re Smith" (in re matters)
+- "ABC Corp. v. XYZ Inc." (corporate parties)
+
+#### 2. VALID CITATION FORMAT
+Louisiana civil citations must follow these formats:
+- Southern Reporter: "123 So. 3d 456"
+- Docket Number: "2024-CA-0123 (La. App. 1 Cir. 5/15/24)"
+- Louisiana Reports: "123 La. 456"
+
+**INVALID formats to REJECT:**
+- Plain numeric IDs (e.g., "11046003")
+- Database identifiers without reporter citation
+- Incomplete citations
+
+#### 3. DATE VALIDATION
+- Citation dates must be in the PAST
+- Future-dated citations are IMPOSSIBLE and indicate bad data
+- Verify the year is reasonable (not 2099, not before 1800)
+- Current year is 2026 - citations from 2025 and earlier are valid
+
+#### 4. AUTHORITY VERIFICATION
+Before including ANY citation:
+1. Confirm it exists in CourtListener
+2. Verify the holding supports your proposition
+3. Check that the case has not been overruled
+4. Ensure proper citation format for the court level
+
+---
