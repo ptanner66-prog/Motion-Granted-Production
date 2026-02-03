@@ -53,12 +53,13 @@ export interface BatchSearchSummary {
 }
 
 // Map tier to jurisdiction for searchOpinions
-// CHEN CIV FIX (2026-02-02): Prioritize Louisiana STATE courts for tier1 (binding authority)
-// This ensures we get So. 3d citations (state appellate) before F.3d/F.4th (federal)
+// CHEN JURISDICTION FIX (2026-02-03): ALL state tiers use STATE-ONLY courts
+// For state court motions, we want ONLY So. 3d citations (state courts)
+// NOT F.3d/F.4th citations (federal courts) which were drowning out state results
 const TIER_JURISDICTION_MAP: Record<CourtTier, string> = {
-  tier1: 'louisiana_state',  // la,lactapp ONLY - binding authority (So. 3d citations)
-  tier2: 'Louisiana',        // la,lactapp,ca5 - includes persuasive federal
-  tier3: 'fifth circuit',    // ca5 - federal persuasive only
+  tier1: 'louisiana_state',    // la,lactapp ONLY - LA Supreme Court (So. 3d)
+  tier2: 'louisiana_state',    // la,lactapp ONLY - LA Courts of Appeal (So. 3d)
+  tier3: 'louisiana_federal',  // ca5,laed,lamd,lawd - Fifth Circuit + Districts (F.3d/F.4th)
 };
 
 /**
