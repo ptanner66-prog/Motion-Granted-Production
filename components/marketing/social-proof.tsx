@@ -1,158 +1,93 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import { Star, Quote } from 'lucide-react'
+import { Shield, Clock, FileCheck, CheckCircle } from 'lucide-react'
 
-const testimonials = [
+const trustFeatures = [
   {
-    quote: "I got my weekends back. The MSJ package was better than what my old associate used to produce, and it came back in 4 days.",
-    author: "Sarah M.",
-    title: "Solo Practitioner",
-    location: "Houston, TX",
-    stars: 5,
+    icon: Shield,
+    title: "Every Citation Verified",
+    description: "We check every case citation against official databases before delivery. No hallucinations.",
   },
   {
-    quote: "The citation verification alone is worth it. I used to spend hours checking Westlaw. Now I trust their VPI and focus on strategy.",
-    author: "Michael R.",
-    title: "Partner, 3-Attorney Firm",
-    location: "Atlanta, GA",
-    stars: 5,
+    icon: Clock,
+    title: "Predictable Turnaround",
+    description: "5-day standard delivery. 72-hour and 48-hour rush options available.",
   },
   {
-    quote: "Rush delivery saved my case. Filed a motion to compel 48 hours before the hearing. Opposing counsel never saw it coming.",
-    author: "Jennifer L.",
-    title: "Civil Litigation",
-    location: "Phoenix, AZ",
-    stars: 5,
+    icon: FileCheck,
+    title: "B+ Minimum Standard",
+    description: "Every draft meets quality standards or we revise it at no additional cost.",
   },
 ]
 
-const metrics = [
-  { value: 2847, label: "Motions Delivered", suffix: "+" },
-  { value: 12400, label: "Attorney Hours Saved", suffix: "+" },
-  { value: 99.2, label: "Citation Accuracy", suffix: "%" },
-  { value: 4.2, label: "Avg. Turnaround", suffix: " days" },
+const qualityPromises = [
+  "Court-ready formatting for your jurisdiction",
+  "Bluebook-compliant citations",
+  "One revision included with every order",
+  "ABA Formal Opinion 512 disclosure included",
 ]
-
-function AnimatedCounter({ target, suffix, duration = 2000 }: { target: number; suffix: string; duration?: number }) {
-  const [count, setCount] = useState(0)
-  const [hasAnimated, setHasAnimated] = useState(false)
-  const ref = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    if (hasAnimated || !ref.current) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !hasAnimated) {
-          setHasAnimated(true)
-          observer.disconnect()
-
-          const startTime = Date.now()
-          const animate = () => {
-            const elapsed = Date.now() - startTime
-            const progress = Math.min(elapsed / duration, 1)
-            const eased = 1 - Math.pow(1 - progress, 3)
-
-            // Handle decimals properly
-            if (target % 1 !== 0) {
-              setCount(parseFloat((eased * target).toFixed(1)))
-            } else {
-              setCount(Math.floor(eased * target))
-            }
-
-            if (progress < 1) {
-              requestAnimationFrame(animate)
-            } else {
-              // Ensure final value is exact
-              setCount(target)
-            }
-          }
-          animate()
-        }
-      },
-      { threshold: 0.2 }
-    )
-
-    observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [target, duration, hasAnimated])
-
-  const formatted = count.toLocaleString()
-
-  return (
-    <span ref={ref}>
-      {formatted}{suffix}
-    </span>
-  )
-}
 
 export function SocialProof() {
   return (
     <section className="bg-cream py-20 border-t border-navy/5">
       <div className="max-w-7xl mx-auto px-6">
-        {/* Metrics Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-20">
-          {metrics.map((metric) => (
-            <div key={metric.label} className="text-center">
-              <div className="text-4xl md:text-5xl font-serif text-navy mb-2">
-                <AnimatedCounter target={metric.value} suffix={metric.suffix} />
-              </div>
-              <div className="text-sm text-gray-500 uppercase tracking-wider">{metric.label}</div>
-            </div>
-          ))}
-        </div>
-
         {/* Section Header */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-16">
           <span className="text-xs font-bold uppercase tracking-[0.3em] text-gold mb-4 block">
-            From Attorneys Like You
+            Why Attorneys Choose Us
           </span>
-          <h2 className="font-serif text-3xl md:text-4xl text-navy">
-            Why solo practitioners trust us
+          <h2 className="font-serif text-3xl md:text-4xl text-navy mb-4">
+            Quality you can trust
           </h2>
+          <p className="text-gray-600 max-w-2xl mx-auto">
+            We&apos;re a new service building our reputation one motion at a time.
+            Here&apos;s what we guarantee for every order.
+          </p>
         </div>
 
-        {/* Testimonials Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {testimonials.map((testimonial, index) => (
+        {/* Trust Features Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+          {trustFeatures.map((feature) => (
             <div
-              key={index}
-              className="bg-white border border-navy/10 rounded-lg p-8 hover:shadow-lg hover:border-gold/30 transition-all duration-300 relative"
+              key={feature.title}
+              className="bg-white border border-navy/10 rounded-lg p-8 hover:shadow-lg hover:border-gold/30 transition-all duration-300"
             >
-              <Quote className="w-8 h-8 text-gold/20 absolute top-6 right-6" />
-
-              {/* Stars */}
-              <div className="flex gap-1 mb-4">
-                {[...Array(testimonial.stars)].map((_, i) => (
-                  <Star key={i} className="w-4 h-4 fill-gold text-gold" />
-                ))}
+              <div className="w-12 h-12 bg-navy/5 rounded-lg flex items-center justify-center mb-6">
+                <feature.icon className="w-6 h-6 text-gold" />
               </div>
-
-              <p className="text-gray-700 leading-relaxed mb-6 italic">
-                &ldquo;{testimonial.quote}&rdquo;
-              </p>
-
-              <div className="border-t border-navy/10 pt-4">
-                <div className="font-semibold text-navy">{testimonial.author}</div>
-                <div className="text-sm text-gray-500">{testimonial.title}</div>
-                <div className="text-xs text-gray-400">{testimonial.location}</div>
-              </div>
+              <h3 className="font-serif text-xl text-navy mb-3">{feature.title}</h3>
+              <p className="text-gray-600 leading-relaxed">{feature.description}</p>
             </div>
           ))}
         </div>
 
-        {/* Trust Badge Row */}
+        {/* Quality Promises */}
+        <div className="bg-navy rounded-lg p-8 md:p-12">
+          <div className="text-center mb-8">
+            <h3 className="font-serif text-2xl text-white mb-2">
+              What&apos;s included with every order
+            </h3>
+            <p className="text-gray-400">No hidden fees. No surprises.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
+            {qualityPromises.map((promise) => (
+              <div key={promise} className="flex items-center gap-3">
+                <CheckCircle className="w-5 h-5 text-gold flex-shrink-0" />
+                <span className="text-gray-300">{promise}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Location Badge */}
         <div className="mt-16 pt-12 border-t border-navy/10">
-          <div className="flex flex-wrap justify-center items-center gap-8 text-gray-400 text-sm">
-            <span>Trusted by attorneys in</span>
-            <span className="font-semibold text-navy">47 states</span>
+          <div className="flex flex-wrap justify-center items-center gap-8 text-gray-500 text-sm">
+            <span>Specializing in</span>
+            <span className="font-semibold text-navy">Louisiana State Courts</span>
             <span className="text-gold">|</span>
-            <span className="font-semibold text-navy">Federal courts</span>
+            <span className="font-semibold text-navy">Louisiana Federal Courts</span>
             <span className="text-gold">|</span>
-            <span className="font-semibold text-navy">State courts</span>
-            <span className="text-gold">|</span>
-            <span className="font-semibold text-navy">Appellate courts</span>
+            <span className="font-semibold text-navy">Fifth Circuit</span>
           </div>
         </div>
       </div>

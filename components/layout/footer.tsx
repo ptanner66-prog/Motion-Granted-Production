@@ -38,7 +38,7 @@ export function Footer() {
             </p>
             <div className="text-sm text-gray-400">
               <p>{siteConfig.contact.email}</p>
-              <p className="mt-1">{siteConfig.contact.phone}</p>
+              <p className="mt-1 text-gray-500">Louisiana-based legal drafting service</p>
             </div>
           </div>
 

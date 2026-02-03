@@ -35,13 +35,13 @@ export function Hero() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
           </span>
-          <span className="text-sm text-navy">
-            <span className="font-medium">23 motions</span> delivered this week
+          <span className="text-sm text-navy font-medium">
+            Now accepting orders
           </span>
           <span className="text-gray-400">|</span>
           <span className="text-sm text-gray-600 flex items-center gap-1">
             <Clock className="w-3 h-3" />
-            Current turnaround: <span className="font-medium text-navy">4 days</span>
+            Standard turnaround: <span className="font-medium text-navy">5 days</span>
           </span>
         </div>
 
@@ -62,7 +62,7 @@ export function Hero() {
 
             <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mb-6 leading-relaxed">
               Court-ready motions and briefs delivered to your inbox.
-              Every citation verified. <span className="text-navy font-medium">Starting at $750.</span>
+              Every citation verified. <span className="text-navy font-medium">Starting at $300.</span>
             </p>
 
             {/* Rotating Pain Point */}
@@ -97,7 +97,7 @@ export function Hero() {
                 <CheckCircle className="w-5 h-5 text-gold mt-0.5 flex-shrink-0" />
                 <div>
                   <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Citation Security</span>
-                  <span className="text-navy text-lg font-serif">Zero Hallucinations Guaranteed</span>
+                  <span className="text-navy text-lg font-serif">Every Citation Verified</span>
                 </div>
               </div>
               <div className="flex items-start gap-3">
@@ -118,15 +118,15 @@ export function Hero() {
                 <CheckCircle className="w-5 h-5 text-gold mt-0.5 flex-shrink-0" />
                 <div>
                   <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Compliance</span>
-                  <span className="text-navy text-lg font-serif">ABA 512 Ready</span>
+                  <span className="text-navy text-lg font-serif">ABA Formal Opinion 512 Ready</span>
                 </div>
               </div>
             </div>
 
-            {/* Quick Stat */}
+            {/* Value Proposition */}
             <div className="mt-6 p-4 bg-gold/10 rounded-lg text-center">
-              <div className="text-2xl font-serif text-navy">12,400+</div>
-              <div className="text-xs text-gray-600 uppercase tracking-wider">Attorney hours saved</div>
+              <div className="text-lg font-serif text-navy">Flat-Fee Pricing</div>
+              <div className="text-xs text-gray-600 uppercase tracking-wider">No hourly surprises</div>
             </div>
           </div>
         </div>

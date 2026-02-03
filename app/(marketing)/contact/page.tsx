@@ -1,44 +1,70 @@
-import { Metadata } from 'next'
-import { Mail, Phone, MapPin, Clock } from 'lucide-react'
-import { siteConfig } from '@/config/site'
+'use client'
+
+import { useState } from 'react'
+import { Mail, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 
-export const metadata: Metadata = {
-  title: 'Contact',
-  description: 'Get in touch with Motion Granted. We typically respond within one business day.',
-}
-
 const contactInfo = [
   {
     icon: Mail,
     title: 'Email',
-    value: siteConfig.contact.email,
-    href: `mailto:${siteConfig.contact.email}`,
-  },
-  {
-    icon: Phone,
-    title: 'Phone',
-    value: siteConfig.contact.phone,
-    href: `tel:${siteConfig.contact.phone.replace(/\D/g, '')}`,
-  },
-  {
-    icon: MapPin,
-    title: 'Address',
-    value: `${siteConfig.address.street}, ${siteConfig.address.suite}\n${siteConfig.address.city}, ${siteConfig.address.state} ${siteConfig.address.zip}`,
-    href: null,
+    value: 'support@motiongranted.com',
+    href: 'mailto:support@motiongranted.com',
   },
   {
     icon: Clock,
-    title: 'Hours',
-    value: 'Monday - Friday\n9:00 AM - 5:00 PM CT',
+    title: 'Response Time',
+    value: 'Within one business day',
     href: null,
   },
 ]
 
 export default function ContactPage() {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setStatus('loading')
+    setErrorMessage('')
+
+    const formData = new FormData(e.currentTarget)
+    const data = {
+      firstName: formData.get('firstName'),
+      lastName: formData.get('lastName'),
+      email: formData.get('email'),
+      phone: formData.get('phone'),
+      subject: formData.get('subject'),
+      message: formData.get('message'),
+    }
+
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+
+      if (!response.ok) {
+        const result = await response.json()
+        throw new Error(result.error || 'Failed to send message')
+      }
+
+      setStatus('success')
+      e.currentTarget.reset()
+    } catch (error) {
+      setStatus('error')
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'Failed to send message. Please email us directly at support@motiongranted.com'
+      )
+    }
+  }
+
   return (
     <div className="bg-white">
       {/* Header */}
@@ -63,42 +89,105 @@ export default function ContactPage() {
             {/* Contact form */}
             <div>
               <h2 className="text-2xl font-bold text-navy mb-6">Send a Message</h2>
-              <form className="space-y-6">
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input id="firstName" placeholder="John" required />
+
+              {status === 'success' ? (
+                <div className="p-8 bg-green-50 rounded-xl border border-green-200 text-center">
+                  <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-green-800 mb-2">Message Sent!</h3>
+                  <p className="text-green-700">
+                    Thank you for contacting us. We&apos;ll respond within one business day.
+                  </p>
+                  <Button
+                    className="mt-6"
+                    variant="outline"
+                    onClick={() => setStatus('idle')}
+                  >
+                    Send Another Message
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="grid gap-6 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First Name</Label>
+                      <Input
+                        id="firstName"
+                        name="firstName"
+                        placeholder="John"
+                        required
+                        disabled={status === 'loading'}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last Name</Label>
+                      <Input
+                        id="lastName"
+                        name="lastName"
+                        placeholder="Smith"
+                        required
+                        disabled={status === 'loading'}
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input id="lastName" placeholder="Smith" required />
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      placeholder="john@lawfirm.com"
+                      required
+                      disabled={status === 'loading'}
+                    />
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" placeholder="john@lawfirm.com" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone (optional)</Label>
-                  <Input id="phone" type="tel" placeholder="(555) 123-4567" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="subject">Subject</Label>
-                  <Input id="subject" placeholder="How can we help?" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="message">Message</Label>
-                  <Textarea
-                    id="message"
-                    placeholder="Tell us more about your inquiry..."
-                    rows={5}
-                    required
-                  />
-                </div>
-                <Button type="submit" size="lg">
-                  Send Message
-                </Button>
-              </form>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone (optional)</Label>
+                    <Input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      placeholder="(555) 123-4567"
+                      disabled={status === 'loading'}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="subject">Subject</Label>
+                    <Input
+                      id="subject"
+                      name="subject"
+                      placeholder="How can we help?"
+                      required
+                      disabled={status === 'loading'}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="message">Message</Label>
+                    <Textarea
+                      id="message"
+                      name="message"
+                      placeholder="Tell us more about your inquiry..."
+                      rows={5}
+                      required
+                      disabled={status === 'loading'}
+                    />
+                  </div>
+
+                  {status === 'error' && (
+                    <div className="p-4 bg-red-50 rounded-lg border border-red-200 flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-red-700 text-sm">{errorMessage}</p>
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={status === 'loading'}
+                  >
+                    {status === 'loading' ? 'Sending...' : 'Send Message'}
+                  </Button>
+                </form>
+              )}
             </div>
 
             {/* Contact info */}
@@ -107,7 +196,7 @@ export default function ContactPage() {
               <div className="space-y-8">
                 {contactInfo.map((item) => (
                   <div key={item.title} className="flex gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-gold/10">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-gold/10 rounded-lg">
                       <item.icon className="h-6 w-6 text-gold" />
                     </div>
                     <div>
@@ -115,25 +204,33 @@ export default function ContactPage() {
                       {item.href ? (
                         <a
                           href={item.href}
-                          className="text-gray-600 hover:text-gold transition-colors whitespace-pre-line"
+                          className="text-gray-600 hover:text-gold transition-colors"
                         >
                           {item.value}
                         </a>
                       ) : (
-                        <p className="text-gray-600 whitespace-pre-line">{item.value}</p>
+                        <p className="text-gray-600">{item.value}</p>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
 
+              {/* Location info */}
+              <div className="mt-8 p-6 bg-cream rounded-xl border border-navy/10">
+                <h3 className="font-semibold text-navy mb-2">Location</h3>
+                <p className="text-gray-600">
+                  Motion Granted is a Louisiana-based legal drafting service specializing in
+                  Louisiana state courts, Louisiana federal courts, and the Fifth Circuit.
+                </p>
+              </div>
+
               {/* Additional info */}
-              <div className="mt-12 rounded-xl bg-gray-50 p-6">
-                <h3 className="font-semibold text-navy">Response Time</h3>
+              <div className="mt-6 rounded-xl bg-gray-50 p-6">
+                <h3 className="font-semibold text-navy">For Existing Orders</h3>
                 <p className="mt-2 text-gray-600">
-                  We typically respond to inquiries within one business day. For urgent matters
-                  related to an existing order, please use the messaging feature in your client
-                  portal for faster response.
+                  For urgent matters related to an existing order, please use the messaging
+                  feature in your client portal for faster response.
                 </p>
               </div>
             </div>

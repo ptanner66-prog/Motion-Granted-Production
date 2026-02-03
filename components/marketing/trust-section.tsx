@@ -47,7 +47,7 @@ export function TrustSection() {
             </div>
             <div className="bg-white/5 p-6 rounded-sm border border-white/10 hover:border-gold/30 transition-colors">
               <FileCheck className="w-8 h-8 text-gold mb-4" />
-              <h4 className="text-white font-semibold mb-2">ABA 512 Ready</h4>
+              <h4 className="text-white font-semibold mb-2">ABA Formal Opinion 512 Ready</h4>
               <p className="text-gray-400 text-sm leading-relaxed">
                 AI disclosure language auto-generated for every deliverable. Stay compliant effortlessly.
               </p>
