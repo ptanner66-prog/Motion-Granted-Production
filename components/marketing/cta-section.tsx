@@ -2,53 +2,42 @@
 
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { ArrowRight } from 'lucide-react'
 
 export function CTASection() {
   return (
-    <section className="bg-[#fdfcfb] py-28 border-t border-navy/10">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="border border-navy/10 bg-white p-12 md:p-16">
-          <div className="max-w-3xl">
-            <div className="border-l-4 border-gold pl-6 mb-8">
-              <span className="text-sm font-bold uppercase tracking-[0.3em] text-gold">
-                Start Your Order
-              </span>
-            </div>
+    <section className="bg-cream py-24">
+      <div className="max-w-4xl mx-auto px-6 text-center">
+        <h2 className="font-serif text-4xl md:text-5xl text-navy mb-6">
+          Stop the Sunday night research.
+        </h2>
 
-            <h2 className="font-serif text-4xl md:text-5xl text-navy mb-6">
-              File-ready work product. Verified citations.
-            </h2>
+        <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
+          Your next motion doesn&apos;t have to cost you a weekend. Delegate the drafting.
+          Keep your evenings. Get back to practicing law—not drowning in it.
+        </p>
 
-            <p className="text-xl text-gray-600 mb-10 leading-relaxed">
-              Submit your matter through our secure portal. Receive scope confirmation
-              within 24 hours. Get court-ready deliverables by your deadline—every
-              authority verified through the Verified Precedent Index.
-            </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
+          <Button size="lg" className="bg-navy text-white px-10 py-7 text-lg hover:bg-gold hover:text-navy transition-all duration-300 rounded-md shadow-lg group" asChild>
+            <Link href="/register">
+              Start Your First Order
+              <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
+            </Link>
+          </Button>
+          <Button variant="outline" size="lg" className="border-2 border-navy/20 text-navy px-10 py-7 text-lg hover:border-navy hover:bg-navy hover:text-white transition-all rounded-md" asChild>
+            <Link href="/pricing">View Pricing</Link>
+          </Button>
+        </div>
 
-            <div className="flex flex-col sm:flex-row gap-6">
-              <Button className="bg-navy text-white px-12 py-8 text-xl rounded-none hover:bg-gold transition-all shadow-none" asChild>
-                <Link href="/register">Start Your Order</Link>
-              </Button>
-              <Button variant="outline" className="border-2 border-navy text-navy px-12 py-8 text-xl rounded-none hover:bg-navy/5 shadow-none" asChild>
-                <Link href="/pricing">View Pricing</Link>
-              </Button>
-            </div>
-
-            <div className="mt-12 pt-8 border-t border-navy/10 flex flex-col sm:flex-row gap-8">
-              <div className="flex items-center gap-3">
-                <span className="w-2 h-2 bg-gold"></span>
-                <span className="text-sm text-gray-600">Flat-fee pricing</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="w-2 h-2 bg-gold"></span>
-                <span className="text-sm text-gray-600">48-hour rush available</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="w-2 h-2 bg-gold"></span>
-                <span className="text-sm text-gray-600">ABA 512 disclosures included</span>
-              </div>
-            </div>
-          </div>
+        {/* Simple trust markers */}
+        <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-sm text-gray-500">
+          <span>Flat-fee pricing</span>
+          <span className="text-gold">•</span>
+          <span>5-day standard turnaround</span>
+          <span className="text-gold">•</span>
+          <span>Every citation verified</span>
+          <span className="text-gold">•</span>
+          <span>No retainer required</span>
         </div>
       </div>
     </section>
