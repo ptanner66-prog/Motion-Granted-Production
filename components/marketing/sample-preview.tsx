@@ -123,7 +123,7 @@ export function SamplePreview() {
               </div>
               <div className="flex items-center gap-2 text-gray-300 text-sm">
                 <Check className="w-4 h-4 text-gold" />
-                <span>ABA 512 disclosure</span>
+                <span>ABA Formal Opinion 512 disclosure</span>
               </div>
             </div>
           </div>

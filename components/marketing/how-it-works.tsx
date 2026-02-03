@@ -70,7 +70,7 @@ export function HowItWorks() {
                 Verified Precedent Index
               </span>
               <h3 className="font-serif text-3xl text-white mb-6">
-                Zero hallucinations. Guaranteed.
+                Every citation verified.
               </h3>
               <p className="text-gray-300 leading-relaxed mb-4">
                 Every citation is verified against our curated library of court-validated

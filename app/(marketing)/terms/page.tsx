@@ -228,8 +228,7 @@ export default function TermsPage() {
             </p>
             <p>
               Motion Granted, LLC<br />
-              123 Main Street, Suite 400<br />
-              Baton Rouge, LA 70801<br />
+              Louisiana-based legal drafting service<br />
               support@motiongranted.com
             </p>
 

@@ -10,7 +10,7 @@ const faqs = [
   },
   {
     question: "What's included in a typical motion package?",
-    answer: "A standard motion package includes the motion itself, memorandum of points and authorities, separate statement of facts (where required), proposed order, and all supporting declarations. You also receive the ABA 512 disclosure language and a verification report documenting our citation checking."
+    answer: "A standard motion package includes the motion itself, memorandum of points and authorities, separate statement of facts (where required), proposed order, and all supporting declarations. You also receive the ABA Formal Opinion 512 disclosure language and a verification report documenting our citation checking."
   },
   {
     question: "How fast can you turn around a rush order?",
@@ -26,7 +26,7 @@ const faqs = [
   },
   {
     question: "What jurisdictions do you cover?",
-    answer: "We produce work product for all 50 states and federal courts. Each deliverable is formatted according to your specific court's local rules. Just tell us the jurisdiction and court when you submit your order."
+    answer: "We currently specialize in Louisiana state courts, Louisiana federal courts (Eastern, Middle, and Western Districts), and the Fifth Circuit. Each deliverable is formatted according to your specific court's local rules. Contact us if you have matters in other jurisdictions."
   },
   {
     question: "What if I need revisions?",

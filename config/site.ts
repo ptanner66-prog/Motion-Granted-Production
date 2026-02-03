@@ -2,21 +2,18 @@ export const siteConfig = {
   name: "Motion Granted",
   description: "Your drafting team—without the overhead. Court-ready motions and briefs for solo practitioners and small firms. Flat-fee pricing. Every citation verified. Not a law firm.",
   url: "https://motiongranted.com",
-  ogImage: "https://motiongranted.com/og-image.png",
+  ogImage: "https://motiongranted.com/og-image.svg",
   links: {
     twitter: "https://twitter.com/motiongranted",
     github: "https://github.com/motion-granted",
   },
   contact: {
     email: "support@motiongranted.com",
-    phone: "(225) 555-0100",
+    // Phone and address removed - using email-only contact for now
+    // Add real contact info when available
   },
-  address: {
-    street: "123 Main Street",
-    suite: "Suite 400",
-    city: "Baton Rouge",
-    state: "LA",
-    zip: "70801",
+  location: {
+    description: "Louisiana-based legal drafting service",
   },
   keywords: [
     "legal motion drafting service",
