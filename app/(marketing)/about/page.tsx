@@ -89,8 +89,8 @@ export default function AboutPage() {
                 key={value.title}
                 className="rounded-xl bg-white p-8 shadow-sm border border-gray-100"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal/10">
-                  <value.icon className="h-6 w-6 text-teal" />
+                <div className="flex h-12 w-12 items-center justify-center bg-gold/10">
+                  <value.icon className="h-6 w-6 text-gold" />
                 </div>
                 <h3 className="mt-6 text-xl font-semibold text-navy">{value.title}</h3>
                 <p className="mt-2 text-gray-600 leading-relaxed">{value.description}</p>

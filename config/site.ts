@@ -1,6 +1,6 @@
 export const siteConfig = {
   name: "Motion Granted",
-  description: "High-fidelity motion production for the Louisiana practitioner.",
+  description: "Professional motion drafting services for attorneys. Flat-fee legal document production with verified citations and court-ready formatting. Not a law firm.",
   url: "https://motiongranted.com",
   ogImage: "https://motiongranted.com/og-image.png",
   links: {
@@ -19,15 +19,22 @@ export const siteConfig = {
     zip: "70801",
   },
   keywords: [
-    "legal motion drafting",
-    "motion writing service",
+    "legal motion drafting service",
+    "motion writing for attorneys",
+    "legal document preparation",
+    "law clerk drafting services",
+    "summary judgment motion drafting",
+    "motion to compel drafting",
+    "legal brief writing service",
+    "court document preparation",
+    "attorney drafting support",
     "legal process outsourcing",
-    "law clerk services",
-    "Louisiana attorney services",
-    "summary judgment drafting",
-    "legal briefs",
-    "motion to compel",
-    "exception drafting",
+    "Louisiana legal services",
+    "flat fee legal drafting",
+    "peremptory exception drafting",
+    "dilatory exception drafting",
+    "appellate brief drafting",
+    "discovery motion drafting",
   ],
 }
 
