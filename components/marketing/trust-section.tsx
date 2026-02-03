@@ -2,28 +2,28 @@ import { Shield, Scale, Lock, FileCheck } from 'lucide-react'
 
 const securityFeatures = [
   {
-    icon: Scale,
-    title: "Jurisdictional Compliance",
-    description: "Work product formatted and verified for state and federal court requirements. Current with all procedural rules.",
-    detail: "All 50 states + Federal"
-  },
-  {
     icon: Shield,
-    title: "ABA Opinion 512 Ready",
-    description: "Appropriate AI-assisted drafting disclosures generated automatically per jurisdiction requirements.",
-    detail: "Built-in compliance"
+    title: "ABA Formal Opinion 512",
+    description: "AI-assisted drafting disclosures generated automatically for every deliverable. Jurisdiction-specific language ensures compliance with disclosure requirements.",
+    detail: "Auto-generated disclosures"
   },
   {
-    icon: Lock,
-    title: "Data Protection",
-    description: "Your case materials are processed securely and scrubbed after delivery. You control retention.",
-    detail: "SOC 2 Type II infrastructure"
+    icon: Scale,
+    title: "Nationwide Compliance",
+    description: "Work product formatted for state and federal court requirements. Current with procedural rules across all 50 states and federal circuits.",
+    detail: "All jurisdictions supported"
   },
   {
     icon: FileCheck,
-    title: "Complete Audit Trail",
-    description: "Every production decision is logged and documented for your records.",
-    detail: "Malpractice defense ready"
+    title: "Production Audit Trail",
+    description: "Every decision point in your production is logged. Receive complete documentation for professional responsibility compliance and malpractice defense.",
+    detail: "Exportable records"
+  },
+  {
+    icon: Lock,
+    title: "Data Isolation",
+    description: "Case materials processed in isolated environments. Data scrubbed after delivery per your retention preferences. No training on your files.",
+    detail: "SOC 2 Type II"
   }
 ];
 
@@ -35,15 +35,15 @@ export function TrustSection() {
           <div className="inline-flex items-center gap-4 mb-8">
             <div className="h-[2px] w-12 bg-gold" />
             <span className="text-xs font-bold uppercase tracking-[0.4em] text-gold">
-              Enterprise Infrastructure
+              Professional Compliance
             </span>
           </div>
           <h2 className="font-serif text-5xl md:text-7xl text-white mb-6">
-            Compliance & Security
+            Built for Bar Compliance
           </h2>
           <p className="text-xl text-gray-300 max-w-3xl leading-relaxed">
-            Built for attorneys who demand institutional-grade security and
-            professional responsibility compliance.
+            Every production includes disclosure-ready documentation for ABA Formal Opinion 512
+            and state bar requirements. Your professional responsibility is protected.
           </p>
         </div>
 
@@ -72,16 +72,35 @@ export function TrustSection() {
           ))}
         </div>
 
+        {/* Disclaimer Banner */}
+        <div className="bg-white/5 border border-white/10 p-8 mb-16">
+          <div className="flex flex-col md:flex-row gap-8 items-start">
+            <div className="flex-1">
+              <h3 className="font-serif text-2xl text-white mb-4">
+                Motion Granted Is Not a Law Firm
+              </h3>
+              <p className="text-gray-400 leading-relaxed">
+                We are a legal process outsourcing company providing drafting support to licensed attorneys.
+                We do not provide legal advice or representation. The supervising attorney reviews, approves,
+                and files all work product. Your clients remain your clients.
+              </p>
+            </div>
+            <div className="text-gold text-sm font-medium uppercase tracking-wider whitespace-nowrap">
+              Drafting Service Only
+            </div>
+          </div>
+        </div>
+
         {/* Bottom Statement */}
         <div className="pt-12 border-t border-white/10">
           <div className="grid md:grid-cols-3 gap-12">
             <div>
               <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3 block">
-                Professional Oversight
+                Attorney Supervision
               </span>
               <p className="text-gray-300 text-sm leading-relaxed">
-                All work product reviewed by licensed attorneys for compliance with
-                Rules of Professional Conduct.
+                You review every deliverable. You verify against your professional judgment.
+                You file under your name. We provide the draft; you provide the oversight.
               </p>
             </div>
             <div>
@@ -90,16 +109,16 @@ export function TrustSection() {
               </span>
               <p className="text-gray-300 text-sm leading-relaxed">
                 Case materials processed in isolated environments. No data used for
-                training. Privilege preserved.
+                training. Attorney-client privilege preserved.
               </p>
             </div>
             <div>
               <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3 block">
-                Insurance
+                E&O Coverage
               </span>
               <p className="text-gray-300 text-sm leading-relaxed">
-                E&O coverage backs every production. Certificate available for
-                institutional clients.
+                Errors & omissions insurance backs every production. Certificate of
+                insurance available upon request for institutional clients.
               </p>
             </div>
           </div>
