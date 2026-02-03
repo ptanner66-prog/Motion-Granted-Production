@@ -27,6 +27,124 @@ import type { PhaseInput } from '@/lib/workflow/phase-executors';
 // TYPES
 // ============================================================================
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CHEN JURISDICTION FIX (2026-02-03): Tier → Jurisdiction Mapping
+// For state court motions, ALL tiers map to STATE-ONLY courts
+// This ensures we get So.3d citations (state) not F.3d/F.4th (federal)
+// ═══════════════════════════════════════════════════════════════════════════
+const TIER_JURISDICTION_MAP: Record<'tier1' | 'tier2' | 'tier3', string> = {
+  'tier1': 'louisiana_state',    // la,lactapp ONLY - Louisiana Supreme Court
+  'tier2': 'louisiana_state',    // la,lactapp ONLY - Louisiana Courts of Appeal
+  'tier3': 'louisiana_federal',  // ca5,laed,lamd,lawd - Fifth Circuit + Districts
+};
+
+/**
+ * Detect jurisdiction type from jurisdiction string
+ * STATE: "19th Judicial District Court", "Louisiana State Court", "Parish of..."
+ * FEDERAL: "Eastern District of Louisiana", "Fifth Circuit", "EDLA"
+ */
+function detectJurisdictionType(jurisdiction: string): 'state' | 'federal' {
+  const normalized = jurisdiction.toLowerCase();
+
+  // Federal court patterns
+  const federalPatterns = [
+    /eastern district/i,
+    /middle district/i,
+    /western district/i,
+    /\bedla\b/i,
+    /\bmdla\b/i,
+    /\bwdla\b/i,
+    /united states district/i,
+    /fifth circuit/i,
+    /5th circuit/i,
+    /federal court/i,
+    /bankruptcy court/i,
+  ];
+
+  for (const pattern of federalPatterns) {
+    if (pattern.test(normalized)) {
+      console.log(`[JurisdictionDetect] FEDERAL: "${jurisdiction}" matched ${pattern}`);
+      return 'federal';
+    }
+  }
+
+  // State court patterns
+  const statePatterns = [
+    /judicial district/i,
+    /\bjdc\b/i,
+    /parish of/i,
+    /state court/i,
+    /civil district court/i,
+  ];
+
+  for (const pattern of statePatterns) {
+    if (pattern.test(normalized)) {
+      console.log(`[JurisdictionDetect] STATE: "${jurisdiction}" matched ${pattern}`);
+      return 'state';
+    }
+  }
+
+  // Default to state for Louisiana
+  if (normalized.includes('louisiana')) {
+    console.log(`[JurisdictionDetect] STATE (default): "${jurisdiction}"`);
+    return 'state';
+  }
+
+  console.log(`[JurisdictionDetect] STATE (fallback): "${jurisdiction}"`);
+  return 'state';
+}
+
+/**
+ * Post-search jurisdiction validation filter
+ *
+ * CHEN JURISDICTION FIX (2026-02-03):
+ * Safety net to filter out any wrong-jurisdiction cases that slip through
+ * For STATE court searches: remove federal cases (F.2d, F.3d, F.4th, F.Supp)
+ * For FEDERAL court searches: remove state cases (So.2d, So.3d)
+ */
+function filterByJurisdiction(
+  candidates: CitationCandidate[],
+  expectedType: 'state' | 'federal'
+): CitationCandidate[] {
+  return candidates.filter(candidate => {
+    const court = (candidate.court || '').toLowerCase();
+    const citation = (candidate.citation || '').toLowerCase();
+
+    // Detect federal courts
+    const isFederal =
+      court.includes('fifth circuit') ||
+      court.includes('5th circuit') ||
+      court.includes('circuit court of appeals') ||
+      court.includes('district of louisiana') ||
+      court.includes('united states') ||
+      /f\.\s*\d+[dth]/.test(citation) ||  // F.2d, F.3d, F.4th
+      /f\.\s*supp/.test(citation);         // F.Supp
+
+    // Detect state courts
+    const isState =
+      court.includes('louisiana supreme') ||
+      court.includes('supreme court of louisiana') ||
+      court.includes('louisiana court of appeal') ||
+      court.includes('la. app') ||
+      court.includes('la app') ||
+      /so\.\s*\d+[dth]/.test(citation);    // So.2d, So.3d
+
+    if (expectedType === 'state') {
+      if (isFederal) {
+        console.log(`[JurisdictionFilter] ⛔ EXCLUDED federal case from STATE search: "${candidate.caseName?.substring(0, 40)}..." (${candidate.court})`);
+        return false;
+      }
+      return true;
+    } else {
+      if (isState) {
+        console.log(`[JurisdictionFilter] ⛔ EXCLUDED state case from FEDERAL search: "${candidate.caseName?.substring(0, 40)}..." (${candidate.court})`);
+        return false;
+      }
+      return true;
+    }
+  });
+}
+
 export interface SearchTask {
   taskId: string;
   query: string;
@@ -329,6 +447,14 @@ export async function executePhaseIVInit(
   console.log(`[Phase IV-Init] Jurisdiction: ${jurisdiction}`);
   console.log(`[Phase IV-Init] Motion Type: ${motionType}`);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // CHEN JURISDICTION FIX (2026-02-03): Detect jurisdiction type
+  // For STATE court cases, only use tier1/tier2 (state courts only)
+  // For FEDERAL court cases, only use tier3 (federal courts only)
+  // ═══════════════════════════════════════════════════════════════════════
+  const jurisdictionType = detectJurisdictionType(jurisdiction || 'Louisiana');
+  console.log(`[Phase IV-Init] Jurisdiction TYPE: ${jurisdictionType.toUpperCase()}`);
+
   // Extract elements from previous phases or use defaults
   const elements = extractLegalElements(input);
   console.log(`[Phase IV-Init] Extracted ${elements.length} legal elements`);
@@ -337,14 +463,21 @@ export async function executePhaseIVInit(
   const searchTasks: SearchTask[] = [];
   let taskCounter = 0;
 
+  // CHEN JURISDICTION FIX: Select tiers based on jurisdiction type
+  const tiersToUse: Array<'tier1' | 'tier2' | 'tier3'> = jurisdictionType === 'state'
+    ? ['tier1', 'tier2']  // STATE: only state court tiers
+    : ['tier3'];          // FEDERAL: only federal court tier
+
+  console.log(`[Phase IV-Init] Tiers for ${jurisdictionType.toUpperCase()} jurisdiction: ${tiersToUse.join(', ')}`);
+
   for (const element of elements) {
     // Limit queries per element
     const queries = element.searchQueries.slice(0, MAX_QUERIES_PER_ELEMENT);
 
     for (let i = 0; i < queries.length; i++) {
       const query = queries[i];
-      // Assign tier based on query position
-      const tier: 'tier1' | 'tier2' | 'tier3' = i === 0 ? 'tier1' : i === 1 ? 'tier2' : 'tier3';
+      // CHEN FIX: Assign tier from jurisdiction-appropriate tiers only
+      const tier = tiersToUse[i % tiersToUse.length];
 
       searchTasks.push({
         taskId: `task-${++taskCounter}`,
@@ -500,10 +633,22 @@ export async function executePhaseIVAggregate(
   console.log(`[Phase IV-Aggregate] Total searches: ${totalSuccesses + totalFailures}`);
   console.log(`[Phase IV-Aggregate] Successful searches: ${totalSuccesses}`);
   console.log(`[Phase IV-Aggregate] Failed searches: ${totalFailures}`);
-  console.log(`[Phase IV-Aggregate] Total candidates: ${allCandidates.length}`);
+  console.log(`[Phase IV-Aggregate] Total candidates before filter: ${allCandidates.length}`);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CHEN JURISDICTION FIX (2026-02-03): Post-search jurisdiction validation
+  // Filter out any federal cases that slipped through for state court searches
+  // ═══════════════════════════════════════════════════════════════════════
+  const jurisdictionType = detectJurisdictionType(initResult.jurisdiction);
+  const filteredCandidates = filterByJurisdiction(allCandidates, jurisdictionType);
+  const filteredCount = allCandidates.length - filteredCandidates.length;
+  if (filteredCount > 0) {
+    console.log(`[Phase IV-Aggregate] ⚠️ Filtered out ${filteredCount} wrong-jurisdiction cases`);
+  }
+  console.log(`[Phase IV-Aggregate] Candidates after jurisdiction filter: ${filteredCandidates.length}`);
 
   // Deduplicate candidates by ID
-  const uniqueCandidates = deduplicateCandidates(allCandidates);
+  const uniqueCandidates = deduplicateCandidates(filteredCandidates);
   console.log(`[Phase IV-Aggregate] Unique candidates after dedup: ${uniqueCandidates.length}`);
 
   // Score and rank candidates
@@ -619,17 +764,25 @@ export async function executePhaseIVAggregate(
 
 /**
  * Execute a single search with timeout
+ *
+ * CHEN JURISDICTION FIX (2026-02-03):
+ * Uses TIER_JURISDICTION_MAP[task.tier] instead of raw jurisdiction
+ * This ensures tier1/tier2 map to 'louisiana_state' (no federal courts!)
  */
 async function executeSearchWithTimeout(
   task: SearchTask,
-  jurisdiction: string
+  _jurisdiction: string  // UNUSED - kept for backward compat, use task.tier instead
 ): Promise<SearchResult> {
   const startTime = Date.now();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PER_REQUEST_TIMEOUT_MS);
 
+  // CHEN FIX: Use tier mapping, NOT raw jurisdiction
+  const mappedJurisdiction = TIER_JURISDICTION_MAP[task.tier];
+  console.log(`[executeSearchWithTimeout] task=${task.taskId} tier=${task.tier} → jurisdiction="${mappedJurisdiction}"`);
+
   try {
-    const response = await searchOpinions(task.query, jurisdiction, 10, {
+    const response = await searchOpinions(task.query, mappedJurisdiction, 10, {
       signal: controller.signal,
     });
 
