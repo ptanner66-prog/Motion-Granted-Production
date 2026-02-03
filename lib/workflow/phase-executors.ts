@@ -1657,9 +1657,12 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
  * CITATION FORMATS SUPPORTED:
  * - Federal: "884 F.3d 546", "132 F.4th 918", "54 F.Supp.3d 789"
  * - SCOTUS: "410 U.S. 113", "541 U.S. 600"
- * - Louisiana: "345 So. 3d 789", "270 So.3d 621"
+ * - Louisiana: "345 So. 3d 789", "270 So.3d 621", "123 La. 456"
  * - Other state: Cal.App.4th, N.E.2d, etc.
  * - Louisiana docket: "2021-01234 (La. App. 1 Cir. 12/15/21)"
+ *
+ * CHEN JURISDICTION FIX (2026-02-03): Enhanced Louisiana citation matching
+ * Added more permissive patterns for So.2d/So.3d variations
  *
  * KNOWN ISSUE: Some citation banks contain bare opinion IDs like "9402549"
  * These are NOT valid citations and will not be extracted (by design).
@@ -1682,9 +1685,11 @@ function extractCitationsFromText(text: string): string[] {
 
   // ==========================================================================
   // PATTERN 3: State Reporter citations (Louisiana, California, etc.)
-  // Matches: 345 So.3d 789, 270 So. 3d 621, 123 Cal.App.4th 456
+  // CHEN FIX: More permissive patterns for Louisiana So.2d/So.3d variations
+  // Matches: 345 So.3d 789, 270 So. 3d 621, 123 So. 2d 456, 345 So.3d 789
+  // Also matches: 123 Cal.App.4th 456, etc.
   // ==========================================================================
-  const statePattern = /\d{1,4}\s+(?:So\.\s*(?:2d|3d)?|Cal\.\s*(?:App\.\s*)?(?:2d|3d|4th|5th)?|N\.E\.\s*(?:2d|3d)?|N\.W\.\s*(?:2d)?|S\.E\.\s*(?:2d)?|S\.W\.\s*(?:2d|3d)?|A\.\s*(?:2d|3d)?|P\.\s*(?:2d|3d)?)\s+\d{1,5}/gi;
+  const statePattern = /\d{1,4}\s+(?:So\.\s*(?:2d|3d)|Cal\.\s*(?:App\.\s*)?(?:2d|3d|4th|5th)?|N\.E\.\s*(?:2d|3d)?|N\.W\.\s*(?:2d)?|S\.E\.\s*(?:2d)?|S\.W\.\s*(?:2d|3d)?|A\.\s*(?:2d|3d)?|P\.\s*(?:2d|3d)?)\s*\d{1,5}/gi;
 
   // ==========================================================================
   // PATTERN 4: Louisiana docket format
@@ -1692,11 +1697,26 @@ function extractCitationsFromText(text: string): string[] {
   // ==========================================================================
   const laDocketPattern = /\d{4}-\d{4,6}\s*\([^)]*La\.?\s*(?:App\.)?\s*[^)]*\)/gi;
 
+  // ==========================================================================
+  // PATTERN 5: Louisiana Reports citation (older format)
+  // Matches: 123 La. 456, 456 La.App. 789
+  // CHEN FIX (2026-02-03): Added for historical Louisiana citations
+  // ==========================================================================
+  const laReportsPattern = /\d{1,4}\s+La\.(?:\s*App\.)?\s*\d{1,5}/gi;
+
+  // ==========================================================================
+  // PATTERN 6: Full case citation with name (catches citations regex might miss)
+  // Matches: "Smith v. Jones, 123 So.3d 456" extracts "123 So.3d 456"
+  // ==========================================================================
+  const fullCitationPattern = /(\d{1,4}\s+(?:So\.|F\.|U\.S\.|Cal\.|La\.)[^\d,]*\d{1,5})/gi;
+
   const patterns = [
     { name: 'Federal', regex: federalPattern },
     { name: 'SCOTUS', regex: scotusPattern },
     { name: 'State', regex: statePattern },
     { name: 'LA Docket', regex: laDocketPattern },
+    { name: 'LA Reports', regex: laReportsPattern },
+    { name: 'Full Citation', regex: fullCitationPattern },
   ];
 
   console.log(`[extractCitationsFromText] Text length: ${text.length} chars`);
@@ -2138,28 +2158,63 @@ async function executePhaseV1(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase V.1] Found ${citationsInDraft.length} citations in draft motion`);
 
     // =========================================================================
-    // CHEN CIV FIX: ZERO-CITATION SAFETY CHECK
-    // If we extract 0 citations from a non-empty draft, something is WRONG
-    // This catches extraction bugs before they cause false "100% verified" results
+    // CHEN JURISDICTION FIX (2026-02-03): IMPROVED ZERO-CITATION HANDLING
+    // Distinguish between:
+    // 1. Empty citation bank (upstream issue, not extraction bug)
+    // 2. Extraction bug (citations should be in draft but regex failed)
+    // 3. Federal-only bank (state court motion with wrong citations)
     // =========================================================================
     if (citationsInDraft.length === 0 && motionText.length > 500) {
+      // First check: Was the citation bank empty?
+      if (verifiedCitationIds.size === 0) {
+        console.warn(`[Phase V.1] ⚠️ Citation bank was EMPTY - this explains 0 citations in draft`);
+        console.warn(`[Phase V.1] This is likely an upstream issue (Phase IV returned no citations)`);
+        // Don't fail - proceed with 0 citations and flag for review
+        return {
+          success: true,  // Allow workflow to continue
+          phase: 'V.1',
+          status: 'completed_with_warning',
+          output: {
+            warning: 'EMPTY_CITATION_BANK',
+            message: 'Citation bank was empty - Phase IV may have failed to find citations',
+            totalCitationsInDraft: 0,
+            verifiedCitations: 0,
+            unverifiedCitations: 0,
+            removedCitations: 0,
+            verificationRate: 0,
+            citationsVerified: [],
+            citationsRemoved: [],
+            needsManualReview: true,
+          },
+          durationMs: Date.now() - start,
+        };
+      }
+
+      // Second check: Did bank have citations but draft didn't include them?
+      console.error(`[Phase V.1] ⚠️ Citation bank has ${verifiedCitationIds.size} citations but draft has 0`);
+      console.error(`[Phase V.1] Citation bank sample: ${Array.from(verifiedCitationTexts.keys()).slice(0, 3).join(', ')}`);
+      console.error(`[Phase V.1] Motion preview: "${motionText.substring(0, 500)}..."`);
+
+      // This IS an issue - Claude didn't include citations from the bank
       const error = new Error(
-        `[Phase V.1] CRITICAL: Extracted 0 citations from ${motionText.length}-char draft. ` +
-        `This indicates a citation extraction bug, not a citation-free motion. ` +
-        `Motion preview: "${motionText.substring(0, 200)}..."`
+        `[Phase V.1] CRITICAL: Extracted 0 citations from ${motionText.length}-char draft, ` +
+        `but citation bank has ${verifiedCitationIds.size} verified citations. ` +
+        `Phase V may have failed to include citations in the draft.`
       );
       console.error(error.message);
 
-      // Don't throw - instead return a FAILED result that blocks the workflow
+      // Return failed but with diagnostic info
       return {
         success: false,
         phase: 'V.1',
         status: 'failed',
         output: {
-          error: 'CITATION_EXTRACTION_FAILURE',
+          error: 'CITATION_INCLUSION_FAILURE',
           message: error.message,
           motionTextLength: motionText.length,
+          citationBankSize: verifiedCitationIds.size,
           draftMotionKeys: Object.keys(draftMotion),
+          citationBankSample: Array.from(verifiedCitationTexts.keys()).slice(0, 5),
         },
         error: error.message,
         durationMs: Date.now() - start,

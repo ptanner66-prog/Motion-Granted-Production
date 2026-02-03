@@ -30,16 +30,26 @@ You are executing Phase V. Your task is to:
 
 4. Maintain formal litigation tone
 
-### CITATION MARKING FORMAT (CRITICAL)
+### CITATION INCLUSION REQUIREMENTS (CRITICAL)
 
-Every citation must be marked for Phase V.1 verification:
+You MUST include citations from the Citation Bank (Phase IV output) in the draft.
+For EACH legal argument, include at least ONE supporting citation.
 
-> [CITE: {citation_id} | {proposition_type}]
->
-> Example:
->
-> [CITE: C001 | PRIMARY_STANDARD] Celotex Corp. v. Catrett, 477 U.S.
-> 317, 322 (1986)
+**CITATION FORMAT:**
+Include the FULL citation in standard legal format:
+- Case Name, Volume Reporter Page (Court Year)
+- Example: *Hodges v. Southern Farm Bureau*, 345 So.3d 789 (La. App. 1 Cir. 2024)
+- Example: *Smith v. Jones*, 123 So.3d 456 (La. 2023)
+
+**FOR LOUISIANA STATE COURTS:**
+- Use So.2d or So.3d format (Southern Reporter)
+- Include court designation: (La. 2024) or (La. App. 1 Cir. 2024)
+
+**DO NOT:**
+- Use placeholder text like [CITATION NEEDED] or [INSERT CITATION]
+- Omit citations from legal arguments
+- Invent citations not in the Citation Bank
+- Use only federal citations (F.3d) for state court motions
 
 The proposition_type MUST match what was assigned in Phase III/IV.
 
