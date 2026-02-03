@@ -1,24 +1,24 @@
 import Link from 'next/link'
-import { Upload, FileEdit, FileCheck, ArrowRight } from 'lucide-react'
+import { Upload, FileEdit, FileCheck, ArrowRight, ShieldAlert } from 'lucide-react'
 
 const steps = [
   {
     number: "01",
     icon: Upload,
     title: "Submit Your Matter",
-    description: "Upload your case materials through our secure portal. Tell us what you need—motion type, deadline, jurisdiction. Receive scope confirmation within 24 hours.",
+    description: "Upload case materials through our secure portal. Specify motion type, deadline, and jurisdiction. Scope confirmation within 24 hours.",
   },
   {
     number: "02",
     icon: FileEdit,
-    title: "We Draft",
-    description: "Our team produces your work product with every citation verified. Standard 5-day turnaround. Rush options available for tight deadlines.",
+    title: "We Draft & Verify",
+    description: "Your matter enters our production workflow. Every citation verified against the Verified Precedent Index before delivery.",
   },
   {
     number: "03",
     icon: FileCheck,
     title: "You Review & File",
-    description: "Receive file-ready documents formatted for your court. Review against your professional judgment. File under your name.",
+    description: "Receive file-ready documents with perfect Bluebook citations. Review against your judgment. File under your name.",
   },
 ];
 
@@ -61,42 +61,79 @@ export function HowItWorks() {
           ))}
         </div>
 
-        {/* Citation Verification Callout */}
+        {/* Verification Protocol - Two Column */}
         <div className="bg-navy rounded-lg p-10 mb-16">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            {/* Verified Precedent Index */}
             <div>
               <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-4 block">
-                What Sets Us Apart
+                Verified Precedent Index
               </span>
               <h3 className="font-serif text-3xl text-white mb-6">
-                Every citation verified before delivery
+                Zero hallucinations. Guaranteed.
               </h3>
               <p className="text-gray-300 leading-relaxed mb-4">
-                We check every authority against our Verified Precedent Index—a curated library
-                of court-validated legal principles. No hallucinated cases. No fabricated quotes.
+                Every citation is verified against our curated library of court-validated
+                legal principles. No fabricated cases. No made-up quotes.
               </p>
-              <p className="text-gray-300 leading-relaxed">
-                If we flag a potentially problematic authority, you&apos;ll know about it before you file.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="bg-white/10 p-6 rounded-lg text-center">
-                <div className="text-3xl font-serif text-gold mb-2">100%</div>
-                <div className="text-sm text-gray-300">Citations Verified</div>
-              </div>
-              <div className="bg-white/10 p-6 rounded-lg text-center">
-                <div className="text-3xl font-serif text-gold mb-2">ABA 512</div>
-                <div className="text-sm text-gray-300">Compliant Disclosures</div>
-              </div>
-              <div className="bg-white/10 p-6 rounded-lg text-center">
-                <div className="text-3xl font-serif text-gold mb-2">5 Days</div>
-                <div className="text-sm text-gray-300">Standard Turnaround</div>
-              </div>
-              <div className="bg-white/10 p-6 rounded-lg text-center">
-                <div className="text-3xl font-serif text-gold mb-2">48 Hr</div>
-                <div className="text-sm text-gray-300">Rush Available</div>
+              <div className="space-y-3 text-gray-300 text-sm">
+                <div className="flex items-start gap-3">
+                  <span className="text-gold mt-0.5">—</span>
+                  <span>Citation existence verified against primary sources</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-gold mt-0.5">—</span>
+                  <span>Holding accuracy confirmed for your specific use</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-gold mt-0.5">—</span>
+                  <span>Subsequent history checked for overruling</span>
+                </div>
               </div>
             </div>
+
+            {/* Safety Intercept */}
+            <div className="lg:border-l border-white/10 lg:pl-10">
+              <div className="flex items-center gap-3 mb-4">
+                <ShieldAlert className="w-5 h-5 text-gold" />
+                <span className="text-gold font-bold text-xs uppercase tracking-[0.2em]">
+                  The Safety Intercept
+                </span>
+              </div>
+              <h3 className="font-serif text-3xl text-white mb-6">
+                Built to fail safe.
+              </h3>
+              <p className="text-gray-300 leading-relaxed mb-6">
+                If our verification flags an authority as uncertain—overruled, questioned,
+                or problematic—production stops. You&apos;re alerted before you ever see a draft.
+              </p>
+              <div className="bg-white/5 border border-white/10 rounded p-5">
+                <p className="text-white font-medium mb-2">Your reputation, protected.</p>
+                <p className="text-gray-400 text-sm">
+                  The decision to proceed is always yours. The protection is built-in.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
+          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
+            <div className="text-3xl font-serif text-navy mb-2">100%</div>
+            <div className="text-sm text-gray-600">Citations Verified</div>
+          </div>
+          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
+            <div className="text-3xl font-serif text-navy mb-2">B+</div>
+            <div className="text-sm text-gray-600">Minimum Standard</div>
+          </div>
+          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
+            <div className="text-3xl font-serif text-navy mb-2">5 Days</div>
+            <div className="text-sm text-gray-600">Standard Delivery</div>
+          </div>
+          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
+            <div className="text-3xl font-serif text-navy mb-2">48 Hr</div>
+            <div className="text-sm text-gray-600">Rush Available</div>
           </div>
         </div>
 

@@ -9,18 +9,18 @@ export function CTASection() {
     <section className="bg-cream py-24">
       <div className="max-w-4xl mx-auto px-6 text-center">
         <h2 className="font-serif text-4xl md:text-5xl text-navy mb-6">
-          Ready to delegate?
+          Stop the Sunday night research.
         </h2>
 
         <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-          Join attorneys who trust Motion Granted for their motion drafting needs.
-          No retainer. No commitment. Just file-ready work product when you need it.
+          Your next motion doesn&apos;t have to cost you a weekend. Delegate the drafting.
+          Keep your evenings. Get back to practicing law—not drowning in it.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
           <Button size="lg" className="bg-navy text-white px-10 py-7 text-lg hover:bg-gold hover:text-navy transition-all duration-300 rounded-md shadow-lg group" asChild>
             <Link href="/register">
-              Get Started
+              Start Your First Order
               <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
             </Link>
           </Button>
@@ -33,11 +33,11 @@ export function CTASection() {
         <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-sm text-gray-500">
           <span>Flat-fee pricing</span>
           <span className="text-gold">•</span>
-          <span>72-hour turnaround</span>
+          <span>5-day standard turnaround</span>
           <span className="text-gold">•</span>
           <span>Every citation verified</span>
           <span className="text-gold">•</span>
-          <span>ABA 512 compliant</span>
+          <span>No retainer required</span>
         </div>
       </div>
     </section>

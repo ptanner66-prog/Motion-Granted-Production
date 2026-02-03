@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { CheckCircle2 } from 'lucide-react'
 
 export function Hero() {
   return (
@@ -12,50 +11,64 @@ export function Hero() {
       <div className="subtle-grid absolute inset-0 pointer-events-none" />
 
       <div className="mx-auto max-w-7xl px-6 relative z-10">
-        <div className="flex flex-col items-start">
-          <div className="inline-flex items-center gap-4 mb-10">
-            <div className="h-[2px] w-12 bg-gold" />
-            <span className="text-xs font-bold uppercase tracking-[0.3em] text-gold">
-              For Solo Practitioners & Small Firms
-            </span>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+          {/* Main Content */}
+          <div className="lg:col-span-8">
+            <div className="inline-flex items-center gap-4 mb-8">
+              <div className="h-[2px] w-12 bg-gold" />
+              <span className="text-xs font-bold uppercase tracking-[0.3em] text-gold">
+                For Solo Practitioners & Small Firms
+              </span>
+            </div>
+
+            <h1 className="text-5xl md:text-6xl lg:text-7xl text-navy leading-[0.95] mb-6 font-serif">
+              Your drafting team—<br />
+              <span className="text-gold">without the overhead.</span>
+            </h1>
+
+            <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mb-6 leading-relaxed">
+              Court-ready motions and briefs delivered to your inbox.
+              Every citation verified. Flat-fee pricing you can quote to clients.
+            </p>
+
+            {/* Emotional Hook */}
+            <p className="text-lg text-navy/80 mb-10 border-l-2 border-gold pl-4 italic max-w-xl">
+              &ldquo;Sunday night research&rdquo; is over. Delegate the grunt work. Keep your weekends.
+            </p>
+
+            <div className="flex flex-wrap gap-5 mb-8">
+              <Button size="lg" className="bg-navy text-white px-10 py-7 text-lg hover:bg-gold hover:text-navy transition-all duration-300 rounded-md shadow-md" asChild>
+                <Link href="/register">Start Your First Order</Link>
+              </Button>
+              <Button variant="outline" size="lg" className="border-2 border-navy/20 text-navy px-10 py-7 text-lg hover:border-navy hover:bg-navy/5 transition-all rounded-md" asChild>
+                <Link href="/pricing">View Pricing</Link>
+              </Button>
+            </div>
+
+            <p className="text-sm text-gray-500">
+              We draft. You review. You file. <span className="font-medium text-navy">Not a law firm.</span>
+            </p>
           </div>
 
-          <h1 className="text-5xl md:text-7xl lg:text-8xl text-navy leading-[0.95] mb-8 font-serif max-w-5xl">
-            Your drafting team—<br />
-            <span className="text-gold">without the overhead.</span>
-          </h1>
-
-          <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mb-12 leading-relaxed">
-            Court-ready motions and briefs in 72 hours. Every citation verified.
-            Flat-fee pricing you can quote to clients.
-          </p>
-
-          <div className="flex flex-wrap gap-6 mb-16">
-            <Button size="lg" className="bg-navy text-white px-10 py-7 text-lg hover:bg-gold hover:text-navy transition-all duration-300 rounded-sm shadow-md" asChild>
-              <Link href="/register">Start Your First Order</Link>
-            </Button>
-            <Button variant="outline" size="lg" className="border-2 border-navy/20 text-navy px-10 py-7 text-lg hover:border-navy hover:bg-navy/5 transition-all rounded-sm" asChild>
-              <Link href="/pricing">View Pricing</Link>
-            </Button>
-          </div>
-
-          {/* Trust signals - compact */}
-          <div className="flex flex-wrap gap-x-8 gap-y-4 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-gold" />
-              <span>Every citation verified</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-gold" />
-              <span>ABA 512 compliant</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-gold" />
-              <span>48-hour rush available</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-gold" />
-              <span>No retainer required</span>
+          {/* Trust Signals Sidebar */}
+          <div className="lg:col-span-4 lg:border-l border-navy/10 lg:pl-10">
+            <div className="bg-navy/5 rounded-lg p-6 space-y-6">
+              <div>
+                <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Citation Security</span>
+                <span className="text-navy text-lg font-serif">Zero Hallucinations Guaranteed</span>
+              </div>
+              <div>
+                <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Quality Floor</span>
+                <span className="text-navy text-lg font-serif">B+ Minimum Standard</span>
+              </div>
+              <div>
+                <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Turnaround</span>
+                <span className="text-navy text-lg font-serif">5 Days Standard, 48hr Rush</span>
+              </div>
+              <div>
+                <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Compliance</span>
+                <span className="text-navy text-lg font-serif">ABA 512 Ready</span>
+              </div>
             </div>
           </div>
         </div>
