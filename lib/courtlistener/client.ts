@@ -22,7 +22,7 @@ import type { CitationDetails, CitationTreatment, CitationReference } from '@/ty
 
 const COURTLISTENER_BASE_URL = 'https://www.courtlistener.com/api/rest/v4';
 const COURTLISTENER_V3_URL = 'https://www.courtlistener.com/api/rest/v3';
-const DEFAULT_TIMEOUT = 30000; // 30 seconds
+const DEFAULT_TIMEOUT = 150000; // 150s - CourtListener takes 60-97s per request (measured)
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000; // 1s, 2s, 4s exponential backoff
 
@@ -61,6 +61,7 @@ async function waitForRateLimit(): Promise<void> {
 interface RequestOptions {
   timeout?: number;
   retries?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -142,28 +143,37 @@ export async function validateCourtListenerConfig(): Promise<{
 
 /**
  * Make a request with retry logic and rate limiting
+ *
+ * MODIFIED: 2026-01-30-CHEN-TIMEOUT-FIX
+ * - Added external AbortSignal support for caller-controlled timeouts
  */
 async function makeRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<{ success: boolean; data?: T; error?: string }> {
-  const { timeout = DEFAULT_TIMEOUT, retries = MAX_RETRIES } = options;
+  const { timeout = DEFAULT_TIMEOUT, retries = MAX_RETRIES, signal: externalSignal } = options;
   const authHeader = await getAuthHeader();
 
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      // Check if external signal was already aborted
+      if (externalSignal?.aborted) {
+        throw new Error('Request aborted by caller');
+      }
+
       // Wait for rate limit before making request
       await waitForRateLimit();
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
 
       const fullUrl = `${COURTLISTENER_BASE_URL}${endpoint}`;
       console.log(`[makeRequest] API call: ${fullUrl.substring(0, 150)}...`);
       console.log(`[makeRequest] Auth header present: ${!!authHeader.Authorization}`);
       console.log(`[makeRequest] Auth header prefix: ${authHeader.Authorization?.substring(0, 15)}...`);
+
+      // CHEN-TIMEOUT-FIX: Combine external signal with timeout signal
+      // If external signal provided, use it; otherwise use timeout
+      const effectiveSignal = externalSignal || AbortSignal.timeout(timeout);
 
       const response = await fetch(fullUrl, {
         method: 'GET',
@@ -171,10 +181,8 @@ async function makeRequest<T>(
           'Content-Type': 'application/json',
           ...authHeader,
         },
-        signal: controller.signal,
+        signal: effectiveSignal,
       });
-
-      clearTimeout(timeoutId);
 
       console.log(`[makeRequest] Response status: ${response.status} ${response.statusText}`);
 
@@ -194,6 +202,13 @@ async function makeRequest<T>(
         if (response.status === 404) {
           console.log(`[makeRequest] 404 Not Found - returning empty result`);
           return { success: true, data: undefined }; // Not found is valid result
+        }
+
+        // CHEN-FIX: CourtListener returns 502/503/504 sometimes - retry with delay
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          console.warn(`[makeRequest] ⚠️ Got ${response.status} (server error), retrying after 2s delay...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue; // This will retry the request
         }
 
         throw new Error(`CourtListener API error: ${response.status} ${response.statusText} - ${errorBody.substring(0, 200)}`);
@@ -259,9 +274,7 @@ export async function lookupCitation(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
-
+      // Use AbortSignal.timeout() for cleaner timeout handling (Vercel Pro optimization)
       const response = await fetch(`${COURTLISTENER_V3_URL}/citation-lookup/`, {
         method: 'POST',
         headers: {
@@ -269,10 +282,8 @@ export async function lookupCitation(
           ...authHeader,
         },
         body: `text=${encodeURIComponent(citationText)}`,
-        signal: controller.signal,
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT),
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         if (response.status === 429) {
@@ -694,6 +705,39 @@ export async function verifyCitationExists(
 }
 
 // ============================================================================
+// PARALLEL SEARCH HELPER (Vercel Pro Timeout Optimization)
+// Runs multiple searches in parallel batches to maximize throughput
+// while respecting CourtListener rate limits (60 req/min)
+// ============================================================================
+
+const PARALLEL_BATCH_SIZE = 5; // Number of concurrent requests per batch
+
+/**
+ * Execute searches in parallel batches for better performance
+ * Respects rate limits by processing in small batches
+ */
+async function parallelSearchBatch<T>(
+  items: T[],
+  searchFn: (item: T) => Promise<{ success: boolean; data?: unknown; error?: string }>,
+  batchSize: number = PARALLEL_BATCH_SIZE
+): Promise<Array<{ item: T; result: { success: boolean; data?: unknown; error?: string } }>> {
+  const results: Array<{ item: T; result: { success: boolean; data?: unknown; error?: string } }> = [];
+
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(
+      batch.map(async (item) => {
+        const result = await searchFn(item);
+        return { item, result };
+      })
+    );
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
+// ============================================================================
 // PHASE IV: SEARCH-FIRST CITATION RETRIEVAL
 // These functions are used by Phase IV to find REAL citations from CourtListener
 // instead of having Claude generate potentially hallucinated citations.
@@ -726,19 +770,33 @@ export interface VerifiedCitation {
 }
 
 /**
+ * Search options for searchOpinions
+ */
+export interface SearchOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/**
  * Search opinions by query with jurisdiction filter
  *
  * This is the PRIMARY method for Phase IV to find real citations.
  * Instead of Claude generating citations, we search CourtListener first.
  *
+ * MODIFIED: 2026-01-30-CHEN-TIMEOUT-FIX
+ * - Added AbortSignal support for timeout handling
+ * - Added request timeout (15s default)
+ *
  * @param query - Search query (e.g., "discovery compel Louisiana")
  * @param jurisdiction - Court filter (e.g., "la" for Louisiana)
  * @param limit - Max results to return
+ * @param options - Optional settings including abort signal
  */
 export async function searchOpinions(
   query: string,
   jurisdiction?: string,
-  limit: number = 20
+  limit: number = 20,
+  options: SearchOptions = {}
 ): Promise<{
   success: boolean;
   data?: {
@@ -757,6 +815,8 @@ export async function searchOpinions(
   };
   error?: string;
 }> {
+  const { signal, timeoutMs } = options;
+
   try {
     // Build search endpoint
     let endpoint = `/search/?q=${encodeURIComponent(query)}&type=o`;
@@ -809,7 +869,10 @@ export async function searchOpinions(
         }>;
         sibling_ids?: number[];
       }>;
-    }>(endpoint);
+    }>(endpoint, {
+      signal,
+      timeout: timeoutMs,
+    });
 
     // DIAGNOSTIC: Log raw API response
     console.log(`[searchOpinions] API call success: ${result.success}`);
@@ -839,12 +902,20 @@ export async function searchOpinions(
 
     const opinions = result.data.results.map((op, idx) => {
       // Build citation string from citation array
+      // CHEN CIV FIX (2026-02-02): Validate citations to reject bare numbers (opinion IDs)
       let citationStr = '';
       if (op.citations && op.citations.length > 0) {
         const c = op.citations[0];
         citationStr = `${c.volume} ${c.reporter} ${c.page}`;
       } else if (op.citation && op.citation.length > 0) {
         citationStr = op.citation[0];
+      }
+
+      // VALIDATION: Reject citation if it's just a bare number (opinion ID, not a legal citation)
+      // Valid citations look like "884 F.3d 546" not "9402549"
+      if (citationStr && /^\d+$/.test(citationStr.trim())) {
+        console.warn(`[searchOpinions] ⚠️ INVALID CITATION: "${citationStr}" is a bare number (likely opinion ID), not a legal citation. Case: ${op.caseName || op.case_name}`);
+        citationStr = ''; // Clear invalid citation - better to have no citation than a fake one
       }
 
       // ═══════════════════════════════════════════════════════════════════════
@@ -888,7 +959,8 @@ export async function searchOpinions(
     });
 
     // Filter out any results without valid IDs
-    const validOpinions = opinions.filter(op => op.id);
+    // FIX: Use proper null/undefined check - ID 0 is a valid CourtListener ID!
+    const validOpinions = opinions.filter(op => op.id !== undefined && op.id !== null);
     if (validOpinions.length < opinions.length) {
       console.warn(`[searchOpinions] ⚠️ Filtered out ${opinions.length - validOpinions.length} results without valid IDs`);
     }
@@ -929,13 +1001,42 @@ export async function searchOpinions(
 function mapJurisdictionToCourtCode(jurisdiction: string): string | null {
   const normalized = jurisdiction.toLowerCase().trim();
 
-  // Louisiana courts - FIXED: was using invalid 'lasc', now using correct codes
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHEN CIV FIX (2026-02-02): Separate state-only vs state+federal filters
+  // For Louisiana STATE court motions, we want So. 3d citations (state courts)
+  // not F.3d/F.4th citations (federal courts) dominating the results.
+  //
+  // Use "louisiana_state" for state courts only (binding authority)
+  // Use "louisiana" for state + federal (includes persuasive federal)
+  // Use "louisiana_federal" for federal courts only
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Louisiana STATE courts only (for binding authority in state court motions)
+  // Returns So. 3d citations from LA Supreme Court and Courts of Appeal
+  if (normalized === 'louisiana_state' || normalized === 'la_state') {
+    console.log('[mapJurisdictionToCourtCode] Louisiana STATE courts only (binding authority)');
+    return 'la,lactapp';
+  }
+
+  // Louisiana ALL courts (state + Fifth Circuit for persuasive authority)
   if (normalized.includes('louisiana') || normalized === 'la') {
     // la = Supreme Court, lactapp = Court of Appeal, ca5 = Fifth Circuit
+    console.log('[mapJurisdictionToCourtCode] Louisiana ALL courts (state + federal)');
     return 'la,lactapp,ca5';
   }
 
-  // California courts
+  // Louisiana FEDERAL courts only
+  if (normalized === 'louisiana_federal' || normalized === 'la_federal') {
+    console.log('[mapJurisdictionToCourtCode] Louisiana FEDERAL courts only');
+    return 'ca5,laed,lamd,lawd';
+  }
+
+  // California STATE courts only
+  if (normalized === 'california_state' || normalized === 'ca_state') {
+    return 'cal,calctapp';
+  }
+
+  // California courts (state + federal)
   if (normalized.includes('california') || normalized === 'ca') {
     return 'cal,calctapp,ca9';
   }
@@ -1234,29 +1335,39 @@ export async function buildVerifiedCitationBank(
 
   // ================================================================
   // PHASE 1: Search LOUISIANA STATE COURTS FIRST (highest authority)
+  // Uses parallel batches for faster execution (Vercel Pro optimization)
   // ================================================================
-  console.log(`[buildVerifiedCitationBank] ═══ PHASE 1: Louisiana State Courts ═══`);
+  console.log(`[buildVerifiedCitationBank] ═══ PHASE 1: Louisiana State Courts (PARALLEL) ═══`);
 
-  for (const queryInfo of uniqueQueries.slice(0, 10)) {
-    if (citations.length >= maxCitations) break;
-
-    try {
-      // Search Louisiana state courts only
-      const stateCourtParams = LOUISIANA_STATE_COURTS.map(c => `court=${c}`).join('&');
-      const searchResult = await searchOpinions(queryInfo.query, 'Louisiana', 8);
-      searchesPerformed++;
-
-      if (searchResult.success && searchResult.data?.opinions?.length) {
-        // Filter to only Louisiana state court results
-        const laStateOpinions = searchResult.data.opinions.filter(op =>
-          op.court?.toLowerCase().includes('louisiana') ||
-          op.court === 'la' ||
-          op.court === 'lactapp'
-        );
-        addCitationsFromSearch(laStateOpinions, queryInfo.forElement, 'LA State');
+  // Run searches in parallel batches of 5 for better performance
+  const phase1Queries = uniqueQueries.slice(0, 10);
+  const phase1Results = await parallelSearchBatch(
+    phase1Queries,
+    async (queryInfo) => {
+      try {
+        return await searchOpinions(queryInfo.query, 'Louisiana', 8);
+      } catch (error) {
+        console.error(`[buildVerifiedCitationBank] LA state search failed for "${queryInfo.query}":`, error);
+        return { success: false, error: String(error) };
       }
-    } catch (error) {
-      console.error(`[buildVerifiedCitationBank] LA state search failed for "${queryInfo.query}":`, error);
+    },
+    PARALLEL_BATCH_SIZE
+  );
+
+  // Process results
+  for (const { item: queryInfo, result: searchResult } of phase1Results) {
+    if (citations.length >= maxCitations) break;
+    searchesPerformed++;
+
+    if (searchResult.success && (searchResult.data as { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> })?.opinions?.length) {
+      // Filter to only Louisiana state court results
+      const opinions = (searchResult.data as { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> }).opinions;
+      const laStateOpinions = opinions.filter(op =>
+        op.court?.toLowerCase().includes('louisiana') ||
+        op.court === 'la' ||
+        op.court === 'lactapp'
+      );
+      addCitationsFromSearch(laStateOpinions, queryInfo.forElement, 'LA State');
     }
   }
 
@@ -1264,29 +1375,41 @@ export async function buildVerifiedCitationBank(
 
   // ================================================================
   // PHASE 2: Search FIFTH CIRCUIT FEDERAL (binding federal authority)
+  // Uses parallel batches for faster execution (Vercel Pro optimization)
   // ================================================================
   if (citations.length < maxCitations) {
-    console.log(`[buildVerifiedCitationBank] ═══ PHASE 2: Fifth Circuit Federal ═══`);
+    console.log(`[buildVerifiedCitationBank] ═══ PHASE 2: Fifth Circuit Federal (PARALLEL) ═══`);
 
-    for (const queryInfo of uniqueQueries.slice(0, 8)) {
-      if (citations.length >= maxCitations) break;
-
-      try {
-        const searchResult = await searchOpinions(queryInfo.query, 'fifth circuit', 6);
-        searchesPerformed++;
-
-        if (searchResult.success && searchResult.data?.opinions?.length) {
-          // Filter to Fifth Circuit results
-          const federalOpinions = searchResult.data.opinions.filter(op =>
-            op.court?.toLowerCase().includes('fifth') ||
-            op.court?.toLowerCase().includes('circuit') ||
-            op.court?.toLowerCase().includes('district') ||
-            op.court === 'ca5'
-          );
-          addCitationsFromSearch(federalOpinions, queryInfo.forElement, '5th Cir');
+    // Run searches in parallel batches of 5 for better performance
+    const phase2Queries = uniqueQueries.slice(0, 8);
+    const phase2Results = await parallelSearchBatch(
+      phase2Queries,
+      async (queryInfo) => {
+        try {
+          return await searchOpinions(queryInfo.query, 'fifth circuit', 6);
+        } catch (error) {
+          console.error(`[buildVerifiedCitationBank] Federal search failed for "${queryInfo.query}":`, error);
+          return { success: false, error: String(error) };
         }
-      } catch (error) {
-        console.error(`[buildVerifiedCitationBank] Federal search failed for "${queryInfo.query}":`, error);
+      },
+      PARALLEL_BATCH_SIZE
+    );
+
+    // Process results
+    for (const { item: queryInfo, result: searchResult } of phase2Results) {
+      if (citations.length >= maxCitations) break;
+      searchesPerformed++;
+
+      if (searchResult.success && (searchResult.data as { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> })?.opinions?.length) {
+        // Filter to Fifth Circuit results
+        const opinions = (searchResult.data as { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> }).opinions;
+        const federalOpinions = opinions.filter(op =>
+          op.court?.toLowerCase().includes('fifth') ||
+          op.court?.toLowerCase().includes('circuit') ||
+          op.court?.toLowerCase().includes('district') ||
+          op.court === 'ca5'
+        );
+        addCitationsFromSearch(federalOpinions, queryInfo.forElement, '5th Cir');
       }
     }
   }
@@ -1295,9 +1418,10 @@ export async function buildVerifiedCitationBank(
 
   // ================================================================
   // PHASE 3: Broad search if still under minimum
+  // Uses parallel batches for faster execution (Vercel Pro optimization)
   // ================================================================
   if (citations.length < minCitations) {
-    console.log(`[buildVerifiedCitationBank] ═══ PHASE 3: Broad Search (under ${minCitations} citations) ═══`);
+    console.log(`[buildVerifiedCitationBank] ═══ PHASE 3: Broad Search (PARALLEL, under ${minCitations} citations) ═══`);
 
     const broadQueries = [
       'Louisiana civil procedure',
@@ -1307,19 +1431,27 @@ export async function buildVerifiedCitationBank(
       `${motionType.replace(/_/g, ' ')} Louisiana`,
     ];
 
-    for (const query of broadQueries) {
-      if (citations.length >= minCitations) break;
-
-      try {
-        // Search all Louisiana courts
-        const searchResult = await searchOpinions(query, 'Louisiana', 10);
-        searchesPerformed++;
-
-        if (searchResult.success && searchResult.data?.opinions?.length) {
-          addCitationsFromSearch(searchResult.data.opinions, 'broad', 'Broad');
+    // Run all broad searches in parallel
+    const phase3Results = await Promise.all(
+      broadQueries.map(async (query) => {
+        try {
+          const result = await searchOpinions(query, 'Louisiana', 10);
+          return { query, result };
+        } catch (error) {
+          console.error(`[buildVerifiedCitationBank] Broad search failed for "${query}":`, error);
+          return { query, result: { success: false, error: String(error) } };
         }
-      } catch (error) {
-        console.error(`[buildVerifiedCitationBank] Broad search failed for "${query}":`, error);
+      })
+    );
+
+    // Process results
+    for (const { result: searchResult } of phase3Results) {
+      if (citations.length >= minCitations) break;
+      searchesPerformed++;
+
+      if (searchResult.success && (searchResult as { data?: { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data?.opinions?.length) {
+        const opinions = (searchResult as { data: { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data.opinions;
+        addCitationsFromSearch(opinions, 'broad', 'Broad');
       }
     }
   }
@@ -1328,25 +1460,35 @@ export async function buildVerifiedCitationBank(
 
   // ================================================================
   // PHASE 4: LAST RESORT - Search without jurisdiction filter
+  // Uses parallel execution for faster recovery (Vercel Pro optimization)
   // ================================================================
   if (citations.length < 4) {  // Minimum 4 for any motion
-    console.log(`[buildVerifiedCitationBank] ═══ PHASE 4: LAST RESORT (no filter) ═══`);
+    console.log(`[buildVerifiedCitationBank] ═══ PHASE 4: LAST RESORT (PARALLEL, no filter) ═══`);
 
     const lastResortQueries = ['motion to compel', 'discovery sanctions', 'civil procedure'];
 
-    for (const query of lastResortQueries) {
-      if (citations.length >= 4) break;
-
-      try {
-        // NO JURISDICTION - search all courts
-        const searchResult = await searchOpinions(query, undefined, 15);
-        searchesPerformed++;
-
-        if (searchResult.success && searchResult.data?.opinions?.length) {
-          addCitationsFromSearch(searchResult.data.opinions, 'last_resort', 'Last Resort');
+    // Run all last resort searches in parallel
+    const phase4Results = await Promise.all(
+      lastResortQueries.map(async (query) => {
+        try {
+          // NO JURISDICTION - search all courts
+          const result = await searchOpinions(query, undefined, 15);
+          return { query, result };
+        } catch (error) {
+          console.error(`[buildVerifiedCitationBank] Last resort error:`, error);
+          return { query, result: { success: false, error: String(error) } };
         }
-      } catch (error) {
-        console.error(`[buildVerifiedCitationBank] Last resort error:`, error);
+      })
+    );
+
+    // Process results
+    for (const { result: searchResult } of phase4Results) {
+      if (citations.length >= 4) break;
+      searchesPerformed++;
+
+      if (searchResult.success && (searchResult as { data?: { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data?.opinions?.length) {
+        const opinions = (searchResult as { data: { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data.opinions;
+        addCitationsFromSearch(opinions, 'last_resort', 'Last Resort');
       }
     }
   }

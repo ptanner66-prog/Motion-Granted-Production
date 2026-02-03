@@ -67,6 +67,15 @@ import {
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
 import { createMessageWithRetry } from "@/lib/claude-client";
 
+// Phase IV multi-step executor for avoiding Vercel timeout
+import {
+  executePhaseIVInit,
+  executePhaseIVBatch,
+  executePhaseIVAggregate,
+  type PhaseIVInitResult,
+  type PhaseIVBatchResult,
+} from "@/lib/workflow/phase-iv/multi-step-executor";
+
 // ============================================================================
 // SUPABASE CLIENT
 // ============================================================================
@@ -1158,33 +1167,103 @@ export const generateOrderWorkflow = inngest.createFunction(
     }
 
     // ========================================================================
-    // STEP 5: Phase IV - Citation Verification + CP1 Checkpoint
+    // STEP 5: Phase IV - MULTI-STEP Citation Research (Avoid Vercel Timeout)
     // ========================================================================
-    const phaseIVResult = await step.run("phase-iv-citation-verification", async () => {
-      console.log('[Orchestration] Phase IV - has previous:', Object.keys(workflowState.phaseOutputs));
+    // CHEN-MULTI-STEP: Phase IV now runs as multiple Inngest steps to avoid
+    // Vercel's 5-minute timeout. Each batch of CourtListener searches runs
+    // in its own step with checkpoint.
+    // ========================================================================
+    console.log('[Orchestration] Phase IV - Starting MULTI-STEP execution');
+    console.log('[Orchestration] Phase IV - has previous:', Object.keys(workflowState.phaseOutputs));
+
+    // Step 5a: Initialize Phase IV - Extract elements and plan searches
+    const phaseIVInit: PhaseIVInitResult = await step.run("phase-iv-init", async () => {
       const input = buildPhaseInput(workflowState);
-      const result = await executePhase("IV", input);
-
-      if (!result.success || !result.output) {
-        console.error(`[Phase IV] FAILED: ${result.error || 'No output'}`);
-        throw new Error(`Phase IV failed: ${result.error || 'No output returned'}`);
-      }
-
-      await logPhaseExecution(supabase, workflowState, "IV", result);
-      return result;
+      return await executePhaseIVInit(input);
     });
-    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
-    if (phaseIVResult?.output) {
-      workflowState.phaseOutputs["IV"] = phaseIVResult.output;
-      // Update citation count using CORRECT keys: caseCitationBank + statutoryCitationBank
-      const phaseIVOutput = phaseIVResult.output as Record<string, unknown>;
-      const caseCitations = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
-      const statuteCitations = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
-      workflowState.citationCount = caseCitations.length + statuteCitations.length;
-      console.log(`[Orchestration] Phase IV citation banks: ${caseCitations.length} case + ${statuteCitations.length} statutory`);
+
+    console.log(`[Orchestration] Phase IV Init complete: ${phaseIVInit.searchTasks.length} tasks in ${phaseIVInit.totalBatches} batches`);
+
+    // Step 5b-N: Execute batches (each batch is its own Inngest step with checkpoint)
+    const batchResults: PhaseIVBatchResult[] = [];
+
+    for (let batchIndex = 0; batchIndex < phaseIVInit.totalBatches; batchIndex++) {
+      const batchResult: PhaseIVBatchResult = await step.run(
+        `phase-iv-batch-${batchIndex + 1}`,
+        async () => {
+          return await executePhaseIVBatch(
+            batchIndex,
+            phaseIVInit.searchTasks,
+            phaseIVInit.jurisdiction
+          );
+        }
+      );
+
+      batchResults.push(batchResult);
+      console.log(`[Orchestration] Phase IV Batch ${batchIndex + 1}/${phaseIVInit.totalBatches} complete: ${batchResult.successCount} succeeded`);
     }
+
+    // Step 5-Final: Aggregate results and select citations
+    const phaseIVAggregateResult = await step.run("phase-iv-aggregate", async () => {
+      return await executePhaseIVAggregate(orderId, phaseIVInit, batchResults);
+    });
+
+    console.log(`[Orchestration] Phase IV Aggregate complete: ${phaseIVAggregateResult.citationCount} citations selected`);
+
+    // Build Phase IV output in expected format
+    const phaseIVResult = {
+      success: phaseIVAggregateResult.success,
+      phase: "IV" as WorkflowPhaseCode,
+      status: "completed" as PhaseStatus,
+      output: {
+        caseCitationBank: phaseIVAggregateResult.caseCitationBank,
+        statutoryCitationBank: phaseIVAggregateResult.statutoryCitationBank,
+        totalCitations: phaseIVAggregateResult.citationCount,
+        bindingCount: phaseIVAggregateResult.bindingCount,
+        persuasiveCount: phaseIVAggregateResult.persuasiveCount,
+        louisianaCitations: phaseIVAggregateResult.louisianaCitations,
+        federalCitations: phaseIVAggregateResult.federalCitations,
+        elementsCovered: phaseIVAggregateResult.elementsCovered,
+        totalElements: phaseIVAggregateResult.totalElements,
+        verificationProof: phaseIVAggregateResult.verificationProof,
+        success: phaseIVAggregateResult.success,
+        _phaseIV_meta: {
+          version: '2026-01-30-CHEN-MULTI-STEP',
+          executionId: phaseIVInit.executionId,
+          executedAt: new Date().toISOString(),
+          codeGuarantee: 'MULTI_STEP_CITATION_RESEARCH',
+          totalBatches: phaseIVInit.totalBatches,
+          searchTasksPlanned: phaseIVInit.searchTasks.length,
+        },
+      },
+      nextPhase: "V" as WorkflowPhaseCode,
+    };
+
+    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+    workflowState.phaseOutputs["IV"] = phaseIVResult.output;
+    workflowState.citationCount = phaseIVAggregateResult.citationCount;
+    console.log(`[Orchestration] Phase IV citation banks: ${phaseIVAggregateResult.caseCitationBank.length} case + ${phaseIVAggregateResult.statutoryCitationBank.length} statutory`);
     console.log('[Orchestration] Accumulated after IV:', Object.keys(workflowState.phaseOutputs));
     console.log('[Orchestration] Citation count:', workflowState.citationCount);
+
+    // Log Phase IV execution for audit trail
+    await step.run("log-phase-iv-execution", async () => {
+      await supabase.from("automation_logs").insert({
+        order_id: orderId,
+        action_type: "phase_executed",
+        action_details: {
+          workflowId: workflowState.workflowId,
+          phase: "IV",
+          phaseName: "Citation Research (Multi-Step)",
+          success: phaseIVAggregateResult.success,
+          status: "completed",
+          citationCount: phaseIVAggregateResult.citationCount,
+          batchesExecuted: phaseIVInit.totalBatches,
+          searchTasksPlanned: phaseIVInit.searchTasks.length,
+          flaggedForReview: phaseIVAggregateResult.flaggedForReview,
+        },
+      });
+    });
 
     // CP1 Checkpoint - Notify customer about research direction
     await step.run("checkpoint-cp1", async () => {
@@ -1204,7 +1283,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         template_data: {
           checkpoint: "CP1",
           citationCount: workflowState.citationCount,
-          phase: "Citation Verification",
+          phase: "Citation Verification (Multi-Step)",
         },
         priority: 7,
         status: "pending",

@@ -15,8 +15,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
+const tierKeys = Object.keys(MOTION_TIERS) as (keyof typeof MOTION_TIERS)[]
+
 export function PricingTable() {
   const [selectedRush, setSelectedRush] = useState<'standard' | 'rush_72' | 'rush_48'>('standard')
+  const [activeTab, setActiveTab] = useState(tierKeys[0])
 
   const rushMultiplier = RUSH_OPTIONS.find(r => r.id === selectedRush)?.multiplier || 1
 
@@ -35,9 +38,9 @@ export function PricingTable() {
             <button
               key={option.id}
               onClick={() => setSelectedRush(option.id as typeof selectedRush)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
                 selectedRush === option.id
-                  ? 'bg-teal text-navy'
+                  ? 'bg-navy text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -51,17 +54,19 @@ export function PricingTable() {
       </div>
 
       {/* Pricing tiers */}
-      <Tabs defaultValue="tier1" className="w-full">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as keyof typeof MOTION_TIERS)} className="w-full">
         <TabsList className="grid w-full grid-cols-4 mb-8">
-          {Object.entries(MOTION_TIERS).map(([key, tier]) => (
+          {tierKeys.map((key) => (
             <TabsTrigger key={key} value={key} className="text-xs sm:text-sm">
-              {tier.name.split('—')[0].trim()}
+              {MOTION_TIERS[key].name.split('—')[0].trim()}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        {Object.entries(MOTION_TIERS).map(([key, tier]) => (
-          <TabsContent key={key} value={key}>
+        {tierKeys.map((key) => {
+          const tier = MOTION_TIERS[key]
+          return (
+          <TabsContent key={key} value={key} forceMount className={activeTab !== key ? 'hidden' : ''}>
             <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
               {/* Tier header */}
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
@@ -126,7 +131,8 @@ export function PricingTable() {
               </div>
             </div>
           </TabsContent>
-        ))}
+          )
+        })}
       </Tabs>
 
       {/* CTA */}
@@ -139,7 +145,7 @@ export function PricingTable() {
         </Button>
         <p className="mt-4 text-sm text-gray-500">
           Questions about pricing?{' '}
-          <Link href="/contact" className="text-teal hover:underline">
+          <Link href="/contact" className="text-gold hover:underline">
             Contact us
           </Link>
         </p>

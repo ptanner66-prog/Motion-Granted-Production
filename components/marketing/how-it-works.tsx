@@ -1,128 +1,136 @@
-'use client'
+import Link from 'next/link'
 
-import { Upload, PenTool, CheckCircle, ChevronRight } from 'lucide-react'
-import { useScrollAnimation } from '@/hooks/use-scroll-animation'
-
-const steps = [
+const qualityStandards = [
   {
-    icon: Upload,
-    title: 'Submit',
-    description:
-      'Tell us what you need. Upload your case documents, select your motion type, and provide your instructions.',
+    metric: "7",
+    label: "Layer Verification",
+    description: "Every deliverable passes through our proprietary 7-layer integrity check—verifying holdings, citation strength, and procedural compliance."
   },
   {
-    icon: PenTool,
-    title: 'We Draft',
-    description:
-      'Our law clerks prepare a polished draft based on your direction. Track progress in your dashboard.',
+    metric: "B+",
+    label: "Quality Gate",
+    description: "Work product that fails to meet our B+ judicial review standard is revised internally. You receive file-ready drafts."
   },
   {
-    icon: CheckCircle,
-    title: 'You File',
-    description:
-      'Download, review, and file under your name. One round of revisions included.',
+    metric: "VPI",
+    label: "Verified Precedent Index",
+    description: "Citations sourced exclusively from our curated library of court-validated legal principles. No hallucinations. No fabrications."
   },
-]
+  {
+    metric: "512",
+    label: "ABA Disclosure Ready",
+    description: "AI-assisted drafting disclosures generated automatically per ABA Formal Opinion 512 requirements for your jurisdiction."
+  }
+];
 
 export function HowItWorks() {
-  const { ref, isInView } = useScrollAnimation<HTMLDivElement>({ threshold: 0.2 })
-
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-[#f8f7f4] to-[#faf9f7] py-28 sm:py-36">
-      {/* Decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-1/4 h-72 w-72 rounded-full bg-teal/5 blur-3xl" />
-        <div className="absolute bottom-20 right-1/4 h-72 w-72 rounded-full bg-navy/5 blur-3xl" />
-      </div>
-
-      <div ref={ref} className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Section header */}
-        <div 
-          className={`mx-auto max-w-2xl text-center transition-all duration-700 ${
-            isInView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
-          }`}
-        >
-          <div className="mb-4 inline-flex items-center rounded-full bg-teal/10 px-4 py-1.5 text-sm font-medium text-navy">
-            Simple Process
+    <section id="protocol" className="bg-white py-28">
+      <div className="max-w-7xl mx-auto px-6">
+        {/* Section Header */}
+        <div className="mb-20">
+          <div className="inline-flex items-center gap-4 mb-8">
+            <div className="h-[2px] w-12 bg-gold" />
+            <span className="text-xs font-bold uppercase tracking-[0.4em] text-gold">
+              Motion Granted Verification Protocol
+            </span>
           </div>
-          <h2 className="text-3xl font-bold tracking-tight text-navy sm:text-4xl lg:text-5xl">
-            How It Works
-          </h2>
-          <p className="mt-5 text-lg text-gray-600 sm:text-xl">
-            Three simple steps to professional motion drafts
+          <h2 className="font-serif text-5xl md:text-7xl text-navy mb-6">Every Citation Verified</h2>
+          <p className="text-xl text-gray-600 max-w-3xl leading-relaxed">
+            Our proprietary verification protocol ensures every authority in your deliverable
+            is real, accurately quoted, and still good law. Zero hallucinated citations.
           </p>
         </div>
 
-        {/* Steps */}
-        <div className="mx-auto mt-20 max-w-5xl">
-          <div className="relative">
-            {/* Connecting line with arrows - desktop */}
-            <div className="absolute left-0 right-0 top-[60px] hidden items-center justify-center sm:flex">
-              <div className="relative mx-auto flex w-full max-w-3xl items-center justify-between px-20">
-                {/* First connector */}
-                <div className="flex flex-1 items-center">
-                  <div className="h-0.5 flex-1 bg-gradient-to-r from-teal/20 via-teal/40 to-teal/20" />
-                  <ChevronRight className="mx-1 h-5 w-5 text-teal/40" />
+        {/* Quality Metrics Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-20">
+          {qualityStandards.map((item) => (
+            <div key={item.label} className="border-t-2 border-gold pt-8">
+              <div className="text-6xl font-serif text-navy mb-4">{item.metric}</div>
+              <h3 className="text-lg font-semibold text-navy mb-3">{item.label}</h3>
+              <p className="text-gray-600 text-sm leading-relaxed">{item.description}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Safety Intercept Feature */}
+        <div className="bg-navy/5 border border-navy/10 p-10 mb-16">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-4 block">
+                The Safety Intercept
+              </span>
+              <h3 className="font-serif text-3xl text-navy mb-6">
+                Flagged Authority? Production Pauses.
+              </h3>
+              <p className="text-gray-600 leading-relaxed mb-4">
+                When our verification protocol flags a potentially problematic authority—overruled,
+                distinguished, or questionable precedent—production halts automatically. You receive
+                an immediate alert with the specific concern.
+              </p>
+              <p className="text-gray-600 leading-relaxed">
+                You decide whether to proceed, substitute, or remove. The decision is yours;
+                the protection is built-in.
+              </p>
+            </div>
+            <div className="border-l-4 border-gold pl-8">
+              <div className="space-y-6">
+                <div>
+                  <span className="text-navy font-semibold block mb-1">Overruled Authorities</span>
+                  <span className="text-gray-500 text-sm">Flagged and held for your review</span>
                 </div>
-                {/* Second connector */}
-                <div className="flex flex-1 items-center">
-                  <div className="h-0.5 flex-1 bg-gradient-to-r from-teal/20 via-teal/40 to-teal/20" />
-                  <ChevronRight className="mx-1 h-5 w-5 text-teal/40" />
+                <div>
+                  <span className="text-navy font-semibold block mb-1">Distinguished Holdings</span>
+                  <span className="text-gray-500 text-sm">Marked with jurisdictional context</span>
+                </div>
+                <div>
+                  <span className="text-navy font-semibold block mb-1">Citation Strength Alerts</span>
+                  <span className="text-gray-500 text-sm">Weak or dicta-based support identified</span>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
 
-            <div className="grid gap-12 sm:grid-cols-3 sm:gap-8">
-              {steps.map((step, index) => (
-                <div 
-                  key={step.title} 
-                  className={`group relative transition-all duration-700 ${
-                    isInView 
-                      ? 'opacity-100 translate-y-0' 
-                      : 'opacity-0 translate-y-12'
-                  }`}
-                  style={{ transitionDelay: `${150 + index * 150}ms` }}
-                >
-                  <div className="flex flex-col items-center text-center">
-                    {/* Step number and icon container */}
-                    <div className="relative">
-                      {/* Outer glow ring - shows on hover */}
-                      <div className="absolute -inset-4 rounded-full bg-gradient-to-br from-teal/20 to-teal/5 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
-
-                      {/* Main icon circle */}
-                      <div className="relative flex h-[120px] w-[120px] items-center justify-center rounded-full bg-white shadow-lg shadow-gray-200/50 ring-1 ring-gray-100 transition-all duration-500 group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-teal/10 group-hover:ring-teal/20">
-                        {/* Inner gradient */}
-                        <div className="absolute inset-2 rounded-full bg-gradient-to-br from-teal/8 to-transparent" />
-
-                        <step.icon className="relative h-10 w-10 text-teal transition-transform duration-500 group-hover:scale-110" />
-                      </div>
-
-                      {/* Step number badge with gradient */}
-                      <span className="absolute -right-1 -top-1 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-navy via-navy to-navy-light text-sm font-bold text-white shadow-lg shadow-navy/25 ring-4 ring-white transition-transform duration-300 group-hover:scale-110">
-                        {index + 1}
-                      </span>
-                    </div>
-
-                    {/* Content */}
-                    <h3 className="mt-8 text-xl font-semibold text-navy lg:text-2xl">
-                      {step.title}
-                    </h3>
-                    <p className="mt-3 max-w-xs text-gray-600 leading-relaxed lg:text-lg">
-                      {step.description}
-                    </p>
-                  </div>
-
-                  {/* Mobile connector arrow */}
-                  {index < steps.length - 1 && (
-                    <div className="mt-8 flex flex-col items-center justify-center sm:hidden">
-                      <div className="h-6 w-0.5 bg-gradient-to-b from-teal/40 to-teal/20" />
-                      <ChevronRight className="h-5 w-5 rotate-90 text-teal/40" />
-                    </div>
-                  )}
-                </div>
-              ))}
+        {/* Trust Statement */}
+        <div className="border-l-4 border-gold pl-8 py-4 mb-16">
+          <h3 className="font-serif text-3xl text-navy mb-6">You Review. You File.</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div className="space-y-4">
+              <p className="text-gray-600 leading-relaxed">
+                <strong className="text-navy">Drafting Service Only.</strong> Motion Granted is a legal
+                process outsourcing company. We are not a law firm. We do not provide legal advice
+                or create attorney-client relationships with your clients.
+              </p>
+              <p className="text-gray-600 leading-relaxed">
+                <strong className="text-navy">Your Supervision.</strong> You review every deliverable,
+                verify our work against your professional judgment, and file under your name.
+                The work product is yours to approve or revise.
+              </p>
+            </div>
+            <div className="space-y-4">
+              <p className="text-gray-600 leading-relaxed">
+                <strong className="text-navy">Complete Audit Trail.</strong> Every production decision
+                is logged. You receive documentation suitable for professional responsibility
+                compliance and malpractice defense.
+              </p>
+              <p className="text-gray-600 leading-relaxed">
+                <strong className="text-navy">Flat-Fee Pricing.</strong> No hourly billing. No scope creep.
+                You know your cost upfront. Rush delivery available for 48-hour and 72-hour turnaround.
+              </p>
             </div>
           </div>
+        </div>
+
+        {/* CTA */}
+        <div className="text-center">
+          <Link
+            href="/register"
+            className="inline-flex items-center gap-3 bg-navy text-white px-12 py-6 text-xl hover:bg-gold transition-all duration-500"
+          >
+            Start Your Order
+            <span className="text-gold group-hover:text-navy">→</span>
+          </Link>
         </div>
       </div>
     </section>

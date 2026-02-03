@@ -195,61 +195,106 @@ interface StatutoryCitationEntry {
 /**
  * Build the citation enforcement prompt block
  * This MUST be injected at the TOP of Phase V and VIII prompts
+ *
+ * CHEN MEGAPROMPT PHASE V FIX (2026-01-30):
+ * Strengthened enforcement with explicit [CITATION NEEDED] fallback and
+ * verification checklist to prevent hallucination of citations.
  */
 function buildCitationEnforcementPrompt(
   caseCitationBank: VerifiedCitationEntry[],
   statutoryCitationBank: StatutoryCitationEntry[] = []
 ): string {
-  const caseList = (caseCitationBank || []).map((c, i) =>
-    `  [C${i + 1}] ${c.caseName || 'Unknown'}, ${c.citation || 'No citation'} (${extractCourtAbbrev(c.court || '')} ${extractYear(c.date_filed || '')})`
-  ).join('\n');
+  // Format citations with full detail for Claude to reference
+  const caseList = (caseCitationBank || []).map((c, i) => {
+    const courtAbbrev = extractCourtAbbrev(c.court || '');
+    const year = extractYear(c.date_filed || '');
+    return `  ${i + 1}. ${c.caseName || 'Unknown'}
+     Citation: ${c.citation || 'No citation'}
+     Court: ${courtAbbrev || 'Unknown'}
+     Year: ${year || 'Unknown'}
+     CourtListener ID: ${c.courtlistener_id || 'N/A'}`;
+  }).join('\n\n');
 
   const statuteList = (statutoryCitationBank || []).map((s, i) =>
-    `  [S${i + 1}] ${s.citation || ''} — ${s.name || ''}`
+    `  ${i + 1}. ${s.citation || ''} — ${s.name || ''}`
   ).join('\n');
 
   return `
-╔════════════════════════════════════════════════════════════════════════════╗
-║  CITATION ENFORCEMENT — MANDATORY COMPLIANCE                               ║
-╚════════════════════════════════════════════════════════════════════════════╝
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: CITATION REQUIREMENTS — VIOLATION WILL CAUSE LEGAL MALPRACTICE
+═══════════════════════════════════════════════════════════════════════════════
 
 You have ${caseCitationBank?.length || 0} verified case citations available.
 You have ${statutoryCitationBank?.length || 0} verified statutory citations available.
 
-██████████████████████████████████████████████████████████████████████████████
-█                                                                            █
-█   YOU MAY ONLY USE CITATIONS FROM THE VERIFIED CITATION BANK BELOW.        █
-█                                                                            █
-█   DO NOT INVENT, HALLUCINATE, OR RECALL ANY CITATIONS FROM MEMORY.         █
-█                                                                            █
-█   IF A CITATION IS NOT IN THE BANK BELOW, YOU CANNOT USE IT.               █
-█                                                                            █
-█   VIOLATION OF THIS RULE COULD RESULT IN ATTORNEY SANCTIONS.               █
-█                                                                            █
-██████████████████████████████████████████████████████████████████████████████
+████████████████████████████████████████████████████████████████████████████████
+█                                                                              █
+█   YOU MUST USE ONLY THE CITATIONS FROM THE VERIFIED CITATION BANK BELOW.     █
+█                                                                              █
+█   DO NOT INVENT, HALLUCINATE, OR RECALL ANY CITATIONS FROM YOUR MEMORY.      █
+█                                                                              █
+█   DO NOT USE ANY CITATION THAT IS NOT EXPLICITLY LISTED BELOW.               █
+█                                                                              █
+█   IF NO CITATION IN THE BANK FITS, WRITE "[CITATION NEEDED]" INSTEAD.        █
+█                                                                              █
+█   FAKE CITATIONS = ATTORNEY SANCTIONS + MALPRACTICE LIABILITY + CLIENT HARM  █
+█                                                                              █
+████████████████████████████████████████████████████████████████████████████████
 
-VERIFIED CASE CITATIONS (you may ONLY use these):
-${caseList || '  (none provided)'}
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    VERIFIED CITATION BANK (CourtListener Verified)         ║
+╚════════════════════════════════════════════════════════════════════════════╝
 
-VERIFIED STATUTORY CITATIONS (you may ONLY use these):
-${statuteList || '  (none provided)'}
+CASE CITATIONS (you may ONLY cite these cases):
+${caseList || '  [No case citations available — use statutes only or write [CITATION NEEDED]]'}
 
-RULES:
-1. Every case citation in your motion MUST appear in the bank above
-2. You may use Louisiana Code of Civil Procedure articles (La. C.C.P. art. XXX) — statutes are acceptable
-3. You may NOT cite any case that is not in the VERIFIED CASE CITATION BANK
-4. If you need a citation for a proposition and none in the bank fits, state the legal principle WITHOUT a case citation
-5. It is BETTER to have fewer citations than to hallucinate fake ones
-6. When citing a case, use the exact caseName and citation from the bank
+STATUTORY CITATIONS (you may ALSO cite these statutes):
+${statuteList || '  [No statutory citations in bank]'}
 
-WHAT YOU MUST NOT DO:
-- Do NOT cite any case you "remember" from training unless it appears in the bank above
-- Do NOT invent Louisiana appellate cases even if they would be "more appropriate"
-- Do NOT add citations during revision that are not in the bank
+You may also cite Louisiana statutes directly:
+  - La. C.C.P. art. [number] — Louisiana Code of Civil Procedure
+  - La. R.S. [number]:[number] — Louisiana Revised Statutes
+
+═══════════════════════════════════════════════════════════════════════════════
+ABSOLUTE RULES — READ CAREFULLY
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Every case citation in your motion MUST come from the VERIFIED CITATION BANK above.
+
+2. Do NOT invent, hallucinate, or recall ANY citation from your training data.
+
+3. Do NOT use any citation that is not EXPLICITLY listed in the bank above.
+
+4. If you need a citation for a legal proposition and NO citation in the bank fits:
+   → Write "[CITATION NEEDED]" after the proposition
+   → Example: "Discovery abuse warrants sanctions. [CITATION NEEDED]"
+   → DO NOT invent a citation to fill the gap
+
+5. When citing a case, use the EXACT format from the bank:
+   → Use exact caseName and citation string
+   → Example: "State of Louisiana v. i3 Verticals, 81 F.4th 483"
+   → NOT: "i3 Verticals, 81 F. 4th 483" (spacing matters)
+
+6. It is ALWAYS BETTER to write [CITATION NEEDED] than to hallucinate a fake citation.
+
+═══════════════════════════════════════════════════════════════════════════════
+WHY THIS MATTERS — LEGAL CONSEQUENCES
+═══════════════════════════════════════════════════════════════════════════════
+
+- Every citation in the bank has been VERIFIED against CourtListener's database
+- Citations from your training data are UNVERIFIED and may not exist
+- Fake citations in court filings result in:
+  → Rule 11 sanctions against the filing attorney
+  → Potential malpractice liability
+  → Damage to client's case
+  → Harm to real people
+- This is a legal document filed in a real court. Accuracy is non-negotiable.
 
 ████████████████████████████████████████████████████████████████████████████████
-█  WARNING: Any case citation NOT in the list above will be REJECTED.          █
-█  Post-processing will STRIP unauthorized citations from the final motion.    █
+█  BEFORE FINALIZING YOUR DRAFT:                                               █
+█  ✓ Check EVERY case citation against the VERIFIED CITATION BANK above        █
+█  ✓ If a citation is NOT in the bank, REMOVE IT or replace with [CITATION NEEDED]█
+█  ✓ Post-processing will STRIP any unauthorized citations from the motion     █
 ████████████████████████████████████████████████████████████████████████████████
 `;
 }
@@ -1108,6 +1153,13 @@ async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
     // BUILD CITATION ENFORCEMENT PROMPT
     const citationEnforcementBlock = buildCitationEnforcementPrompt(typedCitationBank, statutoryCitationBank);
 
+    // Log confirmation that citation enforcement is being injected
+    console.log('[Phase V] ✅ Citation enforcement block built and will be injected into system prompt');
+    console.log(`[Phase V] Citation enforcement block length: ${citationEnforcementBlock.length} chars`);
+    console.log('[Phase V] Citation enforcement block preview (first 500 chars):');
+    console.log(citationEnforcementBlock.substring(0, 500));
+    console.log('[Phase V] ... (enforcement block continues with full citation bank)');
+
     // =========================================================================
     // Continue with normal Phase V execution
     // =========================================================================
@@ -1671,36 +1723,114 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
 // ============================================================================
 // PHASE V.1: Citation Accuracy Check - ZERO TOLERANCE ENFORCEMENT
 // ============================================================================
+// CHEN CIV FIX (2026-02-02): Enhanced citation extraction for Phase V.1
+// ============================================================================
 
 /**
  * Extract all case citations from text using regex patterns
+ *
+ * CITATION FORMATS SUPPORTED:
+ * - Federal: "884 F.3d 546", "132 F.4th 918", "54 F.Supp.3d 789"
+ * - SCOTUS: "410 U.S. 113", "541 U.S. 600"
+ * - Louisiana: "345 So. 3d 789", "270 So.3d 621"
+ * - Other state: Cal.App.4th, N.E.2d, etc.
+ * - Louisiana docket: "2021-01234 (La. App. 1 Cir. 12/15/21)"
+ *
+ * KNOWN ISSUE: Some citation banks contain bare opinion IDs like "9402549"
+ * These are NOT valid citations and will not be extracted (by design).
  */
 function extractCitationsFromText(text: string): string[] {
   const citations: string[] = [];
   const seen = new Set<string>();
 
-  // Federal case citations: 123 F.3d 456
-  const federalPattern = /\d+\s+(?:F\.\s*(?:2d|3d|4th)?|F\.\s*Supp\.\s*(?:2d|3d)?|F\.\s*App'x)\s+\d+/gi;
-  // Supreme Court: 123 U.S. 456
-  const scotusPattern = /\d+\s+(?:U\.S\.|S\.\s*Ct\.|L\.\s*Ed\.\s*(?:2d)?)\s+\d+/gi;
-  // State cases: 123 So.2d 456, 123 Cal.App.4th 456
-  const statePattern = /\d+\s+(?:So\.\s*(?:2d|3d)?|Cal\.\s*(?:App\.\s*)?(?:2d|3d|4th|5th)?|N\.E\.\s*(?:2d|3d)?|N\.W\.\s*(?:2d)?|S\.E\.\s*(?:2d)?|S\.W\.\s*(?:2d|3d)?|A\.\s*(?:2d|3d)?|P\.\s*(?:2d|3d)?)\s+\d+/gi;
+  // ==========================================================================
+  // PATTERN 1: Federal Reporter citations
+  // Matches: 884 F.3d 546, 132 F.4th 918, 45 F.Supp.3d 789, 54 F.App'x 123
+  // ==========================================================================
+  const federalPattern = /\d{1,4}\s+F\.\s*(?:2d|3d|4th|Supp\.?\s*(?:2d|3d)?|App['']?x)?\s+\d{1,5}/gi;
 
-  const patterns = [federalPattern, scotusPattern, statePattern];
+  // ==========================================================================
+  // PATTERN 2: Supreme Court citations
+  // Matches: 410 U.S. 113, 541 S.Ct. 1234, 200 L.Ed.2d 456
+  // ==========================================================================
+  const scotusPattern = /\d{1,4}\s+(?:U\.S\.|S\.\s*Ct\.|L\.\s*Ed\.\s*(?:2d)?)\s+\d{1,5}/gi;
 
-  for (const pattern of patterns) {
+  // ==========================================================================
+  // PATTERN 3: State Reporter citations (Louisiana, California, etc.)
+  // Matches: 345 So.3d 789, 270 So. 3d 621, 123 Cal.App.4th 456
+  // ==========================================================================
+  const statePattern = /\d{1,4}\s+(?:So\.\s*(?:2d|3d)?|Cal\.\s*(?:App\.\s*)?(?:2d|3d|4th|5th)?|N\.E\.\s*(?:2d|3d)?|N\.W\.\s*(?:2d)?|S\.E\.\s*(?:2d)?|S\.W\.\s*(?:2d|3d)?|A\.\s*(?:2d|3d)?|P\.\s*(?:2d|3d)?)\s+\d{1,5}/gi;
+
+  // ==========================================================================
+  // PATTERN 4: Louisiana docket format
+  // Matches: 2021-01234 (La. App. 1 Cir. 12/15/21)
+  // ==========================================================================
+  const laDocketPattern = /\d{4}-\d{4,6}\s*\([^)]*La\.?\s*(?:App\.)?\s*[^)]*\)/gi;
+
+  const patterns = [
+    { name: 'Federal', regex: federalPattern },
+    { name: 'SCOTUS', regex: scotusPattern },
+    { name: 'State', regex: statePattern },
+    { name: 'LA Docket', regex: laDocketPattern },
+  ];
+
+  console.log(`[extractCitationsFromText] Text length: ${text.length} chars`);
+
+  for (const { name, regex } of patterns) {
+    // Reset lastIndex for global regex
+    regex.lastIndex = 0;
     let match;
-    while ((match = pattern.exec(text)) !== null) {
+    let patternMatches = 0;
+
+    while ((match = regex.exec(text)) !== null) {
       const citationText = match[0].trim();
-      const normalized = citationText.toLowerCase();
+      const normalized = citationText.toLowerCase().replace(/\s+/g, ' ');
+
       if (!seen.has(normalized)) {
         seen.add(normalized);
         citations.push(citationText);
+        patternMatches++;
       }
+    }
+
+    if (patternMatches > 0) {
+      console.log(`[extractCitationsFromText] ${name} pattern found ${patternMatches} citations`);
     }
   }
 
+  console.log(`[extractCitationsFromText] Total unique citations extracted: ${citations.length}`);
+  if (citations.length > 0 && citations.length <= 15) {
+    console.log(`[extractCitationsFromText] Citations: ${citations.join(', ')}`);
+  }
+
   return citations;
+}
+
+/**
+ * Validate that a string looks like a legal citation, not an opinion ID
+ * Used to filter out malformed entries in the citation bank
+ *
+ * @returns true if the string is a valid citation format
+ */
+function isValidCitationFormat(str: string): boolean {
+  if (!str || typeof str !== 'string') return false;
+
+  // A valid citation must contain a reporter abbreviation
+  // e.g., "F.3d", "So. 3d", "U.S.", "Cal.App.4th"
+  const reporterPattern = /\b(U\.S\.|S\.\s*Ct\.|L\.\s*Ed|F\.\s*\d*(?:th|d)?|F\.\s*Supp|So\.\s*\d*(?:th|d)?|Cal\.|N\.E\.|N\.W\.|S\.E\.|S\.W\.|A\.\s*\d*(?:th|d)?|P\.\s*\d*(?:th|d)?|La\.)/i;
+
+  if (reporterPattern.test(str)) return true;
+
+  // Louisiana docket format: 2021-01234
+  if (/\d{4}-\d{4,6}/.test(str)) return true;
+
+  // Bare numbers are NOT valid citations (opinion IDs)
+  if (/^\d+$/.test(str.trim())) {
+    console.warn(`[isValidCitationFormat] Rejecting bare number as invalid citation: "${str}"`);
+    return false;
+  }
+
+  return false;
 }
 
 // ============================================================================
@@ -2032,16 +2162,84 @@ async function executePhaseV1(input: PhaseInput): Promise<PhaseOutput> {
 
     console.log(`[Phase V.1] Verified citation bank: ${verifiedCitationIds.size} citations with CourtListener IDs`);
 
-    // Extract Phase V output (draft motion)
-    const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
-    const draftMotion = (phaseVOutput?.draftMotion ?? phaseVOutput) as Record<string, unknown>;
+    // =========================================================================
+    // CHEN CIV FIX (2026-02-02): Extract draft motion from CORRECT path
+    // previousPhaseOutputs['V'] is the phase RESULT: {success, phase, status, output, ...}
+    // The draft motion is at: previousPhaseOutputs['V'].output.draftMotion
+    // =========================================================================
+    const phaseVResult = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+
+    // Try output.draftMotion first (correct path), then fallback to direct draftMotion
+    const phaseVOutputNested = (phaseVResult?.output ?? {}) as Record<string, unknown>;
+    const draftMotion = (
+      phaseVOutputNested?.draftMotion ??
+      phaseVResult?.draftMotion ??
+      phaseVResult
+    ) as Record<string, unknown>;
+
+    // DIAGNOSTIC: Log what we're working with
+    console.log(`[Phase V.1] Phase V result keys: ${Object.keys(phaseVResult).join(', ')}`);
+    console.log(`[Phase V.1] Phase V output nested keys: ${Object.keys(phaseVOutputNested).join(', ')}`);
+    console.log(`[Phase V.1] Draft motion keys: ${Object.keys(draftMotion).join(', ')}`);
 
     // Convert draft motion to text for citation extraction
-    const motionText = JSON.stringify(draftMotion);
+    // Include ALL text from the draft motion structure
+    let motionText = '';
+    if (draftMotion.caption) motionText += String(draftMotion.caption) + '\n';
+    if (draftMotion.title) motionText += String(draftMotion.title) + '\n';
+    if (draftMotion.introduction) motionText += String(draftMotion.introduction) + '\n';
+    if (draftMotion.statementOfFacts) motionText += String(draftMotion.statementOfFacts) + '\n';
+    if (draftMotion.legalArguments) {
+      const args = draftMotion.legalArguments as Array<{ heading?: string; content?: string }>;
+      for (const arg of args) {
+        if (arg.heading) motionText += arg.heading + '\n';
+        if (arg.content) motionText += arg.content + '\n';
+      }
+    }
+    if (draftMotion.conclusion) motionText += String(draftMotion.conclusion) + '\n';
+    if (draftMotion.prayerForRelief) motionText += String(draftMotion.prayerForRelief) + '\n';
+
+    // Fallback: if specific fields didn't work, stringify the whole object
+    if (motionText.length < 100) {
+      console.warn(`[Phase V.1] ⚠️ Structured extraction yielded only ${motionText.length} chars, falling back to JSON stringify`);
+      motionText = JSON.stringify(draftMotion);
+    }
+
+    console.log(`[Phase V.1] Motion text length: ${motionText.length} characters`);
+    console.log(`[Phase V.1] Motion text preview (first 500 chars): ${motionText.substring(0, 500)}`);
 
     // Extract all citations from the motion text
     const citationsInDraft = extractCitationsFromText(motionText);
     console.log(`[Phase V.1] Found ${citationsInDraft.length} citations in draft motion`);
+
+    // =========================================================================
+    // CHEN CIV FIX: ZERO-CITATION SAFETY CHECK
+    // If we extract 0 citations from a non-empty draft, something is WRONG
+    // This catches extraction bugs before they cause false "100% verified" results
+    // =========================================================================
+    if (citationsInDraft.length === 0 && motionText.length > 500) {
+      const error = new Error(
+        `[Phase V.1] CRITICAL: Extracted 0 citations from ${motionText.length}-char draft. ` +
+        `This indicates a citation extraction bug, not a citation-free motion. ` +
+        `Motion preview: "${motionText.substring(0, 200)}..."`
+      );
+      console.error(error.message);
+
+      // Don't throw - instead return a FAILED result that blocks the workflow
+      return {
+        success: false,
+        phase: 'V.1',
+        status: 'failed',
+        output: {
+          error: 'CITATION_EXTRACTION_FAILURE',
+          message: error.message,
+          motionTextLength: motionText.length,
+          draftMotionKeys: Object.keys(draftMotion),
+        },
+        error: error.message,
+        durationMs: Date.now() - start,
+      };
+    }
 
     // =========================================================================
     // VERIFY EACH CITATION AGAINST COURTLISTENER

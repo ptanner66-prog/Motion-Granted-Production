@@ -52,7 +52,7 @@ export function Footer() {
                     <li key={item.name}>
                       <Link
                         href={item.href}
-                        className="text-sm leading-6 text-gray-400 hover:text-teal transition-colors"
+                        className="text-sm leading-6 text-gray-400 hover:text-gold transition-colors"
                       >
                         {item.name}
                       </Link>
@@ -67,7 +67,7 @@ export function Footer() {
                     <li key={item.name}>
                       <Link
                         href={item.href}
-                        className="text-sm leading-6 text-gray-400 hover:text-teal transition-colors"
+                        className="text-sm leading-6 text-gray-400 hover:text-gold transition-colors"
                       >
                         {item.name}
                       </Link>
@@ -84,7 +84,7 @@ export function Footer() {
                     <li key={item.name}>
                       <Link
                         href={item.href}
-                        className="text-sm leading-6 text-gray-400 hover:text-teal transition-colors"
+                        className="text-sm leading-6 text-gray-400 hover:text-gold transition-colors"
                       >
                         {item.name}
                       </Link>
@@ -98,7 +98,7 @@ export function Footer() {
                   <li>
                     <Link
                       href="/register"
-                      className="text-sm leading-6 text-gray-400 hover:text-teal transition-colors"
+                      className="text-sm leading-6 text-gray-400 hover:text-gold transition-colors"
                     >
                       Create Account
                     </Link>
@@ -106,7 +106,7 @@ export function Footer() {
                   <li>
                     <Link
                       href="/login"
-                      className="text-sm leading-6 text-gray-400 hover:text-teal transition-colors"
+                      className="text-sm leading-6 text-gray-400 hover:text-gold transition-colors"
                     >
                       Sign In
                     </Link>
@@ -114,7 +114,7 @@ export function Footer() {
                   <li>
                     <Link
                       href="/dashboard"
-                      className="text-sm leading-6 text-gray-400 hover:text-teal transition-colors"
+                      className="text-sm leading-6 text-gray-400 hover:text-gold transition-colors"
                     >
                       Client Portal
                     </Link>
