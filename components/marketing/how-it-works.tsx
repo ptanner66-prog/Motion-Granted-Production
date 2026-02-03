@@ -174,7 +174,7 @@ export function HowItWorks() {
         {/* Stats Row with Count-Up Animation */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
           <AnimatedStat value="Every" label="Citation Verified" delay={0} />
-          <AnimatedStat value="B+" label="Minimum Standard" delay={100} />
+          <AnimatedStat value={1} label="Revision Included" suffix="+" delay={100} />
           <AnimatedStat value="5 Days" label="Standard Delivery" delay={200} />
           <AnimatedStat value="48 Hr" label="Rush Available" delay={300} />
         </div>

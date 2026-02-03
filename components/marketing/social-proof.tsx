@@ -1,6 +1,7 @@
 'use client'
 
-import { Shield, Clock, FileCheck, CheckCircle } from 'lucide-react'
+import { Shield, Clock, RefreshCw, CheckCircle, MessageSquare } from 'lucide-react'
+import Link from 'next/link'
 
 const trustFeatures = [
   {
@@ -14,16 +15,16 @@ const trustFeatures = [
     description: "5-day standard delivery. 72-hour and 48-hour rush options available.",
   },
   {
-    icon: FileCheck,
-    title: "B+ Minimum Standard",
-    description: "Every draft meets quality standards or we revise it at no additional cost.",
+    icon: RefreshCw,
+    title: "Revisions Included",
+    description: "One revision included with every order. We make it right until you're satisfied.",
   },
 ]
 
 const qualityPromises = [
   "Court-ready formatting for your jurisdiction",
   "Bluebook-compliant citations",
-  "One revision included with every order",
+  "Revision included with every order",
   "ABA Formal Opinion 512 disclosure included",
 ]
 
@@ -58,6 +59,27 @@ export function SocialProof() {
               <p className="text-gray-600 leading-relaxed">{feature.description}</p>
             </div>
           ))}
+        </div>
+
+        {/* Testimonial Placeholder */}
+        <div className="bg-white border border-navy/10 rounded-lg p-8 md:p-12 mb-16">
+          <div className="text-center max-w-2xl mx-auto">
+            <MessageSquare className="w-10 h-10 text-gold/40 mx-auto mb-6" />
+            <h3 className="font-serif text-2xl text-navy mb-4">
+              What attorneys are saying
+            </h3>
+            <p className="text-gray-500 mb-6">
+              We&apos;re onboarding our first cohort of Louisiana attorneys now.
+              Early clients will be featured here.
+            </p>
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-2 text-navy font-medium hover:text-gold transition-colors"
+            >
+              Join our founding clients
+              <span className="text-gold">→</span>
+            </Link>
+          </div>
         </div>
 
         {/* Quality Promises */}
