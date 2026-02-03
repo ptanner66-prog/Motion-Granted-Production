@@ -1,5 +1,8 @@
+'use client'
+
 import Link from 'next/link'
 import { Upload, FileEdit, FileCheck, ArrowRight, ShieldAlert } from 'lucide-react'
+import { useInView, useCountUp } from '@/hooks/use-in-view'
 
 const steps = [
   {
@@ -22,12 +25,47 @@ const steps = [
   },
 ];
 
+function AnimatedStat({ value, label, suffix = '', delay = 0 }: {
+  value: number | string
+  label: string
+  suffix?: string
+  delay?: number
+}) {
+  const [ref, isInView] = useInView<HTMLDivElement>({ threshold: 0.3 })
+  const numericValue = typeof value === 'number' ? value : 0
+  const count = useCountUp(numericValue, isInView, 1500, delay)
+
+  return (
+    <div
+      ref={ref}
+      className={`text-center p-6 bg-cream rounded-lg border border-navy/10 hover:shadow-lg hover:border-gold/30 transition-all duration-500 ${
+        isInView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
+      <div className="text-3xl font-serif text-navy mb-2">
+        {typeof value === 'number' ? count : value}{suffix}
+      </div>
+      <div className="text-sm text-gray-600">{label}</div>
+    </div>
+  )
+}
+
 export function HowItWorks() {
+  const [headerRef, headerInView] = useInView<HTMLDivElement>({ threshold: 0.2 })
+  const [stepsRef, stepsInView] = useInView<HTMLDivElement>({ threshold: 0.1 })
+  const [protocolRef, protocolInView] = useInView<HTMLDivElement>({ threshold: 0.2 })
+
   return (
     <section id="how-it-works" className="bg-white py-24">
       <div className="max-w-7xl mx-auto px-6">
         {/* Section Header */}
-        <div className="text-center mb-16">
+        <div
+          ref={headerRef}
+          className={`text-center mb-16 transition-all duration-700 ${
+            headerInView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+          }`}
+        >
           <span className="text-xs font-bold uppercase tracking-[0.3em] text-gold mb-4 block">
             How It Works
           </span>
@@ -40,17 +78,28 @@ export function HowItWorks() {
         </div>
 
         {/* Steps */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
+        <div ref={stepsRef} className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
           {steps.map((step, index) => (
-            <div key={step.number} className="relative">
+            <div
+              key={step.number}
+              className={`relative transition-all duration-700 ${
+                stepsInView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+              }`}
+              style={{ transitionDelay: `${index * 150}ms` }}
+            >
               {/* Connector line */}
               {index < steps.length - 1 && (
-                <div className="hidden md:block absolute top-16 left-full w-full h-px bg-gradient-to-r from-gold/50 to-transparent z-0" />
+                <div
+                  className={`hidden md:block absolute top-16 left-full w-full h-px bg-gradient-to-r from-gold/50 to-transparent z-0 transition-all duration-1000 ${
+                    stepsInView ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'
+                  }`}
+                  style={{ transitionDelay: `${(index + 1) * 200}ms`, transformOrigin: 'left' }}
+                />
               )}
-              <div className="bg-cream border border-navy/10 rounded-lg p-8 relative z-10 h-full hover:shadow-lg hover:border-gold/30 transition-all">
+              <div className="bg-cream border border-navy/10 rounded-lg p-8 relative z-10 h-full hover:shadow-lg hover:border-gold/30 hover:-translate-y-1 transition-all duration-300 group">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 bg-navy rounded-lg flex items-center justify-center">
-                    <step.icon className="w-6 h-6 text-gold" />
+                  <div className="w-12 h-12 bg-navy rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <step.icon className="w-6 h-6 text-gold" aria-hidden="true" />
                   </div>
                   <span className="text-4xl font-serif text-navy/20">{step.number}</span>
                 </div>
@@ -62,7 +111,12 @@ export function HowItWorks() {
         </div>
 
         {/* Verification Protocol - Two Column */}
-        <div className="bg-navy rounded-lg p-10 mb-16">
+        <div
+          ref={protocolRef}
+          className={`bg-navy rounded-lg p-10 mb-16 transition-all duration-700 ${
+            protocolInView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+          }`}
+        >
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
             {/* Verified Precedent Index */}
             <div>
@@ -77,16 +131,16 @@ export function HowItWorks() {
                 legal principles. No fabricated cases. No made-up quotes.
               </p>
               <div className="space-y-3 text-gray-300 text-sm">
-                <div className="flex items-start gap-3">
-                  <span className="text-gold mt-0.5">—</span>
+                <div className="flex items-start gap-3 group">
+                  <span className="text-gold mt-0.5 group-hover:scale-125 transition-transform" aria-hidden="true">—</span>
                   <span>Citation existence verified against primary sources</span>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-gold mt-0.5">—</span>
+                <div className="flex items-start gap-3 group">
+                  <span className="text-gold mt-0.5 group-hover:scale-125 transition-transform" aria-hidden="true">—</span>
                   <span>Holding accuracy confirmed for your specific use</span>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-gold mt-0.5">—</span>
+                <div className="flex items-start gap-3 group">
+                  <span className="text-gold mt-0.5 group-hover:scale-125 transition-transform" aria-hidden="true">—</span>
                   <span>Subsequent history checked for overruling</span>
                 </div>
               </div>
@@ -95,7 +149,7 @@ export function HowItWorks() {
             {/* Safety Intercept */}
             <div className="lg:border-l border-white/10 lg:pl-10">
               <div className="flex items-center gap-3 mb-4">
-                <ShieldAlert className="w-5 h-5 text-gold" />
+                <ShieldAlert className="w-5 h-5 text-gold" aria-hidden="true" />
                 <span className="text-gold font-bold text-xs uppercase tracking-[0.2em]">
                   The Safety Intercept
                 </span>
@@ -107,7 +161,7 @@ export function HowItWorks() {
                 If our verification flags an authority as uncertain—overruled, questioned,
                 or problematic—production stops. You&apos;re alerted before you ever see a draft.
               </p>
-              <div className="bg-white/5 border border-white/10 rounded p-5">
+              <div className="bg-white/5 border border-white/10 rounded p-5 hover:bg-white/10 transition-colors">
                 <p className="text-white font-medium mb-2">Your reputation, protected.</p>
                 <p className="text-gray-400 text-sm">
                   The decision to proceed is always yours. The protection is built-in.
@@ -117,34 +171,22 @@ export function HowItWorks() {
           </div>
         </div>
 
-        {/* Stats Row */}
+        {/* Stats Row with Count-Up Animation */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
-          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
-            <div className="text-3xl font-serif text-navy mb-2">100%</div>
-            <div className="text-sm text-gray-600">Citations Verified</div>
-          </div>
-          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
-            <div className="text-3xl font-serif text-navy mb-2">B+</div>
-            <div className="text-sm text-gray-600">Minimum Standard</div>
-          </div>
-          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
-            <div className="text-3xl font-serif text-navy mb-2">5 Days</div>
-            <div className="text-sm text-gray-600">Standard Delivery</div>
-          </div>
-          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
-            <div className="text-3xl font-serif text-navy mb-2">48 Hr</div>
-            <div className="text-sm text-gray-600">Rush Available</div>
-          </div>
+          <AnimatedStat value="Every" label="Citation Verified" delay={0} />
+          <AnimatedStat value="B+" label="Minimum Standard" delay={100} />
+          <AnimatedStat value="5 Days" label="Standard Delivery" delay={200} />
+          <AnimatedStat value="48 Hr" label="Rush Available" delay={300} />
         </div>
 
         {/* Simple CTA */}
         <div className="text-center">
           <Link
             href="/register"
-            className="inline-flex items-center gap-3 bg-navy text-white px-10 py-5 text-lg rounded-md hover:bg-gold hover:text-navy transition-all duration-300 group"
+            className="inline-flex items-center gap-3 bg-navy text-white px-10 py-5 text-lg rounded-md hover:bg-gold hover:text-navy hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 group"
           >
             Start Your First Order
-            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
           </Link>
           <p className="text-gray-500 text-sm mt-4">No retainer required</p>
         </div>
