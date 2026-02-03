@@ -1,57 +1,78 @@
+import { Shield, Clock, FileCheck, Lock } from 'lucide-react'
+
 export function TrustSection() {
   return (
-    <section className="relative overflow-hidden bg-navy py-28 sm:py-36">
-      {/* Decorative background elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        {/* Gradient orbs */}
-        <div className="absolute -top-40 -left-40 h-80 w-80 rounded-full bg-teal/10 blur-3xl" />
-        <div className="absolute -bottom-40 -right-40 h-80 w-80 rounded-full bg-teal/5 blur-3xl" />
-
-        {/* Subtle pattern overlay */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
-      </div>
-
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl text-center">
-          {/* Decorative accent line */}
-          <div className="mb-8 flex justify-center">
-            <div className="h-1 w-16 rounded-full bg-gradient-to-r from-teal/50 via-teal to-teal/50" />
-          </div>
-
-          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
-            Built for Solo Practitioners and Small Firms
+    <section className="bg-navy py-24">
+      <div className="max-w-7xl mx-auto px-6">
+        {/* Emotional Hook - The Pain Point */}
+        <div className="max-w-4xl mx-auto text-center mb-20">
+          <h2 className="font-serif text-4xl md:text-5xl text-white mb-8 leading-tight">
+            You don&apos;t have associates to delegate to.
           </h2>
+          <p className="text-xl text-gray-300 leading-relaxed mb-6">
+            You don&apos;t have time to draft a 20-page summary judgment brief while juggling
+            court appearances, client calls, and discovery deadlines.
+          </p>
+          <p className="text-xl text-gray-300 leading-relaxed mb-6">
+            That&apos;s where we come in.
+          </p>
+          <p className="text-2xl text-gold font-serif italic">
+            Motion Granted gives you a reliable drafting team on demand—without
+            the overhead of full-time staff.
+          </p>
+        </div>
 
-          <div className="mt-10 space-y-6">
-            <p className="text-lg leading-8 text-gray-300 sm:text-xl sm:leading-9">
-              You don&apos;t have associates to delegate to. You don&apos;t have time to draft a
-              20-page summary judgment brief while juggling court appearances, client
-              calls, and discovery deadlines.
-            </p>
-            <p className="text-lg leading-8 text-gray-300 sm:text-xl sm:leading-9">
-              That&apos;s where we come in.
-            </p>
-            <p className="text-lg leading-8 font-medium sm:text-xl sm:leading-9">
-              <span className="text-gradient">
-                Motion Granted gives you a reliable drafting team on demand—without the
-                overhead of full-time staff.
-              </span>
-            </p>
-          </div>
+        {/* Divider */}
+        <div className="h-px w-48 mx-auto bg-gradient-to-r from-transparent via-gold/50 to-transparent mb-20" />
 
-          {/* Decorative bottom accent */}
-          <div className="mt-12 flex justify-center">
-            <div className="flex items-center gap-3">
-              <div className="h-px w-12 bg-gradient-to-r from-transparent to-teal/50" />
-              <div className="h-2 w-2 rounded-full bg-teal/50" />
-              <div className="h-px w-12 bg-gradient-to-l from-transparent to-teal/50" />
+        {/* Why Attorneys Trust Us - Compact Grid */}
+        <div className="mb-16">
+          <h3 className="text-center text-xs font-bold uppercase tracking-[0.3em] text-gold mb-12">
+            Why Attorneys Trust Us
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white/5 p-6 rounded-sm border border-white/10 hover:border-gold/30 transition-colors">
+              <Shield className="w-8 h-8 text-gold mb-4" />
+              <h4 className="text-white font-semibold mb-2">Verified Citations</h4>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                Every authority checked against our Verified Precedent Index. No hallucinated cases.
+              </p>
+            </div>
+            <div className="bg-white/5 p-6 rounded-sm border border-white/10 hover:border-gold/30 transition-colors">
+              <Clock className="w-8 h-8 text-gold mb-4" />
+              <h4 className="text-white font-semibold mb-2">Predictable Turnaround</h4>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                Standard 5-day delivery. 72-hour and 48-hour rush options when deadlines hit.
+              </p>
+            </div>
+            <div className="bg-white/5 p-6 rounded-sm border border-white/10 hover:border-gold/30 transition-colors">
+              <FileCheck className="w-8 h-8 text-gold mb-4" />
+              <h4 className="text-white font-semibold mb-2">ABA 512 Ready</h4>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                AI disclosure language auto-generated for every deliverable. Stay compliant effortlessly.
+              </p>
+            </div>
+            <div className="bg-white/5 p-6 rounded-sm border border-white/10 hover:border-gold/30 transition-colors">
+              <Lock className="w-8 h-8 text-gold mb-4" />
+              <h4 className="text-white font-semibold mb-2">Your Data, Protected</h4>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                Isolated processing. No training on your files. Attorney-client privilege preserved.
+              </p>
             </div>
           </div>
+        </div>
+
+        {/* Simple Process Reminder */}
+        <div className="bg-white/5 border border-white/10 rounded-sm p-8 text-center">
+          <p className="text-gray-300 text-lg">
+            <span className="text-white font-medium">We draft.</span>
+            {' '}You review.{' '}
+            <span className="text-white font-medium">You file.</span>
+            <span className="text-gold ml-4 italic">Simple as that.</span>
+          </p>
+          <p className="text-gray-500 text-sm mt-4">
+            Motion Granted is not a law firm. We provide drafting support to licensed attorneys.
+          </p>
         </div>
       </div>
     </section>

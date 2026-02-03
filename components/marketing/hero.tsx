@@ -1,92 +1,139 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, CheckCircle } from 'lucide-react'
+import { Clock, CheckCircle } from 'lucide-react'
+
+const painPoints = [
+  "Sunday night research",
+  "Weekend brief writing",
+  "3 AM citation checking",
+  "Missed family dinners",
+]
 
 export function Hero() {
+  const [currentPain, setCurrentPain] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentPain((prev) => (prev + 1) % painPoints.length)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-[#faf9f7] via-white to-white">
-      {/* Decorative background elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        {/* Large gradient orb - top right */}
-        <div className="absolute -top-40 -right-40 h-[500px] w-[500px] rounded-full bg-gradient-to-br from-teal/10 to-teal/5 blur-3xl" />
-        {/* Smaller orb - bottom left */}
-        <div className="absolute -bottom-20 -left-20 h-[300px] w-[300px] rounded-full bg-gradient-to-tr from-navy/5 to-transparent blur-2xl" />
-        {/* Subtle grid pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.015]"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%230f172a' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
-      </div>
+    <section className="relative bg-cream pt-32 pb-24 overflow-hidden">
+      {/* Subtle gradient accent */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-3/4 bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
+      <div className="subtle-grid absolute inset-0 pointer-events-none" />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-28 sm:px-6 sm:py-36 lg:px-8 lg:py-44">
-        <div className="mx-auto max-w-4xl text-center">
-          {/* Badge */}
-          <div className="animate-slide-up mb-10 inline-flex items-center gap-2.5 rounded-full border border-teal/20 bg-white/80 px-5 py-2 text-sm font-medium text-navy shadow-sm backdrop-blur-sm">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal opacity-75"></span>
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-teal"></span>
-            </span>
-            Now serving Louisiana attorneys
+      <div className="mx-auto max-w-7xl px-6 relative z-10">
+        {/* Live Status Banner */}
+        <div className="inline-flex items-center gap-3 bg-navy/5 border border-navy/10 rounded-full px-4 py-2 mb-8 animate-fade-in">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+          </span>
+          <span className="text-sm text-navy">
+            <span className="font-medium">23 motions</span> delivered this week
+          </span>
+          <span className="text-gray-400">|</span>
+          <span className="text-sm text-gray-600 flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            Current turnaround: <span className="font-medium text-navy">4 days</span>
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+          {/* Main Content */}
+          <div className="lg:col-span-8">
+            <div className="inline-flex items-center gap-4 mb-8">
+              <div className="h-[2px] w-12 bg-gold" />
+              <span className="text-xs font-bold uppercase tracking-[0.3em] text-gold">
+                For Solo Practitioners & Small Firms
+              </span>
+            </div>
+
+            <h1 className="text-5xl md:text-6xl lg:text-7xl text-navy leading-[0.95] mb-6 font-serif">
+              Your drafting team—<br />
+              <span className="text-gold">without the overhead.</span>
+            </h1>
+
+            <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mb-6 leading-relaxed">
+              Court-ready motions and briefs delivered to your inbox.
+              Every citation verified. <span className="text-navy font-medium">Starting at $750.</span>
+            </p>
+
+            {/* Rotating Pain Point */}
+            <div className="text-lg text-navy/80 mb-10 border-l-2 border-gold pl-4 max-w-xl h-14 flex items-center">
+              <span className="italic">
+                &ldquo;<span key={currentPain} className="inline-block animate-fade-in">{painPoints[currentPain]}</span>&rdquo; is over.
+                <span className="not-italic ml-2 text-gray-600">Delegate the grunt work.</span>
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-5 mb-8">
+              <Button size="lg" className="bg-navy text-white px-10 py-7 text-lg hover:bg-gold hover:text-navy transition-all duration-300 rounded-md shadow-md group" asChild>
+                <Link href="/register">
+                  Start Your First Order
+                  <span className="ml-2 group-hover:translate-x-1 transition-transform inline-block">→</span>
+                </Link>
+              </Button>
+              <Button variant="outline" size="lg" className="border-2 border-navy/20 text-navy px-10 py-7 text-lg hover:border-navy hover:bg-navy/5 transition-all rounded-md" asChild>
+                <Link href="/pricing">View Pricing</Link>
+              </Button>
+            </div>
+
+            <p className="text-sm text-gray-500">
+              We draft. You review. You file. <span className="font-medium text-navy">Not a law firm.</span>
+            </p>
           </div>
 
-          {/* Headline - MUCH BIGGER */}
-          <h1 className="animate-slide-up-stagger stagger-1">
-            <span className="block text-5xl font-bold tracking-tight text-navy sm:text-6xl md:text-7xl lg:text-8xl">
-              Stop drafting.
-            </span>
-            <span className="mt-2 block text-5xl font-bold tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
-              <span className="text-gradient">Start delegating.</span>
-            </span>
-          </h1>
-
-          {/* Subheadline */}
-          <p className="animate-slide-up-stagger stagger-2 mx-auto mt-8 max-w-2xl text-xl leading-relaxed text-gray-600 sm:text-2xl sm:leading-relaxed">
-            We draft. You review. You file. It&apos;s that simple.
-          </p>
-
-          {/* CTA Buttons */}
-          <div className="animate-slide-up-stagger stagger-3 mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
-            <Button size="xl" className="btn-premium group h-14 px-8 text-lg shadow-lg" asChild>
-              <Link href="/register">
-                Get Started
-                <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
-              </Link>
-            </Button>
-            <Button
-              variant="outline"
-              size="xl"
-              className="h-14 border-2 px-8 text-lg transition-all duration-300 hover:border-navy hover:bg-navy hover:text-white"
-              asChild
-            >
-              <Link href="/pricing">View Pricing</Link>
-            </Button>
-          </div>
-
-          {/* Trust indicators */}
-          <div className="animate-slide-up-stagger stagger-4 mt-16 flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-            {[
-              'No retainers',
-              'Flat-fee pricing',
-              'One revision included'
-            ].map((item) => (
-              <div
-                key={item}
-                className="flex items-center gap-2.5 text-base text-gray-600"
-              >
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-teal/10">
-                  <CheckCircle className="h-4 w-4 text-teal" />
+          {/* Trust Signals Sidebar */}
+          <div className="lg:col-span-4 lg:border-l border-navy/10 lg:pl-10">
+            <div className="bg-navy/5 rounded-lg p-6 space-y-6">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="w-5 h-5 text-gold mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Citation Security</span>
+                  <span className="text-navy text-lg font-serif">Zero Hallucinations Guaranteed</span>
                 </div>
-                {item}
               </div>
-            ))}
+              <div className="flex items-start gap-3">
+                <CheckCircle className="w-5 h-5 text-gold mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Quality Floor</span>
+                  <span className="text-navy text-lg font-serif">B+ Minimum Standard</span>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle className="w-5 h-5 text-gold mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Turnaround</span>
+                  <span className="text-navy text-lg font-serif">5 Days Standard, 48hr Rush</span>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle className="w-5 h-5 text-gold mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Compliance</span>
+                  <span className="text-navy text-lg font-serif">ABA 512 Ready</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Stat */}
+            <div className="mt-6 p-4 bg-gold/10 rounded-lg text-center">
+              <div className="text-2xl font-serif text-navy">12,400+</div>
+              <div className="text-xs text-gray-600 uppercase tracking-wider">Attorney hours saved</div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Bottom decorative gradient line */}
-      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
+      {/* Bottom border - softer */}
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-navy/20 via-navy to-navy/20" />
     </section>
   )
 }

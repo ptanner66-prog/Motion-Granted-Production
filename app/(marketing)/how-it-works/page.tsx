@@ -103,14 +103,14 @@ export default function HowItWorksPage() {
 
                   <div className="relative flex gap-6">
                     {/* Step icon */}
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal text-navy font-bold text-lg shadow-md">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-gold text-navy font-bold text-lg shadow-md">
                       {step.number}
                     </div>
 
                     {/* Content */}
                     <div className="flex-1 pb-8">
                       <div className="flex items-center gap-3 mb-2">
-                        <step.icon className="h-5 w-5 text-teal" />
+                        <step.icon className="h-5 w-5 text-gold" />
                         <h3 className="text-xl font-semibold text-navy">{step.title}</h3>
                       </div>
                       <p className="text-gray-600 leading-relaxed">{step.description}</p>
@@ -137,7 +137,7 @@ export default function HowItWorksPage() {
             <div className="mt-12 grid gap-4 sm:grid-cols-2 text-left">
               {features.map((feature) => (
                 <div key={feature} className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-teal shrink-0" />
+                  <CheckCircle className="h-5 w-5 text-gold shrink-0" />
                   <span className="text-gray-700">{feature}</span>
                 </div>
               ))}

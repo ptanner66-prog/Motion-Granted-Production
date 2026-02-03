@@ -7,7 +7,7 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY
 // The version string is enforced by TypeScript types in the Stripe package
 export const stripe = stripeSecretKey && !stripeSecretKey.includes('xxxxx')
   ? new Stripe(stripeSecretKey, {
-      apiVersion: '2025-12-15.clover',
+      apiVersion: '2026-01-28.clover',
       typescript: true,
     })
   : null

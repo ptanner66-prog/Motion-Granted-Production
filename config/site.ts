@@ -1,6 +1,6 @@
 export const siteConfig = {
   name: "Motion Granted",
-  description: "Professional legal motion drafting services for solo practitioners and small law firms",
+  description: "Your drafting team—without the overhead. Court-ready motions and briefs for solo practitioners and small firms. Flat-fee pricing. Every citation verified. Not a law firm.",
   url: "https://motiongranted.com",
   ogImage: "https://motiongranted.com/og-image.png",
   links: {
@@ -19,15 +19,22 @@ export const siteConfig = {
     zip: "70801",
   },
   keywords: [
-    "legal motion drafting",
-    "motion writing service",
+    "legal motion drafting service",
+    "motion writing for attorneys",
+    "solo practitioner drafting support",
+    "small law firm outsourcing",
+    "summary judgment motion drafting",
+    "motion to compel drafting",
+    "legal brief writing service",
+    "court document preparation",
+    "attorney drafting support",
     "legal process outsourcing",
-    "law clerk services",
-    "Louisiana attorney services",
-    "summary judgment drafting",
-    "legal briefs",
-    "motion to compel",
-    "exception drafting",
+    "flat fee legal drafting",
+    "verified legal citations",
+    "appellate brief drafting",
+    "discovery motion drafting",
+    "on-demand legal drafting",
+    "no retainer legal services",
   ],
 }
 

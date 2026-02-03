@@ -1,99 +1,152 @@
-import { Upload, PenTool, CheckCircle } from 'lucide-react'
+import Link from 'next/link'
+import { Upload, FileEdit, FileCheck, ArrowRight, ShieldAlert } from 'lucide-react'
 
 const steps = [
   {
+    number: "01",
     icon: Upload,
-    title: 'Submit',
-    description:
-      'Tell us what you need. Upload your case documents, select your motion type, and provide your instructions.',
+    title: "Submit Your Matter",
+    description: "Upload case materials through our secure portal. Specify motion type, deadline, and jurisdiction. Scope confirmation within 24 hours.",
   },
   {
-    icon: PenTool,
-    title: 'We Draft',
-    description:
-      'Our law clerks prepare a polished draft based on your direction. Track progress in your dashboard.',
+    number: "02",
+    icon: FileEdit,
+    title: "We Draft & Verify",
+    description: "Your matter enters our production workflow. Every citation verified against the Verified Precedent Index before delivery.",
   },
   {
-    icon: CheckCircle,
-    title: 'You File',
-    description:
-      'Download, review, and file under your name. One round of revisions included.',
+    number: "03",
+    icon: FileCheck,
+    title: "You Review & File",
+    description: "Receive file-ready documents with perfect Bluebook citations. Review against your judgment. File under your name.",
   },
-]
+];
 
 export function HowItWorks() {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-[#f8f7f4] to-[#faf9f7] py-28 sm:py-36">
-      {/* Decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-1/4 h-72 w-72 rounded-full bg-teal/5 blur-3xl" />
-        <div className="absolute bottom-20 right-1/4 h-72 w-72 rounded-full bg-navy/5 blur-3xl" />
-      </div>
-
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Section header */}
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="mb-4 inline-flex items-center rounded-full bg-teal/10 px-4 py-1.5 text-sm font-medium text-navy">
-            Simple Process
-          </div>
-          <h2 className="text-3xl font-bold tracking-tight text-navy sm:text-4xl lg:text-5xl">
+    <section id="how-it-works" className="bg-white py-24">
+      <div className="max-w-7xl mx-auto px-6">
+        {/* Section Header */}
+        <div className="text-center mb-16">
+          <span className="text-xs font-bold uppercase tracking-[0.3em] text-gold mb-4 block">
             How It Works
+          </span>
+          <h2 className="font-serif text-4xl md:text-5xl text-navy mb-6">
+            Three steps to file-ready work product
           </h2>
-          <p className="mt-5 text-lg text-gray-600 sm:text-xl">
-            Three simple steps to professional motion drafts
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            No long-term contracts. No retainer. Order what you need, when you need it.
           </p>
         </div>
 
         {/* Steps */}
-        <div className="mx-auto mt-20 max-w-5xl">
-          <div className="relative">
-            {/* Connecting line - desktop */}
-            <div className="absolute left-0 right-0 top-[60px] hidden h-0.5 sm:block">
-              <div className="mx-auto h-full max-w-3xl bg-gradient-to-r from-transparent via-teal/30 to-transparent" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
+          {steps.map((step, index) => (
+            <div key={step.number} className="relative">
+              {/* Connector line */}
+              {index < steps.length - 1 && (
+                <div className="hidden md:block absolute top-16 left-full w-full h-px bg-gradient-to-r from-gold/50 to-transparent z-0" />
+              )}
+              <div className="bg-cream border border-navy/10 rounded-lg p-8 relative z-10 h-full hover:shadow-lg hover:border-gold/30 transition-all">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 bg-navy rounded-lg flex items-center justify-center">
+                    <step.icon className="w-6 h-6 text-gold" />
+                  </div>
+                  <span className="text-4xl font-serif text-navy/20">{step.number}</span>
+                </div>
+                <h3 className="font-serif text-2xl text-navy mb-4">{step.title}</h3>
+                <p className="text-gray-600 leading-relaxed">{step.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Verification Protocol - Two Column */}
+        <div className="bg-navy rounded-lg p-10 mb-16">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            {/* Verified Precedent Index */}
+            <div>
+              <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-4 block">
+                Verified Precedent Index
+              </span>
+              <h3 className="font-serif text-3xl text-white mb-6">
+                Zero hallucinations. Guaranteed.
+              </h3>
+              <p className="text-gray-300 leading-relaxed mb-4">
+                Every citation is verified against our curated library of court-validated
+                legal principles. No fabricated cases. No made-up quotes.
+              </p>
+              <div className="space-y-3 text-gray-300 text-sm">
+                <div className="flex items-start gap-3">
+                  <span className="text-gold mt-0.5">—</span>
+                  <span>Citation existence verified against primary sources</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-gold mt-0.5">—</span>
+                  <span>Holding accuracy confirmed for your specific use</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-gold mt-0.5">—</span>
+                  <span>Subsequent history checked for overruling</span>
+                </div>
+              </div>
             </div>
 
-            <div className="grid gap-12 sm:grid-cols-3 sm:gap-8">
-              {steps.map((step, index) => (
-                <div key={step.title} className="relative">
-                  <div className="flex flex-col items-center text-center">
-                    {/* Step number and icon container */}
-                    <div className="relative">
-                      {/* Outer glow ring */}
-                      <div className="absolute -inset-3 rounded-full bg-gradient-to-br from-teal/20 to-teal/5 opacity-0 blur-lg transition-opacity duration-500 group-hover:opacity-100" />
-
-                      {/* Main icon circle */}
-                      <div className="relative flex h-[120px] w-[120px] items-center justify-center rounded-full bg-white shadow-lg ring-1 ring-gray-100 transition-all duration-500 hover:shadow-xl hover:ring-teal/20">
-                        {/* Inner gradient */}
-                        <div className="absolute inset-2 rounded-full bg-gradient-to-br from-teal/5 to-transparent" />
-
-                        <step.icon className="relative h-10 w-10 text-teal" />
-                      </div>
-
-                      {/* Step number badge */}
-                      <span className="absolute -right-1 -top-1 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-navy to-navy/90 text-sm font-bold text-white shadow-lg ring-4 ring-white">
-                        {index + 1}
-                      </span>
-                    </div>
-
-                    {/* Content */}
-                    <h3 className="mt-8 text-xl font-semibold text-navy lg:text-2xl">
-                      {step.title}
-                    </h3>
-                    <p className="mt-3 max-w-xs text-gray-600 leading-relaxed lg:text-lg">
-                      {step.description}
-                    </p>
-                  </div>
-
-                  {/* Mobile connector arrow */}
-                  {index < steps.length - 1 && (
-                    <div className="mt-8 flex justify-center sm:hidden">
-                      <div className="h-8 w-0.5 bg-gradient-to-b from-teal/30 to-transparent" />
-                    </div>
-                  )}
-                </div>
-              ))}
+            {/* Safety Intercept */}
+            <div className="lg:border-l border-white/10 lg:pl-10">
+              <div className="flex items-center gap-3 mb-4">
+                <ShieldAlert className="w-5 h-5 text-gold" />
+                <span className="text-gold font-bold text-xs uppercase tracking-[0.2em]">
+                  The Safety Intercept
+                </span>
+              </div>
+              <h3 className="font-serif text-3xl text-white mb-6">
+                Built to fail safe.
+              </h3>
+              <p className="text-gray-300 leading-relaxed mb-6">
+                If our verification flags an authority as uncertain—overruled, questioned,
+                or problematic—production stops. You&apos;re alerted before you ever see a draft.
+              </p>
+              <div className="bg-white/5 border border-white/10 rounded p-5">
+                <p className="text-white font-medium mb-2">Your reputation, protected.</p>
+                <p className="text-gray-400 text-sm">
+                  The decision to proceed is always yours. The protection is built-in.
+                </p>
+              </div>
             </div>
           </div>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
+          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
+            <div className="text-3xl font-serif text-navy mb-2">100%</div>
+            <div className="text-sm text-gray-600">Citations Verified</div>
+          </div>
+          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
+            <div className="text-3xl font-serif text-navy mb-2">B+</div>
+            <div className="text-sm text-gray-600">Minimum Standard</div>
+          </div>
+          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
+            <div className="text-3xl font-serif text-navy mb-2">5 Days</div>
+            <div className="text-sm text-gray-600">Standard Delivery</div>
+          </div>
+          <div className="text-center p-6 bg-cream rounded-lg border border-navy/10">
+            <div className="text-3xl font-serif text-navy mb-2">48 Hr</div>
+            <div className="text-sm text-gray-600">Rush Available</div>
+          </div>
+        </div>
+
+        {/* Simple CTA */}
+        <div className="text-center">
+          <Link
+            href="/register"
+            className="inline-flex items-center gap-3 bg-navy text-white px-10 py-5 text-lg rounded-md hover:bg-gold hover:text-navy transition-all duration-300 group"
+          >
+            Start Your First Order
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+          </Link>
+          <p className="text-gray-500 text-sm mt-4">No retainer required</p>
         </div>
       </div>
     </section>

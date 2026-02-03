@@ -1,99 +1,99 @@
-import { CalendarX, Shield, Compass, DollarSign } from 'lucide-react'
+import Link from 'next/link'
+import { FileText, Scale, Gavel, BookOpen } from 'lucide-react'
 
-const props = [
+const motionTypes = [
   {
-    icon: CalendarX,
-    title: 'No Commitment',
-    description:
-      'Order what you need, when you need it. No retainers, no subscriptions, no minimums.',
-    gradient: 'from-rose-500/10 to-orange-500/10',
-    iconBg: 'bg-gradient-to-br from-rose-500/20 to-orange-500/10',
-    iconColor: 'text-rose-600',
+    icon: Scale,
+    title: "Summary Judgment",
+    description: "Complete MSJ packages with memorandum, separate statement of facts, and proposed order.",
+    turnaround: "5-day standard",
   },
   {
-    icon: Shield,
-    title: 'Confidential & Secure',
-    description:
-      'Your case information stays protected. All staff bound by confidentiality obligations.',
-    gradient: 'from-blue-500/10 to-cyan-500/10',
-    iconBg: 'bg-gradient-to-br from-blue-500/20 to-cyan-500/10',
-    iconColor: 'text-blue-600',
+    icon: FileText,
+    title: "Discovery Motions",
+    description: "Motions to compel, protective orders, and Rule 37 certifications with discovery logs.",
+    turnaround: "5-day standard",
   },
   {
-    icon: Compass,
-    title: 'You Stay in Control',
-    description:
-      'You direct the strategy. You provide the arguments. We execute the drafting.',
-    gradient: 'from-violet-500/10 to-purple-500/10',
-    iconBg: 'bg-gradient-to-br from-violet-500/20 to-purple-500/10',
-    iconColor: 'text-violet-600',
+    icon: Gavel,
+    title: "Pleadings & Responses",
+    description: "Complaints, answers, affirmative defenses, and jurisdictional exceptions.",
+    turnaround: "5-day standard",
   },
   {
-    icon: DollarSign,
-    title: 'Flat-Fee Pricing',
-    description:
-      'Know your cost upfront. No hourly surprises. See our full pricing menu.',
-    gradient: 'from-emerald-500/10 to-teal-500/10',
-    iconBg: 'bg-gradient-to-br from-emerald-500/20 to-teal-500/10',
-    iconColor: 'text-emerald-600',
+    icon: BookOpen,
+    title: "Appellate Briefs",
+    description: "Opening briefs, reply briefs, and writs formatted for your appellate court.",
+    turnaround: "7-day standard",
   },
-]
+];
 
 export function ValueProps() {
   return (
-    <section className="relative bg-white py-28 sm:py-36">
-      {/* Subtle background pattern */}
-      <div className="absolute inset-0 opacity-[0.02]" style={{
-        backgroundImage: `radial-gradient(circle at 1px 1px, #0f172a 1px, transparent 0)`,
-        backgroundSize: '32px 32px',
-      }} />
-
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Section header */}
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="mb-4 inline-flex items-center rounded-full bg-navy/5 px-4 py-1.5 text-sm font-medium text-navy">
-            Why Choose Us
-          </div>
-          <h2 className="text-3xl font-bold tracking-tight text-navy sm:text-4xl lg:text-5xl">
-            Why Motion Granted?
+    <section className="bg-white py-24 border-t border-navy/5">
+      <div className="max-w-7xl mx-auto px-6">
+        {/* Section Header */}
+        <div className="text-center mb-16">
+          <span className="text-xs font-bold uppercase tracking-[0.3em] text-gold mb-4 block">
+            What We Draft
+          </span>
+          <h2 className="font-serif text-4xl md:text-5xl text-navy mb-6">
+            File-ready work product for your practice
           </h2>
-          <p className="mt-5 text-lg text-gray-600 sm:text-xl">
-            Built for busy attorneys who need reliable support
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
+            Flat-fee pricing you can quote to clients. Every citation verified before delivery.
           </p>
         </div>
 
-        {/* Props grid */}
-        <div className="mx-auto mt-20 max-w-6xl">
-          <div className="grid gap-6 sm:grid-cols-2 lg:gap-8">
-            {props.map((prop, index) => (
-              <div
-                key={prop.title}
-                className="group relative overflow-hidden rounded-2xl border border-gray-100 bg-white p-8 shadow-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-xl lg:p-10"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                {/* Gradient background on hover */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${prop.gradient} opacity-0 transition-opacity duration-500 group-hover:opacity-100`} />
+        {/* Motion Types Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+          {motionTypes.map((item) => (
+            <div
+              key={item.title}
+              className="bg-cream border border-navy/10 p-8 rounded-lg hover:shadow-lg hover:border-gold/30 transition-all duration-300 group"
+            >
+              <item.icon className="w-10 h-10 text-gold mb-6 group-hover:scale-110 transition-transform" />
+              <h3 className="font-serif text-xl text-navy mb-3">{item.title}</h3>
+              <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                {item.description}
+              </p>
+              <span className="text-xs font-medium text-gold uppercase tracking-wider">
+                {item.turnaround}
+              </span>
+            </div>
+          ))}
+        </div>
 
-                {/* Content */}
-                <div className="relative">
-                  {/* Icon */}
-                  <div className={`inline-flex h-14 w-14 items-center justify-center rounded-xl ${prop.iconBg} transition-transform duration-500 group-hover:scale-110`}>
-                    <prop.icon className={`h-7 w-7 ${prop.iconColor}`} />
-                  </div>
-
-                  <h3 className="mt-6 text-xl font-semibold text-navy lg:text-2xl">
-                    {prop.title}
-                  </h3>
-                  <p className="mt-3 text-gray-600 leading-relaxed lg:text-lg">
-                    {prop.description}
-                  </p>
-                </div>
-
-                {/* Decorative corner accent */}
-                <div className="absolute -bottom-2 -right-2 h-24 w-24 rounded-full bg-gradient-to-br from-teal/5 to-transparent opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
-              </div>
-            ))}
+        {/* Rush Banner */}
+        <div className="bg-navy text-white p-8 rounded-lg flex flex-col md:flex-row items-center justify-between gap-6">
+          <div>
+            <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-2 block">
+              Deadline approaching?
+            </span>
+            <h3 className="font-serif text-2xl md:text-3xl">
+              48-hour and 72-hour rush delivery available
+            </h3>
           </div>
+          <Link
+            href="/pricing"
+            className="bg-gold text-navy px-8 py-4 rounded font-semibold hover:bg-white transition-colors whitespace-nowrap"
+          >
+            View Rush Pricing
+          </Link>
+        </div>
+
+        {/* Bottom Note */}
+        <div className="mt-12 text-center">
+          <p className="text-gray-500 mb-4">
+            Don&apos;t see your matter type? We handle complex litigation and specialized filings too.
+          </p>
+          <Link
+            href="/pricing"
+            className="text-navy font-medium hover:text-gold transition-colors inline-flex items-center gap-2"
+          >
+            View complete fee schedule
+            <span className="text-gold">→</span>
+          </Link>
         </div>
       </div>
     </section>

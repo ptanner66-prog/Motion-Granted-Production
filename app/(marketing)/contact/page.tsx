@@ -107,15 +107,15 @@ export default function ContactPage() {
               <div className="space-y-8">
                 {contactInfo.map((item) => (
                   <div key={item.title} className="flex gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-teal/10">
-                      <item.icon className="h-6 w-6 text-teal" />
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-gold/10">
+                      <item.icon className="h-6 w-6 text-gold" />
                     </div>
                     <div>
                       <h3 className="font-semibold text-navy">{item.title}</h3>
                       {item.href ? (
                         <a
                           href={item.href}
-                          className="text-gray-600 hover:text-teal transition-colors whitespace-pre-line"
+                          className="text-gray-600 hover:text-gold transition-colors whitespace-pre-line"
                         >
                           {item.value}
                         </a>
