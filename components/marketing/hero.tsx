@@ -10,7 +10,7 @@ export function Hero() {
           <div className="inline-flex items-center gap-4 mb-10">
             <div className="h-[2px] w-12 bg-gold" />
             <span className="text-xs font-bold uppercase tracking-[0.4em] text-gold">
-              Universal Jurisdictional Production Engine
+              Institutional Legal Production
             </span>
           </div>
 
@@ -22,9 +22,9 @@ export function Hero() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end w-full">
             <div className="lg:col-span-7">
               <p className="text-2xl leading-relaxed text-navy/90 font-sans mb-12">
-                Motion Granted executes complex legal production through a proprietary 14-phase
-                verification protocol. Every deliverable is graded against a B+ judicial
-                standard and cross-verified against state and federal statutory codes.
+                Motion Granted produces complex motions, briefs, and exceptions through a
+                proprietary verification protocol. Every deliverable is graded against
+                judicial standards and verified for statutory compliance.
               </p>
               <div className="flex flex-wrap gap-8">
                 <Button size="lg" className="bg-navy text-white px-12 py-8 text-xl hover:bg-gold transition-all duration-500 rounded-none shadow-none" asChild>
@@ -34,7 +34,7 @@ export function Hero() {
                   href="#protocol"
                   className="text-navy text-xl font-serif italic border-b border-navy hover:border-gold hover:text-gold transition-colors inline-flex items-center py-4"
                 >
-                  Review the 14-Phase Protocol
+                  View Our Standards
                 </Link>
               </div>
             </div>
@@ -43,19 +43,19 @@ export function Hero() {
               <div className="space-y-8">
                 <div className="flex flex-col">
                   <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Compliance</span>
-                  <span className="text-navy text-lg italic font-serif">ABA Formal Opinion 512 Disclosures</span>
+                  <span className="text-navy text-lg italic font-serif">ABA Opinion 512 Ready</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Verification</span>
-                  <span className="text-navy text-lg italic font-serif">Phase VII Judge Simulation Engine</span>
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Quality Gate</span>
+                  <span className="text-navy text-lg italic font-serif">B+ Minimum Standard</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Citation Integrity</span>
-                  <span className="text-navy text-lg italic font-serif">Phase V Batch Verification System</span>
+                  <span className="text-navy text-lg italic font-serif">100% Verified Authorities</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Jurisdiction</span>
-                  <span className="text-navy text-lg italic font-serif">State & Federal Code Compliance</span>
+                  <span className="text-navy text-lg italic font-serif">State & Federal Courts</span>
                 </div>
               </div>
             </div>

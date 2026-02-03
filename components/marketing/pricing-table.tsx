@@ -35,9 +35,9 @@ export function PricingTable() {
             <button
               key={option.id}
               onClick={() => setSelectedRush(option.id as typeof selectedRush)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
                 selectedRush === option.id
-                  ? 'bg-teal text-navy'
+                  ? 'bg-navy text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -139,7 +139,7 @@ export function PricingTable() {
         </Button>
         <p className="mt-4 text-sm text-gray-500">
           Questions about pricing?{' '}
-          <Link href="/contact" className="text-teal hover:underline">
+          <Link href="/contact" className="text-gold hover:underline">
             Contact us
           </Link>
         </p>

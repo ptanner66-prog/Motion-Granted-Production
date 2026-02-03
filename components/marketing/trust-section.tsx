@@ -1,53 +1,54 @@
-import { Shield, FileText, Lock, ClipboardList } from 'lucide-react'
+import { Shield, Scale, Lock, FileCheck } from 'lucide-react'
 
 const securityFeatures = [
   {
-    icon: FileText,
-    title: "Louisiana Statute Parser",
-    description: "Custom parsing engine for La. C.C.P. and La. R.S. ensures every citation and procedural reference is current and correctly formatted.",
-    detail: "Updated weekly from legislative sources"
+    icon: Scale,
+    title: "Jurisdictional Compliance",
+    description: "Work product formatted and verified for state and federal court requirements. Current with all procedural rules.",
+    detail: "All 50 states + Federal"
   },
   {
     icon: Shield,
-    title: "ABA Opinion 512 Compliance",
-    description: "Built-in disclosure engine generates appropriate AI-assisted drafting disclosures per ABA Formal Opinion 512 requirements.",
-    detail: "Automatic disclosure integration"
+    title: "ABA Opinion 512 Ready",
+    description: "Appropriate AI-assisted drafting disclosures generated automatically per jurisdiction requirements.",
+    detail: "Built-in compliance"
   },
   {
     icon: Lock,
-    title: "Data Sovereignty & Retention",
-    description: "Automated anonymization scrubs sensitive client data after production. You control retention periods and deletion schedules.",
-    detail: "SOC 2 Type II compliant infrastructure"
+    title: "Data Protection",
+    description: "Your case materials are processed securely and scrubbed after delivery. You control retention.",
+    detail: "SOC 2 Type II infrastructure"
   },
   {
-    icon: ClipboardList,
-    title: "Institutional Audit Trail",
-    description: "Complete workflow audit log provides a paper trail for every decision made during the drafting process—from intake to delivery.",
-    detail: "Exportable for malpractice defense"
+    icon: FileCheck,
+    title: "Complete Audit Trail",
+    description: "Every production decision is logged and documented for your records.",
+    detail: "Malpractice defense ready"
   }
 ];
 
 export function TrustSection() {
   return (
     <section className="bg-navy py-28">
-      <div className="max-w-6xl mx-auto px-6">
+      <div className="max-w-7xl mx-auto px-6">
         <div className="mb-16">
-          <div className="border-l-4 border-gold pl-6 mb-8">
-            <span className="text-sm font-bold uppercase tracking-[0.3em] text-gold">
+          <div className="inline-flex items-center gap-4 mb-8">
+            <div className="h-[2px] w-12 bg-gold" />
+            <span className="text-xs font-bold uppercase tracking-[0.4em] text-gold">
               Enterprise Infrastructure
             </span>
           </div>
-          <h2 className="font-serif text-5xl md:text-6xl text-white mb-6">
+          <h2 className="font-serif text-5xl md:text-7xl text-white mb-6">
             Compliance & Security
           </h2>
-          <p className="text-xl text-gray-300 max-w-3xl">
-            For institutional clients, security is not a checkbox—it&apos;s the foundation.
-            Every component of Motion Granted is built to withstand scrutiny.
+          <p className="text-xl text-gray-300 max-w-3xl leading-relaxed">
+            Built for attorneys who demand institutional-grade security and
+            professional responsibility compliance.
           </p>
         </div>
 
         {/* Security Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
           {securityFeatures.map((feature) => (
             <div
               key={feature.title}
@@ -72,15 +73,15 @@ export function TrustSection() {
         </div>
 
         {/* Bottom Statement */}
-        <div className="mt-16 pt-12 border-t border-white/10">
+        <div className="pt-12 border-t border-white/10">
           <div className="grid md:grid-cols-3 gap-12">
             <div>
               <span className="text-gold font-bold text-xs uppercase tracking-[0.2em] mb-3 block">
-                Professional Responsibility
+                Professional Oversight
               </span>
               <p className="text-gray-300 text-sm leading-relaxed">
-                Motion Granted operates under the supervision of licensed Louisiana attorneys.
-                All work product is reviewed for compliance with the Louisiana Rules of Professional Conduct.
+                All work product reviewed by licensed attorneys for compliance with
+                Rules of Professional Conduct.
               </p>
             </div>
             <div>
@@ -88,8 +89,8 @@ export function TrustSection() {
                 Confidentiality
               </span>
               <p className="text-gray-300 text-sm leading-relaxed">
-                Case materials are processed in isolated environments. No client data is used
-                for model training. Attorney-client privilege is preserved throughout production.
+                Case materials processed in isolated environments. No data used for
+                training. Privilege preserved.
               </p>
             </div>
             <div>
@@ -97,8 +98,8 @@ export function TrustSection() {
                 Insurance
               </span>
               <p className="text-gray-300 text-sm leading-relaxed">
-                Errors & Omissions coverage backs every production. Certificate of insurance
-                available upon request for institutional clients.
+                E&O coverage backs every production. Certificate available for
+                institutional clients.
               </p>
             </div>
           </div>

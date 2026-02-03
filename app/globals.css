@@ -21,8 +21,9 @@
   --color-warning: #f59e0b;
   --color-error: #ef4444;
   --color-info: #3b82f6;
-  --color-teal: #00d4aa;
-  --color-teal-dark: #00b894;
+  /* Legacy - keeping for dashboard compatibility */
+  --color-teal: #c5a059;
+  --color-teal-dark: #b8934d;
 
   /* Base */
   --color-background: #fdfcfb;
@@ -203,8 +204,8 @@ h4, h5, h6 {
 }
 
 .order-card:hover {
-  @apply shadow-md border-teal/30 -translate-y-0.5;
-  background: linear-gradient(to right, rgba(0, 212, 170, 0.02), transparent);
+  @apply shadow-md border-gold/30 -translate-y-0.5;
+  background: linear-gradient(to right, rgba(197, 160, 89, 0.02), transparent);
 }
 
 .order-card:active {
