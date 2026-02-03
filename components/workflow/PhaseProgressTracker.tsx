@@ -57,6 +57,11 @@ const STATUS_STYLES: Record<PhaseStatus, {
     color: 'text-green-600',
     bgColor: 'bg-green-100',
   },
+  completed_with_warning: {
+    icon: AlertCircle,
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-100',
+  },
   in_progress: {
     icon: Loader2,
     color: 'text-blue-600',
