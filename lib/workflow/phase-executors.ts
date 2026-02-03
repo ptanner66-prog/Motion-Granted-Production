@@ -516,42 +516,7 @@ async function executePhaseI(input: PhaseInput): Promise<PhaseOutput> {
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE I: INTAKE & CLASSIFICATION
-
-Your task is to:
-1. Parse and classify the submitted case information
-2. Identify the motion type and confirm the tier (A/B/C)
-3. Extract all parties, dates, and key identifiers
-4. Validate that required information is present
-5. Flag any missing required fields
-
-DO NOT write any motion content. Only analyze and structure the intake data.
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "I",
-  "classification": {
-    "motionType": "string",
-    "tier": "A|B|C",
-    "path": "path_a|path_b",
-    "jurisdiction": "string",
-    "court": "string"
-  },
-  "parties": {
-    "movingParty": { "name": "string", "role": "plaintiff|defendant" },
-    "opposingParty": { "name": "string", "role": "plaintiff|defendant" }
-  },
-  "caseIdentifiers": {
-    "caseNumber": "string",
-    "caseCaption": "string",
-    "filingDeadline": "string|null"
-  },
-  "extractedFacts": ["fact1", "fact2", ...],
-  "proceduralEvents": ["event1", "event2", ...],
-  "missingFields": ["field1", "field2", ...],
-  "validationStatus": "complete|incomplete",
-  "notes": "any relevant observations"
-}`;
+${PHASE_PROMPTS.PHASE_I}`;
 
     const userMessage = `Analyze this submission for Phase I intake:
 
@@ -722,47 +687,7 @@ async function executePhaseII(input: PhaseInput): Promise<PhaseOutput> {
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE II: LEGAL STANDARDS / MOTION DECONSTRUCTION
-
-Your task is to:
-1. Identify the applicable legal standard for this motion type
-2. List ALL elements that must be proven/addressed
-3. Identify the burden of proof and who bears it
-4. Note relevant procedural rules and requirements
-5. For oppositions (path_b): deconstruct the opponent's likely arguments
-
-DO NOT draft any motion language. Only identify the legal framework.
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "II",
-  "legalStandard": {
-    "name": "string",
-    "source": "statute/rule/case",
-    "citation": "string",
-    "summary": "string"
-  },
-  "elements": [
-    {
-      "number": 1,
-      "element": "string",
-      "description": "string",
-      "evidenceNeeded": "string"
-    }
-  ],
-  "burdenOfProof": {
-    "standard": "preponderance|clear_and_convincing|beyond_reasonable_doubt",
-    "bearer": "movant|opponent",
-    "shiftConditions": "string|null"
-  },
-  "proceduralRequirements": [
-    { "requirement": "string", "rule": "string", "deadline": "string|null" }
-  ],
-  "oppositionAnalysis": {
-    "likelyArguments": ["arg1", "arg2"],
-    "weakPoints": ["weak1", "weak2"]
-  }
-}`;
+${PHASE_PROMPTS.PHASE_II}`;
 
     const userMessage = `Based on the Phase I intake, identify the legal framework:
 
@@ -2392,9 +2317,11 @@ async function executePhaseV1(input: PhaseInput): Promise<PhaseOutput> {
     if (unverifiedCitations.length > 0) {
       console.log(`[Phase V.1] REMOVING ${unverifiedCitations.length} unverified citations from motion`);
 
-      const cleanupPrompt = `${PHASE_ENFORCEMENT_HEADER}
+      const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE V.1: CITATION CLEANUP - ZERO TOLERANCE FOR HALLUCINATED CITATIONS
+${PHASE_PROMPTS.PHASE_V1}`;
+
+      const userMessage = `CITATION CLEANUP TASK:
 
 The following citations in the motion could NOT be verified against CourtListener.
 They may be hallucinations and MUST be removed.
@@ -2433,8 +2360,8 @@ OUTPUT FORMAT (JSON only):
       const cleanupResponse = await createMessageWithStreaming(client, {
         model: getModelForPhase('V.1', input.tier),
         max_tokens: 64000,
-        system: cleanupPrompt,
-        messages: [{ role: 'user', content: 'Remove all unverified citations and return the cleaned motion.' }],
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
       });
 
       const cleanupText = cleanupResponse.content.find(c => c.type === 'text');
@@ -2805,25 +2732,7 @@ async function executePhaseVII1(input: PhaseInput): Promise<PhaseOutput> {
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE VII.1: POST-REVISION CITATION CHECK
-
-Phase VIII revisions may have added NEW citations not in original bank.
-Your task is to verify any new citations added during revision.
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "VII.1",
-  "newCitationsFound": [
-    {
-      "citation": "string",
-      "addedIn": "which section",
-      "verification": "verified|needs_check|suspicious",
-      "notes": "string"
-    }
-  ],
-  "totalNewCitations": number,
-  "allVerified": true|false
-}`;
+${PHASE_PROMPTS.PHASE_VII1}`;
 
     const userMessage = `Check new citations from revision:
 
@@ -3170,32 +3079,7 @@ async function executePhaseVIII5(input: PhaseInput): Promise<PhaseOutput> {
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE VIII.5: CAPTION VALIDATION
-
-Your task is to verify caption consistency:
-1. Case number matches across all sections
-2. Party names spelled consistently
-3. Court name correct for jurisdiction
-4. Caption format matches local rules
-5. All required caption elements present
-
-DO NOT modify the motion. Only validate captions.
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "VIII.5",
-  "captionValidation": {
-    "caseNumberConsistent": true|false,
-    "partyNamesConsistent": true|false,
-    "courtNameCorrect": true|false,
-    "formatCompliant": true|false,
-    "allElementsPresent": true|false
-  },
-  "issues": [
-    { "issue": "string", "location": "string", "fix": "string" }
-  ],
-  "overallStatus": "valid|needs_correction"
-}`;
+${PHASE_PROMPTS.PHASE_VIII5}`;
 
     const userMessage = `Validate caption consistency:
 
@@ -3302,61 +3186,16 @@ Attorney for ${getRepresentedPartyName()}`.trim();
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE IX: SUPPORTING DOCUMENTS
+${PHASE_PROMPTS.PHASE_IX}
 
-Your task is to generate supporting documents:
-1. Proposed Order (for judge to sign if motion granted)
-2. Certificate of Service (WITH EXACT ATTORNEY INFO - see below)
-3. Declaration/Affidavit outline (if needed)
-4. Exhibit list (if applicable)
-
-═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: ATTORNEY INFO FOR CERTIFICATE OF SERVICE
-═══════════════════════════════════════════════════════════════════════════════
 
 ${signatureBlock}
 
 The Certificate of Service MUST include this EXACT signature block.
 DO NOT use [ATTORNEY NAME] or similar placeholders.
-═══════════════════════════════════════════════════════════════════════════════
 
-CERTIFICATE OF SERVICE FORMAT:
-
-CERTIFICATE OF SERVICE
-
-I hereby certify that a true and correct copy of the foregoing [MOTION TYPE] has been served upon all counsel of record by [electronic mail/United States Mail/hand delivery] on this date.
-
-[OPPOSING COUNSEL INFO - may use placeholder for opposing counsel only]
-
-Dated: ${todayDate}
-
-${signatureBlock}
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "IX",
-  "supportingDocuments": {
-    "proposedOrder": {
-      "title": "PROPOSED ORDER",
-      "content": "full proposed order text"
-    },
-    "certificateOfService": {
-      "title": "CERTIFICATE OF SERVICE",
-      "content": "full COS text with REAL attorney signature - NO PLACEHOLDERS for our attorney"
-    },
-    "declarationOutline": {
-      "needed": true|false,
-      "declarant": "string",
-      "keyPoints": ["point1", "point2"]
-    },
-    "exhibitList": {
-      "needed": true|false,
-      "exhibits": [
-        { "number": "A", "description": "string" }
-      ]
-    }
-  }
-}`;
+Today's Date: ${todayDate}`;
 
     const userMessage = `Generate supporting documents for:
 
@@ -3466,28 +3305,10 @@ async function executePhaseIX1(input: PhaseInput): Promise<PhaseOutput> {
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE IX.1: SEPARATE STATEMENT CHECK (MSJ/MSA)
-
-For Motion for Summary Judgment, verify the Separate Statement:
-1. Each material fact is numbered
-2. Each fact has supporting evidence citation
-3. Evidence citations match the citation bank
-4. Format complies with ${formatRules}
+${PHASE_PROMPTS.PHASE_IX1}
 
 JURISDICTION: ${input.jurisdiction}
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "IX.1",
-  "separateStatementCheck": {
-    "factsNumbered": true|false,
-    "allFactsSupported": true|false,
-    "citationsMatch": true|false,
-    "formatCompliant": true|false
-  },
-  "issues": ["issue1", "issue2"],
-  "status": "compliant|needs_correction"
-}`;
+FORMAT RULES: ${formatRules}`;
 
     const userMessage = `Check Separate Statement for MSJ/MSA:
 
@@ -3580,45 +3401,10 @@ async function executePhaseX(input: PhaseInput): Promise<PhaseOutput> {
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
-PHASE X: FINAL ASSEMBLY (BLOCKING CHECKPOINT)
+${PHASE_PROMPTS.PHASE_X}
 
-Assemble the final motion package and perform final QA checks:
-
-1. Compile final motion document (plain text, ready for Word)
-2. Attach supporting documents from Phase IX
-3. Final quality checks
-4. Generate summary for admin review
-
-This phase triggers CP3 - admin MUST approve before delivery.
-
-OUTPUT FORMAT (JSON only):
-{
-  "phaseComplete": "X",
-  "finalPackage": {
-    "motion": "FULL MOTION TEXT READY FOR FILING",
-    "proposedOrder": "FULL PROPOSED ORDER TEXT",
-    "certificateOfService": "FULL COS TEXT",
-    "exhibitList": "if applicable"
-  },
-  "qualityChecks": {
-    "allSectionsPresent": true|false,
-    "citationsVerified": true|false,
-    "captionConsistent": true|false,
-    "noPlaceholders": true|false,
-    "wordCount": number,
-    "pageEstimate": number
-  },
-  "adminSummary": {
-    "motionType": "${input.motionType}",
-    "caseCaption": "${input.caseCaption}",
-    "finalGrade": "from Phase VII",
-    "revisionLoops": number,
-    "keyStrengths": ["strength1"],
-    "notesForAdmin": "any important notes"
-  },
-  "readyForDelivery": true|false,
-  "blockingReason": "if not ready, why"
-}`;
+MOTION TYPE: ${input.motionType}
+CASE CAPTION: ${input.caseCaption}`;
 
     const userMessage = `Assemble final package:
 
