@@ -145,6 +145,216 @@ function filterByJurisdiction(
   });
 }
 
+// ============================================================================
+// CITATION QUALITY VALIDATION (CHEN 2026-02-03)
+// Prevents criminal cases, future dates, and invalid formats from entering
+// the citation bank. This is CRITICAL for legal software.
+// ============================================================================
+
+/**
+ * Determines if a case name indicates a criminal case.
+ * Criminal cases should NOT be used for civil procedure motions.
+ *
+ * Criminal patterns:
+ * - "State of Louisiana v. [Defendant]"
+ * - "State v. [Defendant]"
+ * - "United States v. [Defendant]"
+ * - "People v. [Defendant]"
+ * - "Commonwealth v. [Defendant]"
+ */
+function isCriminalCase(caseName: string): boolean {
+  if (!caseName) return false;
+
+  const criminalPatterns = [
+    /^State\s+of\s+Louisiana\s+v\./i,
+    /^State\s+v\./i,
+    /^United\s+States\s+v\./i,
+    /^People\s+v\./i,
+    /^Commonwealth\s+v\./i,
+    /^U\.S\.\s+v\./i,
+    /^USA\s+v\./i,
+  ];
+
+  for (const pattern of criminalPatterns) {
+    if (pattern.test(caseName.trim())) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Validates that a citation date is not in the future.
+ * Future-dated citations are impossible and indicate bad data.
+ */
+function isFutureDated(dateFiled: string | undefined): boolean {
+  if (!dateFiled) return false;
+
+  try {
+    const caseDate = new Date(dateFiled);
+    const today = new Date();
+
+    // Case date is in the future
+    if (caseDate > today) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    // If date parsing fails, don't reject (let other validation catch it)
+    return false;
+  }
+}
+
+/**
+ * Validates Louisiana civil citation format.
+ *
+ * Valid Louisiana civil formats:
+ * - "123 So. 2d 456" / "123 So.2d 456" / "123 So. 3d 456"
+ * - "2024-CA-0123" (Court of Appeal docket)
+ * - "2024-C-0123" (Supreme Court docket)
+ * - "123 La. 456" (Louisiana Reports)
+ * - "123 La. App. 456"
+ *
+ * Invalid formats:
+ * - Plain numeric IDs like "11046003"
+ * - Federal formats for state court matters
+ */
+function isValidLouisianaCivilCitation(citation: string): boolean {
+  if (!citation) return false;
+
+  const validPatterns = [
+    // Southern Reporter (primary for Louisiana)
+    /\d+\s*So\.\s*[23]d\s*\d+/i,
+    /\d+\s*So\s*[23]d\s*\d+/i,
+
+    // Louisiana docket numbers
+    /\d{4}-C[A]?-\d+/i,           // 2024-CA-0123 or 2024-C-0123
+    /\d{4}\s*-\s*C[A]?\s*-\s*\d+/i,
+
+    // Louisiana Reports
+    /\d+\s*La\.\s*\d+/i,
+    /\d+\s*La\.\s*App\.\s*\d+/i,
+
+    // Louisiana Annotated
+    /La\.\s*R\.S\./i,             // Statutory citations are OK
+    /La\.\s*C\.C\.P\./i,          // Code of Civil Procedure
+    /La\.\s*C\.C\./i,             // Civil Code
+
+    // Federal reporters (for federal jurisdiction searches)
+    /\d+\s*F\.\s*[234](d|th)\s*\d+/i,    // F.2d, F.3d, F.4th
+    /\d+\s*F\.\s*Supp/i,                  // F.Supp
+  ];
+
+  for (const pattern of validPatterns) {
+    if (pattern.test(citation)) {
+      return true;
+    }
+  }
+
+  // Reject plain numeric IDs (CourtListener internal IDs)
+  if (/^\d+$/.test(citation.trim())) {
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * Comprehensive citation quality validation.
+ * Returns { valid: boolean, reason?: string }
+ */
+interface CitationValidationResult {
+  valid: boolean;
+  reason?: string;
+}
+
+function validateCitationQuality(candidate: {
+  caseName?: string;
+  citation?: string;
+  dateFiled?: string;
+  court?: string;
+}): CitationValidationResult {
+  const { caseName, citation, dateFiled, court } = candidate;
+
+  // Check 1: Criminal case filter
+  if (caseName && isCriminalCase(caseName)) {
+    return {
+      valid: false,
+      reason: `CRIMINAL_CASE: "${caseName?.substring(0, 50)}..." appears to be a criminal case (State v. pattern)`,
+    };
+  }
+
+  // Check 2: Future date filter
+  if (dateFiled && isFutureDated(dateFiled)) {
+    return {
+      valid: false,
+      reason: `FUTURE_DATED: Case dated ${dateFiled} is in the future`,
+    };
+  }
+
+  // Check 3: Citation format validation (for Louisiana state court)
+  // Only enforce for Louisiana state courts
+  const isLouisianaState = court?.toLowerCase().includes('louisiana') &&
+    !court?.toLowerCase().includes('district of louisiana');
+
+  if (isLouisianaState && citation && !isValidLouisianaCivilCitation(citation)) {
+    return {
+      valid: false,
+      reason: `INVALID_FORMAT: "${citation}" is not a valid Louisiana civil citation format`,
+    };
+  }
+
+  // Check 4: Reject if citation is just a numeric ID
+  if (citation && /^\d+$/.test(citation.trim())) {
+    return {
+      valid: false,
+      reason: `NUMERIC_ID: "${citation}" is a database ID, not a legal citation`,
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Filter candidates by citation quality.
+ * Removes criminal cases, future-dated cases, and invalid citation formats.
+ */
+function filterByCitationQuality<T extends {
+  caseName?: string;
+  citation?: string;
+  dateFiled?: string;
+  court?: string;
+}>(candidates: T[], logPrefix: string = '[Phase IV]'): T[] {
+  const validCandidates: T[] = [];
+  const rejectedCount = { criminal: 0, future: 0, format: 0, numeric: 0 };
+
+  for (const candidate of candidates) {
+    const validation = validateCitationQuality(candidate);
+
+    if (validation.valid) {
+      validCandidates.push(candidate);
+    } else {
+      // Log rejection for audit trail
+      console.log(`${logPrefix} REJECTED: ${validation.reason}`);
+
+      // Track rejection reasons
+      if (validation.reason?.includes('CRIMINAL')) rejectedCount.criminal++;
+      else if (validation.reason?.includes('FUTURE')) rejectedCount.future++;
+      else if (validation.reason?.includes('FORMAT')) rejectedCount.format++;
+      else if (validation.reason?.includes('NUMERIC')) rejectedCount.numeric++;
+    }
+  }
+
+  if (candidates.length > 0 && validCandidates.length < candidates.length) {
+    console.log(`${logPrefix} Citation quality filter: ${validCandidates.length}/${candidates.length} passed`);
+    console.log(`${logPrefix} Rejections: criminal=${rejectedCount.criminal}, future=${rejectedCount.future}, format=${rejectedCount.format}, numeric=${rejectedCount.numeric}`);
+  }
+
+  return validCandidates;
+}
+
 export interface SearchTask {
   taskId: string;
   query: string;
@@ -647,8 +857,23 @@ export async function executePhaseIVAggregate(
   }
   console.log(`[Phase IV-Aggregate] Candidates after jurisdiction filter: ${filteredCandidates.length}`);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // CHEN CITATION QUALITY FIX (2026-02-03): Final quality validation
+  // This is a second pass to catch any bad citations that slipped through
+  // batch-level filtering (e.g., criminal cases, future dates, numeric IDs)
+  // ═══════════════════════════════════════════════════════════════════════
+  const qualityFilteredCandidates = filterByCitationQuality(
+    filteredCandidates,
+    '[Phase IV-Aggregate]'
+  );
+  const qualityFilteredCount = filteredCandidates.length - qualityFilteredCandidates.length;
+  if (qualityFilteredCount > 0) {
+    console.log(`[Phase IV-Aggregate] ⚠️ Quality filter removed ${qualityFilteredCount} citations (criminal/future/invalid)`);
+  }
+  console.log(`[Phase IV-Aggregate] Candidates after quality filter: ${qualityFilteredCandidates.length}`);
+
   // Deduplicate candidates by ID
-  const uniqueCandidates = deduplicateCandidates(filteredCandidates);
+  const uniqueCandidates = deduplicateCandidates(qualityFilteredCandidates);
   console.log(`[Phase IV-Aggregate] Unique candidates after dedup: ${uniqueCandidates.length}`);
 
   // Score and rank candidates
@@ -801,7 +1026,7 @@ async function executeSearchWithTimeout(
     }
 
     // Transform to CitationCandidate format
-    const candidates: CitationCandidate[] = response.data.opinions
+    const rawCandidates: CitationCandidate[] = response.data.opinions
       .filter((op) => op.id !== undefined && op.id !== null)
       .map((op) => ({
         id: op.id,
@@ -813,6 +1038,13 @@ async function executeSearchWithTimeout(
         snippet: op.snippet,
         forElement: task.elementName,
       }));
+
+    // CHEN 2026-02-03: Apply citation quality filter to remove criminal cases,
+    // future-dated citations, and invalid citation formats BEFORE returning
+    const candidates = filterByCitationQuality(
+      rawCandidates,
+      `[Phase IV Search ${task.taskId}]`
+    );
 
     return {
       taskId: task.taskId,
