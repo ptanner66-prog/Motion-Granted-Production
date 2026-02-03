@@ -1,6 +1,11 @@
-// prompts/index.ts
-// Phase System Prompts v7.4.1
-// Generated: January 28, 2026
+// /prompts/index.ts
+// Phase System Prompts v7.5
+// Updated: January 31, 2026 (Central Time)
+//
+// CHANGES FROM v7.4.1:
+// - Protocol 20 (Plurality Opinion Check) added to Phase V.1
+// - Protocol 21 (Concurrence/Dissent Check) added to Phase V.1
+// - Phase VI Tier A skip condition added
 
 import fs from 'fs';
 import path from 'path';
@@ -12,20 +17,20 @@ const loadPrompt = (filename: string): string => {
 };
 
 export const PHASE_PROMPTS = {
-  PHASE_I: loadPrompt('PHASE_I_SYSTEM_PROMPT_v741.md'),
-  PHASE_II: loadPrompt('PHASE_II_SYSTEM_PROMPT_v741.md'),
-  PHASE_III: loadPrompt('PHASE_III_SYSTEM_PROMPT_v741.md'),
-  PHASE_IV: loadPrompt('PHASE_IV_SYSTEM_PROMPT_v741.md'),
-  PHASE_V: loadPrompt('PHASE_V_SYSTEM_PROMPT_v741.md'),
-  PHASE_V1: loadPrompt('PHASE_V1_SYSTEM_PROMPT_v741.md'),
-  PHASE_VI: loadPrompt('PHASE_VI_SYSTEM_PROMPT_v741.md'),
-  PHASE_VII: loadPrompt('PHASE_VII_SYSTEM_PROMPT_v741.md'),
-  PHASE_VII1: loadPrompt('PHASE_VII1_SYSTEM_PROMPT_v741.md'),
-  PHASE_VIII: loadPrompt('PHASE_VIII_SYSTEM_PROMPT_v741.md'),
-  PHASE_VIII5: loadPrompt('PHASE_VIII5_SYSTEM_PROMPT_v741.md'),
-  PHASE_IX: loadPrompt('PHASE_IX_SYSTEM_PROMPT_v741.md'),
-  PHASE_IX1: loadPrompt('PHASE_IX1_SYSTEM_PROMPT_v741.md'),
-  PHASE_X: loadPrompt('PHASE_X_SYSTEM_PROMPT_v741.md'),
+  PHASE_I: loadPrompt('PHASE_I_SYSTEM_PROMPT_v75.md'),
+  PHASE_II: loadPrompt('PHASE_II_SYSTEM_PROMPT_v75.md'),
+  PHASE_III: loadPrompt('PHASE_III_SYSTEM_PROMPT_v75.md'),
+  PHASE_IV: loadPrompt('PHASE_IV_SYSTEM_PROMPT_v75.md'),
+  PHASE_V: loadPrompt('PHASE_V_SYSTEM_PROMPT_v75.md'),
+  PHASE_V1: loadPrompt('PHASE_V1_SYSTEM_PROMPT_v75.md'),
+  PHASE_VI: loadPrompt('PHASE_VI_SYSTEM_PROMPT_v75.md'),
+  PHASE_VII: loadPrompt('PHASE_VII_SYSTEM_PROMPT_v75.md'),
+  PHASE_VII1: loadPrompt('PHASE_VII1_SYSTEM_PROMPT_v75.md'),
+  PHASE_VIII: loadPrompt('PHASE_VIII_SYSTEM_PROMPT_v75.md'),
+  PHASE_VIII5: loadPrompt('PHASE_VIII5_SYSTEM_PROMPT_v75.md'),
+  PHASE_IX: loadPrompt('PHASE_IX_SYSTEM_PROMPT_v75.md'),
+  PHASE_IX1: loadPrompt('PHASE_IX1_SYSTEM_PROMPT_v75.md'),
+  PHASE_X: loadPrompt('PHASE_X_SYSTEM_PROMPT_v75.md'),
 } as const;
 
 export type PhaseKey = keyof typeof PHASE_PROMPTS;
@@ -72,6 +77,7 @@ export const PHASE_METADATA = {
     mode: 'CHAT' as const,
     model: 'tier_dependent' as const,
     extendedThinking: 8000,
+    skipCondition: 'TIER_A' as const,  // NEW in v7.5
   },
   PHASE_VII: {
     name: 'Judge Simulation',
@@ -108,6 +114,7 @@ export const PHASE_METADATA = {
     mode: 'CODE' as const,
     model: 'sonnet' as const,
     extendedThinking: null,
+    skipCondition: 'NON_MSJ_MSA' as const,
   },
   PHASE_X: {
     name: 'Final Assembly',
@@ -137,6 +144,23 @@ export function getModelForTier(
   }
   if (metadata.model === 'opus') return 'opus';
   return 'sonnet';
+}
+
+export function shouldSkipPhase(phase: PhaseKey, tier: 'A' | 'B' | 'C', motionType: string): boolean {
+  const metadata = PHASE_METADATA[phase];
+
+  // Check if phase has a skip condition
+  if ('skipCondition' in metadata) {
+    if (metadata.skipCondition === 'TIER_A' && tier === 'A') {
+      return true;
+    }
+    if (metadata.skipCondition === 'NON_MSJ_MSA') {
+      const msjTypes = ['MSJ', 'MSA', 'MOTION FOR SUMMARY JUDGMENT', 'MOTION FOR SUMMARY ADJUDICATION'];
+      return !msjTypes.some(t => motionType.toUpperCase().includes(t));
+    }
+  }
+
+  return false;
 }
 
 export default PHASE_PROMPTS;
