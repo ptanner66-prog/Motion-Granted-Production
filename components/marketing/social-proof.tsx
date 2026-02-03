@@ -37,11 +37,10 @@ export function SocialProof() {
             Why Attorneys Choose Us
           </span>
           <h2 className="font-serif text-3xl md:text-4xl text-navy mb-4">
-            Quality you can trust
+            What we guarantee
           </h2>
           <p className="text-gray-600 max-w-2xl mx-auto">
-            We&apos;re a new service building our reputation one motion at a time.
-            Here&apos;s what we guarantee for every order.
+            Every order. Every time. No exceptions.
           </p>
         </div>
 
