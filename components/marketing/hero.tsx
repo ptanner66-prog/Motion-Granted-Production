@@ -12,34 +12,38 @@ export function Hero() {
           <div className="inline-flex items-center gap-4 mb-10">
             <div className="h-[2px] w-12 bg-gold" />
             <span className="text-xs font-bold uppercase tracking-[0.4em] text-gold">
-              Institutional Legal Production
+              Institutional-Grade Support for the Modern Solo
             </span>
           </div>
 
-          <h1 className="text-7xl md:text-9xl text-navy leading-[0.9] mb-12 font-serif max-w-5xl">
-            Court-Ready Drafting. <br />
-            <span className="italic font-normal text-gray-400">Zero hallucinated citations.</span>
+          <h1 className="text-6xl md:text-8xl lg:text-9xl text-navy leading-[0.9] mb-12 font-serif max-w-5xl">
+            The Associate You <br />
+            <span className="italic font-normal text-gray-400">Don&apos;t Have to Manage.</span>
           </h1>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end w-full">
             <div className="lg:col-span-7">
-              <p className="text-2xl leading-relaxed text-navy/90 font-sans mb-8">
-                Motion Granted produces complex motions, briefs, and exceptions with every
-                authority verified against the <strong>Verified Precedent Index</strong>—our
-                proprietary library of court-validated legal principles.
+              <p className="text-2xl leading-relaxed text-navy/90 font-sans mb-6">
+                Stop spending your weekends on research and drafting. Motion Granted delivers
+                associate-level work product with partner-level oversight—every citation verified,
+                every authority checked, every brief court-ready.
               </p>
-              <p className="text-lg text-gray-600 mb-12">
-                We draft. You review. You file. <span className="italic">Not a law firm.</span>
+              <p className="text-lg text-gray-600 mb-4 border-l-2 border-gold pl-4 italic">
+                &ldquo;Sunday night research&rdquo; is over. Delegate the grunt work.
+                Keep your weekends.
+              </p>
+              <p className="text-base text-gray-500 mb-12">
+                We draft. You review. You file. <span className="font-medium text-navy">Not a law firm.</span>
               </p>
               <div className="flex flex-wrap gap-8">
                 <Button size="lg" className="bg-navy text-white px-12 py-8 text-xl hover:bg-gold transition-all duration-500 rounded-none shadow-none" asChild>
-                  <Link href="/register">Start Your Order</Link>
+                  <Link href="/register">Start Your First Order</Link>
                 </Button>
                 <Link
-                  href="#protocol"
+                  href="#verification"
                   className="text-navy text-xl font-serif italic border-b border-navy hover:border-gold hover:text-gold transition-colors inline-flex items-center py-4"
                 >
-                  View Standards
+                  See How We Verify
                 </Link>
               </div>
             </div>
@@ -47,20 +51,20 @@ export function Hero() {
             <div className="lg:col-span-5 border-l border-navy/10 pl-12 pb-2">
               <div className="space-y-8">
                 <div className="flex flex-col">
-                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Verification Protocol</span>
-                  <span className="text-navy text-lg italic font-serif">7-Layer Integrity Check</span>
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Citation Security</span>
+                  <span className="text-navy text-lg italic font-serif">Zero Hallucinations Guaranteed</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Quality Gate</span>
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Quality Floor</span>
                   <span className="text-navy text-lg italic font-serif">B+ Minimum Standard</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Citation Source</span>
-                  <span className="text-navy text-lg italic font-serif">Verified Precedent Index</span>
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Verification</span>
+                  <span className="text-navy text-lg italic font-serif">7-Layer Integrity Protocol</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Compliance</span>
-                  <span className="text-navy text-lg italic font-serif">ABA Opinion 512 Ready</span>
+                  <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1">Emergency Ready</span>
+                  <span className="text-navy text-lg italic font-serif">48-Hour Rush Available</span>
                 </div>
               </div>
             </div>

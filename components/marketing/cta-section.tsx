@@ -16,13 +16,13 @@ export function CTASection() {
             </div>
 
             <h2 className="font-serif text-4xl md:text-5xl text-navy mb-6">
-              File-ready work product. Verified citations.
+              Stop the Sunday night research.
             </h2>
 
             <p className="text-xl text-gray-600 mb-10 leading-relaxed">
-              Submit your matter through our secure portal. Receive scope confirmation
-              within 24 hours. Get court-ready deliverables by your deadline—every
-              authority verified through the Verified Precedent Index.
+              Submit your matter. Get court-ready work product by your deadline.
+              Every citation verified. Every authority checked. Every brief formatted
+              to Bluebook standard. Your weekends belong to you again.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-6">
