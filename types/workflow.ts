@@ -15,6 +15,7 @@ export type PhaseStatus =
   | 'pending'
   | 'in_progress'
   | 'completed'
+  | 'completed_with_warning'  // Graceful degradation (e.g., empty citation bank)
   | 'blocked'
   | 'requires_review'
   | 'failed';
