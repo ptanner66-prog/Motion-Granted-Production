@@ -170,16 +170,6 @@ export default async function DashboardPage() {
             Welcome back! Here&apos;s your order overview.
           </p>
         </div>
-        <Button
-          asChild
-          className="btn-premium shadow-md hover:shadow-lg"
-          size="lg"
-        >
-          <Link href="/orders/new">
-            <PlusCircle className="mr-2 h-5 w-5" />
-            New Order
-          </Link>
-        </Button>
       </div>
 
       {/* Stats Grid - Hero Numbers */}
