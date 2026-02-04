@@ -100,33 +100,24 @@ export default async function OrdersPage({
 
       {/* Tabs */}
       <Tabs defaultValue="active" className="mt-8">
-        <TabsList className="bg-gray-100/70 p-1">
+        <TabsList className="bg-transparent border-b border-gray-200 p-0 h-auto rounded-none w-full justify-start">
           <TabsTrigger
             value="active"
-            className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg px-4"
+            className="rounded-none border-b-2 border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700 data-[state=active]:border-gray-900 data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
           >
-            Active
-            <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
-              {activeOrders.length}
-            </span>
+            Active ({activeOrders.length})
           </TabsTrigger>
           <TabsTrigger
             value="completed"
-            className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg px-4"
+            className="rounded-none border-b-2 border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700 data-[state=active]:border-gray-900 data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
           >
-            Completed
-            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-              {completedOrders.length}
-            </span>
+            Completed ({completedOrders.length})
           </TabsTrigger>
           <TabsTrigger
             value="all"
-            className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg px-4"
+            className="rounded-none border-b-2 border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700 data-[state=active]:border-gray-900 data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
           >
-            All
-            <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-600">
-              {allOrders.length}
-            </span>
+            All ({allOrders.length})
           </TabsTrigger>
         </TabsList>
 
