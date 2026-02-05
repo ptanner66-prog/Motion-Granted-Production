@@ -7,8 +7,9 @@
  * Uses tier-based model selection for cross-vendor CIV.
  */
 
-import { callAnthropic, getModelForTask, getTierFromMotionType } from '../model-router';
+import { callAnthropic, getTierFromMotionType } from '../model-router';
 import { DEFAULT_CIV_CONFIG, DICTA_DETECTION_PROMPT, type DictaDetectionOutput, type DictaClassification, type PropositionType } from '../types';
+import { getCitationModelWithLogging, type Tier } from '@/lib/config/citation-models';
 
 /**
  * Execute Step 3: Dicta Detection
@@ -41,11 +42,11 @@ export async function executeDictaDetection(
       .replace('{quoted_or_paraphrased_text}', quotedOrParaphrasedText)
       .replace('{surrounding_paragraphs}', surroundingContext || 'No additional context available.');
 
-    // Use tier-based model selection
-    const tier = getTierFromMotionType(motionType);
-    const model = getModelForTask('steps_3_5', tier);
+    // CIV-012: Use getCitationModelWithLogging for tier-based model selection
+    const tier = getTierFromMotionType(motionType) as Tier;
+    const modelConfig = getCitationModelWithLogging(3, tier);
 
-    const responseText = await callAnthropic(model, prompt, 1500);
+    const responseText = await callAnthropic(modelConfig.model, prompt, modelConfig.maxTokens);
 
     const parsed = parseDictaResponse(responseText);
 

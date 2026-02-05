@@ -6,34 +6,40 @@
  * Stage 2 (Adversarial): Claude Opus (Anthropic)
  * Steps 3-5: Claude Haiku/Sonnet based on tier
  *
- * Tier-based routing per Clay's spec:
+ * CANONICAL SOURCE: lib/config/citation-models.ts (getCitationModel)
+ * This file delegates to citation-models.ts for model strings.
+ *
+ * Tier-based routing per Clay's Part C §3:
  * - Tier A: Simple procedural motions (gpt-4o + haiku)
  * - Tier B: Standard substantive motions (gpt-4o + haiku)
- * - Tier C: Complex/high-stakes motions (gpt-5.2 + sonnet)
+ * - Tier C: Complex/high-stakes motions (gpt-4o fallback + sonnet)
  */
 
 import OpenAI from 'openai';
 import { getOpenAIAPIKey } from '@/lib/api-keys';
 import { getAnthropicClient } from '@/lib/automation/claude';
+import { getCitationModel, CITATION_GPT_MODELS, type Tier as CivTier } from '@/lib/config/citation-models';
+import { MODELS } from '@/lib/config/models';
 
 export type MotionTier = 'A' | 'B' | 'C';
 
-// Clay's exact model routing
+// Clay's exact model routing — aligned with citation-models.ts
+// gpt-5.2 does NOT exist yet. Using gpt-4o as fallback per Clay's Part C Issue 2.
 export const MODEL_ROUTING = {
   tier_a: {
-    stage_1_holding: 'gpt-4o',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
-    steps_3_5: 'claude-haiku-4-5-20251001',
+    stage_1_holding: CITATION_GPT_MODELS.STAGE_1_DEFAULT,
+    stage_2_adversarial: MODELS.OPUS,
+    steps_3_5: MODELS.HAIKU,
   },
   tier_b: {
-    stage_1_holding: 'gpt-4o',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
-    steps_3_5: 'claude-haiku-4-5-20251001',
+    stage_1_holding: CITATION_GPT_MODELS.STAGE_1_DEFAULT,
+    stage_2_adversarial: MODELS.OPUS,
+    steps_3_5: MODELS.HAIKU,
   },
   tier_c: {
-    stage_1_holding: 'gpt-5.2',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
-    steps_3_5: 'claude-sonnet-4-20250514',
+    stage_1_holding: CITATION_GPT_MODELS.STAGE_1_TIER_C,
+    stage_2_adversarial: MODELS.OPUS,
+    steps_3_5: MODELS.SONNET,
   },
 } as const;
 
@@ -141,22 +147,35 @@ export async function callAnthropic(
 }
 
 /**
- * Stage 2 trigger logic - Clay's exact spec
+ * Stage 2 trigger logic - Clay's Part C §4 BINDING
  *
  * Trigger adversarial verification when:
- * - Confidence is borderline (80-94%)
- * - Confidence is low (<80%)
- * - HIGH_STAKES flag is set
+ * - Confidence is borderline (80-94%) → HOLDING_STAGE_2
+ * - Confidence is low (<80%) → HOLDING_FAIL (will also get Stage 2 for audit)
+ * - HIGH_STAKES flag is set (always triggers Stage 2 regardless of confidence)
+ *
+ * ≥95% AND NOT HIGH_STAKES = skip Stage 2 (VERIFIED)
  */
 export function shouldTriggerStage2(
   confidence: number,
   flags: string[] = []
 ): boolean {
-  return (
-    (confidence >= 80 && confidence < 95) ||
-    confidence < 80 ||
-    flags.includes('HIGH_STAKES')
-  );
+  // HIGH_STAKES always triggers Stage 2
+  if (flags.includes('HIGH_STAKES')) {
+    return true;
+  }
+
+  // Convert confidence to 0-1 scale if needed
+  const normalizedConf = confidence > 1 ? confidence / 100 : confidence;
+
+  // ≥95% = VERIFIED without Stage 2 (unless HIGH_STAKES)
+  if (normalizedConf >= 0.95) {
+    return false;
+  }
+
+  // 80-94% = trigger Stage 2
+  // <80% = HOLDING_MISMATCH but still run Stage 2 for audit trail
+  return true;
 }
 
 /**

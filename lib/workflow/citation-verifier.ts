@@ -510,6 +510,7 @@ export async function verifyWorkflowCitations(
     let pending = 0;
 
     // Verify each citation
+    // BUG-FIX-01: api_error results must NOT count toward verified minimums
     for (const citation of citations || []) {
       const result = await verifyCitation(citation as WorkflowCitation);
 
@@ -519,10 +520,14 @@ export async function verifyWorkflowCitations(
         } else if (result.data.status === 'invalid') {
           failed++;
         } else {
+          // 'pending', 'needs_update', etc. → pending
           pending++;
         }
       } else {
-        pending++;
+        // BUG-FIX-01: API errors count as failed, NOT pending
+        // This prevents api_error from being implicitly counted as "not failed"
+        // which would let the pipeline proceed with fewer verified citations
+        failed++;
       }
     }
 

@@ -257,7 +257,7 @@ export async function POST(
                   .from('order_workflows')
                   .update({
                     status: 'failed',
-                    last_error: `Motion failed to reach B+ after ${MAX_REVISION_LOOPS} revision attempts`,
+                    last_error: `Motion failed to reach A- after ${MAX_REVISION_LOOPS} revision attempts`,
                   })
                   .eq('id', workflow.id);
                 await adminClient

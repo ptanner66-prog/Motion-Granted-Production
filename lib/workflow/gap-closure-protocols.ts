@@ -151,7 +151,7 @@ export const GAP_PROTOCOLS: Record<GapProtocolCode, GapProtocol> = {
   'GAP-011': {
     code: 'GAP-011',
     name: 'Grade Below Threshold',
-    description: 'Judge simulation grade below B+ after 3 revision loops',
+    description: 'Judge simulation grade below A- after 3 revision loops',
     triggerPhase: 'VII',
     severity: 'high',
     autoResolvable: false,

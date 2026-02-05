@@ -6,7 +6,7 @@
  *
  * v6.3 UPDATES:
  * - 14 phases (I, II, III, IV, V, V.1, VI, VII, VII.1, VIII, VIII.5, IX, IX.1, X)
- * - B+ (87%) minimum quality threshold (was 70%)
+ * - A- (87%) minimum quality threshold (was 70%)
  * - 3 customer checkpoints (CP1, CP2, CP3)
  * - Max 3 revision loops before escalation
  */
@@ -51,7 +51,7 @@ import { alertPhaseViolation } from './violation-alerts';
 // ============================================================================
 
 /**
- * Minimum passing grade: B+ = 87%
+ * Minimum passing grade: A- = 87%
  * This is a non-negotiable quality gate. Motions below this threshold
  * MUST be revised before delivery.
  */
@@ -59,7 +59,7 @@ export const MINIMUM_PASSING_GRADE = 0.87;
 
 /**
  * Maximum revision loops before escalation
- * After 3 failed attempts to reach B+, the workflow escalates to admin review.
+ * After 3 failed attempts to reach A-, the workflow escalates to admin review.
  */
 export const MAX_REVISION_LOOPS = 3;
 
@@ -79,7 +79,7 @@ export function scoreToGrade(score: number): { letter: string; passed: boolean }
   if (percent >= 97) return { letter: 'A+', passed: true };
   if (percent >= 93) return { letter: 'A', passed: true };
   if (percent >= 90) return { letter: 'A-', passed: true };
-  if (percent >= 87) return { letter: 'B+', passed: true };  // ← MINIMUM PASSING
+  if (percent >= 87) return { letter: 'B+', passed: true };  // ← MINIMUM PASSING (A-)
   if (percent >= 83) return { letter: 'B', passed: false };
   if (percent >= 80) return { letter: 'B-', passed: false };
   if (percent >= 77) return { letter: 'C+', passed: false };
@@ -1155,7 +1155,7 @@ Respond with JSON:
       (i: { severity: string }) => i.severity === 'critical'
     );
 
-    // v6.3: Convert score to grade and check against B+ minimum
+    // v6.3: Convert score to grade and check against A- minimum
     const grade = scoreToGrade(review.overall_score);
     const passesQuality = meetsQualityThreshold(review.overall_score);
 
@@ -1189,13 +1189,13 @@ Respond with JSON:
         overall_score: review.overall_score,
         grade: grade.letter,                    // v6.3: Letter grade
         grade_numeric: review.overall_score,    // v6.3: Numeric score
-        passed: grade.passed,                   // v6.3: Whether it passed B+ threshold
+        passed: grade.passed,                   // v6.3: Whether it passed A- threshold
         issues_found: review.issues_found,
         revision_suggestions: review.revision_suggestions,
         ready_for_delivery: passesQuality && !hasCriticalIssues,
       },
       qualityScore: review.overall_score,
-      // v6.3: Use B+ (0.87) threshold instead of 0.7
+      // v6.3: Use A- (0.87) threshold instead of 0.7
       requiresReview: hasCriticalIssues || !passesQuality,
     };
   } catch {

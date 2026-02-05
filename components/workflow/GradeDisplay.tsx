@@ -4,7 +4,7 @@
  * GradeDisplay Component
  *
  * v6.3: Displays the judge simulation grade with visual indicators.
- * Highlights whether the motion meets the B+ (87%) minimum threshold.
+ * Highlights whether the motion meets the A- (87%) minimum threshold.
  */
 
 import { cn } from '@/lib/utils';
@@ -96,7 +96,7 @@ export function GradeDisplay({
             <>
               <XCircle className={cn('text-red-500', sizeClasses.icon)} />
               <span className={cn('text-red-600 font-medium', sizeClasses.label)}>
-                Below B+
+                Below A-
               </span>
             </>
           )}
@@ -111,14 +111,14 @@ export function GradeDisplay({
               <>
                 <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
                 <span className="text-green-700">
-                  This motion meets the B+ (87%) quality threshold and is ready for delivery.
+                  This motion meets the A- (87%) quality threshold and is ready for delivery.
                 </span>
               </>
             ) : (
               <>
                 <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 flex-shrink-0" />
                 <span className="text-yellow-700">
-                  This motion needs revision to meet the B+ (87%) minimum threshold.
+                  This motion needs revision to meet the A- (87%) minimum threshold.
                   Please request revisions or contact support.
                 </span>
               </>
