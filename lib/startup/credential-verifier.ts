@@ -98,7 +98,7 @@ export async function verifyAnthropicKey(): Promise<CredentialStatus> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 64000,
         messages: [{ role: 'user', content: 'hi' }],
       }),
