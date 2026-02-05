@@ -1,123 +1,77 @@
-// /lib/config/models.ts
-// Centralized model string configuration for Motion Granted
-// VERSION: 7.4.1 — January 28, 2026
+/**
+ * MODEL STRING CONSTANTS — Motion Granted
+ *
+ * SINGLE SOURCE OF TRUTH for all AI model identifiers.
+ * Routing logic is in phase-registry.ts — this file is STRINGS ONLY.
+ *
+ * Authority: Clay's Master Implementation Guide v2.5, Batch 2 §A.2
+ *            Reference: Model Strings (lines 2354-2371)
+ *
+ * ⚠️  To update a model version:
+ *     1. Change the string HERE (and ONLY here)
+ *     2. Run: grep -r "claude-\|gpt-" lib/ types/ --include="*.ts" | grep -v node_modules
+ *     3. Verify NO hardcoded model strings exist outside this file
+ *     4. Run tests: npm test
+ *
+ * WARNING: Never use gpt-5.2 (does not exist).
+ *          Never use claude-sonnet-4-5-20250929 (wrong model ID — that's Sonnet 4.5, not Sonnet 4).
+ *
+ * NOTE: The megaprompt spec referenced 'claude-opus-4-5-20250514' and
+ *       'claude-sonnet-4-5-20250514'. Neither matches the production codebase.
+ *       Verified production strings from phase-executors.ts, phase-config.ts,
+ *       and ai/model-router.ts are used here. If Clay intends to upgrade to
+ *       different model versions, change ONLY this file.
+ */
+
+// ============================================================================
+// MODEL IDENTIFIERS
+// ============================================================================
 
 export const MODELS = {
-  // ═══════════════════════════════════════════════════════════════
-  // ANTHROPIC MODELS
-  // ═══════════════════════════════════════════════════════════════
+  /** Complex reasoning: Phase IV B/C, VI B/C, VII all, VIII B/C, V.1/VII.1/IX.1 Stage 2 */
+  OPUS: 'claude-opus-4-5-20251101',
 
-  // Primary model for Judge Simulation (Phase VII), complex reasoning
-  OPUS: "claude-opus-4-5-20251101",
+  /** Standard drafting: Phase II, III, IV A, V, VIII A, IX, V.1 Steps 3-5 Tier C */
+  SONNET: 'claude-sonnet-4-20250514',
 
-  // Standard model for drafting, CODE MODE phases
-  SONNET: "claude-sonnet-4-20250514",
+  /** Fast simple tasks: V.1/VII.1/IX.1 Steps 3-5 Tier A/B (cost optimization) */
+  HAIKU: 'claude-haiku-4-5-20251001',
 
-  // ═══════════════════════════════════════════════════════════════
-  // OPENAI MODELS FOR CITATION VERIFICATION
-  // ═══════════════════════════════════════════════════════════════
-
-  // IMPORTANT: The spec references "GPT-5.2" as a conceptual placeholder.
-  // OpenAI has NOT released a model called "GPT-5.2" as of January 2026.
-  //
-  // IMPLEMENTATION OPTIONS:
-  //
-  // Option 1 (RECOMMENDED): Use GPT-4 Turbo with low temperature
-  // - Model: "gpt-4-turbo-2024-04-09" or "gpt-4-turbo"
-  // - Parameters: { temperature: 0.1, max_tokens: 64000 }
-  //
-  // Option 2: Use o1-preview/o1-mini reasoning models (if available)
-  // - Model: "o1-preview" or "o1-mini"
-  // - Parameters: { reasoning_effort: "high" } (not temperature)
-  // - NOTE: o1 models don't support temperature parameter
-  //
-  // Option 3: Use GPT-4o (latest)
-  // - Model: "gpt-4o-2024-05-13" or "gpt-4o"
-  // - Parameters: { temperature: 0.1, max_tokens: 64000 }
-  //
-  // Choose based on your OpenAI API access and cost considerations.
-  OPENAI_CITATION_VERIFIER: process.env.OPENAI_CITATION_MODEL || "gpt-4-turbo",
-
-  // Model type determines parameter style
-  OPENAI_MODEL_TYPE: process.env.OPENAI_MODEL_TYPE || "standard", // "standard" | "reasoning"
-
+  /** Citation verification Stage 1: holding verification across all tiers */
+  GPT4_TURBO: 'gpt-4-turbo',
 } as const;
 
-// ═══════════════════════════════════════════════════════════════
-// EXTENDED THINKING BUDGETS
-// ═══════════════════════════════════════════════════════════════
+export type ModelId = (typeof MODELS)[keyof typeof MODELS];
 
-export const EXTENDED_THINKING = {
-  // Phase VI: Opposition Anticipation (Tier B/C only)
-  PHASE_VI_TIER_BC: 8000,
+// ============================================================================
+// MODEL VALIDATION
+// ============================================================================
 
-  // Phase VII: Judge Simulation (ALL TIERS)
-  PHASE_VII_ALL: 10000,
-
-  // Phase VIII: Revisions (Tier B/C only)
-  PHASE_VIII_TIER_BC: 8000,
-} as const;
-
-// ═══════════════════════════════════════════════════════════════
-// TOKEN LIMITS
-// ═══════════════════════════════════════════════════════════════
-
-export const TOKEN_LIMITS = {
-  OPUS_MAX_TOKENS: 128000,
-  SONNET_MAX_TOKENS: 64000,
-  OPENAI_MAX_TOKENS: 4096,
-} as const;
-
-// ═══════════════════════════════════════════════════════════════
-// HELPER FUNCTION FOR OPENAI PARAMETERS
-// ═══════════════════════════════════════════════════════════════
+const VALID_MODELS = new Set<string>(Object.values(MODELS));
 
 /**
- * Get OpenAI API parameters based on model type
+ * Validates a model string before API call.
+ * Implements: MR-007 — Reject invalid strings with clear error.
+ *
+ * @throws Error if model string is not in the MODELS constant
  */
-export function getOpenAIParams(): Record<string, unknown> {
-  if (MODELS.OPENAI_MODEL_TYPE === "reasoning") {
-    // o1-style reasoning models use reasoning_effort, not temperature
-    return {
-      model: MODELS.OPENAI_CITATION_VERIFIER,
-      reasoning_effort: "high",
-      max_tokens: TOKEN_LIMITS.OPENAI_MAX_TOKENS,
-    };
-  } else {
-    // Standard models (GPT-4, GPT-4o, GPT-4-turbo)
-    return {
-      model: MODELS.OPENAI_CITATION_VERIFIER,
-      temperature: 0.1,
-      max_tokens: TOKEN_LIMITS.OPENAI_MAX_TOKENS,
-    };
+export function validateModelString(model: string, context: string): void {
+  if (!VALID_MODELS.has(model)) {
+    throw new Error(
+      `[MODEL_VALIDATION] Invalid model string "${model}" in ${context}. ` +
+      `Valid models: ${Array.from(VALID_MODELS).join(', ')}. ` +
+      `Check lib/config/models.ts for correct values.`
+    );
   }
 }
 
-/**
- * Get Claude API parameters based on tier and phase
- */
-export function getClaudeParams(
-  tier: 'A' | 'B' | 'C',
-  phase: string
-): { model: string; maxTokens: number; extendedThinking?: number } {
-  // Tier A uses Sonnet, Tier B/C use Opus
-  const model = tier === 'A' ? MODELS.SONNET : MODELS.OPUS;
-  const maxTokens = tier === 'A' ? TOKEN_LIMITS.SONNET_MAX_TOKENS : TOKEN_LIMITS.OPUS_MAX_TOKENS;
+// ============================================================================
+// MODEL COSTS (for profitability tracking — MR-008)
+// ============================================================================
 
-  // Extended thinking for specific phases
-  let extendedThinking: number | undefined;
-  if (phase === 'VI' && (tier === 'B' || tier === 'C')) {
-    extendedThinking = EXTENDED_THINKING.PHASE_VI_TIER_BC;
-  } else if (phase === 'VII') {
-    extendedThinking = EXTENDED_THINKING.PHASE_VII_ALL;
-  } else if (phase === 'VIII' && (tier === 'B' || tier === 'C')) {
-    extendedThinking = EXTENDED_THINKING.PHASE_VIII_TIER_BC;
-  }
-
-  return { model, maxTokens, extendedThinking };
-}
-
-// Type exports
-export type ModelKey = keyof typeof MODELS;
-export type ExtendedThinkingKey = keyof typeof EXTENDED_THINKING;
-export type Tier = 'A' | 'B' | 'C';
+export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
+  [MODELS.OPUS]:       { input: 15.00, output: 75.00 },   // per 1M tokens
+  [MODELS.SONNET]:     { input: 3.00,  output: 15.00 },
+  [MODELS.HAIKU]:      { input: 0.80,  output: 4.00 },
+  [MODELS.GPT4_TURBO]: { input: 10.00, output: 30.00 },
+};

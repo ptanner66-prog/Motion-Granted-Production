@@ -4,14 +4,14 @@
  * Tier-based AI model routing that reads from model_routing_config database table.
  *
  * Config for TIER A/B:
- * - stage_1_holding = 'gpt-4o'
+ * - stage_1_holding = 'gpt-4-turbo'
  * - stage_2_adversarial = 'claude-opus-4-5-20251101'
  * - dicta_detection = 'claude-haiku-4-5-20251001'
  * - bad_law_analysis = 'claude-haiku-4-5-20251001'
  * - drafting = 'claude-sonnet-4-20250514'
  *
  * Config for TIER C:
- * - stage_1_holding = 'gpt-5.2'
+ * - stage_1_holding = 'gpt-4-turbo'
  * - stage_2_adversarial = 'claude-opus-4-5-20251101'
  * - dicta_detection = 'claude-sonnet-4-20250514'
  * - bad_law_analysis = 'claude-sonnet-4-20250514'
@@ -78,31 +78,31 @@ const configCache: Map<MotionTier, CacheEntry> = new Map();
 
 const DEFAULT_CONFIGS: Record<MotionTier, Record<TaskType, string>> = {
   'A': {
-    stage_1_holding: 'gpt-4o',
+    stage_1_holding: 'gpt-4-turbo',
     stage_2_adversarial: 'claude-opus-4-5-20251101',
     dicta_detection: 'claude-haiku-4-5-20251001',
     bad_law_analysis: 'claude-haiku-4-5-20251001',
     drafting: 'claude-sonnet-4-20250514',
     judge_simulation: 'claude-opus-4-5-20251101',
-    tiebreaker: 'gpt-4o',
+    tiebreaker: 'gpt-4-turbo',
   },
   'B': {
-    stage_1_holding: 'gpt-4o',
+    stage_1_holding: 'gpt-4-turbo',
     stage_2_adversarial: 'claude-opus-4-5-20251101',
     dicta_detection: 'claude-haiku-4-5-20251001',
     bad_law_analysis: 'claude-haiku-4-5-20251001',
     drafting: 'claude-sonnet-4-20250514',
     judge_simulation: 'claude-opus-4-5-20251101',
-    tiebreaker: 'gpt-4o',
+    tiebreaker: 'gpt-4-turbo',
   },
   'C': {
-    stage_1_holding: 'gpt-5.2',
+    stage_1_holding: 'gpt-4-turbo',
     stage_2_adversarial: 'claude-opus-4-5-20251101',
     dicta_detection: 'claude-sonnet-4-20250514',
     bad_law_analysis: 'claude-sonnet-4-20250514',
     drafting: 'claude-opus-4-5-20251101',
     judge_simulation: 'claude-opus-4-5-20251101',
-    tiebreaker: 'gpt-4o',
+    tiebreaker: 'gpt-4-turbo',
   },
 };
 
@@ -122,7 +122,7 @@ export function getModelProvider(modelString: string): ModelProvider {
     lowerModel.startsWith('o1') ||
     lowerModel.includes('openai') ||
     lowerModel === 'gpt-4o' ||
-    lowerModel === 'gpt-5.2'
+    lowerModel === 'gpt-4-turbo'
   ) {
     return 'openai';
   }

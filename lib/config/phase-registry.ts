@@ -1,432 +1,643 @@
 /**
- * Phase Registry — Single Source of Truth for Model Routing & Configuration
+ * PHASE REGISTRY — Motion Granted
  *
- * VERSION: 1.0 — February 5, 2026
- * AUTHOR: Chen (Routing Unification Audit)
+ * ╔══════════════════════════════════════════════════════════════════╗
+ * ║  SINGLE SOURCE OF TRUTH for all phase × tier configuration.    ║
+ * ║  Every other routing system in the codebase is DELETED.        ║
+ * ║  If you need model/ET/batch info, import from HERE.            ║
+ * ╚══════════════════════════════════════════════════════════════════╝
  *
- * This file is the ONLY authority for:
- *   - Model selection per phase × tier
- *   - Extended thinking budgets per phase × tier
- *   - Max token limits
- *   - Citation batch sizes
- *   - Prompt file keys
+ * Authority: Clay's Master Implementation Guide v2.5 (BINDING)
+ *   - §1.1  Complete Phase Execution Map (lines 184-242)
+ *   - §1.2  Model Routing Table (lines 250-283)
+ *   - Batch 2 §A.2  Model Routing Matrix (lines 2373-2396)
+ *   - Batch 2 §A.3  Extended Thinking Budget Matrix (lines 2399-2410)
+ *   - §1.5 item 8   B+ = 87% quality threshold (line 379)
+ *   - §1.5 item 15  Citation batch sizes (line 394)
  *
- * ALL other files that previously defined routing (phase-executors.ts,
- * phase-config.ts, types/workflow.ts, model-router.ts, config/models.ts)
- * MUST import from here. No local overrides. No duplicates.
+ * Implements:
+ *   DC-001  getModelForPhase() — now getModel()
+ *   DC-002  getExtendedThinkingBudget() — now getThinkingBudget()
+ *   MR-003  Decision: TypeScript constants (not DB table)
+ *   MR-007  Model string validation before API call
  *
- * Ground truth source: Clay's Workflow Audit §7.1, §7.2, §8.3
+ * Supersedes (all routing code in these files is DELETED):
+ *   - phase-executors.ts lines 112-132 (local getModelForPhase/getThinkingBudget)
+ *   - phase-config.ts getModelForPhase duplicate
+ *   - types/workflow.ts MODEL_ROUTING, EXTENDED_THINKING_CONFIG, CITATION_BATCH_SIZES
+ *   - model-router.ts shouldUseOpus(), getModelForPhase() wrapper
+ *   - prompts/index.ts PHASE_METADATA model/ET fields
+ *   - config/models.ts routing functions (EXTENDED_THINKING, TOKEN_LIMITS, getClaudeParams)
  *
- * OPEN QUESTION (requires Clay): Phase VII.1 spec says Sonnet + ET budgets.
- * Extended thinking at 5K/10K budget levels requires Opus. The registry
- * follows the spec literally (Sonnet + ET) but this may fail at runtime
- * if the Anthropic API rejects ET on Sonnet. If so, change VII.1 model
- * to OPUS for tiers that have ET enabled.
+ * Design Rationale (MR-003):
+ *   TypeScript constants over DB table because:
+ *   1. Immutable at runtime — no accidental production changes
+ *   2. Version-controlled — every change is in git history
+ *   3. Type-safe — compiler catches misconfigurations
+ *   4. Testable — unit tests verify all 42 combinations
+ *   5. No DB dependency — works even if Supabase is down
+ *   6. Reviewable — one file to understand the entire routing system
  */
 
+import { MODELS, validateModelString, type ModelId } from './models';
+
 // ============================================================================
-// MODEL STRING CONSTANTS
+// TYPES
 // ============================================================================
 
-export const CLAUDE_MODELS = {
-  SONNET: 'claude-sonnet-4-20250514',
-  OPUS: 'claude-opus-4-5-20251101',
-} as const;
-
-export const OPENAI_MODELS = {
-  CITATION_VERIFIER: 'gpt-4-turbo',
-} as const;
-
-export type ClaudeModelId = typeof CLAUDE_MODELS[keyof typeof CLAUDE_MODELS];
+/** Motion complexity tiers. NEVER use 1/2/3. */
 export type Tier = 'A' | 'B' | 'C';
 
-// ============================================================================
-// PHASE CODES
-// ============================================================================
+/** All 14 workflow phases in execution order. */
+export type WorkflowPhase =
+  | 'I' | 'II' | 'III' | 'IV' | 'V' | 'V.1'
+  | 'VI' | 'VII' | 'VII.1' | 'VIII' | 'VIII.5'
+  | 'IX' | 'IX.1' | 'X';
 
-export const PHASE_CODES = [
-  'I', 'II', 'III', 'IV', 'V', 'V.1', 'VI', 'VII', 'VII.1',
-  'VIII', 'VIII.5', 'IX', 'IX.1', 'X',
-] as const;
+/** Execution mode for a phase. */
+export type ExecutionMode = 'CODE' | 'CHAT';
 
-export type PhaseCode = typeof PHASE_CODES[number];
-export const TOTAL_PHASES = 14;
+/**
+ * Stages within CODE mode phases that use LLMs as tools.
+ * V.1, VII.1, and IX.1 have 3 internal stages with different models.
+ */
+export type CivStage = 'stage1' | 'stage2' | 'steps3-5';
 
-// ============================================================================
-// PHASE TIER CONFIG TYPE
-// ============================================================================
-
-interface PhaseTierConfig {
-  model: ClaudeModelId;
-  extendedThinking: number | null; // null = disabled, number = budget_tokens
-  maxTokens: number;               // 64000 (no ET) or 128000 (with ET)
+/** Configuration for a single phase × tier combination. */
+interface RouteConfig {
+  /** AI model to use. null = no LLM call (CODE mode phases I, VIII.5, X) or SKIP (VI Tier A). */
+  model: ModelId | null;
+  /** Extended thinking budget in tokens. undefined = no extended thinking. */
+  thinkingBudget?: number;
+  /** max_tokens for the API call. 128000 for ET phases, 16384 for standard CHAT, 4096 for CODE/JSON. */
+  maxTokens: number;
 }
 
-interface PhaseEntry {
+/** Per-tier routing for a phase. */
+interface TierRouting {
+  A: RouteConfig;
+  B: RouteConfig;
+  C: RouteConfig;
+}
+
+/** Complete configuration for one phase. */
+interface PhaseConfig {
   name: string;
-  order: number;
-  promptKey: string;
-  tiers: Record<Tier, PhaseTierConfig>;
-  citationBatchSize: Record<Tier, number>;
+  mode: ExecutionMode;
+  /** For CHAT mode phases and simple CODE mode phases (I, VIII.5, X). */
+  routing: TierRouting;
+  /**
+   * For multi-stage CODE mode phases (V.1, VII.1, IX.1).
+   * Each stage has its own model routing.
+   * When stages is defined, routing contains the Stage 2 (primary) config.
+   */
+  stages?: Record<CivStage, TierRouting>;
 }
 
 // ============================================================================
-// TOKEN LIMITS
+// CONSTANTS
 // ============================================================================
 
-const MAX_TOKENS_STANDARD = 64_000;
-const MAX_TOKENS_EXTENDED = 128_000;
+/** Quality threshold. B+ = 0.87 for ALL tiers. (§1.5 item 8) */
+export const QUALITY_THRESHOLD = 0.87;
+
+/** Grade scale for display. */
+export const GRADE_SCALE = {
+  'A+': 0.97,
+  'A':  0.93,
+  'A-': 0.90,
+  'B+': 0.87,
+  'B':  0.83,
+  'B-': 0.80,
+  'C+': 0.77,
+  'C':  0.73,
+  'F':  0.00,
+} as const;
+
+/** Maximum revision loops before forced completion. (§1.5 item 7) */
+export const MAX_REVISION_LOOPS = 3;
+
+/**
+ * Citation batch sizes per tier. (§1.5 item 15)
+ * V.1/VII.1/IX.1 use CIV (2).
+ * Standard phases use tier-specific: A=5, B=4, C=3.
+ */
+export const BATCH_SIZES = {
+  A: 5,
+  B: 4,
+  C: 3,
+  /** V.1, VII.1, IX.1 — always 2 regardless of tier */
+  CIV: 2,
+} as const;
+
+/** HOLD checkpoint timeout sequence. (§1.5 item 6) */
+export const HOLD_TIMEOUTS = {
+  REMINDER_1_HOURS: 24,
+  ESCALATION_HOURS: 72,
+  AUTO_REFUND_DAYS: 7,
+} as const;
+
+/** Turnaround times by tier. (§1.5 item 17) */
+export const TURNAROUND = {
+  A: { days: '2-3', businessDays: 3 },
+  B: { days: '3-4', businessDays: 4 },
+  C: { days: '4-5', businessDays: 5 },
+} as const;
 
 // ============================================================================
-// HELPER: Build a tier config
+// COMMON ROUTE CONFIGS (DRY helpers — not exported)
 // ============================================================================
 
-function tc(model: ClaudeModelId, et: number | null): PhaseTierConfig {
-  return {
-    model,
-    extendedThinking: et,
-    maxTokens: et !== null ? MAX_TOKENS_EXTENDED : MAX_TOKENS_STANDARD,
-  };
-}
+const NO_LLM: RouteConfig = { model: null, maxTokens: 0 };
+const SKIP:   RouteConfig = { model: null, maxTokens: 0 };
 
-const S = CLAUDE_MODELS.SONNET;
-const O = CLAUDE_MODELS.OPUS;
+const SONNET_STANDARD: RouteConfig = {
+  model: MODELS.SONNET,
+  maxTokens: 16384,
+};
+
+const OPUS_STANDARD: RouteConfig = {
+  model: MODELS.OPUS,
+  maxTokens: 16384,
+};
+
+const OPUS_ET_8K: RouteConfig = {
+  model: MODELS.OPUS,
+  thinkingBudget: 8_000,
+  maxTokens: 128_000,
+};
+
+const OPUS_ET_10K: RouteConfig = {
+  model: MODELS.OPUS,
+  thinkingBudget: 10_000,
+  maxTokens: 128_000,
+};
 
 // ============================================================================
-// STANDARD BATCH SIZES (from Clay's Workflow Audit §8.3)
+// THE REGISTRY — Every phase × tier combination
 // ============================================================================
-
-const STANDARD_BATCH: Record<Tier, number> = { A: 5, B: 4, C: 3 };
-const CIV_CHECK_BATCH: Record<Tier, number> = { A: 2, B: 2, C: 2 };
-
-// ============================================================================
-// THE REGISTRY — 14 PHASES × 3 TIERS
 //
-// Ground truth from Clay's Workflow Audit:
-//   §7.1 — Model Selection
-//   §7.2 — Extended Thinking Budgets
-//   §8.3 — Citation Batch Sizes
+// READ THIS TABLE LIKE A SPREADSHEET:
+//   Row    = Phase
+//   Column = Tier (A, B, C)
+//   Cell   = { model, thinkingBudget?, maxTokens }
 //
-// ET budget values:
-//   Phase III  — Tier C only:     10,000
-//   Phase V    — Tier C only:     10,000
-//   Phase VI   — Tier B/C:         8,000
-//   Phase VII  — Tier A/B: 5,000   Tier C: 10,000
-//   Phase VII.1— Tier A/B: 5,000   Tier C: 10,000
-//   Phase VIII — Tier B/C:         8,000
-//   All others: null (disabled)
+// If you need to change routing, change it HERE and ONLY here.
 //
-// Model selection:
-//   Phase VII:        ALWAYS Opus (all tiers)
-//   Phase IV B/C:     Opus
-//   Phase VI B/C:     Opus
-//   Phase VIII B/C:   Opus (ET requires Opus)
-//   Everything else:  Sonnet
-// ============================================================================
 
-export const PHASE_REGISTRY: Record<PhaseCode, PhaseEntry> = {
+const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
+
+  // ── Phase I: Intake & Classification ──────────────────────────────
+  // MODE: CODE (no LLM). Pure TypeScript business logic.
+  // Parses order, validates, looks up tier, calculates deadline.
   'I': {
-    name: 'Intake & Document Processing',
-    order: 1,
-    promptKey: 'PHASE_I',
-    tiers: {
-      A: tc(S, null),
-      B: tc(S, null),
-      C: tc(S, null),
+    name: 'Intake and Classification',
+    mode: 'CODE',
+    routing: {
+      A: NO_LLM,
+      B: NO_LLM,
+      C: NO_LLM,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase II: Document Processing ─────────────────────────────────
+  // MODE: CHAT. Sonnet all tiers.
+  // Extracts key facts and legal issues from uploaded documents.
   'II': {
-    name: 'Legal Standards / Motion Deconstruction',
-    order: 2,
-    promptKey: 'PHASE_II',
-    tiers: {
-      A: tc(S, null),
-      B: tc(S, null),
-      C: tc(S, null),
+    name: 'Document Processing',
+    mode: 'CHAT',
+    routing: {
+      A: SONNET_STANDARD,
+      B: SONNET_STANDARD,
+      C: SONNET_STANDARD,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase III: Legal Research ──────────────────────────────────────
+  // MODE: CHAT. Sonnet all tiers.
+  // Identifies elements, burdens, defenses; builds research framework.
+  //
+  // NOTE: The earlier audit (CHEN_AUDIT_REPORT P1-02) identified that
+  //       types/workflow.ts defined C:10K ET for Phase III, but the
+  //       execution code returned null. Clay's 2.5 Batch 2 ET Matrix
+  //       (lines 2399-2410) does NOT list Phase III for ET at all.
+  //       The 2.5 Model Routing Matrix (line 2378) assigns Sonnet
+  //       for ALL tiers of Phase III. Decision: NO ET for Phase III.
+  //       If Clay wants Phase III Tier C to use ET, Phase III C
+  //       must be upgraded to Opus in this registry.
   'III': {
-    name: 'Evidence Strategy / Issue Identification',
-    order: 3,
-    promptKey: 'PHASE_III',
-    tiers: {
-      A: tc(S, null),
-      B: tc(S, null),
-      C: tc(S, 10_000),  // Tier C: extended thinking for legal strategy
+    name: 'Legal Research',
+    mode: 'CHAT',
+    routing: {
+      A: SONNET_STANDARD,
+      B: SONNET_STANDARD,
+      C: SONNET_STANDARD,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase IV: Deep Research ───────────────────────────────────────
+  // MODE: CHAT. Sonnet A, Opus B/C.
+  // CourtListener authority search, case analysis, authority ranking.
   'IV': {
-    name: 'Authority Research',
-    order: 4,
-    promptKey: 'PHASE_IV',
-    tiers: {
-      A: tc(S, null),
-      B: tc(O, null),     // Opus for complex research
-      C: tc(O, null),     // Opus for complex research
+    name: 'Deep Research',
+    mode: 'CHAT',
+    routing: {
+      A: SONNET_STANDARD,
+      B: OPUS_STANDARD,
+      C: OPUS_STANDARD,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase V: Motion Drafting ──────────────────────────────────────
+  // MODE: CHAT. Sonnet all tiers.
+  // Drafts complete motion with legal arguments and citations.
+  //
+  // NOTE: Same situation as Phase III — audit found types/workflow.ts
+  //       defined C:10K ET, but Clay's 2.5 ET Matrix doesn't list
+  //       Phase V. Sonnet all tiers per the binding routing matrix.
   'V': {
-    name: 'Drafting',
-    order: 5,
-    promptKey: 'PHASE_V',
-    tiers: {
-      A: tc(S, null),
-      B: tc(S, null),
-      C: tc(S, 10_000),  // Tier C: extended thinking for complex drafting
+    name: 'Motion Drafting',
+    mode: 'CHAT',
+    routing: {
+      A: SONNET_STANDARD,
+      B: SONNET_STANDARD,
+      C: SONNET_STANDARD,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase V.1: Citation Verification ──────────────────────────────
+  // MODE: CODE. LLM as tool with 3 internal stages.
+  // 7-step pipeline: existence, holding, dicta, quote, bad law, flags.
+  //
+  // Stage 1: GPT-4 Turbo (holding verification) — ALL tiers
+  // Stage 2: Opus (adversarial review) — ALL tiers
+  // Steps 3-5: Haiku A/B, Sonnet C (cost optimization per MR-010)
   'V.1': {
-    name: 'Citation Accuracy Check',
-    order: 6,
-    promptKey: 'PHASE_V1',
-    tiers: {
-      A: tc(S, null),
-      B: tc(S, null),
-      C: tc(S, null),
+    name: 'Citation Verification',
+    mode: 'CODE',
+    routing: {
+      // Primary routing (Stage 2 — used when no stage specified)
+      A: { model: MODELS.OPUS, maxTokens: 4096 },
+      B: { model: MODELS.OPUS, maxTokens: 4096 },
+      C: { model: MODELS.OPUS, maxTokens: 4096 },
     },
-    citationBatchSize: CIV_CHECK_BATCH,  // Always 2 for citation check phases
+    stages: {
+      'stage1': {
+        A: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        B: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        C: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+      },
+      'stage2': {
+        A: { model: MODELS.OPUS, maxTokens: 4096 },
+        B: { model: MODELS.OPUS, maxTokens: 4096 },
+        C: { model: MODELS.OPUS, maxTokens: 4096 },
+      },
+      'steps3-5': {
+        A: { model: MODELS.HAIKU, maxTokens: 4096 },
+        B: { model: MODELS.HAIKU, maxTokens: 4096 },
+        C: { model: MODELS.SONNET, maxTokens: 4096 },
+      },
+    },
   },
+
+  // ── Phase VI: Opposition Analysis ─────────────────────────────────
+  // MODE: CHAT. SKIP A, Opus+ET 8K B/C.
+  // Anticipates opposing arguments and prepares responses.
+  // Tier A procedural motions skip opposition analysis entirely.
   'VI': {
-    name: 'Opposition Anticipation',
-    order: 7,
-    promptKey: 'PHASE_VI',
-    tiers: {
-      A: tc(S, null),     // Tier A: skipped per PHASE_SKIP_RULES, but if it runs: Sonnet, no ET
-      B: tc(O, 8_000),    // Opus + ET for opposition analysis
-      C: tc(O, 8_000),    // Opus + ET for opposition analysis
+    name: 'Opposition Analysis',
+    mode: 'CHAT',
+    routing: {
+      A: SKIP,
+      B: OPUS_ET_8K,
+      C: OPUS_ET_8K,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase VII: Judge Simulation ───────────────────────────────────
+  // MODE: CHAT. OPUS ALL TIERS + ET 10K.
+  // Quality gate. Skeptical judicial evaluation. B+ minimum.
+  // Most judgment-intensive phase. NEVER downgrade the model.
   'VII': {
     name: 'Judge Simulation',
-    order: 8,
-    promptKey: 'PHASE_VII',
-    tiers: {
-      A: tc(O, 5_000),    // Always Opus — reduced ET for simpler motions
-      B: tc(O, 5_000),    // Always Opus — standard ET
-      C: tc(O, 10_000),   // Always Opus — maximum ET for complex motions
+    mode: 'CHAT',
+    routing: {
+      A: OPUS_ET_10K,
+      B: OPUS_ET_10K,
+      C: OPUS_ET_10K,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase VII.1: Citation Re-Verification ─────────────────────────
+  // MODE: CODE. Same 3-stage structure as V.1.
+  // Re-verifies any citations added or modified during revision.
   'VII.1': {
-    name: 'Post-Revision Citation Check',
-    order: 9,
-    promptKey: 'PHASE_VII1',
-    tiers: {
-      // NOTE: Spec says Sonnet but ET budgets (5K/10K) may require Opus.
-      // If Anthropic API rejects ET on Sonnet at these levels, change to Opus.
-      // See OPEN QUESTION in file header.
-      A: tc(S, 5_000),
-      B: tc(S, 5_000),
-      C: tc(S, 10_000),
+    name: 'Citation Re-Verification',
+    mode: 'CODE',
+    routing: {
+      A: { model: MODELS.OPUS, maxTokens: 4096 },
+      B: { model: MODELS.OPUS, maxTokens: 4096 },
+      C: { model: MODELS.OPUS, maxTokens: 4096 },
     },
-    citationBatchSize: CIV_CHECK_BATCH,  // Always 2 for citation check phases
+    stages: {
+      'stage1': {
+        A: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        B: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        C: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+      },
+      'stage2': {
+        A: { model: MODELS.OPUS, maxTokens: 4096 },
+        B: { model: MODELS.OPUS, maxTokens: 4096 },
+        C: { model: MODELS.OPUS, maxTokens: 4096 },
+      },
+      'steps3-5': {
+        A: { model: MODELS.HAIKU, maxTokens: 4096 },
+        B: { model: MODELS.HAIKU, maxTokens: 4096 },
+        C: { model: MODELS.SONNET, maxTokens: 4096 },
+      },
+    },
   },
+
+  // ── Phase VIII: Revisions ─────────────────────────────────────────
+  // MODE: CHAT.
+  // Sonnet A (no ET), Opus+ET 8K B/C.
+  //
+  // CONFLICT RESOLUTION: Clay's §1.2 says "Sonnet all tiers" but
+  // Batch 2 Matrix says "Sonnet A, OPUS+ET 8K B/C". The Batch 2
+  // matrix supersedes because: (1) it's later in the document,
+  // (2) ET requires Opus — Sonnet cannot use 8K thinking budgets,
+  // (3) the execution code already correctly used Opus for B/C.
   'VIII': {
     name: 'Revisions',
-    order: 10,
-    promptKey: 'PHASE_VIII',
-    tiers: {
-      A: tc(S, null),
-      B: tc(O, 8_000),    // Opus required for ET
-      C: tc(O, 8_000),    // Opus required for ET
+    mode: 'CHAT',
+    routing: {
+      A: SONNET_STANDARD,
+      B: OPUS_ET_8K,
+      C: OPUS_ET_8K,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase VIII.5: Caption Validation ──────────────────────────────
+  // MODE: CODE (no LLM). Pure TypeScript.
+  // String-match caption fields against order context.
   'VIII.5': {
     name: 'Caption Validation',
-    order: 11,
-    promptKey: 'PHASE_VIII5',
-    tiers: {
-      A: tc(S, null),
-      B: tc(S, null),
-      C: tc(S, null),
+    mode: 'CODE',
+    routing: {
+      A: NO_LLM,
+      B: NO_LLM,
+      C: NO_LLM,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase IX: Supporting Documents ────────────────────────────────
+  // MODE: CHAT. Sonnet all tiers.
+  // Declaration, separate statement, proposed order, memorandum.
   'IX': {
     name: 'Supporting Documents',
-    order: 12,
-    promptKey: 'PHASE_IX',
-    tiers: {
-      A: tc(S, null),
-      B: tc(S, null),
-      C: tc(S, null),
+    mode: 'CHAT',
+    routing: {
+      A: SONNET_STANDARD,
+      B: SONNET_STANDARD,
+      C: SONNET_STANDARD,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
+
+  // ── Phase IX.1: Final Citation Sweep ──────────────────────────────
+  // MODE: CODE. Same 3-stage structure as V.1/VII.1.
+  // Verifies any new citations in supporting documents.
   'IX.1': {
-    name: 'Separate Statement Check',
-    order: 13,
-    promptKey: 'PHASE_IX1',
-    tiers: {
-      A: tc(S, null),
-      B: tc(S, null),
-      C: tc(S, null),
+    name: 'Final Citation Sweep',
+    mode: 'CODE',
+    routing: {
+      A: { model: MODELS.OPUS, maxTokens: 4096 },
+      B: { model: MODELS.OPUS, maxTokens: 4096 },
+      C: { model: MODELS.OPUS, maxTokens: 4096 },
     },
-    citationBatchSize: STANDARD_BATCH,
+    stages: {
+      'stage1': {
+        A: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        B: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        C: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+      },
+      'stage2': {
+        A: { model: MODELS.OPUS, maxTokens: 4096 },
+        B: { model: MODELS.OPUS, maxTokens: 4096 },
+        C: { model: MODELS.OPUS, maxTokens: 4096 },
+      },
+      'steps3-5': {
+        A: { model: MODELS.HAIKU, maxTokens: 4096 },
+        B: { model: MODELS.HAIKU, maxTokens: 4096 },
+        C: { model: MODELS.SONNET, maxTokens: 4096 },
+      },
+    },
   },
+
+  // ── Phase X: Final Assembly ───────────────────────────────────────
+  // MODE: CODE (no LLM). Pure TypeScript.
+  // Compiles filing package, applies formatting, generates deliverables.
   'X': {
     name: 'Final Assembly',
-    order: 14,
-    promptKey: 'PHASE_X',
-    tiers: {
-      A: tc(S, null),
-      B: tc(S, null),
-      C: tc(S, null),
+    mode: 'CODE',
+    routing: {
+      A: NO_LLM,
+      B: NO_LLM,
+      C: NO_LLM,
     },
-    citationBatchSize: STANDARD_BATCH,
   },
 };
 
 // ============================================================================
-// GETTER FUNCTIONS — Drop-in replacements for existing routing functions
+// GETTER FUNCTIONS — The only way to access routing config
 // ============================================================================
 
 /**
- * Get the Claude model ID for a phase × tier combination.
+ * Get the AI model for a phase/tier/stage combination.
+ * Returns null for CODE phases without LLM or SKIP (Phase VI Tier A).
  *
- * Replaces:
- *   - phase-executors.ts:112    getModelForPhase() (local)
- *   - phase-config.ts:216       getModelForPhase() (exported)
- *   - types/workflow.ts:873     getModelForPhase() (exported)
- *   - model-router.ts:97        getModelId()
- */
-export function getModelForPhase(phase: PhaseCode, tier: Tier): ClaudeModelId {
-  const entry = PHASE_REGISTRY[phase];
-  if (!entry) {
-    throw new Error(`[phase-registry] Unknown phase: ${phase}`);
-  }
-  return entry.tiers[tier].model;
-}
-
-/**
- * Get the extended thinking budget for a phase × tier combination.
- * Returns null if ET is disabled for this combination.
+ * @param phase - Workflow phase (I through X)
+ * @param tier - Motion complexity tier (A, B, C)
+ * @param stage - Optional CIV stage for V.1/VII.1/IX.1 (stage1, stage2, steps3-5)
+ * @returns Model string or null
  *
- * Replaces:
- *   - phase-executors.ts:128    getThinkingBudget() (local)
- *   - phase-config.ts:226       getExtendedThinkingBudget() (exported)
- *   - types/workflow.ts:909     getExtendedThinkingBudget() (exported)
- *   - model-router.ts:104       getThinkingBudget()
+ * @example
+ * getModel('VII', 'B')           // → 'claude-opus-4-5-20251101'
+ * getModel('VI', 'A')            // → null (skipped)
+ * getModel('V.1', 'C', 'stage1') // → 'gpt-4-turbo'
  */
-export function getETBudget(phase: PhaseCode, tier: Tier): number | null {
-  const entry = PHASE_REGISTRY[phase];
-  if (!entry) {
-    throw new Error(`[phase-registry] Unknown phase: ${phase}`);
+export function getModel(
+  phase: WorkflowPhase,
+  tier: Tier,
+  stage?: CivStage,
+): string | null {
+  const config = PHASE_REGISTRY[phase];
+  if (!config) {
+    throw new Error(`[PHASE_REGISTRY] Unknown phase: "${phase}". Valid: ${PHASES.join(', ')}`);
   }
-  return entry.tiers[tier].extendedThinking;
+
+  let route: RouteConfig;
+
+  if (stage && config.stages) {
+    const stageRouting = config.stages[stage];
+    if (!stageRouting) {
+      throw new Error(
+        `[PHASE_REGISTRY] Unknown stage "${stage}" for phase ${phase}. ` +
+        `Valid stages: ${Object.keys(config.stages).join(', ')}`
+      );
+    }
+    route = stageRouting[tier];
+  } else {
+    route = config.routing[tier];
+  }
+
+  return route.model;
 }
 
 /**
- * Get the max_tokens for a phase × tier combination.
- * 128,000 when ET is enabled, 64,000 otherwise.
+ * Get the extended thinking budget for a phase/tier combination.
+ * Returns undefined if phase/tier does not use extended thinking.
  *
- * Replaces hardcoded constants scattered across multiple files.
+ * @example
+ * getThinkingBudget('VII', 'A')  // → 10000
+ * getThinkingBudget('VI', 'A')   // → undefined (skipped)
+ * getThinkingBudget('II', 'B')   // → undefined (no ET)
  */
-export function getMaxTokens(phase: PhaseCode, tier: Tier): number {
-  const entry = PHASE_REGISTRY[phase];
-  if (!entry) {
-    throw new Error(`[phase-registry] Unknown phase: ${phase}`);
+export function getThinkingBudget(
+  phase: WorkflowPhase,
+  tier: Tier,
+  stage?: CivStage,
+): number | undefined {
+  const config = PHASE_REGISTRY[phase];
+  if (!config) {
+    throw new Error(`[PHASE_REGISTRY] Unknown phase: "${phase}"`);
   }
-  return entry.tiers[tier].maxTokens;
+
+  let route: RouteConfig;
+
+  if (stage && config.stages) {
+    const stageRouting = config.stages[stage];
+    if (!stageRouting) return undefined;
+    route = stageRouting[tier];
+  } else {
+    route = config.routing[tier];
+  }
+
+  return route.thinkingBudget;
 }
 
 /**
- * Get the citation batch size for a phase × tier combination.
+ * Get max_tokens for a phase/tier combination.
  *
- * Standard phases: Tier A=5, B=4, C=3
- * Citation check phases (V.1, VII.1): Always 2
- *
- * Replaces:
- *   - types/workflow.ts:929     getCitationBatchSize()
- *   - workflow-config.ts:124    getCitationBatchSize()
- *   - phase-config.ts:308       getCitationBatchSize()
+ * @example
+ * getMaxTokens('VII', 'C')  // → 128000 (ET phase)
+ * getMaxTokens('V', 'A')    // → 16384 (standard CHAT)
  */
-export function getBatchSize(phase: PhaseCode, tier: Tier): number {
-  const entry = PHASE_REGISTRY[phase];
-  if (!entry) {
-    throw new Error(`[phase-registry] Unknown phase: ${phase}`);
+export function getMaxTokens(
+  phase: WorkflowPhase,
+  tier: Tier,
+  stage?: CivStage,
+): number {
+  const config = PHASE_REGISTRY[phase];
+  if (!config) {
+    throw new Error(`[PHASE_REGISTRY] Unknown phase: "${phase}"`);
   }
-  return entry.citationBatchSize[tier];
-}
 
-/**
- * Check if extended thinking is enabled for a phase × tier combination.
- */
-export function hasExtendedThinking(phase: PhaseCode, tier: Tier): boolean {
-  return getETBudget(phase, tier) !== null;
-}
+  let route: RouteConfig;
 
-/**
- * Get the full tier config for a phase × tier combination.
- */
-export function getTierConfig(phase: PhaseCode, tier: Tier): PhaseTierConfig {
-  const entry = PHASE_REGISTRY[phase];
-  if (!entry) {
-    throw new Error(`[phase-registry] Unknown phase: ${phase}`);
+  if (stage && config.stages) {
+    const stageRouting = config.stages[stage];
+    if (!stageRouting) return 4096;
+    route = stageRouting[tier];
+  } else {
+    route = config.routing[tier];
   }
-  return entry.tiers[tier];
+
+  return route.maxTokens;
 }
 
 /**
- * Get the phase entry (full config for all tiers).
+ * Get citation batch size for a phase/tier combination.
+ * CIV phases (V.1, VII.1, IX.1) always return 2.
+ * Standard phases return tier-specific: A=5, B=4, C=3.
  */
-export function getPhaseEntry(phase: PhaseCode): PhaseEntry {
-  const entry = PHASE_REGISTRY[phase];
-  if (!entry) {
-    throw new Error(`[phase-registry] Unknown phase: ${phase}`);
+export function getBatchSize(phase: WorkflowPhase, tier: Tier): number {
+  const CIV_PHASES: WorkflowPhase[] = ['V.1', 'VII.1', 'IX.1'];
+  if (CIV_PHASES.includes(phase)) {
+    return BATCH_SIZES.CIV;
   }
-  return entry;
+  return BATCH_SIZES[tier];
 }
 
 /**
- * Get all phases in execution order.
+ * Get the execution mode for a phase.
  */
-export function getAllPhasesInOrder(): Array<{ code: PhaseCode; entry: PhaseEntry }> {
-  return PHASE_CODES.map(code => ({ code, entry: PHASE_REGISTRY[code] }));
+export function getExecutionMode(phase: WorkflowPhase): ExecutionMode {
+  const config = PHASE_REGISTRY[phase];
+  if (!config) {
+    throw new Error(`[PHASE_REGISTRY] Unknown phase: "${phase}"`);
+  }
+  return config.mode;
+}
+
+/**
+ * Get the full PhaseConfig for a phase (for debugging/admin views).
+ */
+export function getPhaseConfig(phase: WorkflowPhase): PhaseConfig {
+  const config = PHASE_REGISTRY[phase];
+  if (!config) {
+    throw new Error(`[PHASE_REGISTRY] Unknown phase: "${phase}"`);
+  }
+  return config;
+}
+
+/**
+ * Check if a phase should be skipped for a given tier.
+ * Currently only Phase VI is skipped (Tier A only).
+ */
+export function isPhaseSkipped(phase: WorkflowPhase, tier: Tier): boolean {
+  const config = PHASE_REGISTRY[phase];
+  if (!config) return false;
+  return config.routing[tier].model === null && config.mode === 'CHAT';
 }
 
 // ============================================================================
-// QUALITY THRESHOLDS
-//
-// Centralized here to eliminate the 3 competing grade scale systems.
-// Uses 0-1 decimal scale ONLY. No more 4.0 GPA confusion.
-//
-// B+ = 0.87 for ALL tiers (spec says uniform).
-// NOTE: workflow-config.ts has Tier A = 0.83. If Clay confirms that's
-// intentional, update JUDGE_GRADE_MINIMUM.A below.
+// PHASE LIST — Canonical order
 // ============================================================================
 
-export const QUALITY_THRESHOLDS = {
-  /** Minimum judge simulation grade to pass (0-1 scale, B+ = 0.87) */
-  JUDGE_GRADE_MINIMUM: { A: 0.87, B: 0.87, C: 0.87 } as Record<Tier, number>,
+export const PHASES: WorkflowPhase[] = [
+  'I', 'II', 'III', 'IV', 'V', 'V.1',
+  'VI', 'VII', 'VII.1', 'VIII', 'VIII.5',
+  'IX', 'IX.1', 'X',
+];
 
-  /** Maximum acceptable citation failure rate */
-  CITATION_FAILURE_MAX: { A: 0.20, B: 0.15, C: 0.10 } as Record<Tier, number>,
+export const TOTAL_PHASES = 14;
 
-  /** Hard stop: minimum citations before workflow can proceed */
-  HARD_STOP_MINIMUM: 4,
+// ============================================================================
+// STARTUP VALIDATION — Runs at import time
+// ============================================================================
+// Verifies every model string in the registry is a valid MODELS constant.
+// If someone fat-fingers a model string, this catches it immediately.
 
-  /** Maximum revision loops before Protocol 10 escalation */
-  MAX_REVISION_LOOPS: 3,
-} as const;
-
-/**
- * Check if a judge grade (0-1 scale) passes for a given tier.
- */
-export function judgeGradePasses(grade: number, tier: Tier): boolean {
-  return grade >= QUALITY_THRESHOLDS.JUDGE_GRADE_MINIMUM[tier];
-}
-
-/**
- * Check if a citation failure rate is acceptable for a given tier.
- */
-export function citationFailureAcceptable(failureRate: number, tier: Tier): boolean {
-  return failureRate <= QUALITY_THRESHOLDS.CITATION_FAILURE_MAX[tier];
-}
+(function validateRegistry(): void {
+  for (const phase of PHASES) {
+    const config = PHASE_REGISTRY[phase];
+    for (const tier of ['A', 'B', 'C'] as Tier[]) {
+      const route = config.routing[tier];
+      if (route.model !== null) {
+        validateModelString(route.model, `PHASE_REGISTRY[${phase}].routing.${tier}`);
+      }
+      // Validate stages too
+      if (config.stages) {
+        for (const [stageName, stageRouting] of Object.entries(config.stages)) {
+          const stageRoute = (stageRouting as TierRouting)[tier];
+          if (stageRoute.model !== null) {
+            validateModelString(
+              stageRoute.model,
+              `PHASE_REGISTRY[${phase}].stages.${stageName}.${tier}`
+            );
+          }
+        }
+      }
+    }
+  }
+})();

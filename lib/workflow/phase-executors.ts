@@ -26,6 +26,7 @@ import type {
   LetterGrade,
 } from '@/types/workflow';
 import { PHASE_PROMPTS } from '@/prompts';
+import { getModel, getThinkingBudget, getMaxTokens } from '@/lib/config/phase-registry';
 import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
 
@@ -108,28 +109,10 @@ your output and the workflow will FAIL.
 ################################################################################
 `;
 
-// Model selection based on phase and tier
-function getModelForPhase(phase: WorkflowPhaseCode, tier: MotionTier): string {
-  const OPUS = 'claude-opus-4-5-20251101';
-  const SONNET = 'claude-sonnet-4-20250514';
-
-  // Phase VII always uses Opus (quality gate)
-  if (phase === 'VII') return OPUS;
-
-  // Tier B/C use Opus for research and complex phases
-  if (tier !== 'A') {
-    if (['IV', 'VI', 'VIII'].includes(phase)) return OPUS;
-  }
-
-  return SONNET;
-}
-
-// Extended thinking budget
-function getThinkingBudget(phase: WorkflowPhaseCode, tier: MotionTier): number | null {
-  if (phase === 'VII') return 10000; // Always for judge simulation
-  if (tier !== 'A' && ['VI', 'VIII'].includes(phase)) return 8000;
-  return null;
-}
+// Model selection and thinking budgets now come from the unified phase-registry.
+// The local getModelForPhase() and getThinkingBudget() functions that were here
+// have been DELETED. All routing is now in lib/config/phase-registry.ts.
+// Import: getModel(phase, tier), getThinkingBudget(phase, tier), getMaxTokens(phase, tier)
 
 // ============================================================================
 // ANTHROPIC CLIENT
@@ -539,7 +522,7 @@ ${input.documents?.join('\n') || 'None provided'}
 
 Provide your Phase I analysis as JSON.`;
 
-    const model = getModelForPhase('I', input.tier);
+    const model = getModel('I', input.tier);
     console.log(`[Phase I] Calling Claude with model: ${model}, max_tokens: 64000`);
     console.log(`[Phase I] Input context length: ${userMessage.length} chars`);
 
@@ -700,7 +683,7 @@ JURISDICTION: ${input.jurisdiction}
 Provide your Phase II legal framework analysis as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('II', input.tier),
+      model: getModel('II', input.tier),
       max_tokens: 64000, // Phase II: Legal framework analysis
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -770,7 +753,7 @@ ${JSON.stringify(phaseIIOutput, null, 2)}
 Provide your Phase III evidence strategy as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('III', input.tier),
+      model: getModel('III', input.tier),
       max_tokens: 64000, // Phase III: Extended legal research
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -1279,7 +1262,7 @@ REMINDER - USE THESE EXACT VALUES IN THE MOTION:
 
 Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON.`;
 
-    const model = getModelForPhase('V', input.tier);
+    const model = getModel('V', input.tier);
     console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 64000`);
     console.log(`[Phase V] User message length: ${userMessage.length} chars`);
 
@@ -2413,7 +2396,7 @@ OUTPUT FORMAT (JSON only):
 }`;
 
       const cleanupResponse = await createMessageWithStreaming(client, {
-        model: getModelForPhase('V.1', input.tier),
+        model: getModel('V.1', input.tier),
         max_tokens: 64000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
@@ -2590,7 +2573,7 @@ JURISDICTION: ${input.jurisdiction}
 Analyze potential opposition. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
-      model: getModelForPhase('VI', input.tier),
+      model: getModel('VI', input.tier),
       max_tokens: 64000, // Phase VI: Opposition anticipation with 8K thinking (Opus for B/C)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -2719,7 +2702,7 @@ Provide your judicial evaluation as JSON.`;
 
     // PHASE VII: ALWAYS Opus, ALWAYS Extended Thinking (10K tokens)
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('VII', input.tier), // Always Opus
+      model: getModel('VII', input.tier), // Always Opus
       max_tokens: 64000, // Phase VII: Judge simulation (always Opus with extended thinking)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -2797,7 +2780,7 @@ ${JSON.stringify(phaseVIIIOutput, null, 2)}
 Verify any new citations. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('VII.1', input.tier),
+      model: getModel('VII.1', input.tier),
       max_tokens: 64000, // Phase VII.1: Revision implementation
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -2996,7 +2979,7 @@ ${JSON.stringify(phaseVIIOutput, null, 2)}
 Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in the signature block. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
-      model: getModelForPhase('VIII', input.tier),
+      model: getModel('VIII', input.tier),
       max_tokens: 64000, // Phase VIII: Final draft with 8K thinking (Opus for B/C)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -3148,7 +3131,7 @@ JURISDICTION: ${input.jurisdiction}
 Validate captions. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('VIII.5', input.tier),
+      model: getModel('VIII.5', input.tier),
       max_tokens: 64000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -3281,7 +3264,7 @@ ${JSON.stringify(finalMotion, null, 2)}
 Generate supporting documents. The Certificate of Service MUST include the exact attorney signature block shown above. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('IX', input.tier),
+      model: getModel('IX', input.tier),
       max_tokens: 64000, // Phase IX: Document formatting and assembly
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -3379,7 +3362,7 @@ ${JSON.stringify(phaseVOutput, null, 2)}
 Verify Separate Statement complies with ${formatRules}. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('IX.1', input.tier),
+      model: getModel('IX.1', input.tier),
       max_tokens: 64000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -3475,7 +3458,7 @@ ${JSON.stringify(phaseIXOutput, null, 2)}
 Assemble and check. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModelForPhase('X', input.tier),
+      model: getModel('X', input.tier),
       max_tokens: 64000, // Phase X: Final QA and deliverables - full output needed
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],

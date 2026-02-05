@@ -7,9 +7,9 @@
  * Steps 3-5: Claude Haiku/Sonnet based on tier
  *
  * Tier-based routing per Clay's spec:
- * - Tier A: Simple procedural motions (gpt-4o + haiku)
- * - Tier B: Standard substantive motions (gpt-4o + haiku)
- * - Tier C: Complex/high-stakes motions (gpt-5.2 + sonnet)
+ * - Tier A: Simple procedural motions (gpt-4-turbo + haiku)
+ * - Tier B: Standard substantive motions (gpt-4-turbo + haiku)
+ * - Tier C: Complex/high-stakes motions (gpt-4-turbo + sonnet)
  */
 
 import OpenAI from 'openai';
@@ -21,17 +21,17 @@ export type MotionTier = 'A' | 'B' | 'C';
 // Clay's exact model routing
 export const MODEL_ROUTING = {
   tier_a: {
-    stage_1_holding: 'gpt-4o',
+    stage_1_holding: 'gpt-4-turbo',
     stage_2_adversarial: 'claude-opus-4-5-20251101',
     steps_3_5: 'claude-haiku-4-5-20251001',
   },
   tier_b: {
-    stage_1_holding: 'gpt-4o',
+    stage_1_holding: 'gpt-4-turbo',
     stage_2_adversarial: 'claude-opus-4-5-20251101',
     steps_3_5: 'claude-haiku-4-5-20251001',
   },
   tier_c: {
-    stage_1_holding: 'gpt-5.2',
+    stage_1_holding: 'gpt-4-turbo',
     stage_2_adversarial: 'claude-opus-4-5-20251101',
     steps_3_5: 'claude-sonnet-4-20250514',
   },

@@ -1,33 +1,34 @@
 /**
- * Model Router - v7.2
+ * Model Router — Backward-compatible re-exports from phase-registry.
  *
- * Handles model selection (Sonnet vs Opus) and extended thinking configuration
- * based on workflow phase and motion tier.
+ * ╔══════════════════════════════════════════════════════════════════╗
+ * ║  This file is a THIN SHIM for backward compatibility.          ║
+ * ║  All routing logic lives in lib/config/phase-registry.ts.      ║
+ * ║  New code should import directly from phase-registry.           ║
+ * ╚══════════════════════════════════════════════════════════════════╝
  *
- * Routing Rules:
- * - Phase VII (always): Opus
- * - Tier A (any phase): Sonnet
- * - Tier B/C Phases IV, VI, VIII: Opus
- * - Everything else: Sonnet
+ * Previously this was 243 lines that imported from types/workflow.ts
+ * (which had the WRONG Sonnet model string: claude-sonnet-4-5-20250929).
+ * All of that logic is now in phase-registry.ts with correct values.
  *
- * Extended Thinking:
- * - Phase VI (B/C only): 8K tokens
- * - Phase VII (all tiers): 10K tokens
- * - Phase VIII (B/C only): 8K tokens
+ * @deprecated Import from '@/lib/config/phase-registry' instead.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import {
-  type MotionTier,
-  type WorkflowPhaseCode,
-  SONNET_MODEL,
-  OPUS_MODEL,
-  getModelForPhase,
-  getExtendedThinkingBudget,
-} from '@/types/workflow';
+  getModel,
+  getThinkingBudget,
+  getMaxTokens,
+  type WorkflowPhase,
+  type Tier,
+} from '@/lib/config/phase-registry';
+import { MODELS } from '@/lib/config/models';
+
+// Re-export types that consumers may depend on
+export type { WorkflowPhase, Tier };
 
 // ============================================================================
-// TYPES
+// RE-EXPORTED TYPES
 // ============================================================================
 
 export interface ModelConfig {
@@ -37,87 +38,55 @@ export interface ModelConfig {
   maxTokens: number;
 }
 
-export interface PhaseExecutionConfig extends ModelConfig {
-  phase: WorkflowPhaseCode;
-  tier: MotionTier;
-  systemPrompt: string;
-}
-
 // ============================================================================
-// DEFAULT CONFIGURATIONS
-// ============================================================================
-
-const DEFAULT_MAX_TOKENS = 64000; // MAXED OUT - full reasoning capacity
-const EXTENDED_THINKING_MAX_TOKENS = 128000; // MAXED OUT - Opus 4.5 max output
-
-// ============================================================================
-// MODEL ROUTER
+// BACKWARD-COMPATIBLE FUNCTIONS
 // ============================================================================
 
 /**
- * Get the complete model configuration for a phase/tier combination
+ * Get the complete model configuration for a phase/tier combination.
+ * @deprecated Use getModel/getThinkingBudget/getMaxTokens from phase-registry directly.
  */
 export function getModelConfig(
-  phase: WorkflowPhaseCode,
-  tier: MotionTier
+  phase: WorkflowPhase,
+  tier: Tier
 ): ModelConfig {
-  const model = getModelForPhase(phase, tier);
-  const thinkingBudget = getExtendedThinkingBudget(phase, tier);
+  const model = getModel(phase, tier);
+  const thinkingBudget = getThinkingBudget(phase, tier) ?? null;
   const extendedThinking = thinkingBudget !== null;
 
   return {
-    model,
+    model: model ?? MODELS.SONNET,
     extendedThinking,
     thinkingBudget,
-    maxTokens: extendedThinking ? EXTENDED_THINKING_MAX_TOKENS : DEFAULT_MAX_TOKENS,
+    maxTokens: getMaxTokens(phase, tier),
   };
 }
 
 /**
- * Determine if a phase should use Opus model
+ * @deprecated Use getModel() from phase-registry directly.
  */
 export function shouldUseOpus(
-  phase: WorkflowPhaseCode,
-  tier: MotionTier
+  phase: WorkflowPhase,
+  tier: Tier
 ): boolean {
-  // Phase VII always uses Opus
-  if (phase === 'VII') return true;
-
-  // Tier A always uses Sonnet
-  if (tier === 'A') return false;
-
-  // Tier B/C uses Opus for specific phases
-  const opusPhases: WorkflowPhaseCode[] = ['IV', 'VI', 'VIII'];
-  return opusPhases.includes(phase);
+  const model = getModel(phase, tier);
+  return model !== null && model.includes('opus');
 }
 
 /**
- * Get the model ID string for API calls
+ * @deprecated Use getModel() from phase-registry directly.
  */
-export function getModelId(phase: WorkflowPhaseCode, tier: MotionTier): string {
-  return shouldUseOpus(phase, tier) ? OPUS_MODEL : SONNET_MODEL;
+export function getModelId(phase: WorkflowPhase, tier: Tier): string {
+  return getModel(phase, tier) ?? MODELS.SONNET;
 }
 
 /**
- * Get extended thinking budget in tokens (null if not enabled)
- */
-export function getThinkingBudget(
-  phase: WorkflowPhaseCode,
-  tier: MotionTier
-): number | null {
-  return getExtendedThinkingBudget(phase, tier);
-}
-
-// ============================================================================
-// ANTHROPIC API HELPERS
-// ============================================================================
-
-/**
- * Create Anthropic message parameters with correct model and thinking config
+ * Create Anthropic message parameters with correct model and thinking config.
+ * @deprecated Build params directly using phase-registry getters.
  */
 export function createMessageParams(
-  phase: WorkflowPhaseCode,
-  tier: MotionTier,
+  phase: WorkflowPhase,
+  tier: Tier,
   systemPrompt: string,
   userMessage: string,
   additionalParams?: Partial<Anthropic.MessageCreateParams>
@@ -132,7 +101,6 @@ export function createMessageParams(
     ...additionalParams,
   };
 
-  // Add extended thinking configuration if enabled
   if (config.extendedThinking && config.thinkingBudget) {
     (params as Anthropic.MessageCreateParams & { thinking?: { type: string; budget_tokens: number } }).thinking = {
       type: 'enabled',
@@ -141,103 +109,4 @@ export function createMessageParams(
   }
 
   return params;
-}
-
-/**
- * Create streaming message parameters
- */
-export function createStreamingParams(
-  phase: WorkflowPhaseCode,
-  tier: MotionTier,
-  systemPrompt: string,
-  userMessage: string,
-  additionalParams?: Partial<Anthropic.MessageCreateParams>
-): Anthropic.MessageCreateParams {
-  return {
-    ...createMessageParams(phase, tier, systemPrompt, userMessage, additionalParams),
-    stream: true,
-  };
-}
-
-// ============================================================================
-// LOGGING & METRICS
-// ============================================================================
-
-export interface ModelUsageLog {
-  phase: WorkflowPhaseCode;
-  tier: MotionTier;
-  model: string;
-  extendedThinking: boolean;
-  thinkingBudget: number | null;
-  inputTokens?: number;
-  outputTokens?: number;
-  thinkingTokens?: number;
-  durationMs?: number;
-  timestamp: Date;
-}
-
-/**
- * Create a usage log entry for tracking model usage
- */
-export function createUsageLog(
-  phase: WorkflowPhaseCode,
-  tier: MotionTier,
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    thinkingTokens?: number;
-    durationMs?: number;
-  }
-): ModelUsageLog {
-  const config = getModelConfig(phase, tier);
-
-  return {
-    phase,
-    tier,
-    model: config.model,
-    extendedThinking: config.extendedThinking,
-    thinkingBudget: config.thinkingBudget,
-    inputTokens: usage?.inputTokens,
-    outputTokens: usage?.outputTokens,
-    thinkingTokens: usage?.thinkingTokens,
-    durationMs: usage?.durationMs,
-    timestamp: new Date(),
-  };
-}
-
-// ============================================================================
-// COST ESTIMATION
-// ============================================================================
-
-// Approximate costs per 1M tokens (as of v7.2)
-const COST_PER_MILLION_TOKENS = {
-  sonnet: { input: 3, output: 15 },
-  opus: { input: 15, output: 75 },
-};
-
-/**
- * Estimate cost for a phase execution
- */
-export function estimateCost(
-  phase: WorkflowPhaseCode,
-  tier: MotionTier,
-  estimatedInputTokens: number,
-  estimatedOutputTokens: number
-): number {
-  const model = shouldUseOpus(phase, tier) ? 'opus' : 'sonnet';
-  const costs = COST_PER_MILLION_TOKENS[model];
-
-  const inputCost = (estimatedInputTokens / 1_000_000) * costs.input;
-  const outputCost = (estimatedOutputTokens / 1_000_000) * costs.output;
-
-  return inputCost + outputCost;
-}
-
-/**
- * Get model display name for UI
- */
-export function getModelDisplayName(phase: WorkflowPhaseCode, tier: MotionTier): string {
-  const model = getModelId(phase, tier);
-  if (model.includes('opus')) return 'Claude Opus 4.5';
-  return 'Claude Sonnet 4';
 }
