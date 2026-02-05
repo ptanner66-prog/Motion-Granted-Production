@@ -145,7 +145,7 @@ export function Hero() {
                 <CheckCircle className="w-5 h-5 text-gold mt-0.5 flex-shrink-0 group-hover:scale-110 transition-transform" aria-hidden="true" />
                 <div>
                   <span className="text-gold font-bold text-[10px] uppercase tracking-widest mb-1 block">Quality Floor</span>
-                  <span className="text-navy text-lg font-serif">B+ Minimum Standard</span>
+                  <span className="text-navy text-lg font-serif">A- Minimum Standard</span>
                 </div>
               </div>
               <div className="flex items-start gap-3 group">

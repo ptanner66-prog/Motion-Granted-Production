@@ -21,6 +21,7 @@ import type {
   StrengthAssessment,
   CitationTrend,
 } from '../types';
+import { getAuthorityLevel, type AuthorityLevel, type FilingContext } from '@/lib/config/citation-models';
 
 /**
  * Execute Step 6: Authority Strength Assessment
@@ -32,8 +33,10 @@ export async function executeAuthorityStrength(
   year: number,
   courtlistenerId?: string,
   caselawId?: string,
-  citationDbId?: string
-): Promise<AuthorityStrengthOutput> {
+  citationDbId?: string,
+  courtId?: string,
+  filingContext: FilingContext = 'STATE'
+): Promise<AuthorityStrengthOutput & { authorityLevel?: AuthorityLevel }> {
   const currentYear = new Date().getFullYear();
   const caseAgeYears = currentYear - year;
 
@@ -115,6 +118,16 @@ export async function executeAuthorityStrength(
       result.metrics.citationsLast5Years
     );
 
+    // CIV-009: Determine authority level using Louisiana authority matrix
+    let authorityLevel: AuthorityLevel | undefined;
+    if (courtId) {
+      authorityLevel = getAuthorityLevel(courtId, filingContext);
+      console.log(
+        `[CIV_STEP6] citation=${citation.substring(0, 50)} court=${courtId} ` +
+        `filing=${filingContext} authority=${authorityLevel}`
+      );
+    }
+
     // Record in database
     if (citationDbId) {
       await recordStrengthAssessment({
@@ -127,7 +140,7 @@ export async function executeAuthorityStrength(
       });
     }
 
-    return result;
+    return { ...result, authorityLevel };
   } catch (error) {
     console.error('Authority strength assessment error:', error);
     result.notes = `Assessment incomplete: ${error instanceof Error ? error.message : 'Unknown error'}`;

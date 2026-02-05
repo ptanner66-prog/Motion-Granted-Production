@@ -13,30 +13,18 @@ export const MODELS = {
   // Standard model for drafting, CODE MODE phases
   SONNET: "claude-sonnet-4-20250514",
 
+  // Fast model for CIV Steps 3-5 (Tier A/B)
+  HAIKU: "claude-haiku-4-5-20251001",
+
   // ═══════════════════════════════════════════════════════════════
   // OPENAI MODELS FOR CITATION VERIFICATION
   // ═══════════════════════════════════════════════════════════════
 
-  // IMPORTANT: The spec references "GPT-5.2" as a conceptual placeholder.
-  // OpenAI has NOT released a model called "GPT-5.2" as of January 2026.
-  //
-  // IMPLEMENTATION OPTIONS:
-  //
-  // Option 1 (RECOMMENDED): Use GPT-4 Turbo with low temperature
-  // - Model: "gpt-4-turbo-2024-04-09" or "gpt-4-turbo"
-  // - Parameters: { temperature: 0.1, max_tokens: 64000 }
-  //
-  // Option 2: Use o1-preview/o1-mini reasoning models (if available)
-  // - Model: "o1-preview" or "o1-mini"
-  // - Parameters: { reasoning_effort: "high" } (not temperature)
-  // - NOTE: o1 models don't support temperature parameter
-  //
-  // Option 3: Use GPT-4o (latest)
-  // - Model: "gpt-4o-2024-05-13" or "gpt-4o"
-  // - Parameters: { temperature: 0.1, max_tokens: 64000 }
-  //
-  // Choose based on your OpenAI API access and cost considerations.
-  OPENAI_CITATION_VERIFIER: process.env.OPENAI_CITATION_MODEL || "gpt-4-turbo",
+  // Clay's Part C Issue 2 BINDING DECISION:
+  // Citation Stage 1 uses gpt-4o (NOT gpt-4-turbo).
+  // gpt-5.2 was specified for Tier C but does not exist yet — gpt-4o as fallback.
+  // See lib/config/citation-models.ts for per-step citation routing.
+  OPENAI_CITATION_VERIFIER: process.env.OPENAI_CITATION_MODEL || "gpt-4o",
 
   // Model type determines parameter style
   OPENAI_MODEL_TYPE: process.env.OPENAI_MODEL_TYPE || "standard", // "standard" | "reasoning"

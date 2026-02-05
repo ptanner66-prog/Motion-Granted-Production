@@ -340,15 +340,18 @@ export async function lookupCitation(
 /**
  * Search for a case by citation
  * This is the primary method for Step 1 existence check
+ *
+ * [CIV-001] Removed deprecated citation= parameter — returns HTTP 400 after Feb 10, 2026.
+ * Now uses /search/?q=<query>&type=o for opinion search.
  */
 export async function searchByCitation(
   citation: string
 ): Promise<{ success: boolean; data?: CourtListenerSearchResult; error?: string }> {
-  // URL encode the citation
   const encodedCitation = encodeURIComponent(citation);
 
+  // CIV-001: Use search endpoint with q= parameter instead of deprecated citation= parameter
   const result = await makeRequest<{ results: CourtListenerOpinion[]; count: number }>(
-    `/opinions/?citation=${encodedCitation}`
+    `/search/?q=${encodedCitation}&type=o`
   );
 
   if (!result.success) {
@@ -1219,28 +1222,207 @@ const LOUISIANA_STATE_COURTS = ['la', 'lactapp'];  // Supreme Court + Courts of 
 const FEDERAL_LOUISIANA_COURTS = ['ca5', 'laed', 'lamd', 'lawd'];  // 5th Circuit + District Courts
 
 /**
- * Simplify a search query by removing complex legal jargon
- * CourtListener search works like Google - simple queries = more results
+ * Simplify a search query while PRESERVING statutory references.
+ *
+ * CIV-010: The old implementation stripped statutory references (La. C.C.P., La. R.S., etc.)
+ * which caused irrelevant search results. Statutory anchors are now preserved because they
+ * are critical for returning jurisdiction-relevant results.
+ *
+ * MUST NOT remove:
+ * - La. C.C.P. Art. \d+
+ * - La. R.S. \d+:\d+
+ * - La. Civ. Code art. \d+
+ * - 28 U.S.C. § \d+
+ * - Any § symbol
+ * - Any Art. or art. reference
  */
 function simplifyQuery(query: string): string {
-  let simplified = query
-    .replace(/Article \d+/gi, '')           // Remove "Article 1469"
-    .replace(/Section \d+/gi, '')           // Remove "Section 123"
-    .replace(/\d+\.\d+(\.\d+)?/g, '')       // Remove "1.2.3" numbers
-    .replace(/Code.*?Procedure/gi, '')      // Remove "Code of Civil Procedure"
-    .replace(/La\.?\s*(C\.?C\.?P\.?|R\.?S\.?)/gi, '') // Remove "La. C.C.P." or "La. R.S."
-    .replace(/C\.?C\.?P\.?/gi, '')          // Remove standalone "C.C.P."
-    .replace(/\([^)]*\)/g, '')              // Remove parenthetical content
+  // Extract and preserve statutory references before simplification
+  const statutoryPatterns = [
+    /La\.?\s*C\.?C\.?P\.?\s*(?:Art\.?|art\.?)\s*\d+/gi,
+    /La\.?\s*R\.?S\.?\s*\d+:\d+/gi,
+    /La\.?\s*Civ\.?\s*Code\s*(?:art\.?|Art\.?)\s*\d+/gi,
+    /\d+\s*U\.S\.C\.?\s*§\s*\d+[a-z]?/gi,
+    /Fed\.?\s*R\.?\s*(?:Civ|Crim|Evid|App)\.?\s*P\.?\s*\d+/gi,
+    /§\s*\d+/gi,
+  ];
+
+  const preservedRefs: string[] = [];
+  let workingQuery = query;
+
+  for (const pattern of statutoryPatterns) {
+    const matches = workingQuery.match(pattern);
+    if (matches) {
+      preservedRefs.push(...matches);
+    }
+  }
+
+  // Simplify the non-statutory parts
+  let simplified = workingQuery
+    .replace(/\([^)]*\)/g, '')              // Remove parenthetical content (but not statutory refs)
     .replace(/\s+/g, ' ')                   // Collapse whitespace
     .trim();
 
-  // If query is still too long, truncate to first 5 words
+  // If query is too long, keep first 8 words (increased from 5) plus statutory refs
   const words = simplified.split(' ').filter(w => w.length > 0);
-  if (words.length > 5) {
-    simplified = words.slice(0, 5).join(' ');
+  if (words.length > 8) {
+    simplified = words.slice(0, 8).join(' ');
   }
 
-  return simplified;
+  // Re-append any preserved statutory references that were lost
+  for (const ref of preservedRefs) {
+    if (!simplified.includes(ref)) {
+      simplified = `${ref} ${simplified}`;
+    }
+  }
+
+  return simplified.trim();
+}
+
+// ============================================================================
+// CIV-005: STATUTORY-ANCHORED QUERY BUILDER
+// ============================================================================
+
+/**
+ * Build a statutory-anchored search query for CourtListener.
+ * These queries include the relevant statutory reference + legal terms
+ * to return jurisdiction-relevant results instead of generic matches.
+ *
+ * CIV-005: Replaces generic queries with statutory-anchored queries.
+ */
+export function buildStatutoryAnchoredQuery(params: {
+  motionType: string;
+  statutoryBasis?: string;
+  legalTerms: string[];
+  jurisdiction: string;
+}): string {
+  const { motionType, statutoryBasis, legalTerms, jurisdiction } = params;
+
+  const parts: string[] = [];
+
+  // Add statutory basis as primary anchor
+  if (statutoryBasis) {
+    parts.push(`"${statutoryBasis}"`);
+  }
+
+  // Add key legal terms
+  const topTerms = legalTerms.slice(0, 3);
+  parts.push(...topTerms);
+
+  // Add jurisdiction qualifier
+  if (jurisdiction.toLowerCase().includes('louisiana') || jurisdiction.toLowerCase() === 'la') {
+    parts.push('Louisiana');
+  }
+
+  return parts.join(' ');
+}
+
+// ============================================================================
+// CIV-006: RELEVANCE SCORING
+// ============================================================================
+
+import {
+  RELEVANCE_WEIGHTS,
+  getAuthorityLevel,
+  type FilingContext,
+} from '@/lib/config/citation-models';
+
+export interface ScoredSearchResult {
+  id: number;
+  caseName: string;
+  citation: string;
+  court: string;
+  courtId: string;
+  dateFiled: string;
+  snippet: string;
+  relevanceScore: number;
+  breakdown: {
+    keywordScore: number;
+    courtScore: number;
+    recencyScore: number;
+  };
+}
+
+/**
+ * Score CourtListener search results by relevance.
+ * Weights: keyword 40%, court 30%, recency 30%.
+ * Per Clay's Part C CL-FIX-03.
+ */
+export function scoreCandidates(
+  results: Array<{ id: number; case_name: string; citation: string; court: string; date_filed: string; snippet?: string }>,
+  legalTerms: string[],
+  filingContext: FilingContext = 'STATE',
+): ScoredSearchResult[] {
+  return results.map(result => {
+    // Keyword match (40%)
+    const keywordScore = calculateKeywordRelevance(
+      `${result.case_name} ${result.snippet || ''}`,
+      legalTerms
+    );
+
+    // Court weight (30%) — binding > persuasive, higher > lower
+    const courtId = mapCourtToId(result.court);
+    const authorityLevel = getAuthorityLevel(courtId, filingContext);
+    const courtScore = authorityLevel === 'BINDING' ? 1.0 : 0.4;
+
+    // Recency (30%) — decay over time
+    const yearsSinceDecision = result.date_filed
+      ? (Date.now() - new Date(result.date_filed).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+      : 25; // Default to 25 years if unknown
+    const recencyScore = Math.max(0, 1 - (yearsSinceDecision / 50)); // Linear decay over 50 years
+
+    const totalScore =
+      keywordScore * RELEVANCE_WEIGHTS.KEYWORD_MATCH +
+      courtScore * RELEVANCE_WEIGHTS.COURT_WEIGHT +
+      recencyScore * RELEVANCE_WEIGHTS.RECENCY;
+
+    return {
+      id: result.id,
+      caseName: result.case_name,
+      citation: result.citation,
+      court: result.court,
+      courtId,
+      dateFiled: result.date_filed,
+      snippet: result.snippet || '',
+      relevanceScore: totalScore,
+      breakdown: { keywordScore, courtScore, recencyScore },
+    };
+  }).sort((a, b) => b.relevanceScore - a.relevanceScore);
+}
+
+/**
+ * Calculate keyword relevance between result text and search terms.
+ */
+function calculateKeywordRelevance(text: string, terms: string[]): number {
+  if (!terms.length || !text) return 0;
+
+  const lowerText = text.toLowerCase();
+  let matchCount = 0;
+
+  for (const term of terms) {
+    if (lowerText.includes(term.toLowerCase())) {
+      matchCount++;
+    }
+  }
+
+  return matchCount / terms.length;
+}
+
+/**
+ * Map court name string to court ID for authority lookup.
+ */
+function mapCourtToId(court: string): string {
+  const lower = court.toLowerCase();
+
+  if (lower.includes('supreme') && lower.includes('u.s.')) return 'scotus';
+  if (lower.includes('supreme') && lower.includes('louisiana')) return 'la';
+  if (lower.includes('appeal') && lower.includes('louisiana')) return 'lactapp';
+  if (lower.includes('fifth circuit') || lower.includes('5th cir')) return 'ca5';
+  if (lower.includes('eastern district') && lower.includes('louisiana')) return 'laed';
+  if (lower.includes('middle district') && lower.includes('louisiana')) return 'lamd';
+  if (lower.includes('western district') && lower.includes('louisiana')) return 'lawd';
+
+  return court.toLowerCase().replace(/\s+/g, '_');
 }
 
 export async function buildVerifiedCitationBank(

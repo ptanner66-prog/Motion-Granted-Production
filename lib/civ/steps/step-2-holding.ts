@@ -2,10 +2,17 @@
  * CIV Step 2: Holding Verification (Cross-Vendor)
  *
  * Two-stage cross-vendor verification to confirm cited case supports stated proposition.
- * Stage 1: GPT (OpenAI) - Primary verification
+ * Stage 1: GPT-4o (OpenAI) - Primary verification with holding classification
  * Stage 2: Claude Opus (Anthropic) - Adversarial verification (conditional)
  *
- * This catches mischaracterized holdings - the most dangerous citation error.
+ * CIV-003: Two-stage verification flow (GPT → threshold → Opus → tiebreaker)
+ * CIV-004: HIGH_STAKES identification (6 rules-based checks)
+ * BUG-FIX-03: Correct confidence thresholds (80/95, was 70/90)
+ *
+ * Clay's Part C §3-4 BINDING:
+ * - ≥95% AND NOT HIGH_STAKES → VERIFIED (skip Stage 2)
+ * - 80-94% OR HIGH_STAKES → trigger Stage 2
+ * - <80% → HOLDING_MISMATCH → Protocol 2
  */
 
 import {
@@ -17,41 +24,70 @@ import {
   type MotionTier,
 } from '../model-router';
 import type { Step2Result, PropositionType, VerificationResult } from '../types';
+import {
+  getCitationModelWithLogging,
+  isHighStakes,
+  resolveTiebreaker,
+  CITATION_THRESHOLDS,
+  type HoldingClassification,
+  type Tier,
+} from '@/lib/config/citation-models';
 
 /**
- * Stage 1: GPT (OpenAI) - Primary holding verification
+ * Stage 1: GPT-4o (OpenAI) - Primary holding verification
+ *
+ * CIV-003: Updated prompt to include holding classifications (EXACT/CONSISTENT/OVERSTATED/PARTIAL/CONTRARY)
+ * and is_from_majority detection for Protocol 20 (Plurality Opinion).
  */
 async function runStage1(
   caseName: string,
   citation: string,
   opinionText: string,
   proposition: string,
-  tier: MotionTier
-): Promise<{ result: VerificationResult; confidence: number; quote?: string; reasoning?: string }> {
-  const model = getModelForTask('stage_1_holding', tier);
+  tier: MotionTier,
+  context?: { orderId?: string; citationId?: string }
+): Promise<{
+  result: VerificationResult;
+  confidence: number;
+  classification: HoldingClassification;
+  isFromMajority: boolean;
+  quote?: string;
+  reasoning?: string;
+}> {
+  const modelConfig = getCitationModelWithLogging(2, tier as Tier, 'stage_1', context ? {
+    orderId: context.orderId || 'unknown',
+    citationId: context.citationId || 'unknown',
+  } : undefined);
 
-  const prompt = `You are a legal research assistant verifying whether a case supports a specific legal proposition.
+  const prompt = `You are analyzing a legal citation for accuracy. Given the following:
 
-CASE: ${caseName}
 CITATION: ${citation}
+CASE: ${caseName}
+PROPOSITION: "${proposition}"
 
-OPINION EXCERPT:
+OPINION TEXT:
 ${opinionText ? opinionText.substring(0, 8000) : 'Opinion text not available.'}
 
-PROPOSITION TO VERIFY:
-"${proposition}"
-
-Determine if this case's HOLDING (not dicta) supports the stated proposition.
+Determine if the cited case actually supports the stated proposition.
 
 Respond in JSON format ONLY:
 {
+  "confidence": <0 to 100>,
+  "classification": "EXACT" | "CONSISTENT" | "OVERSTATED" | "PARTIAL" | "CONTRARY",
+  "is_from_majority": true | false,
   "verification_result": "VERIFIED" | "PARTIAL" | "REJECTED" | "DICTA_ONLY",
-  "confidence_score": 0 to 100,
-  "supporting_quote": "specific language from opinion",
-  "reasoning": "2-3 sentences"
-}`;
+  "supporting_quote": "specific language from the opinion",
+  "reasoning": "2-3 sentences explaining your conclusion"
+}
 
-  const response = await callOpenAI(model, prompt, 1000);
+Classification definitions:
+- EXACT: Directly states the proposition
+- CONSISTENT: Supports proposition with different language
+- OVERSTATED: Goes beyond what the holding actually says
+- PARTIAL: Supports only part of the proposition
+- CONTRARY: Contradicts the proposition`;
+
+  const response = await callOpenAI(modelConfig.model, prompt, 4096);
 
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -59,70 +95,119 @@ Respond in JSON format ONLY:
       const parsed = JSON.parse(jsonMatch[0]);
       return {
         result: parsed.verification_result as VerificationResult,
-        confidence: parsed.confidence_score,
+        confidence: parsed.confidence ?? 50,
+        classification: parsed.classification ?? 'PARTIAL',
+        isFromMajority: parsed.is_from_majority ?? true,
         quote: parsed.supporting_quote,
         reasoning: parsed.reasoning,
       };
     }
   } catch {
-    // Parse error - return default
+    // Parse error - return conservative default
   }
 
-  return { result: 'PARTIAL', confidence: 50, reasoning: 'Parse error' };
+  return {
+    result: 'PARTIAL',
+    confidence: 50,
+    classification: 'PARTIAL',
+    isFromMajority: true,
+    reasoning: 'Stage 1 parse error — defaulting to conservative result',
+  };
 }
 
 /**
  * Stage 2: Claude Opus (Anthropic) - Adversarial verification
+ *
+ * CIV-003: Updated prompt to include Stage 1 analysis for adversarial review.
+ * CIV-004: Always runs for HIGH_STAKES citations regardless of Stage 1 confidence.
  */
 async function runStage2(
   caseName: string,
   opinionText: string,
   proposition: string,
-  tier: MotionTier
-): Promise<{ result: 'UPHELD' | 'WEAKENED' | 'REJECTED'; strength: number; reasoning?: string }> {
-  const model = getModelForTask('stage_2_adversarial', tier);
+  tier: MotionTier,
+  stage1Analysis: { result: VerificationResult; confidence: number; classification: HoldingClassification; reasoning?: string },
+  context?: { orderId?: string; citationId?: string }
+): Promise<{
+  result: 'UPHELD' | 'WEAKENED' | 'REJECTED';
+  strength: number;
+  classification: HoldingClassification;
+  agreesWithStage1: boolean;
+  disagreementReasons: string[];
+  reasoning?: string;
+}> {
+  const modelConfig = getCitationModelWithLogging(2, tier as Tier, 'stage_2', context ? {
+    orderId: context.orderId || 'unknown',
+    citationId: context.citationId || 'unknown',
+  } : undefined);
 
-  const prompt = `You are opposing counsel reviewing a citation skeptically.
+  const prompt = `You are a skeptical appellate judge reviewing citation accuracy. Your job is ADVERSARIAL — find reasons why this citation might NOT support its proposition.
 
-Find reasons why ${caseName} does NOT support: "${proposition}"
+CITATION CASE: ${caseName}
+PROPOSITION: "${proposition}"
 
-Look for:
-1. Is this DICTA rather than holding?
-2. Does context limit the scope?
-3. Are there distinguishing facts?
-4. Is this majority or dissent?
-
-OPINION EXCERPT:
+OPINION TEXT:
 ${opinionText ? opinionText.substring(0, 8000) : 'Not available'}
+
+STAGE 1 ANALYSIS:
+- Result: ${stage1Analysis.result}
+- Confidence: ${stage1Analysis.confidence}%
+- Classification: ${stage1Analysis.classification}
+- Reasoning: ${stage1Analysis.reasoning || 'N/A'}
+
+Evaluate whether the Stage 1 analysis is correct. Look for:
+- Overstated holdings
+- Dicta presented as holdings
+- Narrow holdings applied broadly
+- Missing context that changes meaning
+- Superseded or modified holdings
+- Whether this is from majority, concurrence, or dissent
 
 Respond in JSON format ONLY:
 {
+  "confidence": <0 to 100>,
+  "classification": "EXACT" | "CONSISTENT" | "OVERSTATED" | "PARTIAL" | "CONTRARY",
+  "agrees_with_stage_1": true | false,
   "challenge_result": "UPHELD" | "WEAKENED" | "REJECTED",
-  "challenge_strength": 0 to 100,
-  "challenge_reasoning": "your best argument against"
+  "challenge_strength": <0 to 100>,
+  "disagreement_reasons": ["reason1", "reason2"],
+  "challenge_reasoning": "your best argument against this citation"
 }`;
 
-  const response = await callAnthropic(model, prompt, 1000);
+  const response = await callAnthropic(modelConfig.model, prompt, 8192);
 
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       return {
-        result: parsed.challenge_result,
-        strength: parsed.challenge_strength,
+        result: parsed.challenge_result || 'UPHELD',
+        strength: parsed.challenge_strength ?? 50,
+        classification: parsed.classification ?? stage1Analysis.classification,
+        agreesWithStage1: parsed.agrees_with_stage_1 ?? true,
+        disagreementReasons: parsed.disagreement_reasons ?? [],
         reasoning: parsed.challenge_reasoning,
       };
     }
   } catch {
-    // Parse error - return default
+    // Parse error - return conservative default
   }
 
-  return { result: 'UPHELD', strength: 50 };
+  return {
+    result: 'UPHELD',
+    strength: 50,
+    classification: stage1Analysis.classification,
+    agreesWithStage1: true,
+    disagreementReasons: [],
+    reasoning: 'Stage 2 parse error — defaulting to UPHELD',
+  };
 }
 
 /**
  * Main Step 2 function: Cross-vendor holding verification
+ *
+ * CIV-003: Two-stage verification flow with correct thresholds
+ * CIV-004: HIGH_STAKES identification before Stage 1 evaluation
  */
 export async function step2HoldingVerification(
   caseName: string,
@@ -131,42 +216,128 @@ export async function step2HoldingVerification(
   proposition: string,
   propositionType: PropositionType,
   motionType: string,
-  flags: string[] = []
+  flags: string[] = [],
+  highStakesContext?: {
+    isSoleAuthority?: boolean;
+    caseAge?: number;
+    citationsDeclining?: boolean;
+    hasNegativeTreatment?: boolean;
+  },
+  context?: { orderId?: string; citationId?: string }
 ): Promise<Step2Result> {
   const tier = getTierFromMotionType(motionType);
 
-  // Stage 1: GPT
+  // CIV-004: Check HIGH_STAKES BEFORE Stage 1 evaluation
+  const highStakesCheck = isHighStakes({
+    propositionType: propositionType as any,
+    motionTier: tier as Tier,
+    isSoleAuthority: highStakesContext?.isSoleAuthority ?? false,
+    caseAge: highStakesContext?.caseAge ?? 0,
+    citationsDeclining: highStakesContext?.citationsDeclining ?? false,
+    hasNegativeTreatment: highStakesContext?.hasNegativeTreatment ?? false,
+  });
+
+  if (highStakesCheck.isHighStakes) {
+    flags = [...flags, 'HIGH_STAKES'];
+    console.log(
+      `[CIV_STEP2] citation=${citation.substring(0, 50)} HIGH_STAKES=true ` +
+      `rules=[${highStakesCheck.triggeredRules.join(',')}] ` +
+      `reasons=[${highStakesCheck.reasons.join('; ')}]`
+    );
+  }
+
+  // Stage 1: GPT-4o
   const stage1 = await runStage1(
     caseName,
     citation,
     opinionText || '',
     proposition,
-    tier
+    tier,
+    context
   );
 
-  // Check if Stage 2 needed
+  // Log Stage 1 result
+  console.log(
+    `[CIV_STEP2] citation=${citation.substring(0, 50)} stage=1 ` +
+    `confidence=${stage1.confidence} classification=${stage1.classification} ` +
+    `result=${stage1.result} is_majority=${stage1.isFromMajority} ` +
+    `high_stakes=${highStakesCheck.isHighStakes}`
+  );
+
+  // CIV-003: Threshold-based routing
+  // Normalize confidence to 0-1 scale
+  const normalizedConf = stage1.confidence > 1 ? stage1.confidence / 100 : stage1.confidence;
+
+  // Check if Stage 2 needed using updated logic
   const needsStage2 = shouldTriggerStage2(stage1.confidence, flags);
 
-  let stage2Result: { result: 'UPHELD' | 'WEAKENED' | 'REJECTED'; strength: number; reasoning?: string } | undefined;
+  let stage2Result: Awaited<ReturnType<typeof runStage2>> | undefined;
   let finalResult = stage1.result;
   let finalConfidence = stage1.confidence;
 
   if (needsStage2) {
-    // Stage 2: Claude Opus
-    stage2Result = await runStage2(caseName, opinionText || '', proposition, tier);
+    // Stage 2: Claude Opus — Adversarial review
+    stage2Result = await runStage2(
+      caseName,
+      opinionText || '',
+      proposition,
+      tier,
+      {
+        result: stage1.result,
+        confidence: stage1.confidence,
+        classification: stage1.classification,
+        reasoning: stage1.reasoning,
+      },
+      context
+    );
 
-    // Reconcile results
-    if (stage2Result.result === 'REJECTED') {
-      finalResult = 'REJECTED';
-      finalConfidence = Math.min(stage1.confidence, 100 - stage2Result.strength);
-    } else if (stage2Result.result === 'WEAKENED') {
-      if (stage1.result === 'VERIFIED') finalResult = 'PARTIAL';
-      finalConfidence = (stage1.confidence + (100 - stage2Result.strength)) / 2;
-    } else {
-      // UPHELD - agreement boosts confidence
-      finalConfidence = Math.min(100, stage1.confidence + 5);
+    // Log Stage 2 result
+    console.log(
+      `[CIV_STEP2] citation=${citation.substring(0, 50)} stage=2 ` +
+      `result=${stage2Result.result} strength=${stage2Result.strength} ` +
+      `agrees=${stage2Result.agreesWithStage1} classification=${stage2Result.classification}`
+    );
+
+    // CIV-003: Apply tiebreaker matrix
+    const stage2Approved = stage2Result.result === 'UPHELD';
+    const tiebreakerResult = resolveTiebreaker(
+      normalizedConf,
+      stage2Approved,
+      highStakesCheck.isHighStakes
+    );
+
+    console.log(
+      `[CIV_STEP2] citation=${citation.substring(0, 50)} tiebreaker=${tiebreakerResult.result} ` +
+      `reason="${tiebreakerResult.reason}"`
+    );
+
+    // Map tiebreaker result to verification result
+    switch (tiebreakerResult.result) {
+      case 'VERIFIED':
+        finalResult = 'VERIFIED';
+        finalConfidence = Math.min(100, stage1.confidence + 5);
+        break;
+      case 'VERIFIED_WITH_NOTES':
+        finalResult = 'VERIFIED';
+        finalConfidence = stage1.confidence; // Keep original confidence
+        break;
+      case 'NEEDS_REVIEW':
+        finalResult = 'PARTIAL';
+        finalConfidence = Math.min(stage1.confidence, 100 - stage2Result.strength);
+        break;
+      case 'HOLDING_MISMATCH':
+        finalResult = 'REJECTED';
+        finalConfidence = Math.min(stage1.confidence, 100 - stage2Result.strength);
+        break;
     }
+  } else if (normalizedConf >= CITATION_THRESHOLDS.HOLDING_PASS) {
+    // ≥95% AND NOT HIGH_STAKES → VERIFIED without Stage 2
+    finalResult = 'VERIFIED';
+    finalConfidence = stage1.confidence;
   }
+
+  // BUG-FIX-03: Use correct threshold (80, was 70)
+  const proceedThreshold = CITATION_THRESHOLDS.HOLDING_FAIL * 100; // 80
 
   return {
     step: 2,
@@ -191,7 +362,7 @@ export async function step2HoldingVerification(
       : { triggered: false },
     final_result: finalResult,
     final_confidence: finalConfidence,
-    proceed_to_step_3: finalResult !== 'REJECTED' && finalConfidence >= 70,
+    proceed_to_step_3: finalResult !== 'REJECTED' && finalConfidence >= proceedThreshold,
   };
 }
 
@@ -231,10 +402,8 @@ export async function executeHoldingVerification(
 }> {
   // Import opinion text retrieval functions
   const { getOpinionWithText } = await import('@/lib/courtlistener/client');
-  // NOTE: Case.law API was sunset September 5, 2024
-  // const { getCaseText } = await import('@/lib/caselaw/client');
 
-  // Get opinion text (CourtListener only - Case.law sunset)
+  // Get opinion text (CourtListener only - Case.law sunset September 5, 2024)
   let opinionText: string | undefined;
 
   if (courtlistenerId) {
@@ -243,8 +412,6 @@ export async function executeHoldingVerification(
       opinionText = clResult.data.plain_text;
     }
   }
-
-  // NOTE: Case.law fallback removed - API sunset September 5, 2024
 
   // Extract case name from citation
   const caseNameMatch = citation.match(/^([^,]+)/);
@@ -312,9 +479,10 @@ export async function retryHoldingVerification(
 
   let retryCount = 0;
 
+  // BUG-FIX-03: Updated thresholds — 80 (was 70) and 95 (was 90)
   while (
-    lastResult.finalConfidence >= 70 &&
-    lastResult.finalConfidence < 90 &&
+    lastResult.finalConfidence >= 80 &&
+    lastResult.finalConfidence < 95 &&
     !lastResult.stage2?.triggered &&
     retryCount < maxRetries
   ) {

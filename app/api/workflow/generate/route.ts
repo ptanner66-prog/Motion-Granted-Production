@@ -137,7 +137,7 @@ export async function GET() {
       'VI - Opposition Anticipation (Extended Thinking)',
       'VII - Judge Simulation (Checkpoint: Notification, Extended Thinking)',
       'VII.1 - Post-Revision Citation Check (if needed)',
-      'VIII - Revisions (if grade < B+)',
+      'VIII - Revisions (if grade < A-)',
       'VIII.5 - Caption Validation',
       'IX - Supporting Documents',
       'IX.1 - Separate Statement Check (MSJ/MSA only)',

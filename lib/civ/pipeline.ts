@@ -33,6 +33,15 @@ import {
   type FinalVerificationOutput,
   type CIVConfig,
 } from './types';
+import {
+  PROTOCOL_7_FAILURE_TYPES,
+  PROTOCOL_7_THRESHOLDS,
+  VERIFIED_STATUSES,
+  type Tier,
+  type CitationVerificationStatus,
+} from '@/lib/config/citation-models';
+import { getTierFromMotionType } from './model-router';
+import { deduplicateCitations } from '@/lib/citations/deduplication';
 
 /**
  * Verify a single citation through all 7 steps
@@ -240,13 +249,20 @@ export async function verifyCitation(
   const step4 = await executeQuoteVerification(citation.quoteInDraft, opinionText || undefined);
   // No API calls for quote verification (code-only)
 
-  // Step 5: Bad Law Check
+  // Step 5: Bad Law Check + Protocols 18-23
   const step5 = await executeBadLawCheck(
     citation.citationString,
     parsed.caseName || citation.caseName || 'Unknown Case',
     step1.courtlistenerId,
     citationDbId,
-    citation.motionTypeContext || 'motion_to_compel' // Pass motion type for tier-based model selection
+    citation.motionTypeContext || 'motion_to_compel', // Pass motion type for tier-based model selection
+    {
+      // Protocol context from earlier steps
+      isFromMajority: (step2 as any).stage_1?.is_from_majority ?? true,  // P20
+      metadataConflict: false,  // P22: Step 1 doesn't currently detect this
+      dictaConfidence: step3.confidence,  // P18
+      propositionType: citation.propositionType,  // P18
+    }
   );
   apiCallsMade += step5.layer2.searchesRun > 0 ? 1 : 0;
 
@@ -330,25 +346,68 @@ export async function verifyCitation(
  *
  * Processes citations in parallel with configurable concurrency.
  * Each citation is verified in ISOLATION (separate API calls).
+ *
+ * CIV-008: Protocol 7 auto-pause when failure count exceeds tier threshold.
+ * Failure types: EXISTENCE_FAILED + HOLDING_MISMATCH + QUOTE_NOT_FOUND
+ * Thresholds: Tier A=2, Tier B=4, Tier C=6
  */
 export async function verifyBatch(
   request: BatchVerificationRequest
-): Promise<BatchVerificationResult> {
+): Promise<BatchVerificationResult & { protocol7?: Protocol7Result }> {
   const { orderId, phase, citations, options = {} } = request;
   const {
     parallelLimit = DEFAULT_CIV_CONFIG.maxConcurrentVerifications,
   } = options;
 
-  // Start verification run tracking
-  const runResult = await startVerificationRun(orderId, phase, citations.length);
+  // BUG-FIX-02: Deduplicate citations before CIV pipeline entry
+  const rawCitationStrings = citations.map(c => c.citationString);
+  const dedupResult = deduplicateCitations(rawCitationStrings);
+
+  if (dedupResult.stats.duplicatesRemoved > 0 || dedupResult.stats.incompleteRemoved > 0) {
+    console.log(
+      `[CIV_PIPELINE] Deduplication: input=${dedupResult.stats.inputCount} ` +
+      `unique=${dedupResult.stats.uniqueCount} ` +
+      `duplicates_removed=${dedupResult.stats.duplicatesRemoved} ` +
+      `incomplete_removed=${dedupResult.stats.incompleteRemoved}`
+    );
+  }
+
+  // Filter citations to only include deduplicated unique ones
+  const uniqueCitationStrings = new Set(dedupResult.unique.map(u => u.raw));
+  const dedupedCitations = citations.filter(c => uniqueCitationStrings.has(c.citationString.trim()));
+
+  // Determine tier from first citation's motion type (all should be same order)
+  const motionType = dedupedCitations[0]?.motionTypeContext || 'motion_to_compel';
+  const tier = getTierFromMotionType(motionType) as Tier;
+  const failureThreshold = PROTOCOL_7_THRESHOLDS[tier];
+
+  // Start verification run tracking (use deduped count)
+  const runResult = await startVerificationRun(orderId, phase, dedupedCitations.length);
   const runId = runResult.data?.runId;
 
   const results: FinalVerificationOutput[] = [];
   let cacheHits = 0;
 
-  // Process in batches
-  for (let i = 0; i < citations.length; i += parallelLimit) {
-    const batch = citations.slice(i, i + parallelLimit);
+  // CIV-008: Protocol 7 failure tracking
+  let failureCount = 0;
+  let protocol7Paused = false;
+  let pausedAtCitation = -1;
+
+  // Process in batches (using deduplicated citations)
+  for (let i = 0; i < dedupedCitations.length; i += parallelLimit) {
+    // CIV-008: Check Protocol 7 threshold before processing batch
+    if (failureCount >= failureThreshold) {
+      protocol7Paused = true;
+      pausedAtCitation = i;
+      console.log(
+        `[CIV_PIPELINE] PROTOCOL_7_PAUSE order=${orderId} tier=${tier} ` +
+        `failures=${failureCount} threshold=${failureThreshold} ` +
+        `paused_at_citation=${i}/${dedupedCitations.length}`
+      );
+      break;
+    }
+
+    const batch = dedupedCitations.slice(i, i + parallelLimit);
 
     const batchResults = await Promise.all(
       batch.map(citation => verifyCitation(citation, orderId, phase))
@@ -356,8 +415,16 @@ export async function verifyBatch(
 
     results.push(...batchResults);
 
+    // CIV-008: Count failures in this batch
+    for (const batchResult of batchResults) {
+      const status = batchResult.compositeResult.status;
+      if (isProtocol7Failure(status, batchResult)) {
+        failureCount++;
+      }
+    }
+
     // Small delay between batches to avoid rate limiting
-    if (i + parallelLimit < citations.length) {
+    if (i + parallelLimit < dedupedCitations.length) {
       await new Promise(resolve => setTimeout(resolve, DEFAULT_CIV_CONFIG.delayBetweenApiCalls));
     }
   }
@@ -379,10 +446,32 @@ export async function verifyBatch(
     });
   }
 
+  // CIV-008: Protocol 7 result
+  const protocol7: Protocol7Result | undefined = protocol7Paused
+    ? {
+        triggered: true,
+        failureCount,
+        threshold: failureThreshold,
+        tier,
+        pausedAtCitation,
+        totalCitations: dedupedCitations.length,
+        processedCitations: results.length,
+        remainingCitations: dedupedCitations.length - results.length,
+        message: `Protocol 7 PAUSE: ${failureCount} failures (threshold: ${failureThreshold} for Tier ${tier}). ` +
+          `Processed ${results.length}/${dedupedCitations.length} citations. Manual review required.`,
+      }
+    : undefined;
+
+  if (protocol7Paused) {
+    console.log(
+      `[CIV_PIPELINE] Protocol 7 summary: ${protocol7!.message}`
+    );
+  }
+
   return {
     orderId,
     phase,
-    totalCitations: citations.length,
+    totalCitations: dedupedCitations.length,
     verified: summary.verified,
     flagged: summary.flagged,
     rejected: summary.rejected,
@@ -395,7 +484,43 @@ export async function verifyBatch(
       estimatedTotalCost: summary.estimatedTotalCost,
       cacheHits,
     },
+    protocol7,
   };
+}
+
+/**
+ * Protocol 7 result interface
+ */
+export interface Protocol7Result {
+  triggered: boolean;
+  failureCount: number;
+  threshold: number;
+  tier: Tier;
+  pausedAtCitation: number;
+  totalCitations: number;
+  processedCitations: number;
+  remainingCitations: number;
+  message: string;
+}
+
+/**
+ * CIV-008: Determine if a verification result counts as a Protocol 7 failure.
+ * Failure types: EXISTENCE_FAILED, HOLDING_MISMATCH, QUOTE_NOT_FOUND
+ */
+function isProtocol7Failure(
+  status: string,
+  result: FinalVerificationOutput
+): boolean {
+  // Check composite status against Protocol 7 failure types
+  if (status === 'REJECTED' || status === 'BLOCKED') {
+    // Check specific failure reasons from step results
+    const step1Failed = result.verificationResults.step1Existence.result === 'NOT_FOUND';
+    const step2Failed = result.verificationResults.step2Holding.finalResult === 'REJECTED';
+    const step4Failed = result.verificationResults.step4Quote.result === 'NOT_FOUND';
+
+    return step1Failed || step2Failed || step4Failed;
+  }
+  return false;
 }
 
 /**
