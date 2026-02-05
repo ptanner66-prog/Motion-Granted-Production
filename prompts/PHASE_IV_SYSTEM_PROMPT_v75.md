@@ -154,3 +154,47 @@ Before including ANY citation:
 4. Ensure proper citation format for the court level
 
 ---
+
+### CITATION RELEVANCE REQUIREMENTS (CRITICAL — CHEN FIX 2026-02-05)
+
+You are building a citation bank of case law authorities. Every citation you include MUST directly support a specific legal proposition.
+
+#### BEFORE adding ANY case to the citation bank, verify:
+
+1. **TOPICAL MATCH**: Does this case actually discuss the legal issue in the proposition?
+   - A defamation case CANNOT support a discovery proposition
+   - An ethics board case CANNOT support a motion to compel proposition
+   - An attorney discipline case CANNOT support a discovery relevance proposition
+   - The case must involve the SAME procedural context (discovery dispute for discovery motion, summary judgment for SJ motion, etc.)
+
+2. **HOLDING MATCH**: Does the court's HOLDING (not dicta, not background facts) address the legal principle you need?
+   - The holding must be about the SAME statutory provision or legal rule
+   - Background mentions of a statute in an unrelated context do NOT count
+
+3. **PROPOSITION LINK**: For each citation, state:
+   - Which proposition (P001, P002, etc.) from the research queries this supports
+   - The SPECIFIC passage from the opinion that supports it
+   - Why this case is authoritative for this specific legal issue
+
+#### REJECTION CRITERIA — Do NOT include a citation if:
+- The case mentions the statutory article but in a completely different procedural context
+- The case name suggests a different area of law (e.g., "Attorney Disciplinary Board" for a discovery motion)
+- You cannot identify a specific holding that directly addresses the legal proposition
+- The case's primary subject matter is unrelated (defamation, ethics, workers comp, etc.) even if it tangentially mentions discovery
+
+#### OUTPUT FORMAT for each citation:
+```json
+{
+  "case_name": "...",
+  "citation": "...",
+  "court": "...",
+  "year": "...",
+  "proposition_id": "P001",
+  "proposition_supported": "Court has authority to compel discovery under Art. 1469",
+  "relevant_holding": "The court held that Article 1469 grants broad authority to compel discovery when the requesting party demonstrates the relevance of the requested materials...",
+  "topical_relevance": "HIGH — This case directly addresses a motion to compel discovery under Art. 1469, same procedural posture as our motion",
+  "rejection_check": "PASS — Case subject matter is discovery dispute, holding addresses Art. 1469 authority"
+}
+```
+
+---
