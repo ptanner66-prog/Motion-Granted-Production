@@ -1,4 +1,10 @@
 /**
+ * ⚠️  ADMIN PREVIEW ONLY — NOT IN THE ACTIVE EXECUTION PATH
+ *
+ * This module is the v6 DB-based prompt assembly system (orchestrator.ts path).
+ * The active v7.2 execution path is: Inngest → phase-executors.ts → phase-registry.ts
+ * Retained for admin prompt preview UI and potential future DB-prompt features.
+ *
  * Superprompt Template Engine (Task 65)
  *
  * Assembles phase prompts with order context using template variables.

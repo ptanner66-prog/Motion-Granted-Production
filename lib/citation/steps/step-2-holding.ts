@@ -4,8 +4,8 @@
  * CIV Spec Section 5, API Architecture Spec Section 3.1
  *
  * Stage 1: Initial verification using tier-appropriate model
- * - Tier A/B: GPT-4o
- * - Tier C: GPT-5.2
+ * - Tier A/B: GPT-4 Turbo
+ * - Tier C: GPT-4 Turbo
  *
  * Stage 2: Adversarial verification with Claude Opus 4.5
  * Triggers when:
@@ -13,7 +13,7 @@
  * - Stage 1 confidence <70%
  * - HIGH_STAKES flag is set
  *
- * Tiebreaker: GPT-4o if Stage 1 and Stage 2 disagree
+ * Tiebreaker: GPT-4 Turbo if Stage 1 and Stage 2 disagree
  */
 
 import { askOpenAI, type OpenAIResponse } from '@/lib/ai/openai-client';
@@ -79,10 +79,10 @@ const STAGE_2_CONFIDENCE_HIGH_THRESHOLD = 0.94;
 const STAGE_2_CONFIDENCE_LOW_THRESHOLD = 0.70;
 
 const MODELS = {
-  TIER_A_B_STAGE_1: 'gpt-4o',
-  TIER_C_STAGE_1: 'gpt-5.2',
+  TIER_A_B_STAGE_1: 'gpt-4-turbo',
+  TIER_C_STAGE_1: 'gpt-4-turbo',
   STAGE_2: 'claude-opus-4-5-20251101',
-  TIEBREAKER: 'gpt-4o',
+  TIEBREAKER: 'gpt-4-turbo',
 };
 
 // ============================================================================

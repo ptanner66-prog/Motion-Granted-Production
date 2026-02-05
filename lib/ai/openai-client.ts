@@ -54,8 +54,8 @@ export interface CostTracking {
 // ============================================================================
 
 // Model configuration
-const DEFAULT_MODEL = 'gpt-4o'; // Fallback if GPT-5.2 not available
-const TIER_C_MODEL = 'gpt-5.2'; // Primary for Tier C holding verification
+const DEFAULT_MODEL = 'gpt-4-turbo'; // Standard model for all CIV tasks
+const TIER_C_MODEL = 'gpt-4-turbo'; // Same model for all tiers (gpt-5.2 does NOT exist)
 
 // Rate limiting (matches Anthropic pattern)
 const RATE_LIMIT_REQUESTS_PER_MINUTE = 60;
@@ -63,10 +63,9 @@ const RATE_LIMIT_TOKENS_PER_MINUTE = 150000;
 
 // Cost per 1K tokens (approximate, update as pricing changes)
 const MODEL_COSTS: Record<string, { input: number; output: number }> = {
+  'gpt-4-turbo': { input: 0.01, output: 0.03 },
   'gpt-4o': { input: 0.0025, output: 0.01 },
   'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
-  'gpt-4-turbo': { input: 0.01, output: 0.03 },
-  'gpt-5.2': { input: 0.005, output: 0.015 }, // Estimated
   'o1': { input: 0.015, output: 0.06 },
   'o1-mini': { input: 0.003, output: 0.012 },
 };
@@ -349,7 +348,7 @@ class OpenAIClient {
   }
 
   /**
-   * GPT-5.2 holding verification (Tier C primary model)
+   * GPT-4 Turbo holding verification (all tiers)
    */
   async verifyHolding(
     citationText: string,

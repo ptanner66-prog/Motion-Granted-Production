@@ -838,100 +838,23 @@ export function gradePasses(grade: LetterGrade): boolean {
 }
 
 // ============================================================================
-// MODEL ROUTING
+// MODEL ROUTING — MOVED TO lib/config/phase-registry.ts
 // ============================================================================
-
-export const SONNET_MODEL = 'claude-sonnet-4-5-20250929';
-export const OPUS_MODEL = 'claude-opus-4-5-20251101';
-
-export type ModelType = 'sonnet' | 'opus';
-
-export interface ModelRoutingConfig {
-  phase: WorkflowPhaseCode;
-  tierA: ModelType;
-  tierB: ModelType;
-  tierC: ModelType;
-}
-
-export const MODEL_ROUTING: ModelRoutingConfig[] = [
-  { phase: 'I', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'II', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'III', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'IV', tierA: 'sonnet', tierB: 'opus', tierC: 'opus' },
-  { phase: 'V', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'V.1', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'VI', tierA: 'sonnet', tierB: 'opus', tierC: 'opus' },
-  { phase: 'VII', tierA: 'opus', tierB: 'opus', tierC: 'opus' }, // Always Opus
-  { phase: 'VII.1', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'VIII', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' }, // Sonnet with extended thinking for B/C
-  { phase: 'VIII.5', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'IX', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'IX.1', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-  { phase: 'X', tierA: 'sonnet', tierB: 'sonnet', tierC: 'sonnet' },
-];
-
-export function getModelForPhase(phase: WorkflowPhaseCode, tier: MotionTier): string {
-  const config = MODEL_ROUTING.find(r => r.phase === phase);
-  if (!config) return SONNET_MODEL;
-
-  const modelType = tier === 'A' ? config.tierA : tier === 'B' ? config.tierB : config.tierC;
-  return modelType === 'opus' ? OPUS_MODEL : SONNET_MODEL;
-}
-
-// ============================================================================
-// EXTENDED THINKING CONFIGURATION
-// ============================================================================
-
-export interface ExtendedThinkingConfig {
-  phase: WorkflowPhaseCode;
-  tierA: number | null; // null = no extended thinking
-  tierB: number | null;
-  tierC: number | null;
-}
-
-export const EXTENDED_THINKING_CONFIG: ExtendedThinkingConfig[] = [
-  { phase: 'I', tierA: null, tierB: null, tierC: null },
-  { phase: 'II', tierA: null, tierB: null, tierC: null },
-  { phase: 'III', tierA: null, tierB: null, tierC: 10000 },  // Legal strategy (Tier C only)
-  { phase: 'IV', tierA: null, tierB: null, tierC: null },
-  { phase: 'V', tierA: null, tierB: null, tierC: 10000 },    // Complex drafting (Tier C only)
-  { phase: 'V.1', tierA: null, tierB: null, tierC: null },
-  { phase: 'VI', tierA: null, tierB: 8000, tierC: 8000 },
-  { phase: 'VII', tierA: 10000, tierB: 10000, tierC: 10000 },  // Quality grading (ALL TIERS - 10K)
-  { phase: 'VII.1', tierA: 10000, tierB: 10000, tierC: 10000 }, // Revision thinking (ALL TIERS - 10K)
-  { phase: 'VIII', tierA: null, tierB: 8000, tierC: 8000 },
-  { phase: 'VIII.5', tierA: null, tierB: null, tierC: null },
-  { phase: 'IX', tierA: null, tierB: null, tierC: null },
-  { phase: 'IX.1', tierA: null, tierB: null, tierC: null },
-  { phase: 'X', tierA: null, tierB: null, tierC: null },
-];
-
-export function getExtendedThinkingBudget(phase: WorkflowPhaseCode, tier: MotionTier): number | null {
-  const config = EXTENDED_THINKING_CONFIG.find(c => c.phase === phase);
-  if (!config) return null;
-
-  return tier === 'A' ? config.tierA : tier === 'B' ? config.tierB : config.tierC;
-}
-
-// ============================================================================
-// CITATION BATCH SIZES
-// ============================================================================
-
-export const CITATION_BATCH_SIZES: Record<MotionTier, number> = {
-  A: 5,
-  B: 4,
-  C: 3,
-};
-
-// Phases V.1 and VII.1 always use 2-citation batches for memory management
-export const CITATION_CHECK_BATCH_SIZE = 2;
-
-export function getCitationBatchSize(tier: MotionTier, phase: WorkflowPhaseCode): number {
-  if (phase === 'V.1' || phase === 'VII.1') {
-    return CITATION_CHECK_BATCH_SIZE;
-  }
-  return CITATION_BATCH_SIZES[tier];
-}
+//
+// The following have been DELETED from this file (they contained wrong values):
+//   - SONNET_MODEL (had wrong string 'claude-sonnet-4-5-20250929')
+//   - OPUS_MODEL
+//   - MODEL_ROUTING array
+//   - getModelForPhase() function
+//   - EXTENDED_THINKING_CONFIG array
+//   - getExtendedThinkingBudget() function
+//   - CITATION_BATCH_SIZES
+//   - CITATION_CHECK_BATCH_SIZE
+//   - getCitationBatchSize() function
+//
+// Import from the single source of truth instead:
+//   import { getModel, getThinkingBudget, getBatchSize } from '@/lib/config/phase-registry';
+//
 
 // ============================================================================
 // GAP CLOSURE PROTOCOLS

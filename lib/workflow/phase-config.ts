@@ -210,33 +210,11 @@ export type PhaseId = keyof typeof PHASES;
 // HELPER FUNCTIONS
 // ============================================================================
 
-/**
- * Get the model ID for a specific phase and tier
- */
-export function getModelForPhase(phase: PhaseId, tier: Tier): string {
-  const config = PHASES[phase];
-  const modelKey = config.model[tier] as ModelKey;
-  return MODELS[modelKey];
-}
-
-/**
- * Get extended thinking budget for a specific phase and tier
- * Returns 0 if extended thinking is not enabled
- */
-export function getExtendedThinkingBudget(phase: PhaseId, tier: Tier): number {
-  const config = PHASES[phase];
-  if (!config.extendedThinking[tier]) {
-    return 0;
-  }
-  return config.budget;
-}
-
-/**
- * Check if a phase uses extended thinking for a given tier
- */
-export function usesExtendedThinking(phase: PhaseId, tier: Tier): boolean {
-  return PHASES[phase].extendedThinking[tier];
-}
+// ── ROUTING FUNCTIONS REMOVED ──
+// getModelForPhase(), getExtendedThinkingBudget(), and usesExtendedThinking()
+// have been DELETED from this file. All routing is now in:
+//   import { getModel, getThinkingBudget } from '@/lib/config/phase-registry';
+// See: Clay's Master Implementation Guide v2.5, DC-001/DC-002
 
 /**
  * Get the next phase based on current phase and conditions
@@ -254,7 +232,7 @@ export function getNextPhase(
 
   // Phase VII: Check if grade passes
   if (currentPhase === 'VII') {
-    const passes = options.gradePasses ?? true;
+    const passes = options.gradePasses ?? false;  // NEVER default to passing. Require explicit grade.
 
     if (passes) {
       return 'VIII.5';
