@@ -3,37 +3,6 @@
 // VERSION: 7.4.1 — January 28, 2026
 
 export const MODELS = {
-  // ═══════════════════════════════════════════════════════════════
-  // ANTHROPIC MODELS
-  // ═══════════════════════════════════════════════════════════════
-
-  // Primary model for Judge Simulation (Phase VII), complex reasoning
-  OPUS: "claude-opus-4-5-20251101",
-
-  // Standard model for drafting, CODE MODE phases
-  SONNET: "claude-sonnet-4-20250514",
-
-  // Fast model for CIV Steps 3-5 (Tier A/B)
-  HAIKU: "claude-haiku-4-5-20251001",
-
-  // ═══════════════════════════════════════════════════════════════
-  // OPENAI MODELS FOR CITATION VERIFICATION
-  // ═══════════════════════════════════════════════════════════════
-
-  // Clay's Part C Issue 2 BINDING DECISION:
-  // Citation Stage 1 uses gpt-4o (NOT gpt-4-turbo).
-  // gpt-5.2 was specified for Tier C but does not exist yet — gpt-4o as fallback.
-  // See lib/config/citation-models.ts for per-step citation routing.
-  OPENAI_CITATION_VERIFIER: process.env.OPENAI_CITATION_MODEL || "gpt-4o",
-
-  // Model type determines parameter style
-  OPENAI_MODEL_TYPE: process.env.OPENAI_MODEL_TYPE || "standard", // "standard" | "reasoning"
-
-// ============================================================================
-// MODEL IDENTIFIERS
-// ============================================================================
-
-export const MODELS = {
   /** Complex reasoning: Phase IV B/C, VI B/C, VII all, VIII B/C, V.1/VII.1/IX.1 Stage 2 */
   OPUS: 'claude-opus-4-5-20251101',
 
