@@ -207,14 +207,27 @@ function buildCitationEnforcementPrompt(
   statutoryCitationBank: StatutoryCitationEntry[] = []
 ): string {
   // Format citations with full detail for Claude to reference
-  const caseList = (caseCitationBank || []).map((c, i) => {
+  // CHEN RELEVANCE FIX (2026-02-05): Include proposition linkage and relevance score
+  const typedBank = caseCitationBank as Array<VerifiedCitationEntry & {
+    proposition_id?: string;
+    proposition_text?: string;
+    topical_relevance_score?: number;
+    forElement?: string;
+    proposition?: string;
+  }>;
+
+  const caseList = (typedBank || []).map((c, i) => {
     const courtAbbrev = extractCourtAbbrev(c.court || '');
     const year = extractYear(c.date_filed || '');
-    return `  ${i + 1}. ${c.caseName || 'Unknown'}
+    const propId = c.proposition_id || c.forElement || '';
+    const propText = c.proposition_text || c.proposition || '';
+    const relevance = c.topical_relevance_score ? ` (relevance: ${c.topical_relevance_score.toFixed(2)})` : '';
+
+    return `  [${propId || `C${i + 1}`}] ${c.caseName || 'Unknown'}
      Citation: ${c.citation || 'No citation'}
      Court: ${courtAbbrev || 'Unknown'}
      Year: ${year || 'Unknown'}
-     CourtListener ID: ${c.courtlistener_id || 'N/A'}`;
+     CourtListener ID: ${c.courtlistener_id || 'N/A'}${propText ? `\n     SUPPORTS: "${propText}"` : ''}${relevance}`;
   }).join('\n\n');
 
   const statuteList = (statutoryCitationBank || []).map((s, i) =>
@@ -248,6 +261,10 @@ You have ${statutoryCitationBank?.length || 0} verified statutory citations avai
 ╚════════════════════════════════════════════════════════════════════════════╝
 
 CASE CITATIONS (you may ONLY cite these cases):
+Each citation below is linked to a specific legal proposition. When drafting,
+cite each case ONLY for the proposition it was verified to support.
+DO NOT cite a case for a different proposition than what it was verified for.
+
 ${caseList || '  [No case citations available — use statutes only or write [CITATION NEEDED]]'}
 
 STATUTORY CITATIONS (you may ALSO cite these statutes):
@@ -746,6 +763,114 @@ Provide your Phase II legal framework analysis as JSON.`;
 // PHASE III: Evidence Strategy / Issue Identification
 // ============================================================================
 
+/**
+ * CHEN RELEVANCE FIX (2026-02-05): Construct research queries from argument structure
+ *
+ * If the AI doesn't generate research_queries in Phase III output, this function
+ * programmatically builds them from the argument_structure elements + motion type.
+ */
+interface ResearchQuery {
+  proposition_id: string;
+  proposition: string;
+  primary_query: string;
+  fallback_queries: string[];
+  required_topic: string;
+  statutory_basis: string[];
+}
+
+function constructResearchQueriesFromStructure(
+  argumentStructure: Array<{
+    element_name?: string;
+    propositions?: Array<{
+      proposition_id?: string;
+      proposition_text?: string;
+      proposition_type?: string;
+    }>;
+  }>,
+  motionType: string
+): ResearchQuery[] {
+  const queries: ResearchQuery[] = [];
+
+  // Map motion type to statutory articles for query building
+  const motionStatutes: Record<string, string[]> = {
+    'motion_to_compel': ['La. C.C.P. Art. 1469', 'La. C.C.P. Art. 1461'],
+    'Motion to Compel Discovery': ['La. C.C.P. Art. 1469', 'La. C.C.P. Art. 1461'],
+    'motion_to_compel_discovery': ['La. C.C.P. Art. 1469', 'La. C.C.P. Art. 1461'],
+    'Motion for Summary Judgment': ['La. C.C.P. Art. 966', 'La. C.C.P. Art. 967'],
+    'motion_for_summary_judgment': ['La. C.C.P. Art. 966', 'La. C.C.P. Art. 967'],
+    'Motion to Dismiss': ['La. C.C.P. Art. 927', 'La. C.C.P. Art. 931'],
+    'motion_to_dismiss': ['La. C.C.P. Art. 927', 'La. C.C.P. Art. 931'],
+  };
+
+  const defaultStatutes = motionStatutes[motionType] || [];
+  const motionLabel = motionType.replace(/_/g, ' ').toLowerCase();
+
+  for (const element of argumentStructure) {
+    if (!element.propositions) continue;
+
+    for (const prop of element.propositions) {
+      const propText = prop.proposition_text || element.element_name || 'legal element';
+      const propId = prop.proposition_id || `P${queries.length + 1}`;
+
+      // Extract statutory references from proposition text
+      const statutoryRefs = extractStatutoryFromText(propText);
+      const allStatutes = statutoryRefs.length > 0 ? statutoryRefs : defaultStatutes;
+
+      // Build primary query: statutory ref + key terms + jurisdiction
+      const shortRef = allStatutes[0] ? shortenRef(allStatutes[0]) : '';
+      const keyTerms = extractKeyTerms(propText, 4);
+      const primaryQuery = `${shortRef} ${keyTerms} Louisiana`.trim();
+
+      queries.push({
+        proposition_id: propId,
+        proposition: propText,
+        primary_query: primaryQuery.split(/\s+/).slice(0, 15).join(' '),
+        fallback_queries: [
+          `${keyTerms} Louisiana appellate`.split(/\s+/).slice(0, 15).join(' '),
+          `${motionLabel} Louisiana civil procedure`.split(/\s+/).slice(0, 15).join(' '),
+        ],
+        required_topic: motionLabel.replace(/\s+/g, '_'),
+        statutory_basis: allStatutes,
+      });
+    }
+  }
+
+  return queries;
+}
+
+function extractStatutoryFromText(text: string): string[] {
+  const patterns = [
+    /La\.?\s*C\.?C\.?P\.?\s*(?:Art\.?|art\.?)\s*\d+/gi,
+    /La\.?\s*R\.?S\.?\s*\d+:\d+/gi,
+    /Art\.?\s*\d+/gi,
+  ];
+  const refs: string[] = [];
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    const matches = text.match(pattern);
+    if (matches) refs.push(...matches);
+  }
+  return [...new Set(refs)];
+}
+
+function shortenRef(ref: string): string {
+  const match = ref.match(/(Art\.?\s*\d+)/i);
+  return match ? match[1] : ref;
+}
+
+function extractKeyTerms(text: string, maxTerms: number): string {
+  const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
+    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
+    'may', 'might', 'shall', 'can', 'must', 'that', 'which', 'who', 'this', 'it',
+    'of', 'in', 'for', 'on', 'at', 'to', 'from', 'by', 'with', 'as', 'or', 'and',
+    'but', 'not', 'no', 'if', 'so', 'under', 'per', 'required']);
+  const words = text
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stopWords.has(w.toLowerCase()));
+  return words.slice(0, maxTerms).join(' ');
+}
+
 async function executePhaseIII(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
 
@@ -790,6 +915,19 @@ Provide your Phase III evidence strategy as JSON.`;
     }
 
     phaseOutput.phaseComplete = 'III';
+
+    // CHEN RELEVANCE FIX (2026-02-05): Validate research_queries presence
+    // If the AI didn't generate research_queries, construct them from argument_structure
+    if (!phaseOutput.research_queries || !Array.isArray(phaseOutput.research_queries) || phaseOutput.research_queries.length === 0) {
+      console.warn(`[Phase III] ⚠️ No research_queries in output — constructing from argument_structure`);
+      phaseOutput.research_queries = constructResearchQueriesFromStructure(
+        phaseOutput.argument_structure || [],
+        input.motionType
+      );
+      console.log(`[Phase III] Constructed ${phaseOutput.research_queries.length} research queries from argument structure`);
+    } else {
+      console.log(`[Phase III] ✅ AI generated ${phaseOutput.research_queries.length} research queries`);
+    }
 
     // Check for HOLD condition
     const requiresHold = phaseOutput.holdRequired === true;
@@ -884,6 +1022,17 @@ async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
     const phaseIIOutput = input.previousPhaseOutputs['II'] as Record<string, unknown>;
     const phaseIIIOutput = input.previousPhaseOutputs['III'] as Record<string, unknown>;
 
+    // CHEN RELEVANCE FIX (2026-02-05): Extract research_queries from Phase III
+    const researchQueries = (phaseIIIOutput?.research_queries || []) as ResearchQuery[];
+    if (researchQueries.length > 0) {
+      console.log(`[Phase IV] ✅ Received ${researchQueries.length} research queries from Phase III`);
+      researchQueries.forEach((q, i) => {
+        console.log(`[Phase IV]   Q${i + 1}: "${q.primary_query}" (${q.proposition_id})`);
+      });
+    } else {
+      console.warn(`[Phase IV] ⚠️ No research_queries from Phase III — Phase IV-A will extract elements independently`);
+    }
+
     // =========================================================================
     // EXECUTE LEGAL-GRADE CITATION RESEARCH (3 sub-phases)
     // =========================================================================
@@ -894,7 +1043,10 @@ async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
       tier: input.tier,
       statementOfFacts: input.statementOfFacts,
       phaseIIOutput,
-      phaseIIIOutput,
+      phaseIIIOutput: {
+        ...phaseIIIOutput,
+        research_queries: researchQueries,
+      },
     }, client);
 
     if (!result.success) {

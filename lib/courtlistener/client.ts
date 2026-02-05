@@ -19,6 +19,8 @@
 import { getCourtListenerAPIKey } from '@/lib/api-keys';
 import { CourtListenerOpinion, CourtListenerSearchResult, CourtListenerCitingOpinion } from './types';
 import type { CitationDetails, CitationTreatment, CitationReference } from '@/types/citations';
+import { simplifyQueryV2 } from './query-builder';
+import { scoreRelevance, TOPICAL_RELEVANCE_THRESHOLD, type PropositionContext } from './relevance-scorer';
 
 const COURTLISTENER_BASE_URL = 'https://www.courtlistener.com/api/rest/v4';
 const COURTLISTENER_V3_URL = 'https://www.courtlistener.com/api/rest/v3';
@@ -770,6 +772,18 @@ export interface VerifiedCitation {
   proposition: string;
   relevantHolding: string;
   authorityLevel: 'binding' | 'persuasive';
+
+  // CHEN RELEVANCE FIX (2026-02-05): Proposition tracking
+  proposition_id?: string;
+  proposition_text?: string;
+
+  // CHEN RELEVANCE FIX (2026-02-05): Topical relevance scoring
+  topical_relevance_score?: number;
+  topical_relevance_reasoning?: string;
+
+  // CHEN RELEVANCE FIX (2026-02-05): Search provenance
+  search_query_used?: string;
+  search_result_rank?: number;
 }
 
 /**
@@ -1222,61 +1236,22 @@ const LOUISIANA_STATE_COURTS = ['la', 'lactapp'];  // Supreme Court + Courts of 
 const FEDERAL_LOUISIANA_COURTS = ['ca5', 'laed', 'lamd', 'lawd'];  // 5th Circuit + District Courts
 
 /**
- * Simplify a search query while PRESERVING statutory references.
+ * @deprecated REMOVED by CHEN CITATION RELEVANCE FIX (2026-02-05).
  *
- * CIV-010: The old implementation stripped statutory references (La. C.C.P., La. R.S., etc.)
- * which caused irrelevant search results. Statutory anchors are now preserved because they
- * are critical for returning jurisdiction-relevant results.
+ * The old simplifyQuery() truncated queries to 5-8 words and stripped statutory
+ * references, causing irrelevant search results (defamation cases cited for
+ * discovery propositions).
  *
- * MUST NOT remove:
- * - La. C.C.P. Art. \d+
- * - La. R.S. \d+:\d+
- * - La. Civ. Code art. \d+
- * - 28 U.S.C. § \d+
- * - Any § symbol
- * - Any Art. or art. reference
+ * Replaced by buildPropositionQuery() in @/lib/courtlistener/query-builder.ts
+ * which preserves statutory references and builds proposition-specific queries.
+ *
+ * This shim is kept ONLY for any remaining call sites during migration.
+ * It delegates to the new simplifyQueryV2() which uses the proposition-aware builder.
  */
 function simplifyQuery(query: string): string {
-  // Extract and preserve statutory references before simplification
-  const statutoryPatterns = [
-    /La\.?\s*C\.?C\.?P\.?\s*(?:Art\.?|art\.?)\s*\d+/gi,
-    /La\.?\s*R\.?S\.?\s*\d+:\d+/gi,
-    /La\.?\s*Civ\.?\s*Code\s*(?:art\.?|Art\.?)\s*\d+/gi,
-    /\d+\s*U\.S\.C\.?\s*§\s*\d+[a-z]?/gi,
-    /Fed\.?\s*R\.?\s*(?:Civ|Crim|Evid|App)\.?\s*P\.?\s*\d+/gi,
-    /§\s*\d+/gi,
-  ];
-
-  const preservedRefs: string[] = [];
-  let workingQuery = query;
-
-  for (const pattern of statutoryPatterns) {
-    const matches = workingQuery.match(pattern);
-    if (matches) {
-      preservedRefs.push(...matches);
-    }
-  }
-
-  // Simplify the non-statutory parts
-  let simplified = workingQuery
-    .replace(/\([^)]*\)/g, '')              // Remove parenthetical content (but not statutory refs)
-    .replace(/\s+/g, ' ')                   // Collapse whitespace
-    .trim();
-
-  // If query is too long, keep first 8 words (increased from 5) plus statutory refs
-  const words = simplified.split(' ').filter(w => w.length > 0);
-  if (words.length > 8) {
-    simplified = words.slice(0, 8).join(' ');
-  }
-
-  // Re-append any preserved statutory references that were lost
-  for (const ref of preservedRefs) {
-    if (!simplified.includes(ref)) {
-      simplified = `${ref} ${simplified}`;
-    }
-  }
-
-  return simplified.trim();
+  // CHEN RELEVANCE FIX: Delegate to the new query builder
+  // This preserves statutory references and allows up to 15 words
+  return simplifyQueryV2(query);
 }
 
 // ============================================================================
@@ -1485,15 +1460,51 @@ export async function buildVerifiedCitationBank(
   const uniqueQueries = [...new Map(allQueries.map(q => [q.query, q])).values()];
   console.log(`[buildVerifiedCitationBank] ${uniqueQueries.length} unique queries to search`);
 
+  // CHEN RELEVANCE FIX (2026-02-05): Build proposition context for relevance scoring
+  const propositionContext: PropositionContext = {
+    proposition: queries.map(q => q.forElement).join('; '),
+    motionType: motionType === 'motion_to_compel' ? 'MCOMPEL'
+      : motionType === 'motion_to_dismiss' ? 'MTD_12B6'
+      : motionType === 'summary_judgment' ? 'MSJ'
+      : 'GENERIC',
+    statutoryBasis: [],
+    elementName: queries[0]?.forElement || 'general',
+  };
+  let relevanceRejections = 0;
+
   // Helper function to add citations from search results
+  // CHEN RELEVANCE FIX: Now includes topical relevance scoring
   const addCitationsFromSearch = (
     opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }>,
     forElement: string,
-    source: string
+    source: string,
+    searchQuery?: string
   ) => {
-    for (const opinion of opinions) {
+    for (let rank = 0; rank < opinions.length; rank++) {
+      const opinion = opinions[rank];
       if (citations.length >= maxCitations) break;
       if (!opinion.id || seenIds.has(opinion.id)) continue;
+
+      // CHEN RELEVANCE FIX: Score topical relevance before adding
+      const relevanceResult = scoreRelevance(
+        {
+          caseName: opinion.case_name || '',
+          citation: opinion.citation || '',
+          court: opinion.court || '',
+          snippet: opinion.snippet || '',
+        },
+        {
+          ...propositionContext,
+          elementName: forElement,
+        }
+      );
+
+      if (!relevanceResult.passes_threshold) {
+        relevanceRejections++;
+        console.log(`[buildVerifiedCitationBank] ⛔ RELEVANCE REJECT (${relevanceResult.score.toFixed(3)}): ${opinion.case_name?.substring(0, 50)}... — ${relevanceResult.reasoning.substring(0, 100)}`);
+        continue;
+      }
+
       seenIds.add(opinion.id);
 
       citations.push({
@@ -1509,8 +1520,17 @@ export async function buildVerifiedCitationBank(
         proposition: '',
         relevantHolding: opinion.snippet || '',
         authorityLevel: determineAuthorityLevel(opinion.court, jurisdiction),
+        // CHEN RELEVANCE FIX: Proposition tracking
+        proposition_id: forElement,
+        proposition_text: forElement,
+        // CHEN RELEVANCE FIX: Topical relevance
+        topical_relevance_score: relevanceResult.score,
+        topical_relevance_reasoning: relevanceResult.reasoning,
+        // CHEN RELEVANCE FIX: Search provenance
+        search_query_used: searchQuery || '',
+        search_result_rank: rank + 1,
       });
-      console.log(`[buildVerifiedCitationBank] ✅ ${source}: ${opinion.case_name?.substring(0, 50)}...`);
+      console.log(`[buildVerifiedCitationBank] ✅ ${source} (relevance: ${relevanceResult.score.toFixed(3)}): ${opinion.case_name?.substring(0, 50)}...`);
       elementCoverage.add(forElement);
     }
   };
@@ -1549,11 +1569,11 @@ export async function buildVerifiedCitationBank(
         op.court === 'la' ||
         op.court === 'lactapp'
       );
-      addCitationsFromSearch(laStateOpinions, queryInfo.forElement, 'LA State');
+      addCitationsFromSearch(laStateOpinions, queryInfo.forElement, 'LA State', queryInfo.query);
     }
   }
 
-  console.log(`[buildVerifiedCitationBank] After Phase 1 (LA State): ${citations.length} citations`);
+  console.log(`[buildVerifiedCitationBank] After Phase 1 (LA State): ${citations.length} citations (${relevanceRejections} relevance rejections)`);
 
   // ================================================================
   // PHASE 2: Search FIFTH CIRCUIT FEDERAL (binding federal authority)
@@ -1591,7 +1611,7 @@ export async function buildVerifiedCitationBank(
           op.court?.toLowerCase().includes('district') ||
           op.court === 'ca5'
         );
-        addCitationsFromSearch(federalOpinions, queryInfo.forElement, '5th Cir');
+        addCitationsFromSearch(federalOpinions, queryInfo.forElement, '5th Cir', queryInfo.query);
       }
     }
   }
@@ -1633,12 +1653,12 @@ export async function buildVerifiedCitationBank(
 
       if (searchResult.success && (searchResult as { data?: { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data?.opinions?.length) {
         const opinions = (searchResult as { data: { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data.opinions;
-        addCitationsFromSearch(opinions, 'broad', 'Broad');
+        addCitationsFromSearch(opinions, 'broad', 'Broad', query);
       }
     }
   }
 
-  console.log(`[buildVerifiedCitationBank] After Phase 3 (Broad): ${citations.length} citations`);
+  console.log(`[buildVerifiedCitationBank] After Phase 3 (Broad): ${citations.length} citations (${relevanceRejections} total relevance rejections)`);
 
   // ================================================================
   // PHASE 4: LAST RESORT - Search without jurisdiction filter
@@ -1670,7 +1690,7 @@ export async function buildVerifiedCitationBank(
 
       if (searchResult.success && (searchResult as { data?: { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data?.opinions?.length) {
         const opinions = (searchResult as { data: { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data.opinions;
-        addCitationsFromSearch(opinions, 'last_resort', 'Last Resort');
+        addCitationsFromSearch(opinions, 'last_resort', 'Last Resort', 'last_resort');
       }
     }
   }
@@ -1719,6 +1739,7 @@ export async function buildVerifiedCitationBank(
   console.log(`[buildVerifiedCitationBank] Federal citations: ${federalCitations}`);
   console.log(`[buildVerifiedCitationBank] Searches performed: ${searchesPerformed}`);
   console.log(`[buildVerifiedCitationBank] Elements covered: ${elementCoverage.size}`);
+  console.log(`[buildVerifiedCitationBank] Relevance rejections: ${relevanceRejections}`);
 
   if (citations.length > 0) {
     console.log(`[buildVerifiedCitationBank] Top citations by authority:`);

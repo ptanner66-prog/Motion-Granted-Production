@@ -22,6 +22,7 @@ const createId = () => randomUUID().slice(0, 8);
 import { searchOpinions } from '@/lib/courtlistener/client';
 import { PER_REQUEST_TIMEOUT_MS } from '@/lib/courtlistener/batched-search';
 import type { PhaseInput } from '@/lib/workflow/phase-executors';
+import { scoreRelevance, TOPICAL_RELEVANCE_THRESHOLD, type PropositionContext } from '@/lib/courtlistener/relevance-scorer';
 
 // ============================================================================
 // TYPES
@@ -876,8 +877,46 @@ export async function executePhaseIVAggregate(
   const uniqueCandidates = deduplicateCandidates(qualityFilteredCandidates);
   console.log(`[Phase IV-Aggregate] Unique candidates after dedup: ${uniqueCandidates.length}`);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // CHEN RELEVANCE FIX (2026-02-05): Topical relevance scoring
+  // Score each candidate for relevance to its claimed proposition
+  // Reject candidates below 0.70 threshold
+  // ═══════════════════════════════════════════════════════════════════════
+  console.log(`[Phase IV-Aggregate] ═══ TOPICAL RELEVANCE SCORING ═══`);
+  let relevanceRejections = 0;
+  const relevanceScoredCandidates = uniqueCandidates.filter(candidate => {
+    const element = initResult.elements.find(e => e.id === candidate.forElement || e.name === candidate.forElement);
+    const propContext: PropositionContext = {
+      proposition: element?.description || candidate.forElement || '',
+      motionType: initResult.motionType || 'GENERIC',
+      statutoryBasis: [],
+      elementName: candidate.forElement,
+    };
+
+    const result = scoreRelevance(
+      {
+        caseName: candidate.caseName || '',
+        citation: candidate.citation || '',
+        court: candidate.court || '',
+        snippet: candidate.snippet || '',
+      },
+      propContext
+    );
+
+    if (!result.passes_threshold) {
+      relevanceRejections++;
+      return false;
+    }
+    return true;
+  });
+
+  if (relevanceRejections > 0) {
+    console.log(`[Phase IV-Aggregate] ⛔ Relevance scoring rejected ${relevanceRejections} candidates (threshold: ${TOPICAL_RELEVANCE_THRESHOLD})`);
+  }
+  console.log(`[Phase IV-Aggregate] Candidates after relevance scoring: ${relevanceScoredCandidates.length}`);
+
   // Score and rank candidates
-  const scoredCandidates = scoreCandidates(uniqueCandidates, initResult.jurisdiction);
+  const scoredCandidates = scoreCandidates(relevanceScoredCandidates, initResult.jurisdiction);
 
   // Select top citations
   const selectedCitations = selectTopCitations(

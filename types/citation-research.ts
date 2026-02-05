@@ -206,6 +206,18 @@ export interface ScoredCitation {
   // Selection
   selected: boolean;
   selectionReason?: string;
+
+  // CHEN RELEVANCE FIX (2026-02-05): Proposition tracking
+  proposition_id?: string;
+  proposition_text?: string;
+
+  // CHEN RELEVANCE FIX (2026-02-05): Topical relevance scoring
+  topical_relevance_score?: number;
+  topical_relevance_reasoning?: string;
+
+  // CHEN RELEVANCE FIX (2026-02-05): Search provenance
+  search_query_used?: string;
+  search_result_rank?: number;
 }
 
 export interface HoldingVerificationInput {

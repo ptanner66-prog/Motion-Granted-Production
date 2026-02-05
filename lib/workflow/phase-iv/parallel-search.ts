@@ -37,6 +37,7 @@ import {
   collectUniqueCandidates,
   type BatchSearchTask,
 } from '@/lib/courtlistener/batched-search';
+import { scoreRelevance, TOPICAL_RELEVANCE_THRESHOLD, type PropositionContext } from '@/lib/courtlistener/relevance-scorer';
 
 // ============================================================================
 // JURISDICTION TYPE DETECTION
@@ -234,8 +235,47 @@ export async function executeParallelSearch(
     }
     console.log(`[Phase IV-B] Validated candidates: ${validatedCandidates.length}`);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // CHEN RELEVANCE FIX (2026-02-05): Topical relevance scoring
+    // Score each candidate for relevance to its search element's proposition
+    // Reject candidates below 0.70 threshold
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log(`[Phase IV-B] ═══ TOPICAL RELEVANCE SCORING ═══`);
+    let relevanceRejections = 0;
+    const relevanceScoredCandidates = validatedCandidates.filter(candidate => {
+      // Build proposition context from the element this candidate was found for
+      const element = input.elements.find(e => e.name === candidate.forElement);
+      const propContext: PropositionContext = {
+        proposition: element?.proposition || candidate.forElement || '',
+        motionType: detectMotionTypeFromElements(input.elements),
+        statutoryBasis: element?.searchQueries?.filter(q => /art\.\s*\d+/i.test(q)) || [],
+        elementName: candidate.forElement,
+      };
+
+      const result = scoreRelevance(
+        {
+          caseName: candidate.caseName || '',
+          citation: candidate.citation || '',
+          court: candidate.court || '',
+          snippet: candidate.snippet || '',
+        },
+        propContext
+      );
+
+      if (!result.passes_threshold) {
+        relevanceRejections++;
+        return false;
+      }
+      return true;
+    });
+
+    if (relevanceRejections > 0) {
+      console.log(`[Phase IV-B] ⛔ Relevance scoring rejected ${relevanceRejections} candidates (threshold: ${TOPICAL_RELEVANCE_THRESHOLD})`);
+    }
+    console.log(`[Phase IV-B] After relevance scoring: ${relevanceScoredCandidates.length} candidates`);
+
     // Sort candidates: Louisiana first, then by date (recent first)
-    const sortedCandidates = sortCandidatesByAuthority(validatedCandidates);
+    const sortedCandidates = sortCandidatesByAuthority(relevanceScoredCandidates);
 
     const duration = Date.now() - start;
 
@@ -550,6 +590,22 @@ function sortCandidatesByAuthority(candidates: RawCandidate[]): RawCandidate[] {
 // ============================================================================
 // RATE LIMITING
 // ============================================================================
+
+/**
+ * CHEN RELEVANCE FIX (2026-02-05): Detect motion type from extracted elements
+ * Used to set the right keyword set for relevance scoring
+ */
+function detectMotionTypeFromElements(elements: ExtractedElement[]): string {
+  const allText = elements.map(e => `${e.name} ${e.proposition}`).join(' ').toLowerCase();
+
+  if (allText.includes('compel') || allText.includes('discovery')) return 'MCOMPEL';
+  if (allText.includes('summary judgment') || allText.includes('art. 966')) return 'MSJ';
+  if (allText.includes('dismiss') || allText.includes('exception') || allText.includes('no cause')) return 'MTD_12B6';
+  if (allText.includes('strike')) return 'MSTRIKE';
+  if (allText.includes('continuance') || allText.includes('continue')) return 'MTC';
+
+  return 'GENERIC';
+}
 
 // Track concurrent requests for rate limiting
 let activeRequests = 0;
