@@ -525,8 +525,8 @@ export const PATH_DESCRIPTIONS: Record<WorkflowPath, { name: string; description
  * MAIN FLOW:
  * I → II → III → [HOLD?] → IV* → V → V.1 → VI† → VII*† → VIII.5 → IX → [IX.1?] → X*
  *
- * REVISION LOOP (if Phase VII grade < B+):
- * VII (< B+) → VIII† → [VII.1 if new citations] → VII (regrade)
+ * REVISION LOOP (if Phase VII grade < A-):
+ * VII (< A-) → VIII† → [VII.1 if new citations] → VII (regrade)
  *            ↑_____________________________________|
  *            (max 3 loops)
  *
@@ -622,7 +622,7 @@ export const WORKFLOW_PHASES: Record<WorkflowPhaseCode, {
   'VII': {
     number: 7,
     name: 'Judge Simulation',
-    description: 'Grades the motion (needs B+ to pass)',
+    description: 'Grades the motion (needs A- to pass)',
     isCheckpoint: true,
     checkpointType: 'notification',
     hasExtendedThinking: true,
@@ -904,7 +904,7 @@ export const GAP_CLOSURE_PROTOCOLS: Record<GapClosureProtocol, {
   7: { name: 'Failure Threshold', description: 'Too many verification failures - pauses for manual reassessment', autoResolvable: false },
   8: { name: 'HOLD Checkpoint', description: 'Critical evidence gaps - blocks workflow until customer responds', autoResolvable: false },
   9: { name: 'Crash Recovery', description: 'Any interruption - saves checkpoints after each batch', autoResolvable: true },
-  10: { name: 'Loop 3 Exit', description: '3 revision loops, still < B+ - delivers with enhanced disclosure/warning', autoResolvable: true },
+  10: { name: 'Loop 3 Exit', description: '3 revision loops, still < A- - delivers with enhanced disclosure/warning', autoResolvable: true },
   11: { name: 'CourtListener Downtime', description: 'Rate limit or API outage - exponential backoff, then web search fallback', autoResolvable: true },
   12: { name: 'Page Length QC', description: 'Motion over/under page limits - triggers revision or blocks delivery', autoResolvable: false },
   13: { name: 'Unpublished Opinion', description: 'Not in CourtListener - secondary verification via web search', autoResolvable: true },

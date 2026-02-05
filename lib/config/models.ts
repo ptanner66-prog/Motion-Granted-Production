@@ -1,27 +1,33 @@
-/**
- * MODEL STRING CONSTANTS — Motion Granted
- *
- * SINGLE SOURCE OF TRUTH for all AI model identifiers.
- * Routing logic is in phase-registry.ts — this file is STRINGS ONLY.
- *
- * Authority: Clay's Master Implementation Guide v2.5, Batch 2 §A.2
- *            Reference: Model Strings (lines 2354-2371)
- *
- * ⚠️  To update a model version:
- *     1. Change the string HERE (and ONLY here)
- *     2. Run: grep -r "claude-\|gpt-" lib/ types/ --include="*.ts" | grep -v node_modules
- *     3. Verify NO hardcoded model strings exist outside this file
- *     4. Run tests: npm test
- *
- * WARNING: Never use gpt-5.2 (does not exist).
- *          Never use claude-sonnet-4-5-20250929 (wrong model ID — that's Sonnet 4.5, not Sonnet 4).
- *
- * NOTE: The megaprompt spec referenced 'claude-opus-4-5-20250514' and
- *       'claude-sonnet-4-5-20250514'. Neither matches the production codebase.
- *       Verified production strings from phase-executors.ts, phase-config.ts,
- *       and ai/model-router.ts are used here. If Clay intends to upgrade to
- *       different model versions, change ONLY this file.
- */
+// /lib/config/models.ts
+// Centralized model string configuration for Motion Granted
+// VERSION: 7.4.1 — January 28, 2026
+
+export const MODELS = {
+  // ═══════════════════════════════════════════════════════════════
+  // ANTHROPIC MODELS
+  // ═══════════════════════════════════════════════════════════════
+
+  // Primary model for Judge Simulation (Phase VII), complex reasoning
+  OPUS: "claude-opus-4-5-20251101",
+
+  // Standard model for drafting, CODE MODE phases
+  SONNET: "claude-sonnet-4-20250514",
+
+  // Fast model for CIV Steps 3-5 (Tier A/B)
+  HAIKU: "claude-haiku-4-5-20251001",
+
+  // ═══════════════════════════════════════════════════════════════
+  // OPENAI MODELS FOR CITATION VERIFICATION
+  // ═══════════════════════════════════════════════════════════════
+
+  // Clay's Part C Issue 2 BINDING DECISION:
+  // Citation Stage 1 uses gpt-4o (NOT gpt-4-turbo).
+  // gpt-5.2 was specified for Tier C but does not exist yet — gpt-4o as fallback.
+  // See lib/config/citation-models.ts for per-step citation routing.
+  OPENAI_CITATION_VERIFIER: process.env.OPENAI_CITATION_MODEL || "gpt-4o",
+
+  // Model type determines parameter style
+  OPENAI_MODEL_TYPE: process.env.OPENAI_MODEL_TYPE || "standard", // "standard" | "reasoning"
 
 // ============================================================================
 // MODEL IDENTIFIERS

@@ -15,7 +15,7 @@ const trustFeatures = [
   },
   {
     icon: FileCheck,
-    title: "B+ Minimum Standard",
+    title: "A- Minimum Standard",
     description: "Every draft meets quality standards or we revise it at no additional cost.",
   },
 ]

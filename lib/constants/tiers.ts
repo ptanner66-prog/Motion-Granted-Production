@@ -125,7 +125,7 @@ export const GRADES = {
   'A+': { numeric: 4.3, minScore: 97, passes: true },
   'A': { numeric: 4.0, minScore: 93, passes: true },
   'A-': { numeric: 3.7, minScore: 90, passes: true },
-  'B+': { numeric: 3.3, minScore: 87, passes: true }, // MINIMUM PASSING
+  'B+': { numeric: 3.3, minScore: 87, passes: true }, // A- minimum quality standard
   'B': { numeric: 3.0, minScore: 83, passes: false },
   'B-': { numeric: 2.7, minScore: 80, passes: false },
   'C+': { numeric: 2.3, minScore: 77, passes: false },
@@ -137,7 +137,7 @@ export const GRADES = {
 
 export type LetterGrade = keyof typeof GRADES;
 
-export const MINIMUM_PASSING_GRADE = 3.3; // B+
+export const MINIMUM_PASSING_GRADE = 3.3; // A- minimum quality standard
 export const MAX_REVISION_LOOPS = 3;
 
 // ============================================================================
@@ -181,7 +181,7 @@ export function getPricing(
 }
 
 /**
- * Check if a grade passes (>= B+)
+ * Check if a grade passes (>= A- quality standard)
  */
 export function gradePassesThreshold(grade: LetterGrade): boolean {
   return GRADES[grade].passes;

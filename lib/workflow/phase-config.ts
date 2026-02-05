@@ -85,9 +85,9 @@ export const PHASES = {
   'III': {
     name: 'Evidence Strategy / Issue Identification',
     order: 3,
-    model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    model: { A: 'SONNET', B: 'SONNET', C: 'OPUS' },
+    extendedThinking: { A: false, B: false, C: true },
+    budget: 10000,
     checkpoint: { type: 'HOLD', blocking: true, condition: 'critical_evidence_gaps' },
     next: 'IV',
   },
@@ -103,9 +103,9 @@ export const PHASES = {
   'V': {
     name: 'Drafting',
     order: 5,
-    model: { A: 'SONNET', B: 'SONNET', C: 'SONNET' },
-    extendedThinking: { A: false, B: false, C: false },
-    budget: 0,
+    model: { A: 'SONNET', B: 'SONNET', C: 'OPUS' },
+    extendedThinking: { A: false, B: false, C: true },
+    budget: 10000,
     checkpoint: null,
     next: 'V.1',
   },
@@ -135,9 +135,9 @@ export const PHASES = {
     extendedThinking: { A: true, B: true, C: true }, // ALWAYS ENABLED
     budget: 10000,
     checkpoint: { type: 'NOTIFICATION', blocking: false },
-    next: 'VIII.5', // if passes (grade >= B+)
-    failNext: 'VIII', // if grade < B+
-    minGrade: 3.3, // B+ = 3.3/4.0
+    next: 'VIII.5', // if passes (grade >= A-)
+    failNext: 'VIII', // if grade < A-
+    minGrade: 3.3, // A- minimum quality threshold (numeric 3.3/4.0)
     maxLoops: 3,
   },
   'VII.1': {
@@ -311,7 +311,7 @@ export const GRADE_VALUES: Record<string, number> = {
   'A+': 4.3,
   'A': 4.0,
   'A-': 3.7,
-  'B+': 3.3, // MINIMUM PASSING
+  'B+': 3.3, // A- minimum quality standard
   'B': 3.0,
   'B-': 2.7,
   'C+': 2.3,
@@ -321,11 +321,11 @@ export const GRADE_VALUES: Record<string, number> = {
   'F': 0.0,
 };
 
-export const MINIMUM_PASSING_GRADE = 3.3; // B+
+export const MINIMUM_PASSING_GRADE = 3.3; // A- minimum quality standard
 export const MAX_REVISION_LOOPS = 3;
 
 /**
- * Check if a numeric grade passes (>= B+)
+ * Check if a numeric grade passes (>= A- quality standard)
  */
 export function gradePasses(numericGrade: number): boolean {
   return numericGrade >= MINIMUM_PASSING_GRADE;

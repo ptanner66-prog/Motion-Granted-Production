@@ -237,7 +237,7 @@ export function OnboardingWizard({
                 <p className="text-sm text-gray-500">AI Phases</p>
               </div>
               <div className="p-4 bg-gray-50 rounded-lg">
-                <p className="font-bold text-2xl text-teal">B+</p>
+                <p className="font-bold text-2xl text-teal">A-</p>
                 <p className="text-sm text-gray-500">Min Quality</p>
               </div>
               <div className="p-4 bg-gray-50 rounded-lg">

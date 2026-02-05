@@ -14,7 +14,7 @@
  * V.1  - Gap Closure (Sonnet)
  * VI   - Opposition Anticipation (Opus for B/C, 8K thinking)
  * VII  - Judge Simulation (Opus always, 10K thinking) -> CP2 checkpoint
- * VII.1- Revision Loop (if B+ not achieved, max 3 loops)
+ * VII.1- Revision Loop (if A- not achieved, max 3 loops)
  * VIII - Final Draft (Opus for B/C, 8K thinking)
  * VIII.5- MSJ Separate Statement (if applicable)
  * IX   - Document Formatting (Sonnet)
@@ -66,6 +66,21 @@ import {
 // Configuration imports
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
 import { createMessageWithRetry } from "@/lib/claude-client";
+
+// BUG-01/BUG-02: Deadline validation and calculation
+import { validateDeadline } from "@/lib/workflow/validators/deadline-validator";
+import { calculateInternalDeadline, TURNAROUND_DAYS } from "@/lib/workflow/utils/deadline-calculator";
+
+// BUG-07: Required document validation
+import { validateRequiredDocuments } from "@/lib/workflow/validators/required-documents";
+
+// MB-02: Email notification triggers
+import {
+  sendOrderConfirmation,
+  sendHoldNotification,
+  sendCP3ReviewNotification,
+  sendPaymentConfirmation,
+} from "@/lib/email/email-triggers";
 
 // Phase IV multi-step executor for avoiding Vercel timeout
 import {
@@ -1004,6 +1019,118 @@ export const generateOrderWorkflow = inngest.createFunction(
         },
       });
 
+      // ====================================================================
+      // BUG-01: Expired Deadline Validation Gate (BEFORE any billable processing)
+      // BUG-02: Deadline calculated with business days + correct timezone
+      // ====================================================================
+      const deadlineValidation = validateDeadline(
+        orderContext.filingDeadline,
+        orderContext.motionTier
+      );
+
+      if (deadlineValidation.blocked) {
+        console.error(`[WORKFLOW] DEADLINE GATE BLOCKED: ${deadlineValidation.reason}`);
+        // Update order status to rejected
+        await supabase
+          .from("orders")
+          .update({
+            status: "rejected",
+            generation_error: deadlineValidation.reason,
+          })
+          .eq("id", orderId);
+
+        // Log the rejection
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "deadline_validation_failed",
+          action_details: {
+            reason: deadlineValidation.reason,
+            checks: deadlineValidation.checks,
+            filingDeadline: orderContext.filingDeadline,
+            tier: orderContext.motionTier,
+          },
+        });
+
+        throw new Error(`Deadline validation failed: ${deadlineValidation.reason}`);
+      }
+
+      // Log warnings (non-blocking)
+      if (deadlineValidation.warnings.length > 0) {
+        console.warn(`[WORKFLOW] Deadline warnings:`, deadlineValidation.warnings);
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "deadline_validation_warning",
+          action_details: {
+            warnings: deadlineValidation.warnings,
+            checks: deadlineValidation.checks,
+            filingDeadline: orderContext.filingDeadline,
+          },
+        });
+      }
+
+      // Calculate internal deadline if filing deadline exists
+      let internalDeadline: string | null = null;
+      if (orderContext.filingDeadline) {
+        try {
+          const deadlineCalc = calculateInternalDeadline(orderContext.filingDeadline);
+          internalDeadline = deadlineCalc.internalDeadline;
+          console.log(`[WORKFLOW] Internal deadline: ${internalDeadline} (filing: ${orderContext.filingDeadline})`);
+        } catch (e) {
+          console.warn(`[WORKFLOW] Could not calculate internal deadline:`, e);
+        }
+      }
+
+      // ====================================================================
+      // BUG-07: Required Document Validation
+      // ====================================================================
+      const uploadedDocTypes = orderContext.documents.parsed.map(d => d.documentType);
+      const docValidation = validateRequiredDocuments(
+        orderContext.motionType,
+        uploadedDocTypes
+      );
+
+      if (!docValidation.complete) {
+        console.warn(`[WORKFLOW] Missing required documents:`, docValidation.missingCategories);
+        // Update order with missing docs warning — trigger HOLD via Phase III path
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "missing_documents_detected",
+          action_details: {
+            motionType: orderContext.motionType,
+            missingCategories: docValidation.missingCategories,
+            description: docValidation.description,
+            uploadedTypes: uploadedDocTypes,
+          },
+        });
+      }
+
+      if (docValidation.warnings.length > 0) {
+        console.warn(`[WORKFLOW] Document validation warnings:`, docValidation.warnings);
+      }
+
+      // BUG-16: Document parser empty results warning
+      // If ALL parsed documents have zero key facts, legal issues, AND summary → flag
+      const parsedDocs = orderContext.documents.parsed;
+      if (parsedDocs.length > 0) {
+        const allEmpty = parsedDocs.every(d =>
+          (!d.keyFacts || (d.keyFacts as unknown[]).length === 0) &&
+          (!d.legalIssues || (d.legalIssues as unknown[]).length === 0) &&
+          (!d.summary || d.summary.trim().length === 0)
+        );
+        if (allEmpty) {
+          console.warn('[WORKFLOW] BUG-16: All parsed documents returned zero key facts, legal issues, and summaries');
+          await supabase.from("automation_logs").insert({
+            order_id: orderId,
+            action_type: "document_parser_empty_results",
+            action_details: {
+              warning: 'All uploaded documents returned empty extraction results. Customer may need to verify document uploads.',
+              documentCount: parsedDocs.length,
+              documentTypes: parsedDocs.map(d => d.documentType),
+            },
+          });
+        }
+      }
+
       const state: WorkflowState = {
         orderId,
         workflowId,
@@ -1084,13 +1211,30 @@ export const generateOrderWorkflow = inngest.createFunction(
     console.log('[Orchestration] Accumulated after III:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
-    // CRITICAL: HOLD CHECKPOINT AFTER PHASE III
+    // BUG-04: HOLD CHECKPOINT AFTER PHASE III — ENHANCED DETECTION
     // ========================================================================
-    // If Phase III detected fatal gaps requiring client input, STOP the workflow.
-    // The client must provide missing information before we can proceed.
+    // DEFENSIVE CODING: Check BOTH snake_case AND camelCase field names.
+    // Also parse narrative text for HOLD signal keywords as backup.
     const phaseIIIOutput = phaseIIIResult?.output as Record<string, unknown> | undefined;
-    const holdRequired = phaseIIIOutput?.holdRequired === true;
-    const holdReason = (phaseIIIOutput?.holdReason ?? 'Critical gaps detected in evidence/case data') as string;
+
+    // Check all possible field name variants for hold signal
+    const holdFromCamelCase = phaseIIIOutput?.holdRequired === true;
+    const holdFromSnakeCase = phaseIIIOutput?.hold_recommended === true;
+    const holdFromCamelRecommended = phaseIIIOutput?.holdRecommended === true;
+
+    // BUG-04: Keyword-based backup detection — parse Phase III narrative
+    const phaseIIINarrative = JSON.stringify(phaseIIIOutput || '').toUpperCase();
+    const holdKeywords = ['CRITICAL', 'EVIDENCE GAPS', 'HOLD', 'MISSING', 'INSUFFICIENT'];
+    const keywordCount = holdKeywords.filter(kw => phaseIIINarrative.includes(kw)).length;
+    const holdFromKeywords = keywordCount >= 2; // At least 2 keywords = likely HOLD signal
+
+    const holdRequired = holdFromCamelCase || holdFromSnakeCase || holdFromCamelRecommended || holdFromKeywords;
+    const holdReason = (
+      phaseIIIOutput?.holdReason ??
+      phaseIIIOutput?.hold_reason ??
+      phaseIIIOutput?.reason ??
+      'Critical gaps detected in evidence/case data'
+    ) as string;
 
     if (holdRequired) {
       console.log('[Orchestration] ========== HOLD TRIGGERED ==========');
@@ -1146,6 +1290,26 @@ export const generateOrderWorkflow = inngest.createFunction(
           priority: 10,
           status: "pending",
         });
+
+        // MB-02: Send direct HOLD email notification to customer
+        const missingItems = (phaseIIIOutput?.missingItems ?? phaseIIIOutput?.criticalGaps ?? []) as string[];
+        const customerEmail = workflowState.orderContext.firmEmail;
+        if (customerEmail) {
+          try {
+            await sendHoldNotification(
+              {
+                orderId,
+                orderNumber: workflowState.orderContext.orderNumber,
+                customerEmail,
+                motionType: workflowState.orderContext.motionType,
+              },
+              holdReason,
+              Array.isArray(missingItems) ? missingItems : [String(missingItems)]
+            );
+          } catch (emailErr) {
+            console.error('[HOLD] Email notification failed (non-fatal):', emailErr);
+          }
+        }
 
         return {
           held: true,
@@ -1446,56 +1610,101 @@ export const generateOrderWorkflow = inngest.createFunction(
     });
 
     // ========================================================================
-    // STEP 10: Phase VII.1 - Revision Loop (if needed)
+    // BUG-03 FIX: REVISION LOOP — Phase VIII → VII.1 → VII (CORRECT ORDER)
     // ========================================================================
-    // Execute revision loop if grade is below B+
+    // BEFORE FIX: The code ran VII.1 before VIII, so VII.1 received `undefined`
+    // for revised content because Phase VIII (revisions) hadn't run yet.
+    //
+    // CORRECT ORDER per spec:
+    // 1. VII grades the motion → if grade < A-:
+    //    a. VIII (Revisions) — apply revision instructions from VII
+    //    b. VII.1 (Citation re-verification on revised text)
+    //    c. VII (Re-grade revised draft)
+    // 2. Repeat until grade >= A- or max 3 loops
+    //
+    // BUG-11 FIX: Loop counter is at WORKFLOW level (workflowState.revisionLoopCount),
+    // NOT generated by LLM or stored in step-level state that resets.
+    // ========================================================================
+
     while (
       workflowState.currentGrade &&
       !gradePasses(workflowState.currentGrade) &&
       workflowState.revisionLoopCount < MAX_REVISION_LOOPS
     ) {
       const loopNum = workflowState.revisionLoopCount + 1;
+      console.log(`[Orchestration] ===== REVISION LOOP ${loopNum}/${MAX_REVISION_LOOPS} =====`);
+      console.log(`[Orchestration] Current grade: ${workflowState.currentGrade} (needs A- / 3.3)`);
 
-      // Execute revision
-      const revisionResult = await step.run(`phase-vii1-revision-loop-${loopNum}`, async () => {
-        console.log(`[Orchestration] Phase VII.1 Loop ${loopNum} - has previous:`, Object.keys(workflowState.phaseOutputs));
+      // STEP A: Phase VIII — Apply revisions based on Phase VII feedback
+      const phaseVIIIRevisionResult = await step.run(`phase-viii-revision-loop-${loopNum}`, async () => {
+        console.log(`[Orchestration] Phase VIII Loop ${loopNum} - applying revisions`);
+        console.log(`[Orchestration] Phase VIII - has previous:`, Object.keys(workflowState.phaseOutputs));
+        const input = buildPhaseInput(workflowState);
+        input.revisionLoop = loopNum;
+        const result = await executePhase("VIII", input);
+
+        if (!result.success || !result.output) {
+          console.error(`[Phase VIII Loop ${loopNum}] FAILED: ${result.error || 'No output'}`);
+          throw new Error(`Phase VIII revision failed: ${result.error || 'No output returned'}`);
+        }
+
+        await logPhaseExecution(supabase, workflowState, "VIII", result, result.tokensUsed);
+        return result;
+      });
+
+      // CRITICAL: Store Phase VIII output — this is the revised draft
+      if (phaseVIIIRevisionResult?.output) {
+        workflowState.phaseOutputs["VIII"] = phaseVIIIRevisionResult.output;
+        // BUG-03 FIX: Also update the motion_content key for downstream phases
+        // Phase VII.1 reads from phaseOutputs["VIII"] for the revised text
+      }
+      console.log(`[Orchestration] Phase VIII output stored. Keys: ${Object.keys(workflowState.phaseOutputs)}`);
+
+      // STEP B: Phase VII.1 — Citation re-verification on the REVISED text
+      const phaseVII1Result = await step.run(`phase-vii1-citation-check-loop-${loopNum}`, async () => {
+        console.log(`[Orchestration] Phase VII.1 Loop ${loopNum} - citation re-verification`);
+        console.log(`[Orchestration] Phase VII.1 - Phase VIII present:`, !!workflowState.phaseOutputs['VIII']);
         const input = buildPhaseInput(workflowState);
         input.revisionLoop = loopNum;
         const result = await executePhase("VII.1", input);
 
         if (!result.success || !result.output) {
           console.error(`[Phase VII.1 Loop ${loopNum}] FAILED: ${result.error || 'No output'}`);
-          throw new Error(`Phase VII.1 revision failed: ${result.error || 'No output returned'}`);
+          throw new Error(`Phase VII.1 citation check failed: ${result.error || 'No output returned'}`);
         }
 
         await logPhaseExecution(supabase, workflowState, "VII.1", result, result.tokensUsed);
         return result;
       });
 
-      // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
-      if (revisionResult?.output) {
-        workflowState.phaseOutputs["VII.1"] = revisionResult.output;
-        workflowState.revisionLoopCount = loopNum;
-        // Update the draft in phase VIII output for re-grading
-        if ((revisionResult.output as { revisedMotion?: unknown }).revisedMotion) {
-          workflowState.phaseOutputs["VIII"] = revisionResult.output;
-        }
+      if (phaseVII1Result?.output) {
+        workflowState.phaseOutputs["VII.1"] = phaseVII1Result.output;
       }
-      console.log(`[Orchestration] Accumulated after VII.1 Loop ${loopNum}:`, Object.keys(workflowState.phaseOutputs));
+
+      // BUG-11 FIX: Increment loop counter at WORKFLOW level
+      workflowState.revisionLoopCount = loopNum;
+
+      // Update workflow-level loop counter in database (not step-level state)
+      await step.run(`update-loop-counter-${loopNum}`, async () => {
+        await supabase
+          .from("workflow_state")
+          .update({ revision_loop_count: loopNum })
+          .eq("order_id", orderId);
+      });
 
       // Check if escalated due to max loops
-      if ((revisionResult.output as { escalated?: boolean })?.escalated) {
+      if ((phaseVII1Result.output as { escalated?: boolean })?.escalated) {
+        console.warn(`[Orchestration] Phase VII.1 signaled escalation at loop ${loopNum}`);
         break;
       }
 
-      // Re-run judge simulation
+      // STEP C: Phase VII — Re-grade the revised draft
       phaseVIIResult = await step.run(`phase-vii-regrade-loop-${loopNum}`, async () => {
-        console.log(`[Orchestration] Phase VII Regrade Loop ${loopNum} - has previous:`, Object.keys(workflowState.phaseOutputs));
+        console.log(`[Orchestration] Phase VII Regrade Loop ${loopNum}`);
         const input = buildPhaseInput(workflowState);
         input.revisionLoop = loopNum;
         const result = await executePhase("VII", input);
 
-        // CRITICAL: Check for phase failure before using output
         if (!result.success || !result.output) {
           console.error(`[Phase VII Regrade ${loopNum}] FAILED: ${result.error || 'No output returned'}`);
           throw new Error(`Phase VII regrade failed: ${result.error || 'No output returned'}`);
@@ -1505,54 +1714,23 @@ export const generateOrderWorkflow = inngest.createFunction(
         return result;
       });
 
-      // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
+      // CRITICAL: Store re-grade output and update grade
       if (phaseVIIResult?.output) {
         workflowState.phaseOutputs["VII"] = phaseVIIResult.output;
         const judgeOutput = phaseVIIResult.output as { evaluation?: { grade?: string }; grade?: string } | null;
         const grade = judgeOutput?.evaluation?.grade || judgeOutput?.grade;
         workflowState.currentGrade = grade as LetterGrade;
       }
-      console.log(`[Orchestration] Accumulated after VII Regrade Loop ${loopNum}:`, Object.keys(workflowState.phaseOutputs));
-      console.log('[Orchestration] Updated grade:', workflowState.currentGrade);
+      console.log(`[Orchestration] Loop ${loopNum} complete. Grade: ${workflowState.currentGrade}`);
     }
 
-    // ========================================================================
-    // STEP 11: Phase VIII - Revisions (if needed) / Final Approval
-    // ========================================================================
-    const phaseVIIIResult = await step.run("phase-viii-revisions", async () => {
-      console.log('[Orchestration] Phase VIII - has previous:', Object.keys(workflowState.phaseOutputs));
-      // Check if Phase VII passed - if not, execute Phase VIII for revisions
-      const passes = workflowState.currentGrade && gradePasses(workflowState.currentGrade);
-
-      if (!passes && workflowState.revisionLoopCount < MAX_REVISION_LOOPS) {
-        // Execute Phase VIII for revisions
-        const input = buildPhaseInput(workflowState);
-        input.revisionLoop = workflowState.revisionLoopCount;
-        const result = await executePhase("VIII", input);
-
-        if (!result.success || !result.output) {
-          console.error(`[Phase VIII] FAILED: ${result.error || 'No output'}`);
-          throw new Error(`Phase VIII failed: ${result.error || 'No output returned'}`);
-        }
-
-        await logPhaseExecution(supabase, workflowState, "VIII", result, result.tokensUsed);
-        return result;
-      }
-
-      // If passed or max loops reached, continue with existing draft
-      return {
-        success: true,
-        phase: "VIII" as WorkflowPhaseCode,
-        status: "completed" as PhaseStatus,
-        output: workflowState.phaseOutputs["V"],
-        nextPhase: "VIII.5" as WorkflowPhaseCode,
-      };
-    });
-    // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
-    if (phaseVIIIResult?.output) {
-      workflowState.phaseOutputs["VIII"] = phaseVIIIResult.output;
+    // If Phase VII passed on first try (no revision loop entered),
+    // carry Phase V output forward as the "final" draft in VIII slot
+    if (!workflowState.phaseOutputs["VIII"]) {
+      workflowState.phaseOutputs["VIII"] = workflowState.phaseOutputs["V"];
+      console.log('[Orchestration] Phase VII passed first try — Phase V output carried to VIII slot');
     }
-    console.log('[Orchestration] Accumulated after VIII:', Object.keys(workflowState.phaseOutputs));
+    console.log('[Orchestration] Accumulated after revision loop:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
     // STEP 12: Phase VIII.5 - Caption Validation
@@ -1642,14 +1820,26 @@ export const generateOrderWorkflow = inngest.createFunction(
     }
     console.log('[Orchestration] FINAL - All accumulated phases:', Object.keys(workflowState.phaseOutputs));
 
-    // CP3 Checkpoint - Requires admin approval before delivery
-    await step.run("checkpoint-cp3", async () => {
+    // ========================================================================
+    // MB-03: CP3 Checkpoint — BLOCKING (requires approval before delivery)
+    // ========================================================================
+    await step.run("checkpoint-cp3-blocking", async () => {
+      // Set order status to PENDING_REVIEW — documents NOT delivered
+      await supabase
+        .from("orders")
+        .update({
+          status: "pending_review",
+          generation_completed_at: new Date().toISOString(),
+        })
+        .eq("id", orderId);
+
       await triggerCheckpoint(workflowState.workflowId, "CP3", {
         checkpoint: "CP3",
         status: "pending",
         triggeredAt: new Date().toISOString(),
         finalQA: phaseXResult.output,
         requiresAdminApproval: true,
+        blocking: true,
       });
 
       // Queue admin notification
@@ -1670,6 +1860,32 @@ export const generateOrderWorkflow = inngest.createFunction(
         priority: 10,
         status: "pending",
       });
+
+      // MB-02: Send CP3 review email to customer
+      const customerEmail = workflowState.orderContext.firmEmail;
+      if (customerEmail) {
+        try {
+          const documentList = [
+            'Motion Document',
+            'Attorney Instruction Sheet',
+            'Citation Accuracy Report',
+            'Caption QC Report',
+          ];
+          await sendCP3ReviewNotification(
+            {
+              orderId,
+              orderNumber: workflowState.orderContext.orderNumber,
+              customerEmail,
+              motionType: workflowState.orderContext.motionType,
+            },
+            documentList
+          );
+        } catch (emailErr) {
+          console.error('[CP3] Email notification failed (non-fatal):', emailErr);
+        }
+      }
+
+      console.log(`[Orchestration] CP3 BLOCKING checkpoint triggered — awaiting approval`);
     });
 
     // ========================================================================
@@ -1817,22 +2033,34 @@ export const generateOrderWorkflow = inngest.createFunction(
         })
         .eq("id", workflowState.workflowId);
 
-      // Log completion
-      await supabase.from("automation_logs").insert({
-        order_id: orderId,
-        action_type: "workflow_completed",
-        action_details: {
-          workflowId: workflowState.workflowId,
-          finalGrade: workflowState.currentGrade,
-          citationCount: actualCitationCount,
-          revisionLoops: workflowState.revisionLoopCount,
-          phasesCompleted: Object.keys(workflowState.phaseOutputs).length,
-          motionSaved: !!motionContent && motionContent.length > 100,
-          motionLength: motionContent.length,
-          motionSource,
-          conversationId: conversation?.id,
-        },
-      });
+      // BUG-17: Log completion with idempotency check (prevent duplicate records)
+      // Use upsert-like approach: check before insert
+      const { data: existingCompletion } = await supabase
+        .from("automation_logs")
+        .select("id")
+        .eq("order_id", orderId)
+        .eq("action_type", "workflow_completed")
+        .maybeSingle();
+
+      if (!existingCompletion) {
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "workflow_completed",
+          action_details: {
+            workflowId: workflowState.workflowId,
+            finalGrade: workflowState.currentGrade,
+            citationCount: actualCitationCount,
+            revisionLoops: workflowState.revisionLoopCount,
+            phasesCompleted: Object.keys(workflowState.phaseOutputs).length,
+            motionSaved: !!motionContent && motionContent.length > 100,
+            motionLength: motionContent.length,
+            motionSource,
+            conversationId: conversation?.id,
+          },
+        });
+      } else {
+        console.warn('[Workflow Finalization] Duplicate workflow_completed log prevented for order:', orderId);
+      }
 
       return {
         success: true,

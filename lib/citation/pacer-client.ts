@@ -271,8 +271,8 @@ class PACERClient {
         return { found: false, source: 'NONE', error: 'Invalid citation format' };
       }
 
-      // Search RECAP via CourtListener API
-      const searchUrl = `${RECAP_BASE_URL}/?citation=${encodeURIComponent(citation)}`;
+      // CIV-001: Search RECAP via CourtListener API — removed deprecated citation= parameter
+      const searchUrl = `${RECAP_BASE_URL}/?q=${encodeURIComponent(citation)}&type=r`;
 
       const response = await fetch(searchUrl, {
         headers: {

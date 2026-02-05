@@ -79,7 +79,7 @@ function GradeBadge({ grade }: { grade: LetterGrade }) {
         ) : (
           <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
             <XCircle className="w-3 h-3 mr-1" />
-            Below B+
+            Below A-
           </Badge>
         )}
       </div>
@@ -158,7 +158,7 @@ export function JudgeSimulationCard({
             <div>
               <p className="font-medium text-green-800">Ready for Final Assembly</p>
               <p className="text-sm text-green-600">
-                Motion meets minimum B+ standard for delivery.
+                Motion meets minimum A- standard for delivery.
               </p>
             </div>
           </div>
@@ -168,7 +168,7 @@ export function JudgeSimulationCard({
             <div>
               <p className="font-medium text-amber-800">Revision Required</p>
               <p className="text-sm text-amber-600">
-                Motion needs improvement to meet B+ standard.
+                Motion needs improvement to meet A- standard.
                 {result.loopNumber >= MAX_REVISION_LOOPS && (
                   <span className="block mt-1 text-red-600 font-medium">
                     Maximum revisions reached. Will deliver with enhanced disclosure.

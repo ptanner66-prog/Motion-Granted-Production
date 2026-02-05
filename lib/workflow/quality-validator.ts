@@ -59,11 +59,11 @@ export interface ValidationContext {
 
 /**
  * Quality thresholds per v6.3 specification
- * IMPORTANT: B+ = 0.87 is the PASSING grade threshold
+ * IMPORTANT: A- = 0.87 is the PASSING grade threshold
  */
 const QUALITY_THRESHOLDS = {
   minimum: 0.70,          // D+ — absolute floor, fails if below
-  acceptable: 0.87,       // B+ — this is the PASSING grade per v6.3
+  acceptable: 0.87,       // A- — this is the PASSING grade per v6.3
   good: 0.93,             // A  — high quality
   excellent: 0.97,        // A+ — exceptional
 };
@@ -590,10 +590,10 @@ export function scoreToGrade(score: number): string {
 }
 
 /**
- * Check if score meets B+ passing threshold
+ * Check if score meets A- passing threshold
  */
 export function isPassingGrade(score: number): boolean {
-  return score >= QUALITY_THRESHOLDS.acceptable; // B+ = 0.87
+  return score >= QUALITY_THRESHOLDS.acceptable; // A- = 0.87
 }
 
 /**

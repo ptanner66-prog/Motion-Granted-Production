@@ -33,9 +33,7 @@ to:
 
 4. Calculate deadline buffers
 
-5. Generate model routing configuration
-
-6. Flag any incomplete submissions (Protocol 16)
+5. Flag any incomplete submissions (Protocol 16)
 
 ### INPUT PRIORITY RULE (CRITICAL)
 
@@ -101,9 +99,6 @@ PATH B Validation: Require opponent_motion_document upload
 >
 > "deadline_calculation": { "filing_deadline": "ISO8601",
 > "buffer_days": 5 },
->
-> "model_routing": { "research": "string", "drafting":
-> "string" },
 >
 > "validation": { "complete": true, "missing_fields": [],
 > "warnings": [] }
