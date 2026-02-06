@@ -58,16 +58,13 @@ export {
   getCombinedDocumentText,
 } from './document-extractor';
 
-// Orchestration (combines checkout + docs + superprompt + workflow)
+// Orchestration (combines checkout + docs + workflow)
 export {
   gatherOrderContext,
-  buildSuperprompt,
+  buildOrderSuperprompt,
   orchestrateWorkflow,
   executePhaseWithContext,
-  generateDraftWithSuperprompt,
   getWorkflowSuperprompt,
-  getAdminSuperpromptTemplate,
-  mergeSuperpromptWithContext,
 } from './orchestrator';
 
 // PDF Generation
