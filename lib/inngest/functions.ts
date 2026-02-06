@@ -255,10 +255,14 @@ export const generateOrderDraft = inngest.createFunction(
           return `[${pd.document_type || 'document'}] ${pd.summary || '(No summary)'}\n${pd.full_text?.slice(0, 10000) || '(No content)'}${keyFactsText}${legalIssuesText}`;
         }).join("\n\n---\n\n");
       } else {
-        // Fallback to raw document content
+        // Fallback: parsed_documents table had no data — use file metadata only
+        // NOTE: documents table does NOT have parsed_content column; content lives in parsed_documents
         documentContent = documents
-          ?.map((doc) => `[${doc.document_type}] ${doc.file_name}:\n${doc.parsed_content || ""}`)
+          ?.map((doc) => `[${doc.document_type}] ${doc.file_name}:\n(Document uploaded but content extraction returned no results. The workflow will proceed with intake form data only.)`)
           .join("\n\n---\n\n") || "";
+        if (documents && documents.length > 0) {
+          console.warn(`[Inngest] ${documents.length} document(s) uploaded but no parsed content available — falling back to intake data only`);
+        }
       }
 
       // Get parties
@@ -305,11 +309,18 @@ The following JSON contains all the case information needed for Phase I Input:
     "judge_name": ""
   },
   "uploaded_documents": [
-    ${documents?.map((doc) => `{
+    ${'data' in parsedDocs && parsedDocs.data && parsedDocs.data.length > 0
+      ? parsedDocs.data.map((pd: Record<string, unknown>) => `{
+      "document_id": "${pd.id || ''}",
+      "filename": "${pd.file_name || pd.document_type || 'document'}",
+      "document_type": "${pd.document_type || 'other'}",
+      "content_text": ${JSON.stringify((pd.full_text as string)?.slice(0, 10000) || pd.summary || "(no content extracted)")}
+    }`).join(",\n    ")
+      : documents?.map((doc) => `{
       "document_id": "${doc.id}",
       "filename": "${doc.file_name}",
       "document_type": "${doc.document_type}",
-      "content_text": ${JSON.stringify(doc.parsed_content || "(no content extracted)")}
+      "content_text": "(Document uploaded but content extraction returned no results)"
     }`).join(",\n    ") || ""}
   ],
   "attorney_info": {
@@ -1077,7 +1088,8 @@ export const executeWorkflowPhase = inngest.createFunction(
           document_id: doc.id,
           filename: doc.file_name,
           document_type: doc.document_type,
-          content_text: doc.parsed_content,
+          // NOTE: documents table has no parsed_content column; content lives in parsed_documents table
+          content_text: '(Content available via parsed_documents table)',
         })) || [],
         previous_phases: state.phase_outputs || {},
       };
