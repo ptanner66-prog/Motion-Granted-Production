@@ -11,7 +11,6 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { Model } from '@anthropic-ai/sdk/resources/messages/messages';
 import { createClient } from '@/lib/supabase/server';
 import { createMessageWithStreaming } from '@/lib/automation/claude';
 import {
@@ -109,29 +108,6 @@ your output and the workflow will FAIL.
 
 ################################################################################
 `;
-
-// Model selection based on phase and tier
-const OPUS_MODEL: Model = 'claude-opus-4-5-20251101';
-const SONNET_MODEL: Model = 'claude-sonnet-4-20250514';
-
-function getModelForPhase(phase: WorkflowPhaseCode, tier: MotionTier): Model {
-  // Phase VII always uses Opus (quality gate)
-  if (phase === 'VII') return OPUS_MODEL;
-
-  // Tier B/C use Opus for research and complex phases
-  if (tier !== 'A') {
-    if (['IV', 'VI', 'VIII'].includes(phase)) return OPUS_MODEL;
-  }
-
-  return SONNET_MODEL;
-}
-
-// Extended thinking budget
-function getThinkingBudget(phase: WorkflowPhaseCode, tier: MotionTier): number | null {
-  if (phase === 'VII') return 10000; // Always for judge simulation
-  if (tier !== 'A' && ['VI', 'VIII'].includes(phase)) return 8000;
-  return null;
-}
 
 // ============================================================================
 // ANTHROPIC CLIENT
