@@ -214,24 +214,19 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
   },
 
   // ── Phase III: Legal Research ──────────────────────────────────────
-  // MODE: CHAT. Sonnet all tiers.
+  // MODE: CHAT. Sonnet A/B, Opus+ET 10K C.
   // Identifies elements, burdens, defenses; builds research framework.
   //
-  // NOTE: The earlier audit (CHEN_AUDIT_REPORT P1-02) identified that
-  //       types/workflow.ts defined C:10K ET for Phase III, but the
-  //       execution code returned null. Clay's 2.5 Batch 2 ET Matrix
-  //       (lines 2399-2410) does NOT list Phase III for ET at all.
-  //       The 2.5 Model Routing Matrix (line 2378) assigns Sonnet
-  //       for ALL tiers of Phase III. Decision: NO ET for Phase III.
-  //       If Clay wants Phase III Tier C to use ET, Phase III C
-  //       must be upgraded to Opus in this registry.
+  // UPDATE: Clay confirmed Tier C uses Opus + 10K ET for Phase III.
+  // This overrides the 2.5 Batch 2 ET Matrix which omitted Phase III.
+  // phase-config.ts also defines III:C as Opus+ET, confirming this.
   'III': {
     name: 'Legal Research',
     mode: 'CHAT',
     routing: {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
-      C: SONNET_STANDARD,
+      C: OPUS_ET_10K,
     },
   },
 
@@ -249,19 +244,19 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
   },
 
   // ── Phase V: Motion Drafting ──────────────────────────────────────
-  // MODE: CHAT. Sonnet all tiers.
+  // MODE: CHAT. Sonnet A/B, Opus+ET 10K C.
   // Drafts complete motion with legal arguments and citations.
   //
-  // NOTE: Same situation as Phase III — audit found types/workflow.ts
-  //       defined C:10K ET, but Clay's 2.5 ET Matrix doesn't list
-  //       Phase V. Sonnet all tiers per the binding routing matrix.
+  // UPDATE: Clay confirmed Tier C uses Opus + 10K ET for Phase V.
+  // This overrides the 2.5 Batch 2 ET Matrix which omitted Phase V.
+  // phase-config.ts also defines V:C as Opus+ET, confirming this.
   'V': {
     name: 'Motion Drafting',
     mode: 'CHAT',
     routing: {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
-      C: SONNET_STANDARD,
+      C: OPUS_ET_10K,
     },
   },
 

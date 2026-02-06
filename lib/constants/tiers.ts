@@ -84,6 +84,50 @@ export const TIERS = {
 export type TierConfig = typeof TIERS[MotionTier];
 
 // ============================================================================
+// WORKFLOW TIER CONFIG — Controls phase behavior per tier
+// ============================================================================
+
+export interface WorkflowTierConfig {
+  tier: MotionTier;
+  skipPhaseVI: boolean;
+  maxRevisionLoops: number;
+  deepResearch: boolean;
+  citationTargets: { min: number; target: number; highStakes: boolean };
+  qualityThreshold: number;
+}
+
+export const WORKFLOW_TIER_CONFIG: Record<MotionTier, WorkflowTierConfig> = {
+  A: {
+    tier: 'A',
+    skipPhaseVI: true,        // Procedural motions rarely face opposition
+    maxRevisionLoops: 2,
+    deepResearch: false,
+    citationTargets: { min: 4, target: 8, highStakes: false },
+    qualityThreshold: 0.87,   // B+ = A- minimum (same for all tiers)
+  },
+  B: {
+    tier: 'B',
+    skipPhaseVI: false,
+    maxRevisionLoops: 3,
+    deepResearch: true,
+    citationTargets: { min: 4, target: 12, highStakes: false },
+    qualityThreshold: 0.87,
+  },
+  C: {
+    tier: 'C',
+    skipPhaseVI: false,
+    maxRevisionLoops: 3,
+    deepResearch: true,
+    citationTargets: { min: 4, target: 16, highStakes: true },
+    qualityThreshold: 0.87,
+  },
+};
+
+export function getWorkflowTierConfig(tier: MotionTier): WorkflowTierConfig {
+  return WORKFLOW_TIER_CONFIG[tier];
+}
+
+// ============================================================================
 // PRICING CONSTANTS
 // ============================================================================
 
