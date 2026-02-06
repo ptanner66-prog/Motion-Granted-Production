@@ -346,6 +346,28 @@ async function handlePaymentSucceeded(
   // Queue payment confirmation notification
   await queueOrderNotification(orderId, 'payment_received');
 
+  // Send order confirmation email directly via email triggers
+  try {
+    const { sendOrderConfirmation } = await import('@/lib/email/email-triggers');
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', existingOrder.client_id)
+      .single();
+
+    if (profile?.email) {
+      await sendOrderConfirmation({
+        orderId,
+        orderNumber: order.order_number,
+        customerEmail: profile.email,
+        tier: existingOrder.tier || undefined,
+        totalPrice: existingOrder.total_price,
+      });
+    }
+  } catch (emailError) {
+    console.error('[Stripe Webhook] Order confirmation email failed (non-blocking):', emailError);
+  }
+
   // Schedule conflict check (runs immediately with priority)
   await scheduleTask('conflict_check', {
     orderId,

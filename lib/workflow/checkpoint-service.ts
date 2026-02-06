@@ -836,6 +836,31 @@ export async function triggerHoldCheckpoint(
       // Continue - timers are nice-to-have, not critical
     }
 
+    // Send HOLD notification email to customer
+    try {
+      const { sendHoldNotification } = await import('@/lib/email/email-triggers');
+
+      const ordersData = workflow?.orders as { order_number?: string; client_id?: string; profiles?: { email?: string } | { email?: string }[] } | null;
+      const profileData = Array.isArray(ordersData?.profiles) ? ordersData?.profiles?.[0] : ordersData?.profiles;
+      const customerEmail = profileData?.email;
+
+      if (customerEmail && ordersData?.order_number) {
+        await sendHoldNotification(
+          {
+            orderId: workflow?.order_id || '',
+            orderNumber: ordersData.order_number,
+            customerEmail,
+          },
+          reason,
+          missingEvidence || []
+        );
+        console.log(`[HOLD] Notification email sent to ${customerEmail}`);
+      }
+    } catch (emailError) {
+      console.error('[HOLD] Failed to send notification email:', emailError);
+      // Non-blocking — email failure should never prevent HOLD from working
+    }
+
     // Create handoff file
     await createCheckpointHandoff(workflowId, 'HOLD', holdData);
 
