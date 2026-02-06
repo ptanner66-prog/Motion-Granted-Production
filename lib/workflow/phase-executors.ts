@@ -27,6 +27,7 @@ import type {
 } from '@/types/workflow';
 import { PHASE_PROMPTS } from '@/prompts';
 import { getModel, getThinkingBudget, getMaxTokens } from '@/lib/config/phase-registry';
+import { MODELS } from '@/lib/config/models';
 import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
 
@@ -534,7 +535,7 @@ ${input.documents?.join('\n') || 'None provided'}
 
 Provide your Phase I analysis as JSON.`;
 
-    const model = getModel('I', input.tier);
+    const model = getModel('I', input.tier) ?? MODELS.SONNET;
     console.log(`[Phase I] Calling Claude with model: ${model}, max_tokens: 64000`);
     console.log(`[Phase I] Input context length: ${userMessage.length} chars`);
 
@@ -3278,7 +3279,7 @@ JURISDICTION: ${input.jurisdiction}
 Validate captions. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('VIII.5', input.tier),
+      model: getModel('VIII.5', input.tier) ?? MODELS.SONNET,
       max_tokens: 64000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -3605,7 +3606,7 @@ ${JSON.stringify(phaseIXOutput, null, 2)}
 Assemble and check. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('X', input.tier),
+      model: getModel('X', input.tier) ?? MODELS.SONNET,
       max_tokens: 64000, // Phase X: Final QA and deliverables - full output needed
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
