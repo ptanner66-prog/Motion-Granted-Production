@@ -191,9 +191,9 @@ export const generateOrderDraft = inngest.createFunction(
         const parseResult = await parseOrderDocuments(orderId);
 
         if (!parseResult.success) {
-          console.warn(`[Inngest] Document parsing failed: ${parseResult.error}`);
-          // Don't fail the generation - proceed with raw document content
-          return { parsed: 0, failed: true, error: parseResult.error };
+          console.error(`[Inngest] Document parsing failed for order ${orderId}: ${parseResult.error}`);
+          // Fail early — unparsed documents mean the workflow can't produce quality output
+          throw new Error(`DOCUMENT_PARSE_FAILURE: ${parseResult.error}. Please re-upload documents in PDF or DOCX format.`);
         }
 
         // Log document parsing to automation_logs
@@ -214,9 +214,9 @@ export const generateOrderDraft = inngest.createFunction(
           data: newParsed.data || []
         };
       } catch (parseError) {
-        console.error(`[Inngest] Document parsing error:`, parseError);
-        // Don't fail the generation - proceed without parsed content
-        return { parsed: 0, failed: true, error: parseError instanceof Error ? parseError.message : 'Unknown' };
+        console.error(`[Inngest] Document parsing error for order ${orderId}:`, parseError);
+        // Fail the step — documents must be parseable for the workflow to produce quality output
+        throw parseError;
       }
     });
 

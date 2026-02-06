@@ -873,6 +873,12 @@ export async function processHoldResponse(
       return { success: false, error: 'Workflow is not currently on HOLD' };
     }
 
+    // Phase-lock: HOLD checkpoint is only valid during Phase III
+    if (workflow.current_phase !== 3 && workflow.current_phase_code !== 'III') {
+      console.error(`[HOLD] Stale HOLD response — workflow ${workflowId} is now in Phase ${workflow.current_phase_code || workflow.current_phase}, not Phase III`);
+      return { success: false, error: 'HOLD_PHASE_MISMATCH' };
+    }
+
     const now = new Date().toISOString();
     const checkpointData = workflow.checkpoint_data as HoldCheckpointData;
 

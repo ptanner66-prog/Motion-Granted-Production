@@ -23,9 +23,9 @@ const ENCRYPTION_PREFIX = 'enc_v2_';
 const ALGORITHM = 'aes-256-gcm';
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.ENCRYPTION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secret = process.env.ENCRYPTION_SECRET;
   if (!secret) {
-    throw new Error('ENCRYPTION_SECRET or SUPABASE_SERVICE_ROLE_KEY must be configured');
+    throw new Error('ENCRYPTION_SECRET environment variable is required — do not use fallback keys for encryption');
   }
   return crypto.createHash('sha256').update(secret).digest();
 }
