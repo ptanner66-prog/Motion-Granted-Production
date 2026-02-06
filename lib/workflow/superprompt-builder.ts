@@ -1,26 +1,17 @@
 /**
- * ⚠️  ADMIN PREVIEW ONLY — NOT IN THE ACTIVE EXECUTION PATH
+ * SUPERPROMPT BUILDER — ADMIN DASHBOARD ONLY
  *
- * This module is the v6 DB-based prompt assembly system (orchestrator.ts path).
- * The active v7.2 execution path is: Inngest → phase-executors.ts → phase-registry.ts
- * Retained for admin prompt preview UI and potential future DB-prompt features.
+ * This module is used EXCLUSIVELY by the admin dashboard to display
+ * the current orchestration/prompt configuration to Clay (Legal Director).
  *
- * Superprompt Template Engine (Task 65)
+ * It is NOT used in the workflow execution path.
+ * Actual phase prompts are loaded from /prompts/PHASE_*_v75.md files
+ * via prompts/index.ts → phase-executors.ts.
  *
- * Assembles phase prompts with order context using template variables.
+ * DO NOT import this from lib/workflow/, lib/inngest/, or any execution code.
  *
- * Template variables:
- * - {{CASE_CAPTION}} — from Phase I
- * - {{MOTION_TYPE}} — from order
- * - {{JURISDICTION}} — from order
- * - {{FACTS_SUMMARY}} — from Phase I
- * - {{EVIDENCE_LIST}} — from Phase II
- * - {{CITATION_BANK}} — from Phase IV
- * - {{LEGAL_STANDARDS}} — from Phase III
- * - {{PREVIOUS_DRAFT}} — for revision phases
- * - {{GRADING_FEEDBACK}} — from Phase VII
- *
- * Source: Chunk 9, Task 65 - Gap Analysis B-3, CMS Section 20.4
+ * @see prompts/index.ts — The real prompt system
+ * @see lib/workflow/phase-executors.ts — Where prompts are consumed
  */
 
 import { createClient } from '@/lib/supabase/server';

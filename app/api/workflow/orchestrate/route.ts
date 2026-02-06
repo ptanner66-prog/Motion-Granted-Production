@@ -18,7 +18,7 @@ import {
   orchestrateWorkflow,
   gatherOrderContext,
   getWorkflowSuperprompt,
-  buildSuperprompt,
+  buildOrderSuperprompt,
   getWorkflowProgress,
 } from '@/lib/workflow';
 import { getTemplateForPath } from '@/lib/workflow/motion-templates';
@@ -166,7 +166,7 @@ export async function GET(request: Request) {
         const motionCode = mapMotionTypeToCode(context.motionType, context.motionTier);
         const motionTemplate = getTemplateForPath(motionCode, workflowPath);
 
-        response.superprompt = buildSuperprompt({
+        response.superprompt = buildOrderSuperprompt({
           orderContext: context,
           motionTemplate,
           workflowPath,
