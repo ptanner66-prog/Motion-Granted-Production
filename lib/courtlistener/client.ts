@@ -1647,13 +1647,13 @@ export async function buildVerifiedCitationBank(
     );
 
     // Process results
-    for (const { result: searchResult } of phase3Results) {
+    for (const { query: broadQuery, result: searchResult } of phase3Results) {
       if (citations.length >= minCitations) break;
       searchesPerformed++;
 
       if (searchResult.success && (searchResult as { data?: { opinions?: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data?.opinions?.length) {
         const opinions = (searchResult as { data: { opinions: Array<{ id: number; cluster_id: number; case_name: string; citation: string; court: string; date_filed: string; snippet: string }> } }).data.opinions;
-        addCitationsFromSearch(opinions, 'broad', 'Broad', query);
+        addCitationsFromSearch(opinions, 'broad', 'Broad', broadQuery);
       }
     }
   }
