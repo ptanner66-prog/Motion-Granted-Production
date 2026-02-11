@@ -16,7 +16,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
 import {
-  orchestrateWorkflow,
+  initializeWorkflow,
   gatherOrderContext,
   getWorkflowSuperprompt,
   buildOrderSuperprompt,
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     }
 
     // Initialize workflow record (gathers context, creates DB records)
-    const result = await orchestrateWorkflow(orderId, {
+    const result = await initializeWorkflow(orderId, {
       workflowPath: workflowPath as WorkflowPath,
     });
 

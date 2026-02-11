@@ -191,6 +191,8 @@ export interface QuoteVerificationOutput {
   actionTaken: 'NONE' | 'AUTO_CORRECTED' | 'FLAGGED' | 'PARAPHRASED';
   correctedQuote?: string;
   proceedToStep5: boolean;
+  ellipsisIssues?: string[];
+  ellipsisWarnings?: string[];
 }
 
 /**
