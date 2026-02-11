@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
+import { scanFile } from '@/lib/security/malware-scanner'
 
 export async function POST(req: Request) {
   if (!isSupabaseConfigured) {
@@ -115,6 +116,20 @@ export async function POST(req: Request) {
     // Convert File to ArrayBuffer then to Uint8Array for upload
     const arrayBuffer = await file.arrayBuffer()
     const uint8Array = new Uint8Array(arrayBuffer)
+
+    // SEC-013: Malware scanning via VirusTotal
+    const scanResult = await scanFile(arrayBuffer, file.name)
+    if (!scanResult.safe) {
+      console.error(
+        `[upload] MALWARE BLOCKED: "${file.name}" — ` +
+        `${scanResult.detections}/${scanResult.totalEngines} detections, ` +
+        `threat: ${scanResult.threatName}`
+      )
+      return NextResponse.json(
+        { error: 'File rejected: malware detected. Please scan your file and try again.' },
+        { status: 400 }
+      )
+    }
 
     // Check if bucket exists first
     const { data: buckets } = await supabase.storage.listBuckets()

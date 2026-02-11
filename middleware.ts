@@ -178,6 +178,31 @@ export async function middleware(request: NextRequest) {
     if (profile?.role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
+
+    // SEC-002: MFA enforcement for admin accounts
+    // Skip MFA check on MFA setup/verify pages and MFA API routes
+    const isMFARoute = pathname === '/admin/setup-mfa' ||
+                       pathname === '/admin/verify-mfa' ||
+                       pathname.startsWith('/api/auth/mfa');
+
+    if (!isMFARoute) {
+      const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+
+      const hasVerifiedFactor = factorsData?.totp?.some(
+        (f: { status: string }) => f.status === 'verified'
+      );
+
+      if (aalData?.currentLevel !== 'aal2') {
+        if (hasVerifiedFactor) {
+          // Factor enrolled but session is AAL1 — need to verify
+          return NextResponse.redirect(new URL('/admin/verify-mfa', request.url));
+        } else {
+          // No factor enrolled — need to set up MFA
+          return NextResponse.redirect(new URL('/admin/setup-mfa', request.url));
+        }
+      }
+    }
   }
 
   // Add request tracking headers

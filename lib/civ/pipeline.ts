@@ -191,6 +191,7 @@ export async function verifyCitation(
 
   // Step 2: Holding Verification
   // NOTE: caselawId parameter removed - Case.law API sunset September 5, 2024
+  const citationTier = getTierFromMotionType(citation.motionTypeContext || 'motion_to_compel');
   modelsUsed.push(config.primaryModel);
   const step2 = await executeHoldingVerification(
     citation.citationString,
@@ -198,7 +199,7 @@ export async function verifyCitation(
     citation.propositionType,
     step1.courtlistenerId,
     undefined, // caselawId deprecated
-    false // TODO: Pass tier info
+    citationTier === 'C'
   );
   apiCallsMade++;
 

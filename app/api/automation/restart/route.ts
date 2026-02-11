@@ -14,7 +14,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { startOrderAutomation } from '@/lib/workflow/automation-service';
+import { inngest, calculatePriority } from '@/lib/inngest/client';
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -161,25 +161,43 @@ export async function POST(request: Request) {
     });
 
     // ============================================================================
-    // STEP 3: Start fresh automation
+    // STEP 3: Fire Inngest event to start fresh workflow
     // ============================================================================
 
-    const result = await startOrderAutomation(orderId);
+    // Get filing deadline for priority calculation
+    const { data: freshOrder } = await adminClient
+      .from('orders')
+      .select('filing_deadline')
+      .eq('id', orderId)
+      .single();
 
-    if (!result.success) {
-      // Log failure
+    const priority = freshOrder?.filing_deadline
+      ? calculatePriority(freshOrder.filing_deadline)
+      : 5000;
+
+    try {
+      await inngest.send({
+        name: 'order/submitted',
+        data: {
+          orderId,
+          priority,
+          filingDeadline: freshOrder?.filing_deadline
+            || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+      });
+    } catch (inngestError) {
       await adminClient.from('automation_logs').insert({
         order_id: orderId,
         action_type: 'workflow_restart_failed',
         action_details: {
-          error: result.error,
+          error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
           failedAt: new Date().toISOString(),
         },
       });
 
       return NextResponse.json({
         success: false,
-        error: result.error || 'Failed to start new workflow',
+        error: 'Failed to start new workflow via Inngest',
         dataCleared: true,
       }, { status: 500 });
     }
@@ -189,8 +207,9 @@ export async function POST(request: Request) {
       order_id: orderId,
       action_type: 'workflow_restarted',
       action_details: {
-        newWorkflowId: result.data?.workflowId,
-        status: result.data?.status,
+        source: 'inngest',
+        event: 'order/submitted',
+        priority,
         restartedAt: new Date().toISOString(),
       },
     });
@@ -199,8 +218,7 @@ export async function POST(request: Request) {
       success: true,
       orderId,
       orderNumber: order.order_number,
-      workflowId: result.data?.workflowId,
-      status: result.data?.status,
+      status: 'in_progress',
       currentPhase: 1,
       totalPhases: 14,
       message: `Workflow completely restarted from Phase 1. Previous data cleared.`,
