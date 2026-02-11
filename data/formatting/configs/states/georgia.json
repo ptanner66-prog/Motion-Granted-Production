@@ -1,0 +1,109 @@
+{
+  "metadata": {
+    "stateCode": "GA",
+    "stateName": "Georgia",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "11th Circuit",
+    "sources": [
+      "O.C.G.A. § 9-11-10(a) (caption format)",
+      "O.C.G.A. § 9-11-7(b) (motion requirements)",
+      "Ga. Uniform Super. Ct. R. 4 (formatting)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE {COURT_TYPE} COURT OF {COUNTY} COUNTY, STATE OF GEORGIA",
+    "caseNumberLabel": "Civil Action File No.",
+    "sampleTemplate": "IN THE {COURT_TYPE} COURT OF {COUNTY} COUNTY\nSTATE OF GEORGIA\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCivil Action File No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of Georgia that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "PeachCourt",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "ndga": {
+      "name": "Northern District of Georgia",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["N.D. Ga. L.R. 7.1 (page limits)"]
+    },
+    "mdga": {
+      "name": "Middle District of Georgia",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["M.D. Ga. L.R. 7.1 (page limits)"]
+    },
+    "sdga": {
+      "name": "Southern District of Georgia",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["S.D. Ga. L.R. 7.1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Georgia uses 'Civil Action File No.' as the case label",
+    "Three federal districts — Northern (Atlanta), Middle (Macon), Southern (Savannah)",
+    "Superior Court is the court of general jurisdiction"
+  ]
+}

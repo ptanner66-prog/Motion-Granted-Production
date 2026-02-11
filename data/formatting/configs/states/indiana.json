@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "stateCode": "IN",
+    "stateName": "Indiana",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "7th Circuit",
+    "sources": [
+      "Ind. R. Trial P. 10(A) (caption format)",
+      "Ind. R. Trial P. 7(B) (motion requirements)",
+      "Ind. Admin. R. 16 (e-filing)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE {COUNTY} {COURT_TYPE} COURT",
+    "caseNumberLabel": "Cause No.",
+    "sampleTemplate": "IN THE {COUNTY} {COURT_TYPE} COURT\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCause No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, affirm under the penalties of perjury that the foregoing representations are true. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Odyssey (Indiana E-Filing System)",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "ndin": {
+      "name": "Northern District of Indiana",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["N.D. Ind. L.R. 7-1 (page limits)"]
+    },
+    "sdin": {
+      "name": "Southern District of Indiana",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["S.D. Ind. L.R. 7-1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Indiana uses 'Cause No.' as the case label",
+    "Indiana uses county name before court type in caption",
+    "Two federal districts — Northern (Hammond/Fort Wayne) and Southern (Indianapolis)"
+  ]
+}

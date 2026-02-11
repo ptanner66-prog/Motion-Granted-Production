@@ -1,0 +1,109 @@
+{
+  "metadata": {
+    "stateCode": "TN",
+    "stateName": "Tennessee",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "6th Circuit",
+    "sources": [
+      "Tenn. R. Civ. P. 10.01 (caption format)",
+      "Tenn. R. Civ. P. 7.02 (motion requirements)",
+      "Tenn. Sup. Ct. R. 30 (1.5 line spacing)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "1.5"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE {COURT_TYPE} COURT FOR {COUNTY} COUNTY, TENNESSEE",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "IN THE {COURT_TYPE} COURT FOR {COUNTY} COUNTY\nAT {CITY}, TENNESSEE\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCase No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of Tennessee that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Odyssey",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "edtn": {
+      "name": "Eastern District of Tennessee",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["E.D. Tenn. L.R. 7.1 (page limits)"]
+    },
+    "mdtn": {
+      "name": "Middle District of Tennessee",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["M.D. Tenn. L.R. 7.01 (page limits)"]
+    },
+    "wdtn": {
+      "name": "Western District of Tennessee",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["W.D. Tenn. L.R. 7.2 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Tennessee uses 1.5 line spacing instead of double spacing",
+    "Tennessee has both Circuit Courts and Chancery Courts as trial courts — caption must specify which",
+    "Three federal districts — check local rules for each"
+  ]
+}

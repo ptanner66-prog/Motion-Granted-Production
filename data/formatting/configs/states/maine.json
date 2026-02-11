@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "stateCode": "ME",
+    "stateName": "Maine",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "1st Circuit",
+    "sources": [
+      "Me. R. Civ. P. 10(a) (caption format)",
+      "Me. R. Civ. P. 7(b) (motion requirements)",
+      "14 M.R.S. § 3001 (oath requirements)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "STATE OF MAINE, {COUNTY}, SS. SUPERIOR COURT",
+    "caseNumberLabel": "Docket No.",
+    "sampleTemplate": "STATE OF MAINE\n{COUNTY}, SS.\nSUPERIOR COURT\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nDocket No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "affidavit",
+    "language": "Before me, the undersigned Notary Public in and for the State of Maine, personally appeared {NAME}, who being duly sworn, deposes and says that the facts set forth in the foregoing {DOCUMENT_TYPE} are true and correct to the best of their knowledge, information, and belief.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Maine Courts E-Filing",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dme": {
+      "name": "District of Maine",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D. Me. L.R. 7(b) (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Maine requires affidavit jurat with notarization for state court",
+    "Uses 'SS.' (scilicet) in caption format — this is traditional Maine style",
+    "Docket No. is the standard case label in Maine courts"
+  ]
+}

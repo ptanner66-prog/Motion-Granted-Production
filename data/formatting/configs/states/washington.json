@@ -1,0 +1,115 @@
+{
+  "metadata": {
+    "stateCode": "WA",
+    "stateName": "Washington",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "9th Circuit",
+    "sources": [
+      "CR 10(e) (caption format)",
+      "GR 14(a) (no colored markings)",
+      "W.D. Wash. LCR 7 (word limits effective Jan 13, 2026)",
+      "CR 56 (summary judgment)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE SUPERIOR COURT OF THE STATE OF WASHINGTON IN AND FOR THE COUNTY OF {COUNTY}",
+    "caseNumberLabel": "Cause No.",
+    "sampleTemplate": "IN THE SUPERIOR COURT OF THE STATE OF WASHINGTON\nIN AND FOR THE COUNTY OF {COUNTY}\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCause No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of Washington that the foregoing is true and correct. Executed on {DATE} at {CITY}, Washington.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "firstPage": {
+    "topMarginDXA": 4320,
+    "topMarginInches": 3.0
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Odyssey",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {
+    "noColoredMarkings": true,
+    "ruleCitation": "GR 14(a)",
+    "note": "Documents must not contain colored markings — all text and graphics must be black and white"
+  },
+  "federalDistricts": {
+    "edwa": {
+      "name": "Eastern District of Washington",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["E.D. Wash. L.R. 7(e) (page limits)"]
+    },
+    "wdwa": {
+      "name": "Western District of Washington",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 24,
+        "opposition": 24,
+        "reply": 12,
+        "wordCountAlternative": {
+          "motion": 9800,
+          "opposition": 9800,
+          "reply": 4900
+        },
+        "effectiveDate": "2026-01-13"
+      },
+      "localRules": ["LCR 7(e) (word limits effective Jan 13, 2026)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Washington has a 3-inch first page top margin for court clerk use",
+    "GR 14(a) PROHIBITS colored markings — all documents must be black and white only",
+    "W.D. Wash. switched from page limits to word limits effective January 13, 2026",
+    "Cause No. is the standard case label (not Case No.)"
+  ]
+}

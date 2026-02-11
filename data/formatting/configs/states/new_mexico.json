@@ -1,0 +1,105 @@
+{
+  "metadata": {
+    "stateCode": "NM",
+    "stateName": "New Mexico",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "10th Circuit",
+    "sources": [
+      "NMRA 1-010 (caption format)",
+      "NMRA 1-007.1 (motion requirements)",
+      "NMRA 1-005.2 (e-service — 3-day extension ELIMINATED Dec 31, 2024)",
+      "NMRA Local Rule (2.5-inch first page margin with clerk stamp square)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "STATE OF NEW MEXICO, COUNTY OF {COUNTY}, {JUDICIAL_DISTRICT} JUDICIAL DISTRICT COURT",
+    "caseNumberLabel": "No.",
+    "sampleTemplate": "STATE OF NEW MEXICO\nCOUNTY OF {COUNTY}\n{JUDICIAL_DISTRICT} JUDICIAL DISTRICT COURT\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nNo. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of New Mexico that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "firstPage": {
+    "topMarginDXA": 3600,
+    "topMarginInches": 2.5,
+    "clerkStampSquare": {
+      "widthInches": 2.5,
+      "heightInches": 2.5,
+      "position": "top-right"
+    }
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Odyssey",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {
+    "eServiceExtension": {
+      "threeDayExtensionEliminated": true,
+      "effectiveDate": "2024-12-31",
+      "note": "3-day e-service extension has been eliminated"
+    }
+  },
+  "federalDistricts": {
+    "dnm": {
+      "name": "District of New Mexico",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D.N.M. L.R. Civ. 7.5 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "New Mexico has a 2.5-inch first page top margin with a 2.5x2.5 inch clerk stamp square",
+    "CRITICAL: The 3-day e-service extension was ELIMINATED effective December 31, 2024",
+    "District Court is the trial court of general jurisdiction"
+  ]
+}

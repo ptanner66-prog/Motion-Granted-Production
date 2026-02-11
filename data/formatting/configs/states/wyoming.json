@@ -1,0 +1,96 @@
+{
+  "metadata": {
+    "stateCode": "WY",
+    "stateName": "Wyoming",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "10th Circuit",
+    "sources": [
+      "W.R.C.P. 10(a) (caption format)",
+      "W.R.C.P. 7(b) (motion requirements)",
+      "W.S. § 1-2-104 (penalty of false swearing)",
+      "W.R.C.P. 5.2 (e-filing — 150 MB max as of Apr 5, 2025)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE DISTRICT COURT, {JUDICIAL_DISTRICT} JUDICIAL DISTRICT, {COUNTY} COUNTY, STATE OF WYOMING",
+    "caseNumberLabel": "Civil Action No.",
+    "sampleTemplate": "IN THE DISTRICT COURT\n{JUDICIAL_DISTRICT} JUDICIAL DISTRICT\n{COUNTY} COUNTY, STATE OF WYOMING\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCivil Action No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of false swearing pursuant to W.S. § 1-2-104 that the foregoing is true and correct. Executed on {DATE} in {COUNTY} County, Wyoming.",
+    "penaltyStatute": "W.S. § 1-2-104",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "firstPage": {
+    "topMarginDXA": 4320,
+    "topMarginInches": 3.0
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Wyoming eFiling",
+    "format": "pdf",
+    "maxFileSizeMB": 150,
+    "fileSizeChangeDate": "2025-04-05"
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dwy": {
+      "name": "District of Wyoming",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D. Wyo. L.R. 7.1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Wyoming uses 'penalty of false swearing' per W.S. § 1-2-104 instead of standard 'penalty of perjury'",
+    "First page has 3-inch top margin for court use",
+    "E-filing maximum file size increased to 150 MB as of April 5, 2025"
+  ]
+}

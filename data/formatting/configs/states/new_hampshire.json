@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "stateCode": "NH",
+    "stateName": "New Hampshire",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "1st Circuit",
+    "sources": [
+      "N.H. Super. Ct. R. 12(a) (caption format)",
+      "N.H. Super. Ct. R. 12(b) (motion requirements)",
+      "N.H. Super. Ct. R. 13 (formatting)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "{COUNTY} COUNTY SUPERIOR COURT",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "THE STATE OF NEW HAMPSHIRE\n{COUNTY} COUNTY SUPERIOR COURT\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCase No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of New Hampshire that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "NH e-Filing",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dnh": {
+      "name": "District of New Hampshire",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D.N.H. L.R. 7.1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "New Hampshire uses county name at the start of the court name",
+    "Superior Court is the trial court of general jurisdiction",
+    "Single federal district"
+  ]
+}

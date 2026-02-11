@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "stateCode": "CT",
+    "stateName": "Connecticut",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "2nd Circuit",
+    "sources": [
+      "Conn. Practice Book § 4-1 (caption format)",
+      "Conn. Practice Book § 11-1 (motion requirements)",
+      "Conn. Practice Book § 4-7 (formatting)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "SUPERIOR COURT, JUDICIAL DISTRICT OF {DISTRICT}",
+    "caseNumberLabel": "Docket No.",
+    "sampleTemplate": "SUPERIOR COURT\nJUDICIAL DISTRICT OF {DISTRICT}\nAT {CITY}\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nDocket No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of false statement that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "CT e-Filing",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dct": {
+      "name": "District of Connecticut",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D. Conn. L.R. 7(a) (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Connecticut uses judicial districts instead of counties in the court system",
+    "Connecticut uses 'penalty of false statement' instead of 'penalty of perjury'",
+    "Superior Court is the sole trial court of general jurisdiction"
+  ]
+}
