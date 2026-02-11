@@ -904,7 +904,10 @@ async function generateDeliverables(
 export const generateOrderWorkflow = inngest.createFunction(
   {
     id: "generate-order-workflow",
-    concurrency: { limit: 5 },  // Inngest plan limit
+    concurrency: [
+      { limit: 5 },  // Global concurrency — Inngest plan limit
+      { limit: 1, key: "event.data.orderId" },  // Per-order lock — prevents duplicate phase runs
+    ],
     retries: 3,
     // CRITICAL: Increase timeout for PDF generation and finalization steps
     // Default is 10min, but deliverables + finalization can take longer

@@ -15,7 +15,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude } from '@/lib/automation/claude';
 import { extractOrderDocuments, getCombinedDocumentText } from './document-extractor';
 import { parseOrderDocuments, getOrderParsedDocuments } from './document-parser';
-import { startWorkflow, runWorkflow, getWorkflowProgress, executeCurrentPhase } from './workflow-engine';
+import { startWorkflow } from './workflow-state';
 import { getTemplateForPath, generateSectionPrompt, MOTION_TEMPLATES } from './motion-templates';
 import {
   validatePhaseGate,
@@ -548,45 +548,17 @@ export async function orchestrateWorkflow(
     // Fire-and-forget — email failure must not block the workflow
     notifyWorkflowEvent('order_confirmed', orderId).catch(() => {});
 
-    // Step 8: Optionally run the workflow automatically
-    if (options.autoRun) {
-      const runResult = await runWorkflow(workflowId);
-
-      if (!runResult.success) {
-        return {
-          success: false,
-          error: runResult.error,
-          data: {
-            success: false,
-            workflowId,
-            status: 'failed',
-            error: runResult.error,
-          },
-        };
-      }
-
-      const status = runResult.data?.status || 'in_progress';
-
-      return {
-        success: true,
-        data: {
-          success: true,
-          workflowId,
-          status: status as OrchestrationResult['status'],
-          currentPhase: runResult.data?.currentPhase,
-          message: runResult.data?.message,
-        },
-      };
-    }
-
-    // Return started state
+    // Workflow execution is handled by the Inngest pipeline
+    // (generateOrderWorkflow in workflow-orchestration.ts).
+    // The autoRun option is no longer supported here — the Inngest event
+    // "order/submitted" triggers the full 14-phase workflow automatically.
     return {
       success: true,
       data: {
         success: true,
         workflowId,
         status: 'started',
-        message: 'Workflow initialized. Call with autoRun: true to execute phases.',
+        message: 'Workflow initialized. Execution is handled by the Inngest pipeline.',
       },
     };
   } catch (error) {
@@ -634,28 +606,14 @@ export async function executePhaseWithContext(
     })
     .eq('id', workflowId);
 
-  // Execute the phase
-  const result = await executeCurrentPhase(workflowId);
-
-  if (!result.success || !result.data) {
-    return { success: false, error: result.error };
-  }
-
+  // Phase execution is handled exclusively by the Inngest pipeline.
+  // This function now only refreshes context; actual execution is triggered
+  // via the "order/submitted" Inngest event.
   return {
-    success: true,
-    data: {
-      phaseNumber: result.data.phaseNumber,
-      status: result.data.status,
-      outputs: result.data.outputs,
-    },
+    success: false,
+    error: 'Direct phase execution is no longer supported. Use the Inngest pipeline (order/submitted event) to execute phases.',
   };
 }
-
-/**
- * @deprecated REMOVED — This function bypassed the 14-phase workflow.
- * Use orchestrateWorkflow() with autoRun: true instead.
- * Actual phase prompts are loaded from /prompts/PHASE_*_v75.md via phase-executors.ts.
- */
 
 // ============================================================================
 // HELPER FUNCTIONS

@@ -24,14 +24,12 @@ export {
   getOrderParsedDocuments,
 } from './document-parser';
 
-// Workflow Engine
+// Workflow State (utilities extracted from former workflow-engine.ts)
 export {
   startWorkflow,
-  executeCurrentPhase,
   getWorkflowProgress,
   approvePhase,
-  runWorkflow,
-} from './workflow-engine';
+} from './workflow-state';
 
 // Motion Templates
 export {
