@@ -1,0 +1,134 @@
+{
+  "metadata": {
+    "stateCode": "CA",
+    "stateName": "California",
+    "confidence": 0.98,
+    "lastUpdated": "2025-01-15",
+    "circuit": "9th Circuit",
+    "sources": [
+      "California Rules of Court, Rule 2.108 (paper size)",
+      "California Rules of Court, Rule 2.104 (font)",
+      "California Rules of Court, Rule 2.108(4) (line numbering)",
+      "California Rules of Court, Rule 3.1113 (page limits)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "1.5"
+  },
+  "lineNumbering": {
+    "enabled": true,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": true
+  },
+  "caption": {
+    "courtNameFormat": "SUPERIOR COURT OF THE STATE OF CALIFORNIA",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "SUPERIOR COURT OF THE STATE OF CALIFORNIA\nCOUNTY OF {COUNTY}\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\n) Case No. {CASE_NUMBER}\n) \n) {MOTION_TITLE}\n)\n) Date:    {HEARING_DATE}\n) Time:    {HEARING_TIME}\n) Dept:    {DEPARTMENT}\n)"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of California that the foregoing is true and correct. Executed on {DATE} at {CITY}, California.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "contentBelowLineNumber": true,
+    "minFontSizePoints": 10,
+    "includePageNumber": true,
+    "includeDocumentTitle": false,
+    "format": "{DOCUMENT_TITLE} - Page {PAGE}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 15,
+    "memorandum": 15,
+    "opposition": 15,
+    "reply": 10,
+    "msj": 20,
+    "msa": 20,
+    "demurrer": 15,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Odyssey",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "cdca": {
+      "name": "Central District of California",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "memorandum": 25,
+        "opposition": 25,
+        "reply": 15,
+        "msj": 35
+      },
+      "localRules": ["L.R. 11-6 (page limits)", "L.R. 11-3 (formatting)"]
+    },
+    "ndca": {
+      "name": "Northern District of California",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15,
+        "msj": 35
+      },
+      "localRules": ["Civil L.R. 7-2 (page limits)", "Civil L.R. 3-4 (formatting)"]
+    },
+    "sdca": {
+      "name": "Southern District of California",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["CivLR 7.1 (page limits)"]
+    },
+    "edca": {
+      "name": "Eastern District of California",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 10
+      },
+      "localRules": ["L.R. 230 (motions)"]
+    }
+  },
+  "countyOverrides": {
+    "los_angeles": {
+      "caption": {
+        "courtNameFormat": "SUPERIOR COURT OF THE STATE OF CALIFORNIA\nFOR THE COUNTY OF LOS ANGELES",
+        "caseNumberLabel": "Case No."
+      }
+    },
+    "san_francisco": {
+      "caption": {
+        "courtNameFormat": "SUPERIOR COURT OF THE STATE OF CALIFORNIA\nCITY AND COUNTY OF SAN FRANCISCO",
+        "caseNumberLabel": "Case No."
+      }
+    }
+  }
+}

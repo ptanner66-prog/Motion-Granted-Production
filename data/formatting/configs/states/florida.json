@@ -1,0 +1,117 @@
+{
+  "metadata": {
+    "stateCode": "FL",
+    "stateName": "Florida",
+    "confidence": 0.96,
+    "lastUpdated": "2025-01-15",
+    "circuit": "11th Circuit",
+    "sources": [
+      "Fla. R. Jud. Admin. 2.520 (paper size)",
+      "Fla. R. Jud. Admin. 2.520(b) (margins)",
+      "Fla. R. Jud. Admin. 2.520(d) (recording space)",
+      "Fla. R. Gen. Prac. & Jud. Admin. 2.525 (e-filing)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE CIRCUIT COURT OF THE {ORDINAL} JUDICIAL CIRCUIT IN AND FOR {COUNTY} COUNTY, FLORIDA",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "IN THE CIRCUIT COURT OF THE {ORDINAL} JUDICIAL CIRCUIT\nIN AND FOR {COUNTY} COUNTY, FLORIDA\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n/\n\nCase No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "Under penalties of perjury, I declare that I have read the foregoing and that the facts stated in it are true and correct. Executed on {DATE} at {CITY}, Florida.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "firstPage": {
+    "recordingSpace": {
+      "widthInches": 3,
+      "heightInches": 3,
+      "position": "top-right"
+    }
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 25,
+    "memorandum": 25,
+    "opposition": 25,
+    "reply": 15,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Florida Courts E-Filing Portal",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "sdfl": {
+      "name": "Southern District of Florida",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 20,
+        "opposition": 20,
+        "reply": 10,
+        "msj": 20
+      },
+      "localRules": ["S.D. Fla. L.R. 7.1(c) (page limits)"]
+    },
+    "mdfl": {
+      "name": "Middle District of Florida",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["M.D. Fla. L.R. 3.01(a) (page limits)"]
+    },
+    "ndfl": {
+      "name": "Northern District of Florida",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["N.D. Fla. L.R. 7.1(F) (page limits)"]
+    }
+  },
+  "countyOverrides": {
+    "miami_dade": {
+      "caption": {
+        "courtNameFormat": "IN THE CIRCUIT COURT OF THE ELEVENTH JUDICIAL CIRCUIT IN AND FOR MIAMI-DADE COUNTY, FLORIDA"
+      }
+    }
+  }
+}

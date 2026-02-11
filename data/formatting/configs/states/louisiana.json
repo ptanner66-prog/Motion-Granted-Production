@@ -1,0 +1,136 @@
+{
+  "metadata": {
+    "stateCode": "LA",
+    "stateName": "Louisiana",
+    "confidence": 0.97,
+    "lastUpdated": "2025-01-15",
+    "circuit": "5th Circuit",
+    "sources": [
+      "La. Dist. Ct. R. 9.8 (paper size - legal)",
+      "La. C.C.P. art. 853 (pleading requirements)",
+      "La. R.S. 13:3603 (affidavit requirement)",
+      "La. Dist. Ct. R. 9.9 (margins)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 20160,
+    "name": "legal"
+  },
+  "margins": {
+    "topDXA": 2880,
+    "bottomDXA": 1440,
+    "leftDXA": 2160,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "{ORDINAL} JUDICIAL DISTRICT COURT FOR THE PARISH OF {PARISH}",
+    "caseNumberLabel": "No.",
+    "sampleTemplate": "{ORDINAL} JUDICIAL DISTRICT COURT\nPARISH OF {PARISH}\nSTATE OF LOUISIANA\n\n{PLAINTIFFS}\n\nVERSUS\n\n{DEFENDANTS}\n\nNo. {CASE_NUMBER}\n\nDIVISION \"{DIVISION}\"\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "affidavit",
+    "language": "Before me, the undersigned Notary Public, duly commissioned and qualified in and for the Parish of {PARISH}, State of Louisiana, personally came and appeared {NAME}, who after being duly sworn, did depose and say that the facts set forth in the foregoing {DOCUMENT_TYPE} are true and correct to the best of their knowledge, information, and belief.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": false,
+    "includePageNumber": true,
+    "format": "Page {PAGE}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 30,
+    "memorandum": 30,
+    "opposition": 30,
+    "reply": 15,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "varies by parish",
+    "format": "pdf",
+    "maxFileSizeMB": 10
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "edla": {
+      "name": "Eastern District of Louisiana",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "margins": {
+        "topDXA": 1440,
+        "bottomDXA": 1440,
+        "leftDXA": 1440,
+        "rightDXA": 1440
+      },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 10,
+        "msj": 25
+      },
+      "localRules": ["LR 7.5 (memoranda page limits)", "LR 7.4 (format)"]
+    },
+    "mdla": {
+      "name": "Middle District of Louisiana",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "margins": {
+        "topDXA": 1440,
+        "bottomDXA": 1440,
+        "leftDXA": 1440,
+        "rightDXA": 1440
+      },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 10
+      },
+      "localRules": ["LR 7(f) (page limits)"]
+    },
+    "wdla": {
+      "name": "Western District of Louisiana",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "margins": {
+        "topDXA": 1440,
+        "bottomDXA": 1440,
+        "leftDXA": 1440,
+        "rightDXA": 1440
+      },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 10
+      },
+      "localRules": ["LR 7.5W (page limits)"]
+    }
+  },
+  "countyOverrides": {
+    "orleans": {
+      "caption": {
+        "courtNameFormat": "CIVIL DISTRICT COURT FOR THE PARISH OF ORLEANS",
+        "caseNumberLabel": "No."
+      }
+    },
+    "east_baton_rouge": {
+      "caption": {
+        "courtNameFormat": "19TH JUDICIAL DISTRICT COURT\nPARISH OF EAST BATON ROUGE"
+      }
+    }
+  }
+}

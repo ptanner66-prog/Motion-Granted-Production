@@ -1,0 +1,124 @@
+{
+  "metadata": {
+    "stateCode": "NY",
+    "stateName": "New York",
+    "confidence": 0.96,
+    "lastUpdated": "2025-01-15",
+    "circuit": "2nd Circuit",
+    "sources": [
+      "22 NYCRR 202.5(a) (paper format)",
+      "CPLR 2101 (paper requirements)",
+      "22 NYCRR 202.8-b (page limits for motions)",
+      "NY CPLR 2106 (affirmation in lieu of affidavit)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "SUPREME COURT OF THE STATE OF NEW YORK",
+    "caseNumberLabel": "Index No.",
+    "sampleTemplate": "SUPREME COURT OF THE STATE OF NEW YORK\nCOUNTY OF {COUNTY}\n-----------------------------------------------x\n{PLAINTIFFS},\n\n     Plaintiff(s),\n                                                  Index No. {CASE_NUMBER}\nv.\n                                                  {MOTION_TITLE}\n{DEFENDANTS},\n\n     Defendant(s).\n-----------------------------------------------x"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, affirm under the penalties of perjury under the laws of New York that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "{PAGE}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 25,
+    "memorandum": 25,
+    "opposition": 25,
+    "reply": 15,
+    "wordCountAlternative": 7000
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "NYSCEF",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "sdny": {
+      "name": "Southern District of New York",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 10,
+        "msj": 25
+      },
+      "localRules": ["S.D.N.Y. L.R. 7.1 (page limits)", "Individual judge rules vary"]
+    },
+    "edny": {
+      "name": "Eastern District of New York",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 10
+      },
+      "localRules": ["E.D.N.Y. L.R. 7.1 (page limits)"]
+    },
+    "ndny": {
+      "name": "Northern District of New York",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 10
+      },
+      "localRules": ["N.D.N.Y. L.R. 7.1(b)(1) (page limits)"]
+    },
+    "wdny": {
+      "name": "Western District of New York",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 10
+      },
+      "localRules": ["W.D.N.Y. L.R. 7 (page limits)"]
+    }
+  },
+  "countyOverrides": {
+    "new_york": {
+      "caption": {
+        "courtNameFormat": "SUPREME COURT OF THE STATE OF NEW YORK\nCOUNTY OF NEW YORK"
+      }
+    },
+    "kings": {
+      "caption": {
+        "courtNameFormat": "SUPREME COURT OF THE STATE OF NEW YORK\nCOUNTY OF KINGS"
+      }
+    }
+  }
+}
