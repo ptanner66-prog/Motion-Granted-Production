@@ -1011,9 +1011,10 @@ export const executeWorkflowPhase = inngest.createFunction(
   {
     id: "workflow-execute-phase",
     retries: 3,
-    concurrency: {
-      limit: 5,  // Inngest plan limit
-    },
+    concurrency: [
+      { limit: 5 },  // Global concurrency — Inngest plan limit
+      { limit: 1, key: "event.data.orderId" },  // Per-order lock — prevents duplicate phase runs
+    ],
     // Individual phases (especially V and X) can take time for AI processing
     timeouts: {
       finish: "10m",

@@ -13,6 +13,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { createMessageWithStreaming } from '@/lib/automation/claude';
+import { extractJSON } from '@/lib/utils/json-extractor';
 import {
   validateMotionObject,
   generateRevisionInstructions,
@@ -710,15 +711,20 @@ Provide your Phase II legal framework analysis as JSON.`;
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON(outputText, { phase: 'II', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase II] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'II',
+        status: 'failed',
+        output: null,
+        error: `Phase II produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'II';
+    const phaseOutput = { ...parsed.data, phaseComplete: 'II' };
 
     return {
       success: true,
@@ -888,27 +894,32 @@ Provide your Phase III evidence strategy as JSON.`;
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON<Record<string, unknown>>(outputText, { phase: 'III', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase III] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'III',
+        status: 'failed',
+        output: null,
+        error: `Phase III produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'III';
+    const phaseOutput: Record<string, unknown> = { ...parsed.data, phaseComplete: 'III' };
 
     // CHEN RELEVANCE FIX (2026-02-05): Validate research_queries presence
     // If the AI didn't generate research_queries, construct them from argument_structure
-    if (!phaseOutput.research_queries || !Array.isArray(phaseOutput.research_queries) || phaseOutput.research_queries.length === 0) {
-      console.warn(`[Phase III] ⚠️ No research_queries in output — constructing from argument_structure`);
+    if (!phaseOutput.research_queries || !Array.isArray(phaseOutput.research_queries) || (phaseOutput.research_queries as unknown[]).length === 0) {
+      console.warn(`[Phase III] No research_queries in output — constructing from argument_structure`);
       phaseOutput.research_queries = constructResearchQueriesFromStructure(
-        phaseOutput.argument_structure || [],
+        (phaseOutput.argument_structure as Array<Record<string, unknown>>) || [],
         input.motionType
       );
-      console.log(`[Phase III] Constructed ${phaseOutput.research_queries.length} research queries from argument structure`);
+      console.log(`[Phase III] Constructed ${(phaseOutput.research_queries as unknown[]).length} research queries from argument structure`);
     } else {
-      console.log(`[Phase III] ✅ AI generated ${phaseOutput.research_queries.length} research queries`);
+      console.log(`[Phase III] AI generated ${(phaseOutput.research_queries as unknown[]).length} research queries`);
     }
 
     // Check for HOLD condition
@@ -1456,60 +1467,15 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
       };
     }
 
-    // Parse JSON output with robust handling
+    // Parse JSON output using robust extractor
     let phaseOutput: Record<string, unknown> | null = null;
 
-    // ================================================================
-    // ROBUST JSON PARSING (2026-01-30)
-    // Handle multiple ways Claude might return the response
-    // ================================================================
-    console.log(`[Phase V] Attempting to parse JSON from response...`);
-
-    try {
-      // Method 1: Try to extract JSON object from response
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          phaseOutput = JSON.parse(jsonMatch[0]);
-          console.log(`[Phase V] Parsed JSON via regex extraction`);
-        } catch (e) {
-          console.log(`[Phase V] Direct JSON parse failed, trying cleanup...`);
-          // Try cleaning up common issues
-          let cleaned = jsonMatch[0]
-            .replace(/,\s*}/g, '}')  // Remove trailing commas
-            .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
-            .replace(/[\x00-\x1F\x7F]/g, ' '); // Remove control characters
-          try {
-            phaseOutput = JSON.parse(cleaned);
-            console.log(`[Phase V] Parsed JSON after cleanup`);
-          } catch (e2) {
-            console.log(`[Phase V] Cleanup parse also failed`);
-          }
-        }
-      }
-
-      // Method 2: Try extracting from markdown code block
-      if (!phaseOutput) {
-        const codeBlockMatch = outputText.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (codeBlockMatch) {
-          try {
-            phaseOutput = JSON.parse(codeBlockMatch[1].trim());
-            console.log(`[Phase V] Parsed JSON from markdown code block`);
-          } catch (e) {
-            console.log(`[Phase V] Code block JSON parse failed`);
-          }
-        }
-      }
-    } catch (parseError) {
-      console.error(`[Phase V] JSON parse failed:`, parseError);
-    }
-
-    // Log what we found
-    if (phaseOutput) {
+    const parsed = extractJSON<Record<string, unknown>>(outputText, { phase: 'V', orderId: input.orderId });
+    if (parsed.success) {
+      phaseOutput = parsed.data;
       console.log(`[Phase V] Parsed output keys: ${Object.keys(phaseOutput).join(', ')}`);
     } else {
-      console.error(`[Phase V] No valid JSON found in response`);
-      console.error(`[Phase V] Response preview: ${outputText.substring(0, 500)}...`);
+      console.error(`[Phase V] JSON extraction failed: ${parsed.error}`);
     }
 
     // ================================================================
@@ -2558,15 +2524,12 @@ OUTPUT FORMAT (JSON only):
       const cleanupText = cleanupResponse.content.find(c => c.type === 'text');
       const cleanupOutput = cleanupText?.type === 'text' ? cleanupText.text : '';
 
-      try {
-        const jsonMatch = cleanupOutput.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const cleanupResult = JSON.parse(jsonMatch[0]);
-          cleanedMotion = cleanupResult.cleanedMotion || draftMotion;
-          citationsRemoved = cleanupResult.citationsRemoved || unverifiedCitations.length;
-          console.log(`[Phase V.1] Cleanup complete: ${citationsRemoved} citations removed`);
-        }
-      } catch {
+      const cleanupParsed = extractJSON<Record<string, unknown>>(cleanupOutput, { phase: 'V.1-cleanup', orderId: input.orderId });
+      if (cleanupParsed.success) {
+        cleanedMotion = (cleanupParsed.data.cleanedMotion as Record<string, unknown>) || draftMotion;
+        citationsRemoved = (cleanupParsed.data.citationsRemoved as number) || unverifiedCitations.length;
+        console.log(`[Phase V.1] Cleanup complete: ${citationsRemoved} citations removed`);
+      } else {
         console.error('[Phase V.1] Failed to parse cleanup response - using original motion');
       }
     }
@@ -2745,15 +2708,20 @@ Analyze potential opposition. Provide as JSON.`;
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON(outputText, { phase: 'VI', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase VI] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'VI',
+        status: 'failed',
+        output: null,
+        error: `Phase VI produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'VI';
+    const phaseOutput = { ...parsed.data, phaseComplete: 'VI' };
 
     return {
       success: true,
@@ -2868,19 +2836,24 @@ Provide your judicial evaluation as JSON.`;
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON<Record<string, unknown>>(outputText, { phase: 'VII', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase VII] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'VII',
+        status: 'failed',
+        output: null,
+        error: `Phase VII produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'VII';
+    const phaseOutput: Record<string, unknown> = { ...parsed.data, phaseComplete: 'VII' };
 
     // Extract pass/fail
-    const evaluation = phaseOutput.evaluation || phaseOutput;
-    const passes = evaluation.passes === true || evaluation.numericGrade >= 3.3;
+    const evaluation = (phaseOutput.evaluation as Record<string, unknown>) || phaseOutput;
+    const passes = evaluation.passes === true || (evaluation.numericGrade as number) >= 3.3;
 
     return {
       success: true,
@@ -2942,15 +2915,20 @@ Verify any new citations. Provide as JSON.`;
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON(outputText, { phase: 'VII.1', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase VII.1] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'VII.1',
+        status: 'failed',
+        output: null,
+        error: `Phase VII.1 produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'VII.1';
+    const phaseOutput = { ...parsed.data, phaseComplete: 'VII.1' };
 
     return {
       success: true,
@@ -3151,15 +3129,20 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON<Record<string, unknown>>(outputText, { phase: 'VIII', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase VIII] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'VIII',
+        status: 'failed',
+        output: null,
+        error: `Phase VIII produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'VIII';
+    const phaseOutput: Record<string, unknown> = { ...parsed.data, phaseComplete: 'VIII' };
 
     // =========================================================================
     // POST-GENERATION CITATION VALIDATION — ENFORCE BANK-ONLY CITATIONS
@@ -3332,15 +3315,20 @@ Validate captions. Provide as JSON.`;
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON(outputText, { phase: 'VIII.5', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase VIII.5] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'VIII.5',
+        status: 'failed',
+        output: null,
+        error: `Phase VIII.5 produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'VIII.5';
+    const phaseOutput = { ...parsed.data, phaseComplete: 'VIII.5' };
 
     return {
       success: true,
@@ -3465,15 +3453,20 @@ Generate supporting documents. The Certificate of Service MUST include the exact
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON(outputText, { phase: 'IX', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase IX] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'IX',
+        status: 'failed',
+        output: null,
+        error: `Phase IX produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'IX';
+    const phaseOutput = { ...parsed.data, phaseComplete: 'IX' };
 
     // Check if IX.1 needed (MSJ/MSA)
     const needsIX1 = input.motionType.toUpperCase().includes('SUMMARY') ||
@@ -3563,15 +3556,20 @@ Verify Separate Statement complies with ${formatRules}. Provide as JSON.`;
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON(outputText, { phase: 'IX.1', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase IX.1] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'IX.1',
+        status: 'failed',
+        output: null,
+        error: `Phase IX.1 produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'IX.1';
+    const phaseOutput = { ...parsed.data, phaseComplete: 'IX.1' };
 
     return {
       success: true,
@@ -3659,15 +3657,20 @@ Assemble and check. Provide as JSON.`;
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    let phaseOutput;
-    try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/);
-      phaseOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'No JSON found', raw: outputText };
-    } catch {
-      phaseOutput = { error: 'JSON parse failed', raw: outputText };
+    const parsed = extractJSON<Record<string, unknown>>(outputText, { phase: 'X', orderId: input.orderId });
+    if (!parsed.success) {
+      console.error(`[Phase X] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      return {
+        success: false,
+        phase: 'X',
+        status: 'failed',
+        output: null,
+        error: `Phase X produced malformed output: ${parsed.error}`,
+        durationMs: Date.now() - start,
+      };
     }
 
-    phaseOutput.phaseComplete = 'X';
+    const phaseOutput: Record<string, unknown> = { ...parsed.data, phaseComplete: 'X' };
 
     // ========================================================================
     // CRITICAL: PLACEHOLDER VALIDATION GATE

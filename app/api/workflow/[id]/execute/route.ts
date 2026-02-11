@@ -1,12 +1,16 @@
 /**
  * Workflow Execute API
  *
- * POST: Execute current phase or run entire workflow
+ * POST: Trigger workflow execution for an order via Inngest pipeline.
+ *
+ * Previously called executeCurrentPhase/runWorkflow directly (dead orchestrator path).
+ * Now sends an Inngest event to trigger the live 14-phase pipeline.
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { executeCurrentPhase, runWorkflow, getWorkflowProgress } from '@/lib/workflow';
+import { getWorkflowProgress } from '@/lib/workflow';
+import { inngest } from '@/lib/inngest/client';
 
 export async function POST(
   request: Request,
@@ -32,28 +36,43 @@ export async function POST(
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
-    const { runAll = false } = body;
+    // Get workflow to find orderId
+    const { data: workflow, error: wfError } = await supabase
+      .from('order_workflows')
+      .select('order_id, status')
+      .eq('id', workflowId)
+      .single();
 
-    let result;
-
-    if (runAll) {
-      // Run entire workflow until complete or blocked
-      result = await runWorkflow(workflowId);
-    } else {
-      // Execute just the current phase
-      result = await executeCurrentPhase(workflowId);
+    if (wfError || !workflow) {
+      return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
     }
 
-    if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
-    }
+    // Get order for filing deadline (needed for priority calculation)
+    const { data: order } = await supabase
+      .from('orders')
+      .select('filing_deadline')
+      .eq('id', workflow.order_id)
+      .single();
 
-    // Get updated progress
+    const filingDeadline = order?.filing_deadline || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const hoursUntilDeadline = (new Date(filingDeadline).getTime() - Date.now()) / (1000 * 60 * 60);
+    const priority = Math.max(0, Math.floor(10000 - hoursUntilDeadline));
+
+    // Trigger the Inngest pipeline instead of calling the dead orchestrator directly
+    await inngest.send({
+      name: 'order/submitted',
+      data: {
+        orderId: workflow.order_id,
+        priority,
+        filingDeadline,
+      },
+    });
+
+    // Get current progress for response
     const progress = await getWorkflowProgress(workflowId);
 
     return NextResponse.json({
-      result: result.data,
+      result: { status: 'triggered', message: 'Workflow execution triggered via Inngest pipeline' },
       progress: progress.success ? progress.data : null,
     });
   } catch (error) {

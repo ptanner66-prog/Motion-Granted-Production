@@ -16,7 +16,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { orchestrateWorkflow, gatherOrderContext } from './orchestrator';
-import { getWorkflowProgress } from './workflow-engine';
+import { getWorkflowProgress } from './workflow-state';
 import { generatePDFFromWorkflow, savePDFAsDeliverable } from './pdf-generator';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
 import type { OperationResult } from '@/types/automation';
