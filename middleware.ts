@@ -100,8 +100,11 @@ export async function middleware(request: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
 
   // Get client identifier for rate limiting
-  const clientId = request.headers.get('x-forwarded-for')?.split(',')[0] ||
+  // Prefer Vercel's platform-injected header (not spoofable) over standard x-forwarded-for
+  const clientId = request.headers.get('x-vercel-forwarded-for')?.split(',')[0] ||
+    request.headers.get('x-forwarded-for')?.split(',')[0] ||
     request.headers.get('x-real-ip') ||
+    request.ip ||
     'unknown';
 
   // ============================================================================

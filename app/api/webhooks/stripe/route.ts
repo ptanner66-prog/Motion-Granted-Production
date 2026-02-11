@@ -247,26 +247,29 @@ async function handlePaymentSucceeded(
   supabase: Awaited<ReturnType<typeof createClient>>,
   paymentIntent: Stripe.PaymentIntent
 ) {
-  const orderId = paymentIntent.metadata?.order_id;
+  let orderId = paymentIntent.metadata?.order_id;
 
-  if (!orderId) {
-    console.warn('[Stripe Webhook] No order_id in payment intent metadata');
+  // PRIMARY: Look up order by stripe_payment_intent_id (reliable — set at order creation)
+  // FALLBACK: Use metadata order_id only as secondary confirmation
+  const { data: existingOrder, error: fetchError } = await supabase
+    .from('orders')
+    .select('id, order_number, client_id, total_price, status, stripe_payment_status')
+    .eq('stripe_payment_intent_id', paymentIntent.id)
+    .single();
+
+  if (fetchError || !existingOrder) {
+    console.error(`[Stripe Webhook] No order found for PaymentIntent ${paymentIntent.id}`);
     await logWebhookFailure({
       failure_type: 'MISSING_ORDER_ID',
       stripe_event_id: paymentIntent.id,
       stripe_event_type: 'payment_intent.succeeded',
-      details: 'Payment succeeded but no order_id in metadata - cannot process',
+      details: `Payment succeeded but no order found for PaymentIntent ${paymentIntent.id}`,
     });
     return;
   }
 
-  // SECURITY FIX: First fetch the order to verify payment amount and current state
-  const { data: existingOrder, error: fetchError } = await supabase
-    .from('orders')
-    .select('id, order_number, client_id, total_price, status, stripe_payment_status')
-    .eq('id', orderId)
-    .eq('stripe_payment_intent_id', paymentIntent.id)
-    .single();
+  // Use the DB-resolved order ID as the canonical source
+  orderId = existingOrder.id;
 
   if (fetchError || !existingOrder) {
     console.warn('[Stripe Webhook] Order not found for payment intent:', paymentIntent.id);
@@ -343,6 +346,28 @@ async function handlePaymentSucceeded(
   // Queue payment confirmation notification
   await queueOrderNotification(orderId, 'payment_received');
 
+  // Send order confirmation email directly via email triggers
+  try {
+    const { sendOrderConfirmation } = await import('@/lib/email/email-triggers');
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', existingOrder.client_id)
+      .single();
+
+    if (profile?.email) {
+      await sendOrderConfirmation({
+        orderId,
+        orderNumber: order.order_number,
+        customerEmail: profile.email,
+        tier: existingOrder.tier || undefined,
+        totalPrice: existingOrder.total_price,
+      });
+    }
+  } catch (emailError) {
+    console.error('[Stripe Webhook] Order confirmation email failed (non-blocking):', emailError);
+  }
+
   // Schedule conflict check (runs immediately with priority)
   await scheduleTask('conflict_check', {
     orderId,
@@ -350,13 +375,14 @@ async function handlePaymentSucceeded(
     payload: { triggeredBy: 'payment_success' },
   });
 
-  // AUTO-GENERATION DISABLED FOR DEVELOPMENT
-  // Set ENABLE_AUTO_GENERATION=true in production to auto-trigger workflow after payment
-  const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION === 'true';
+  // Auto-generation defaults to enabled. Set ENABLE_AUTO_GENERATION=false to disable.
+  const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION !== 'false';
+  if (!autoGenerationEnabled) {
+    console.warn('[Stripe Webhook] Auto-generation is DISABLED via ENABLE_AUTO_GENERATION=false');
+  }
 
   // Queue order for draft generation via Inngest
-  // This replaces the synchronous Claude API call
-  if (order?.filing_deadline) {
+  if (autoGenerationEnabled && order?.filing_deadline) {
     try {
       await inngest.send({
         name: "order/submitted",
@@ -628,11 +654,11 @@ async function handleCheckoutSessionCompleted(
         payload: { triggeredBy: 'checkout_success' },
       });
 
-      // AUTO-GENERATION DISABLED FOR DEVELOPMENT
-      const autoGenerationEnabled = process.env.ENABLE_AUTO_GENERATION === 'true';
+      // Auto-generation defaults to enabled. Set ENABLE_AUTO_GENERATION=false to disable.
+      const checkoutAutoGen = process.env.ENABLE_AUTO_GENERATION !== 'false';
 
       // Queue order for draft generation via Inngest
-      if (order?.filing_deadline) {
+      if (checkoutAutoGen && order?.filing_deadline) {
         try {
           await inngest.send({
             name: "order/submitted",

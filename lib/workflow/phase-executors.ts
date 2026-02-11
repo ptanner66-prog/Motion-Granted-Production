@@ -3724,6 +3724,72 @@ Assemble and check. Provide as JSON.`;
 
     console.log(`[Phase X] Citation metadata: ${citationMetadata.totalCitations} total citations`);
 
+    // =========================================================================
+    // DOCX GENERATION — Produce court-ready document
+    // =========================================================================
+    let documentUrl: string | null = null;
+    try {
+      const { generateMotionDocx } = await import('@/lib/documents/docx-generator');
+      const { uploadDocument } = await import('@/lib/documents/storage-service');
+      const { MotionData } = await import('@/lib/documents/types') as { MotionData: never };
+
+      // Extract the draft text from Phase V or Phase VIII (revised)
+      const draftText = (typeof phaseVIIIOutput?.revisedMotion === 'string'
+        ? phaseVIIIOutput.revisedMotion
+        : typeof phaseVOutput?.draftMotion === 'string'
+          ? phaseVOutput.draftMotion
+          : typeof (finalMotion as Record<string, unknown>)?.content === 'string'
+            ? (finalMotion as Record<string, unknown>).content as string
+            : JSON.stringify(finalMotion));
+
+      const motionData = {
+        orderId: input.orderId,
+        orderNumber: input.orderNumber || '',
+        caseNumber: input.caseNumber || '',
+        caseCaption: input.caseCaption || '',
+        court: input.court || '',
+        jurisdiction: input.jurisdiction || 'la_state',
+        parish: input.parish,
+        division: input.division,
+        plaintiffs: (input.parties || []).filter((p: { role: string; name: string }) => p.role === 'plaintiff').map((p: { name: string }) => p.name),
+        defendants: (input.parties || []).filter((p: { role: string; name: string }) => p.role === 'defendant').map((p: { name: string }) => p.name),
+        clientRole: (input.clientRole || 'plaintiff') as 'plaintiff' | 'defendant' | 'petitioner' | 'respondent',
+        attorneyName: input.attorneyName || '',
+        barNumber: input.barNumber || '',
+        firmName: input.firmName || '',
+        firmAddress: input.firmAddress || '',
+        firmPhone: input.firmPhone || '',
+        firmEmail: input.firmEmail || '',
+        motionTitle: input.motionType || 'MOTION',
+        motionBody: draftText,
+        sections: [],
+        citations: caseCitationBank.map(c => ({
+          caseName: c.caseName || '',
+          citation: c.citation || '',
+          court: c.court || '',
+          year: c.date_filed ? parseInt(c.date_filed.split('-')[0]) : 0,
+          propositionSupported: '',
+          courtlistenerUrl: c.courtlistener_id ? `https://www.courtlistener.com/opinion/${c.courtlistener_id}/` : undefined,
+        })),
+        tier: input.tier as 'A' | 'B' | 'C',
+        filingDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      };
+
+      const docxBuffer = await generateMotionDocx(motionData);
+      const { publicUrl } = await uploadDocument(
+        input.orderId,
+        'motion.docx',
+        docxBuffer,
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      );
+
+      documentUrl = publicUrl;
+      console.log(`[Phase X] DOCX generated and uploaded: ${publicUrl}`);
+    } catch (docxError) {
+      // Don't fail the phase on document generation error — log and continue
+      console.error(`[Phase X] DOCX generation failed (non-blocking):`, docxError);
+    }
+
     return {
       success: true,
       phase: 'X',
@@ -3733,6 +3799,7 @@ Assemble and check. Provide as JSON.`;
         readyForDelivery: true,
         placeholderValidation,
         citationMetadata, // Citation Viewer Feature
+        documentUrl,
       },
       requiresReview: true, // CP3: Blocking checkpoint
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },

@@ -2606,8 +2606,21 @@ export async function runWorkflow(workflowId: string): Promise<OperationResult<W
 
   const maxPhases = totalPhases || 9;
 
+  // Safety cap to prevent infinite loops if current_phase never advances
+  const MAX_WORKFLOW_ITERATIONS = 50;
+  let iterations = 0;
+
   // Run until complete or blocked
   while (workflow.current_phase <= maxPhases) {
+    iterations++;
+    if (iterations > MAX_WORKFLOW_ITERATIONS) {
+      console.error(`[WORKFLOW] EMERGENCY STOP — exceeded ${MAX_WORKFLOW_ITERATIONS} iterations for workflow ${workflowId}`);
+      await supabase
+        .from('order_workflows')
+        .update({ status: 'error', error_message: 'Workflow iteration limit exceeded' })
+        .eq('id', workflowId);
+      return { success: false, error: `Workflow iteration limit exceeded (${MAX_WORKFLOW_ITERATIONS})` };
+    }
     const result = await executeCurrentPhase(workflowId);
 
     if (!result.success) {

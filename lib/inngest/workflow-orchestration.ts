@@ -82,6 +82,9 @@ import {
   sendPaymentConfirmation,
 } from "@/lib/email/email-triggers";
 
+// Feature flags for testing bypass
+import { getHoldEnforcementMode, getDeadlineValidationMode } from "@/lib/config/feature-flags";
+
 // Phase IV multi-step executor for avoiding Vercel timeout
 import {
   executePhaseIVInit,
@@ -1028,30 +1031,47 @@ export const generateOrderWorkflow = inngest.createFunction(
         orderContext.motionTier
       );
 
+      const deadlineMode = getDeadlineValidationMode();
       if (deadlineValidation.blocked) {
-        console.error(`[WORKFLOW] DEADLINE GATE BLOCKED: ${deadlineValidation.reason}`);
-        // Update order status to rejected
-        await supabase
-          .from("orders")
-          .update({
-            status: "rejected",
-            generation_error: deadlineValidation.reason,
-          })
-          .eq("id", orderId);
+        if (deadlineMode === 'enforce') {
+          console.error(`[WORKFLOW] DEADLINE GATE BLOCKED: ${deadlineValidation.reason}`);
+          // Update order status to rejected
+          await supabase
+            .from("orders")
+            .update({
+              status: "rejected",
+              generation_error: deadlineValidation.reason,
+            })
+            .eq("id", orderId);
 
-        // Log the rejection
-        await supabase.from("automation_logs").insert({
-          order_id: orderId,
-          action_type: "deadline_validation_failed",
-          action_details: {
-            reason: deadlineValidation.reason,
-            checks: deadlineValidation.checks,
-            filingDeadline: orderContext.filingDeadline,
-            tier: orderContext.motionTier,
-          },
-        });
+          // Log the rejection
+          await supabase.from("automation_logs").insert({
+            order_id: orderId,
+            action_type: "deadline_validation_failed",
+            action_details: {
+              reason: deadlineValidation.reason,
+              checks: deadlineValidation.checks,
+              filingDeadline: orderContext.filingDeadline,
+              tier: orderContext.motionTier,
+            },
+          });
 
-        throw new Error(`Deadline validation failed: ${deadlineValidation.reason}`);
+          throw new Error(`Deadline validation failed: ${deadlineValidation.reason}`);
+        } else if (deadlineMode === 'warn') {
+          console.warn(`[WORKFLOW] DEADLINE GATE WOULD BLOCK (mode=warn, bypassed): ${deadlineValidation.reason}`);
+          await supabase.from("automation_logs").insert({
+            order_id: orderId,
+            action_type: "deadline_validation_bypassed",
+            action_details: {
+              reason: deadlineValidation.reason,
+              checks: deadlineValidation.checks,
+              filingDeadline: orderContext.filingDeadline,
+              tier: orderContext.motionTier,
+              mode: 'warn',
+            },
+          });
+        }
+        // mode === 'off': skip silently
       }
 
       // Log warnings (non-blocking)
@@ -1236,98 +1256,123 @@ export const generateOrderWorkflow = inngest.createFunction(
       'Critical gaps detected in evidence/case data'
     ) as string;
 
+    const holdMode = getHoldEnforcementMode();
     if (holdRequired) {
-      console.log('[Orchestration] ========== HOLD TRIGGERED ==========');
-      console.log('[Orchestration] Reason:', holdReason);
+      if (holdMode === 'enforce') {
+        console.log('[Orchestration] ========== HOLD TRIGGERED (mode=enforce) ==========');
+        console.log('[Orchestration] Reason:', holdReason);
 
-      // Execute HOLD handling in a step for proper Inngest tracking
-      const holdResult = await step.run("handle-phase-iii-hold", async () => {
-        // Update order status to on_hold
-        await supabase
-          .from("orders")
-          .update({
-            status: "on_hold",
-            hold_triggered_at: new Date().toISOString(),
-            hold_reason: holdReason,
-          })
-          .eq("id", orderId);
+        // Execute HOLD handling in a step for proper Inngest tracking
+        const holdResult = await step.run("handle-phase-iii-hold", async () => {
+          // Update order status to on_hold
+          await supabase
+            .from("orders")
+            .update({
+              status: "on_hold",
+              hold_triggered_at: new Date().toISOString(),
+              hold_reason: holdReason,
+            })
+            .eq("id", orderId);
 
-        // Update workflow state
-        await supabase
-          .from("workflow_state")
-          .update({
-            phase_status: "HOLD",
-            hold_reason: holdReason,
-            hold_triggered_at: new Date().toISOString(),
-          })
-          .eq("order_id", orderId);
+          // Update workflow state
+          await supabase
+            .from("workflow_state")
+            .update({
+              phase_status: "HOLD",
+              hold_reason: holdReason,
+              hold_triggered_at: new Date().toISOString(),
+            })
+            .eq("order_id", orderId);
 
-        // Log the hold
-        await supabase.from("automation_logs").insert({
-          order_id: orderId,
-          action_type: "workflow_hold",
-          action_details: {
-            workflowId: workflowState.workflowId,
-            phase: "III",
-            holdReason,
-            criticalGaps: phaseIIIOutput?.criticalGaps,
-            requiresClientAction: true,
-          },
-        });
-
-        // Queue notification to client
-        await supabase.from("notification_queue").insert({
-          notification_type: "workflow_hold",
-          recipient_email: ADMIN_EMAIL,
-          order_id: orderId,
-          template_data: {
-            orderNumber: workflowState.orderContext.orderNumber,
-            holdReason,
-            phase: "III - Evidence Strategy",
-            criticalGaps: phaseIIIOutput?.criticalGaps,
-            actionRequired: "Please provide missing information to continue",
-          },
-          priority: 10,
-          status: "pending",
-        });
-
-        // MB-02: Send direct HOLD email notification to customer
-        const missingItems = (phaseIIIOutput?.missingItems ?? phaseIIIOutput?.criticalGaps ?? []) as string[];
-        const customerEmail = workflowState.orderContext.firmEmail;
-        if (customerEmail) {
-          try {
-            await sendHoldNotification(
-              {
-                orderId,
-                orderNumber: workflowState.orderContext.orderNumber,
-                customerEmail,
-                motionType: workflowState.orderContext.motionType,
-              },
+          // Log the hold
+          await supabase.from("automation_logs").insert({
+            order_id: orderId,
+            action_type: "workflow_hold",
+            action_details: {
+              workflowId: workflowState.workflowId,
+              phase: "III",
               holdReason,
-              Array.isArray(missingItems) ? missingItems : [String(missingItems)]
-            );
-          } catch (emailErr) {
-            console.error('[HOLD] Email notification failed (non-fatal):', emailErr);
+              criticalGaps: phaseIIIOutput?.criticalGaps,
+              requiresClientAction: true,
+            },
+          });
+
+          // Queue notification to client
+          await supabase.from("notification_queue").insert({
+            notification_type: "workflow_hold",
+            recipient_email: ADMIN_EMAIL,
+            order_id: orderId,
+            template_data: {
+              orderNumber: workflowState.orderContext.orderNumber,
+              holdReason,
+              phase: "III - Evidence Strategy",
+              criticalGaps: phaseIIIOutput?.criticalGaps,
+              actionRequired: "Please provide missing information to continue",
+            },
+            priority: 10,
+            status: "pending",
+          });
+
+          // MB-02: Send direct HOLD email notification to customer
+          const missingItems = (phaseIIIOutput?.missingItems ?? phaseIIIOutput?.criticalGaps ?? []) as string[];
+          const customerEmail = workflowState.orderContext.firmEmail;
+          if (customerEmail) {
+            try {
+              await sendHoldNotification(
+                {
+                  orderId,
+                  orderNumber: workflowState.orderContext.orderNumber,
+                  customerEmail,
+                  motionType: workflowState.orderContext.motionType,
+                },
+                holdReason,
+                Array.isArray(missingItems) ? missingItems : [String(missingItems)]
+              );
+            } catch (emailErr) {
+              console.error('[HOLD] Email notification failed (non-fatal):', emailErr);
+            }
           }
-        }
 
+          return {
+            held: true,
+            reason: holdReason,
+          };
+        });
+
+        // STOP WORKFLOW - Return early with on_hold status
+        console.log('[Orchestration] Workflow STOPPED at Phase III due to HOLD');
         return {
-          held: true,
-          reason: holdReason,
+          success: true,
+          orderId,
+          workflowId: workflowState.workflowId,
+          status: "on_hold",
+          holdPhase: "III",
+          holdReason,
+          message: "Workflow paused - client action required",
         };
-      });
+      } else if (holdMode === 'warn') {
+        // TESTING MODE: Log the HOLD but continue workflow
+        console.warn(`[Orchestration] ========== HOLD DETECTED (mode=warn, bypassed) ==========`);
+        console.warn(`[Orchestration] Reason: ${holdReason}`);
+        console.warn(`[Orchestration] In production (mode=enforce), this would STOP the workflow.`);
 
-      // STOP WORKFLOW - Return early with on_hold status
-      console.log('[Orchestration] Workflow STOPPED at Phase III due to HOLD');
-      return {
-        success: true,
-        orderId,
-        workflowId: workflowState.workflowId,
-        status: "on_hold",
-        holdPhase: "III",
-        holdReason,
-        message: "Workflow paused - client action required",
-      };
+        await step.run("log-hold-bypassed", async () => {
+          await supabase.from("automation_logs").insert({
+            order_id: orderId,
+            action_type: "workflow_hold_bypassed",
+            action_details: {
+              workflowId: workflowState.workflowId,
+              phase: "III",
+              holdReason,
+              criticalGaps: phaseIIIOutput?.criticalGaps,
+              mode: 'warn',
+              message: 'HOLD detected but bypassed due to HOLD_ENFORCEMENT_MODE=warn',
+            },
+          });
+        });
+        // Continue to Phase IV — do NOT return early
+      }
+      // mode === 'off': skip HOLD detection entirely, continue to Phase IV
     }
 
     // ========================================================================

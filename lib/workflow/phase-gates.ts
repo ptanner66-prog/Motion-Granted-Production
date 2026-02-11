@@ -70,23 +70,22 @@ export const PHASE_PREREQUISITES: Record<PhaseId, PhaseId[]> = {
 // ============================================================================
 
 // Phase completion requirements - these are checked when markPhaseComplete is called
-// NOTE: Requirements are kept minimal since phase executors may not output all fields
-// The key requirement is that the phase executed successfully (indicated by the phase_X_complete flag)
+// Each phase MUST produce these minimum outputs or the phase fails
 export const PHASE_COMPLETION_REQUIREMENTS: Record<PhaseId, string[]> = {
-  'I': [], // Intake reads from order data, doesn't need to output specific fields
-  'II': [], // Legal standards success is enough
-  'III': [], // Evidence strategy success is enough
-  'IV': [], // Authority research success is enough
-  'V': [], // Draft generation success is enough
-  'V.1': [], // Citation verification success is enough
-  'VI': [], // Opposition anticipation success is enough
-  'VII': [], // Judge simulation success is enough
-  'VII.1': [], // New citation verification success is enough
-  'VIII': [], // Revisions applied success is enough
-  'VIII.5': [], // Caption validation success is enough
-  'IX': [], // Supporting documents success is enough
-  'IX.1': [], // Separate statement success is enough
-  'X': [], // Final assembly success is enough
+  'I': ['tier', 'motion_type', 'jurisdiction'],
+  'II': ['extracted_facts', 'legal_issues'],
+  'III': ['evidence_matrix', 'research_queries'],
+  'IV': ['case_citation_bank', 'citations_found'],
+  'V': ['draft_text'],
+  'V.1': ['verification_results'],
+  'VI': [],  // Empty OK — Tier A skips this phase entirely
+  'VII': ['grade', 'deficiencies'],
+  'VII.1': ['verification_results'],
+  'VIII': ['revised_draft'],
+  'VIII.5': ['caption_validated'],
+  'IX': ['supporting_documents'],
+  'IX.1': ['verification_results'],
+  'X': ['final_package'],
 };
 
 // ============================================================================
