@@ -71,6 +71,11 @@ export interface PhaseInput {
   firmFullAddress: string;  // Pre-formatted: "123 Main St\nBaton Rouge, LA 70801"
   // Extended case data for complete motion generation
   filingDeadline?: string;
+  orderNumber?: string;
+  court?: string;
+  parish?: string;
+  division?: string;
+  clientRole?: string;
 }
 
 export interface PhaseOutput {
