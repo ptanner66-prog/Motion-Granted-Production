@@ -85,6 +85,15 @@ export async function executePhase(params: ExecutePhaseParams): Promise<PhaseExe
     const holdCheck = await checkForHoldConditions(orderId, phase, phaseOutput);
     if (holdCheck.shouldHold) {
       const holdResult = await triggerHold(orderId, phase, holdCheck.reason);
+
+      // === EMAIL TRIGGER: Hold created notification ===
+      try {
+        const { notifyWorkflowEvent } = await import('./orchestrator');
+        notifyWorkflowEvent('hold_created', orderId).catch(() => {});
+      } catch {
+        // Integration not available — silently continue
+      }
+
       return {
         success: false,
         phase,
@@ -124,6 +133,19 @@ export async function executePhase(params: ExecutePhaseParams): Promise<PhaseExe
       data: { output_keys: Object.keys(phaseOutput) },
       created_at: new Date().toISOString(),
     });
+
+    // === EMAIL TRIGGER: Phase completion notifications ===
+    // Fire-and-forget — email failure must not block the workflow
+    try {
+      const { notifyPhaseComplete } = await import('./orchestrator');
+      notifyPhaseComplete(phase, orderId);
+    } catch {
+      // Integration not available — silently continue
+    }
+
+    // === HOLD EMAIL TRIGGER ===
+    // If a hold was triggered earlier in this execution, the email was sent
+    // from the hold path above. This hook is for phase completions only.
 
     // Check for user checkpoint
     const checkpointTriggered = isUserCheckpoint(phase);
