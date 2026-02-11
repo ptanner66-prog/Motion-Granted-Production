@@ -60,7 +60,7 @@ export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
       subject: options.subject,
       html: options.html,
       text: options.text,
-      reply_to: options.replyTo || process.env.EMAIL_REPLY_TO || 'support@motiongranted.com',
+      replyTo: options.replyTo || process.env.EMAIL_REPLY_TO || 'support@motiongranted.com',
       tags: options.tags,
     });
 

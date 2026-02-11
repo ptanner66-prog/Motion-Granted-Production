@@ -109,7 +109,7 @@ async function fetchOrderContext(
       return null;
     }
 
-    const profile = order.profiles as Record<string, string | null> | null;
+    const profile = order.profiles as unknown as Record<string, string | null> | null;
     if (!profile?.email) {
       console.error('[email-triggers] No customer email found for order:', orderId);
       return null;
