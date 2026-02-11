@@ -154,7 +154,7 @@ export async function POST(request: Request) {
             orderUrl: `${baseUrl}/orders/${orderId}`,
           }),
         });
-        console.log(`[APPROVE] Email sent to ${clientProfile.email} for order ${order.order_number}`);
+        console.log(`[APPROVE] Email sent for order ${order.order_number}`);
       } catch (emailErr) {
         console.error('Failed to send email directly:', emailErr);
         // Fall back to queue if direct send fails

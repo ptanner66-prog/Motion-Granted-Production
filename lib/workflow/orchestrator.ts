@@ -548,7 +548,7 @@ export async function initializeWorkflow(
       .eq('id', orderId);
 
     // Fire-and-forget confirmation email
-    notifyWorkflowEvent('order_confirmed', orderId).catch(() => {});
+    notifyWorkflowEvent('order_confirmed', orderId).catch(err => console.warn('[Workflow] Order confirmation notification failed:', err instanceof Error ? err.message : err));
 
     return {
       success: true,
@@ -790,5 +790,5 @@ export async function notifyWorkflowEvent(
 export function notifyPhaseComplete(phase: string, orderId: string): void {
   const event = PHASE_EMAIL_MAP[phase];
   if (!event) return;
-  notifyWorkflowEvent(event, orderId).catch(() => {});
+  notifyWorkflowEvent(event, orderId).catch(err => console.warn(`[Workflow] Phase notification failed for ${event}:`, err instanceof Error ? err.message : err));
 }

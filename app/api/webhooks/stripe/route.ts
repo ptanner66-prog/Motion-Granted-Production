@@ -295,9 +295,11 @@ async function handlePaymentSucceeded(
     return;
   }
 
-  // CRITICAL SECURITY: Verify payment amount matches order total
+  // CRITICAL SECURITY: Verify payment amount matches order total exactly
+  // Rejects both underpayment (fraud) and overpayment (customer error)
   const expectedAmount = Math.round(existingOrder.total_price * 100);
-  if (paymentIntent.amount < expectedAmount) {
+  if (paymentIntent.amount !== expectedAmount) {
+    const isUnderpayment = paymentIntent.amount < expectedAmount;
     console.error(`[Stripe Webhook] SECURITY ALERT: Payment amount mismatch! Expected: ${expectedAmount}, Received: ${paymentIntent.amount}, Order: ${orderId}`);
     // Log the security alert
     await supabase.from('automation_logs').insert({
@@ -305,7 +307,9 @@ async function handlePaymentSucceeded(
       action_type: 'payment_failed',
       action_details: {
         paymentIntentId: paymentIntent.id,
-        error: 'Payment amount mismatch - potential fraud attempt',
+        error: isUnderpayment
+          ? 'Underpayment - potential fraud attempt'
+          : 'Overpayment - amount exceeds expected total',
         expectedAmount: expectedAmount / 100,
         receivedAmount: paymentIntent.amount / 100,
       },
@@ -320,7 +324,7 @@ async function handlePaymentSucceeded(
     return;
   }
 
-  // Update order status and payment info
+  // Update order status and payment info (atomic: only if still pending)
   const { data: order, error: updateError } = await supabase
     .from('orders')
     .update({
@@ -329,6 +333,7 @@ async function handlePaymentSucceeded(
     })
     .eq('id', orderId)
     .eq('stripe_payment_intent_id', paymentIntent.id)
+    .neq('stripe_payment_status', 'succeeded')
     .select('id, order_number, client_id, filing_deadline')
     .single();
 

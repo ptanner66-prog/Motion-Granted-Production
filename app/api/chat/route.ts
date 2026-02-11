@@ -318,12 +318,7 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
             return;
           }
 
-          // Debug: Log which key is being used (first 8 + last 4 chars)
-          const keyPreview = apiKey.length > 12
-            ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`
-            : '(key too short)';
-          console.log(`[CHAT] Using API key: ${keyPreview}`);
-          console.log(`[CHAT] Requesting model: claude-opus-4-5-20251101`);
+          console.log('[CHAT] Using configured API key');
 
           const anthropic = new Anthropic({ apiKey });
 

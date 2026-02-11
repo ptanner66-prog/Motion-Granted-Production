@@ -424,7 +424,6 @@ export async function POST(
                 action_type: 'workflow_error',
                 action_details: {
                   error: error instanceof Error ? error.message : 'Unknown error',
-                  stack: error instanceof Error ? error.stack : undefined,
                   phase: 'workflow_execution',
                 },
               });

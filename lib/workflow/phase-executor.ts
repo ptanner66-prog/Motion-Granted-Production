@@ -89,7 +89,7 @@ export async function executePhase(params: ExecutePhaseParams): Promise<PhaseExe
       // === EMAIL TRIGGER: Hold created notification ===
       try {
         const { notifyWorkflowEvent } = await import('./orchestrator');
-        notifyWorkflowEvent('hold_created', orderId).catch(() => {});
+        notifyWorkflowEvent('hold_created', orderId).catch(err => console.warn('[Workflow] Hold notification failed:', err instanceof Error ? err.message : err));
       } catch {
         // Integration not available — silently continue
       }

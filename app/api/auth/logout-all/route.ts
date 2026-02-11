@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { keepCurrent } = await request.json().catch(() => ({ keepCurrent: true }));
+    const { keepCurrent } = await request.json().catch(() => ({ keepCurrent: false }));
 
     // Get current session ID from cookie or header
     const currentSessionId = request.headers.get('x-session-id') || undefined;

@@ -47,11 +47,10 @@ export function HealthQuickActions({ pendingNotifications, stuckOrders }: QuickA
     setLastResult(null);
 
     try {
-      const response = await fetch('/api/automation/cron', {
+      const response = await fetch('/api/admin/cron-trigger', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-cron-secret': process.env.NEXT_PUBLIC_CRON_SECRET || '',
         },
         body: JSON.stringify({
           scheduleRecurring: true,
@@ -88,11 +87,10 @@ export function HealthQuickActions({ pendingNotifications, stuckOrders }: QuickA
     setLastResult(null);
 
     try {
-      const response = await fetch('/api/automation/cron', {
+      const response = await fetch('/api/admin/cron-trigger', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-cron-secret': process.env.NEXT_PUBLIC_CRON_SECRET || '',
         },
         body: JSON.stringify({
           scheduleRecurring: false,
@@ -132,11 +130,10 @@ export function HealthQuickActions({ pendingNotifications, stuckOrders }: QuickA
 
     try {
       // First, try to use the cron endpoint which has recovery logic
-      const response = await fetch('/api/automation/cron', {
+      const response = await fetch('/api/admin/cron-trigger', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-cron-secret': process.env.NEXT_PUBLIC_CRON_SECRET || '',
         },
         body: JSON.stringify({
           scheduleRecurring: false,

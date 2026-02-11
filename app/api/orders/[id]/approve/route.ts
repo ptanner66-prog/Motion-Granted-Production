@@ -48,14 +48,15 @@ async function handleCustomerApproval(orderId: string, userId: string) {
     );
   }
 
-  // Update order status to completed
+  // Update order status to completed (atomic: only if in expected state)
   const { error: updateError } = await supabase
     .from('orders')
     .update({
       status: 'completed',
       updated_at: new Date().toISOString(),
     })
-    .eq('id', orderId);
+    .eq('id', orderId)
+    .eq('status', 'draft_delivered');
 
   if (updateError) {
     return NextResponse.json({ error: 'Failed to approve order' }, { status: 500 });

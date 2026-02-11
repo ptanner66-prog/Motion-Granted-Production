@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Waitlist] Added ${email} for state ${normalizedStateCode}`);
+    console.log(`[Waitlist] New signup for state ${normalizedStateCode}`);
 
     return NextResponse.json(
       {

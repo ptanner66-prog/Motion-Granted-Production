@@ -62,7 +62,8 @@ export async function GET(request: Request) {
     const { data: motionTypes, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('[MotionTypes] Database error:', error);
+      return NextResponse.json({ error: 'Failed to fetch motion types' }, { status: 500 });
     }
 
     // Group by tier for easier consumption
@@ -87,8 +88,9 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
+    console.error('[MotionTypes] Unexpected error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'An unexpected error occurred. Please try again.' },
       { status: 500 }
     );
   }
