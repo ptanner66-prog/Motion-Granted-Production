@@ -46,6 +46,7 @@ import {
   extractCitations,
   CITATION_HARD_STOP_MINIMUM,
 } from "@/lib/workflow/citation-verifier";
+import { injectAdvisories, formatAdvisoriesForPhaseX } from "@/lib/workflow/advisory-injector";
 
 // Type imports
 import type {
@@ -1852,6 +1853,43 @@ export const generateOrderWorkflow = inngest.createFunction(
         };
       }
     }
+
+    // ========================================================================
+    // STEP 13.5: Advisory Injection (QC-024/025/026)
+    // ========================================================================
+    await step.run("advisory-injection", async () => {
+      const { motionType, jurisdiction } = workflowState.orderContext;
+      const result = injectAdvisories(motionType, jurisdiction);
+
+      if (result.injected) {
+        console.log(
+          `[Orchestration] Injected ${result.advisoryCount} advisory(ies): ` +
+          result.advisories.map(a => a.id).join(', ')
+        );
+
+        const advisoryText = formatAdvisoriesForPhaseX(result.advisories);
+
+        // Persist advisories to workflow metadata for Phase X
+        const { data: currentWf } = await supabase
+          .from("order_workflows")
+          .select("metadata")
+          .eq("id", workflowState.workflowId)
+          .single();
+
+        await supabase
+          .from("order_workflows")
+          .update({
+            metadata: {
+              ...((currentWf?.metadata as Record<string, unknown>) || {}),
+              advisories: result.advisories,
+              advisoryText,
+            },
+          })
+          .eq("id", workflowState.workflowId);
+      } else {
+        console.log('[Orchestration] No advisories applicable for this motion type');
+      }
+    });
 
     // ========================================================================
     // STEP 14: Phase IX.1 - Separate Statement Check (MSJ/MSA only)

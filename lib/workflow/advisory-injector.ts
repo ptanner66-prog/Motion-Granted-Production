@@ -1,46 +1,76 @@
 /**
- * Advisory Injector — SP8
+ * Advisory Injector
  *
- * Post-processes Phase IX output to inject motion type advisories.
- * Called from Inngest workflow after Phase IX completes.
+ * Injects motion-type-specific advisories into the workflow state
+ * after Phase IX (Supporting Documents) completes.
+ *
+ * The advisory is stored in the workflow metadata so Phase X (Final Assembly)
+ * can include it in the final QA checklist.
  */
 
 import { detectMotionType, generateAdvisories, type Advisory } from './motion-advisories';
 
 export interface AdvisoryInjectionResult {
-  advisoriesAdded: number;
-  advisoryIds: string[];
+  injected: boolean;
+  advisoryCount: number;
+  advisories: Advisory[];
 }
 
 /**
- * Detect motion type and generate advisories for inclusion in workflow output.
+ * Detect applicable advisories for an order and return them for injection
+ * into the workflow state.
  *
- * @param motionType - The order's motion type string
- * @param caseDescription - Optional case description for better detection
- * @param jurisdiction - State abbreviation (e.g., 'LA', 'CA')
- * @returns Advisory injection result with advisories and metadata
+ * @param motionType - The motion type string from order context
+ * @param jurisdiction - The jurisdiction string (e.g. 'LA', 'Federal')
+ * @param description - Optional description for additional keyword detection
  */
 export function injectAdvisories(
   motionType: string,
-  caseDescription: string | undefined,
-  jurisdiction: string
-): { advisories: Advisory[]; result: AdvisoryInjectionResult } {
-  const detectedTypes = detectMotionType(motionType, caseDescription);
+  jurisdiction: string,
+  description: string = ''
+): AdvisoryInjectionResult {
+  const types = detectMotionType(motionType, description);
 
-  if (detectedTypes.length === 0) {
-    return {
-      advisories: [],
-      result: { advisoriesAdded: 0, advisoryIds: [] },
-    };
+  if (types.length === 0) {
+    return { injected: false, advisoryCount: 0, advisories: [] };
   }
 
-  const advisories = generateAdvisories(detectedTypes, jurisdiction);
+  const advisories = generateAdvisories(types, jurisdiction);
 
   return {
+    injected: advisories.length > 0,
+    advisoryCount: advisories.length,
     advisories,
-    result: {
-      advisoriesAdded: advisories.length,
-      advisoryIds: advisories.map(a => a.id),
-    },
   };
+}
+
+/**
+ * Format advisories as a text block for insertion into Phase X context.
+ */
+export function formatAdvisoriesForPhaseX(advisories: Advisory[]): string {
+  if (advisories.length === 0) return '';
+
+  const blocks = advisories.map(a => {
+    const statuteBlock = a.statutes.length > 0
+      ? `\nAPPLICABLE STATUTES: ${a.statutes.join(', ')}`
+      : '';
+
+    return `
+[${a.id}] ${a.severity}: ${a.title}${statuteBlock}
+
+REQUIREMENTS TO VERIFY:
+${a.requirements.map((r, i) => `  ${i + 1}. ${r}`).join('\n')}
+
+PITFALLS TO CHECK:
+${a.commonPitfalls.map(p => `  - ${p}`).join('\n')}
+`.trim();
+  });
+
+  return `
+=== MOTION TYPE ADVISORIES (${advisories.length}) ===
+
+${blocks.join('\n\n')}
+
+=== END ADVISORIES ===
+`.trim();
 }

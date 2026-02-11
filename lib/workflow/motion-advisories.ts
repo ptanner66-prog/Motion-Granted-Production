@@ -174,137 +174,188 @@ export function hasAdvisory(motionType: string): boolean {
 }
 
 // ============================================================================
-// SP8: Detection & Generation API for Advisory Injector
+// ADVISORY GENERATION API (SP8)
 // ============================================================================
 
 /**
- * Advisory with jurisdiction-specific statute references.
- * Used by the advisory injector to attach advisories to Phase IX output.
+ * Structured advisory with unique ID and statute references.
+ * Used for workflow output and audit trail.
  */
 export interface Advisory {
   id: string;
   motionType: string;
   severity: 'CRITICAL' | 'WARNING' | 'INFO';
   title: string;
-  statutes: string;
+  statutes: string[];
   requirements: string[];
   commonPitfalls: string[];
-  additionalContext: string;
 }
 
 /**
- * Motion type detection patterns.
- * Maps keywords in motion type strings and case descriptions to type identifiers.
+ * Statute map for each advisory type, keyed by jurisdiction prefix.
+ * 'federal' entries apply when jurisdiction contains 'federal' (case-insensitive).
+ * State codes (e.g. 'LA', 'CA') apply for state courts.
  */
-const DETECTION_PATTERNS: Array<{ type: string; patterns: RegExp[] }> = [
-  {
-    type: 'TRO',
-    patterns: [
-      /\btro\b/i,
-      /temporary\s+restraining\s+order/i,
-      /preliminary\s+injunction/i,
-      /\binjunctive\s+relief\b/i,
-    ],
-  },
-  {
-    type: 'ANTI_SLAPP',
-    patterns: [
-      /anti[_\-\s]?slapp/i,
-      /\bslapp\b/i,
-      /strategic\s+lawsuit\s+against\s+public\s+participation/i,
-    ],
-  },
-  {
-    type: 'MSJ',
-    patterns: [
-      /\bmsj\b/i,
-      /summary\s+judgment/i,
-      /motion\s+for\s+summary/i,
-      /partial\s+summary/i,
-    ],
-  },
-];
-
-/**
- * Jurisdiction-specific statute references.
- * Maps (motionType, jurisdiction) to the primary statute citation.
- */
-const STATUTE_MAP: Record<string, Record<string, string>> = {
+const STATUTE_MAP: Record<string, Record<string, string[]>> = {
   TRO: {
-    LA: 'C.C.P. Art. 3601-3613',
-    DEFAULT: 'FRCP 65',
+    LA: ['C.C.P. Art. 3601-3613'],
+    federal: ['FRCP 65'],
+    CA: ['CCP 527'],
+    TX: ['TRCP 680'],
   },
   ANTI_SLAPP: {
-    CA: 'CCP 425.16',
-    TX: 'TCPA Ch. 27',
-    DEFAULT: 'No federal anti-SLAPP statute; check state law',
+    CA: ['CCP 425.16'],
+    TX: ['TCPA Ch. 27'],
+    federal: [],
+    LA: [],
   },
   MSJ: {
-    LA: 'C.C.P. Art. 966-967',
-    DEFAULT: 'FRCP 56',
+    LA: ['C.C.P. Art. 966-967'],
+    federal: ['FRCP 56'],
+    CA: ['CCP 437c'],
+    TX: ['TRCP 166a'],
   },
 };
 
 /**
- * Map from detected type identifier to the base advisory.
+ * Advisory ID map (QC codes).
  */
-const TYPE_TO_ADVISORY: Record<string, MotionAdvisory> = {
-  TRO: TRO_ADVISORY,
-  ANTI_SLAPP: ANTI_SLAPP_ADVISORY,
-  MSJ: MSJ_ADVISORY,
+const ADVISORY_ID_MAP: Record<string, string> = {
+  TRO: 'QC-024',
+  ANTI_SLAPP: 'QC-025',
+  MSJ: 'QC-026',
 };
 
 /**
- * Detect which advisory-eligible motion types are present in the motion type
- * string and/or case description.
- *
- * @param motionType - The order's motion type string (e.g., "Temporary Restraining Order")
- * @param caseDescription - Optional case description text for additional detection
- * @returns Array of detected type identifiers (e.g., ['TRO', 'MSJ'])
+ * Canonical type name map — maps detected types to their internal key.
  */
-export function detectMotionType(motionType: string, caseDescription?: string): string[] {
-  const searchText = `${motionType} ${caseDescription || ''}`;
-  const detected: string[] = [];
+const CANONICAL_TYPE_MAP: Record<string, string> = {
+  tro: 'TRO',
+  temporary_restraining_order: 'TRO',
+  preliminary_injunction: 'TRO',
+  anti_slapp: 'ANTI_SLAPP',
+  slapp: 'ANTI_SLAPP',
+  msj: 'MSJ',
+  msj_simple: 'MSJ',
+  msj_complex: 'MSJ',
+  summary_judgment: 'MSJ',
+  motion_for_summary_judgment: 'MSJ',
+  partial_sj: 'MSJ',
+  opp_msj: 'MSJ',
+};
 
-  for (const { type, patterns } of DETECTION_PATTERNS) {
-    if (patterns.some(p => p.test(searchText))) {
-      detected.push(type);
+/**
+ * Detect which advisory-relevant motion types apply based on the motion type string
+ * and optional description. Returns an array of canonical type keys (e.g. ['TRO', 'MSJ']).
+ *
+ * @param motionType - The motion type name (e.g. 'Temporary Restraining Order')
+ * @param description - Optional additional description text to scan for keywords
+ */
+export function detectMotionType(motionType: string, description: string = ''): string[] {
+  const combined = `${motionType} ${description}`.toLowerCase();
+  const detected = new Set<string>();
+
+  // Check against known patterns
+  const patterns: Array<{ regex: RegExp; type: string }> = [
+    { regex: /\btro\b|temporary\s+restraining|preliminary\s+injunction/, type: 'TRO' },
+    { regex: /anti[_\s-]*slapp|slapp/, type: 'ANTI_SLAPP' },
+    { regex: /\bmsj\b|summary\s+judgment|motion\s+for\s+summary/, type: 'MSJ' },
+  ];
+
+  for (const { regex, type } of patterns) {
+    if (regex.test(combined)) {
+      detected.add(type);
     }
   }
 
-  return detected;
+  // Also check normalized key against canonical map
+  const normalized = motionType.toLowerCase().replace(/[\s-]+/g, '_');
+  const canonical = CANONICAL_TYPE_MAP[normalized];
+  if (canonical) {
+    detected.add(canonical);
+  }
+
+  return Array.from(detected);
 }
 
 /**
- * Generate jurisdiction-specific advisories for detected motion types.
+ * Generate structured advisories for the given motion types and jurisdiction.
  *
- * @param detectedTypes - Array of detected type identifiers from detectMotionType()
- * @param jurisdiction - State abbreviation (e.g., 'LA', 'CA') or 'Federal'
- * @returns Array of Advisory objects with statute references
+ * @param types - Array of canonical type keys from detectMotionType() (e.g. ['TRO'])
+ * @param jurisdiction - Jurisdiction string (e.g. 'LA', 'Federal', 'CA')
+ * @returns Array of Advisory objects with statutes resolved for the jurisdiction
  */
-export function generateAdvisories(detectedTypes: string[], jurisdiction: string): Advisory[] {
+export function generateAdvisories(types: string[], jurisdiction: string): Advisory[] {
   const advisories: Advisory[] = [];
+  const normalizedJurisdiction = jurisdiction.toUpperCase().trim();
+  const isFederal = normalizedJurisdiction.includes('FEDERAL');
 
-  for (const type of detectedTypes) {
-    const baseAdvisory = TYPE_TO_ADVISORY[type];
-    if (!baseAdvisory) continue;
+  // Map canonical type to the MotionAdvisory source data
+  const typeToAdvisory: Record<string, MotionAdvisory> = {
+    TRO: TRO_ADVISORY,
+    ANTI_SLAPP: ANTI_SLAPP_ADVISORY,
+    MSJ: MSJ_ADVISORY,
+  };
 
-    const statuteMap = STATUTE_MAP[type];
-    const statutes = statuteMap
-      ? (statuteMap[jurisdiction.toUpperCase()] || statuteMap['DEFAULT'] || '')
-      : '';
+  for (const type of types) {
+    const source = typeToAdvisory[type];
+    if (!source) continue;
+
+    const id = ADVISORY_ID_MAP[type] || `QC-${type}`;
+    const statuteMap = STATUTE_MAP[type] || {};
+
+    // Resolve statutes: combine jurisdiction-specific + federal if applicable
+    const statutes: string[] = [];
+    if (isFederal) {
+      statutes.push(...(statuteMap['federal'] || []));
+    } else {
+      // Extract state code from jurisdiction (e.g. 'LA' from 'Louisiana' or 'LA')
+      const stateCode = extractStateCode(normalizedJurisdiction);
+      if (stateCode && statuteMap[stateCode]) {
+        statutes.push(...statuteMap[stateCode]);
+      }
+      // Always include federal statutes as supplementary
+      statutes.push(...(statuteMap['federal'] || []));
+    }
 
     advisories.push({
-      id: `${type}_${jurisdiction.toUpperCase()}`,
-      motionType: baseAdvisory.motionType,
-      severity: baseAdvisory.severity,
-      title: baseAdvisory.title,
+      id,
+      motionType: type,
+      severity: source.severity,
+      title: source.title,
       statutes,
-      requirements: baseAdvisory.requirements,
-      commonPitfalls: baseAdvisory.commonPitfalls,
-      additionalContext: baseAdvisory.additionalContext,
+      requirements: source.requirements,
+      commonPitfalls: source.commonPitfalls,
     });
   }
 
   return advisories;
+}
+
+/**
+ * Extract a 2-letter state code from a jurisdiction string.
+ */
+function extractStateCode(jurisdiction: string): string | null {
+  const stateNames: Record<string, string> = {
+    LOUISIANA: 'LA', CALIFORNIA: 'CA', TEXAS: 'TX', FLORIDA: 'FL',
+    'NEW YORK': 'NY', GEORGIA: 'GA', ILLINOIS: 'IL', OHIO: 'OH',
+    PENNSYLVANIA: 'PA', MICHIGAN: 'MI', VIRGINIA: 'VA', WASHINGTON: 'WA',
+    ARIZONA: 'AZ', COLORADO: 'CO', MASSACHUSETTS: 'MA', MARYLAND: 'MD',
+    MINNESOTA: 'MN', MISSOURI: 'MO', NEVADA: 'NV', 'NEW JERSEY': 'NJ',
+    'NORTH CAROLINA': 'NC', OREGON: 'OR', TENNESSEE: 'TN', WISCONSIN: 'WI',
+  };
+
+  // Check if it's already a 2-letter code
+  if (/^[A-Z]{2}$/.test(jurisdiction)) {
+    return jurisdiction;
+  }
+
+  // Try to extract from full state name
+  for (const [name, code] of Object.entries(stateNames)) {
+    if (jurisdiction.includes(name)) {
+      return code;
+    }
+  }
+
+  return null;
 }

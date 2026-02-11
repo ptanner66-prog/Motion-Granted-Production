@@ -262,49 +262,85 @@ async function main() {
     if (typeof mod.executePhase !== 'function') throw new Error('executePhase not exported');
   });
 
-  // --- 10. SP8 VERIFICATION ---
-  console.log('');
-  console.log('\uD83D\uDD27 SP8 Pre-Launch');
+  await test('initializeWorkflow exported', async () => {
+    const mod = await import('../lib/workflow/orchestrator');
+    if (typeof mod.initializeWorkflow !== 'function') throw new Error('initializeWorkflow not exported');
+  });
 
-  await test('Malware scanner loads', async () => {
+  await test('orchestrateWorkflow returns deprecation error', async () => {
+    const mod = await import('../lib/workflow/orchestrator');
+    const result = await mod.orchestrateWorkflow('test-order-id');
+    if (result.success !== false) throw new Error('Should return success: false');
+    if (!result.error?.includes('DEPRECATED')) throw new Error(`Expected DEPRECATED in error, got: ${result.error}`);
+  });
+
+  // --- 10. MALWARE SCANNER ---
+  console.log('');
+  console.log('\uD83D\uDD75\uFE0F Malware Scanner');
+
+  await test('Malware scanner exports', async () => {
     const mod = await import('../lib/security/malware-scanner');
     if (typeof mod.scanFile !== 'function') throw new Error('scanFile not exported');
+    if (typeof mod.checkFileStatus !== 'function') throw new Error('checkFileStatus not exported');
   });
 
-  await test('Motion advisories load', async () => {
+  await test('Malware scanner graceful degradation (no API key)', async () => {
+    const mod = await import('../lib/security/malware-scanner');
+    const emptyBuffer = new ArrayBuffer(16);
+    const result = await mod.scanFile(emptyBuffer, 'test.pdf');
+    if (!result.safe) throw new Error('Should be safe when API key missing');
+    if (result.scanned) throw new Error('Should not be scanned when API key missing');
+    if (!result.hash) throw new Error('Should still compute hash');
+  });
+
+  // --- 11. MOTION ADVISORIES ---
+  console.log('');
+  console.log('\uD83D\uDCCB Motion Advisories');
+
+  await test('Advisory exports complete', async () => {
     const mod = await import('../lib/workflow/motion-advisories');
-    if (typeof mod.detectMotionType !== 'function') throw new Error('detectMotionType not exported');
-    if (typeof mod.generateAdvisories !== 'function') throw new Error('generateAdvisories not exported');
-
-    // Functional test: detect TRO
-    const types = mod.detectMotionType('Temporary Restraining Order', '');
-    if (!types.includes('TRO')) throw new Error('Failed to detect TRO motion type');
-
-    // Functional test: generate LA advisory
-    const advisories = mod.generateAdvisories(['TRO'], 'LA');
-    if (advisories.length === 0) throw new Error('No advisories generated for LA TRO');
-    if (!advisories[0].statutes.includes('C.C.P. Art. 3601-3613')) {
-      throw new Error('LA TRO advisory missing correct statute reference');
-    }
+    if (typeof mod.getMotionAdvisory !== 'function') throw new Error('getMotionAdvisory missing');
+    if (typeof mod.formatAdvisoryForPrompt !== 'function') throw new Error('formatAdvisoryForPrompt missing');
+    if (typeof mod.hasAdvisory !== 'function') throw new Error('hasAdvisory missing');
+    if (typeof mod.detectMotionType !== 'function') throw new Error('detectMotionType missing');
+    if (typeof mod.generateAdvisories !== 'function') throw new Error('generateAdvisories missing');
   });
 
-  await test('orchestrateWorkflow is deprecated', async () => {
-    const mod = await import('../lib/workflow/orchestrator');
-    if (typeof mod.orchestrateWorkflow !== 'function') throw new Error('orchestrateWorkflow not exported');
-    const result = await mod.orchestrateWorkflow('test-order-id');
-    if (result.success !== false) throw new Error('Deprecated function should return success: false');
+  await test('detectMotionType identifies TRO', async () => {
+    const { detectMotionType } = await import('../lib/workflow/motion-advisories');
+    const types = detectMotionType('Temporary Restraining Order', '');
+    if (!types.includes('TRO')) throw new Error(`Expected TRO in [${types.join(', ')}]`);
+  });
+
+  await test('detectMotionType identifies MSJ', async () => {
+    const { detectMotionType } = await import('../lib/workflow/motion-advisories');
+    const types = detectMotionType('Motion for Summary Judgment', '');
+    if (!types.includes('MSJ')) throw new Error(`Expected MSJ in [${types.join(', ')}]`);
+  });
+
+  await test('generateAdvisories returns TRO statutes for LA', async () => {
+    const { generateAdvisories } = await import('../lib/workflow/motion-advisories');
+    const advisories = generateAdvisories(['TRO'], 'LA');
+    if (advisories.length === 0) throw new Error('Expected at least one advisory');
+    const tro = advisories[0];
+    if (tro.id !== 'QC-024') throw new Error(`Expected id QC-024, got ${tro.id}`);
+    if (!tro.statutes.some(s => s.includes('C.C.P. Art. 3601-3613')))
+      throw new Error(`Expected C.C.P. Art. 3601-3613 in statutes: [${tro.statutes.join(', ')}]`);
+  });
+
+  await test('generateAdvisories returns MSJ federal statutes', async () => {
+    const { generateAdvisories } = await import('../lib/workflow/motion-advisories');
+    const advisories = generateAdvisories(['MSJ'], 'Federal');
+    if (advisories.length === 0) throw new Error('Expected at least one advisory');
+    const msj = advisories[0];
+    if (!msj.statutes.includes('FRCP 56'))
+      throw new Error(`Expected FRCP 56 in statutes: [${msj.statutes.join(', ')}]`);
   });
 
   await test('Advisory injector loads', async () => {
     const mod = await import('../lib/workflow/advisory-injector');
-    if (typeof mod.injectAdvisories !== 'function') throw new Error('injectAdvisories not exported');
-
-    // Functional test: inject MSJ advisory
-    const { advisories, result } = mod.injectAdvisories('Motion for Summary Judgment', undefined, 'LA');
-    if (result.advisoriesAdded === 0) throw new Error('No advisories injected for MSJ');
-    if (!advisories[0].statutes.includes('C.C.P. Art. 966-967')) {
-      throw new Error('MSJ advisory missing LA statute reference');
-    }
+    if (typeof mod.injectAdvisories !== 'function') throw new Error('injectAdvisories missing');
+    if (typeof mod.formatAdvisoriesForPhaseX !== 'function') throw new Error('formatAdvisoriesForPhaseX missing');
   });
 
   // --- REPORT ---

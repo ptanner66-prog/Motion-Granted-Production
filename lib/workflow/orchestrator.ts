@@ -417,27 +417,174 @@ CRITICAL REQUIREMENTS:
  * It was disabled in SP7 (Feb 2026) when all callers were migrated to Inngest.
  * The function body was removed in SP8 to prevent accidental use.
  */
-export async function orchestrateWorkflow(
+/**
+ * Initialize a workflow record for an order.
+ *
+ * Gathers order context, parses documents, creates the DB workflow record,
+ * updates order status, and fires a confirmation email.
+ *
+ * Callers are responsible for firing the Inngest "order/submitted" event
+ * after this returns successfully.
+ */
+export async function initializeWorkflow(
   orderId: string,
   options: {
+    workflowPath?: WorkflowPath;
+  } = {}
+): Promise<OperationResult<OrchestrationResult>> {
+  const supabase = await createClient();
+
+  console.log(`[ORCHESTRATOR] Initializing workflow for order ${orderId}`);
+
+  try {
+    // Step 1: Gather all order context
+    const contextResult = await gatherOrderContext(orderId);
+    if (!contextResult.success || !contextResult.data) {
+      return {
+        success: false,
+        error: contextResult.error || 'Failed to gather order context',
+      };
+    }
+
+    const orderContext = contextResult.data;
+
+    // Step 2: Parse documents (always required)
+    await parseOrderDocuments(orderId);
+    const refreshedParsed = await getOrderParsedDocuments(orderId);
+    if (refreshedParsed.success && refreshedParsed.data) {
+      orderContext.documents.parsed = refreshedParsed.data.map(d => ({
+        fileName: d.document_id,
+        documentType: d.document_type || 'unknown',
+        summary: d.summary || '',
+        keyFacts: d.key_facts || [],
+        legalIssues: d.legal_issues || [],
+      }));
+    }
+
+    // Step 3: Determine motion type and get template
+    const motionCode = mapMotionTypeToCode(orderContext.motionType, orderContext.motionTier);
+    const workflowPath = options.workflowPath || 'path_a';
+    const motionTemplate = getTemplateForPath(motionCode, workflowPath);
+
+    // Step 4: Lookup motion type ID
+    let motionTypeId: string | null = null;
+
+    const { data: motionTypeData } = await supabase
+      .from('motion_types')
+      .select('id')
+      .eq('code', motionCode)
+      .single();
+
+    if (motionTypeData) {
+      motionTypeId = motionTypeData.id;
+    } else {
+      const { data: fallback } = await supabase
+        .from('motion_types')
+        .select('id')
+        .limit(1)
+        .single();
+
+      if (fallback) {
+        motionTypeId = fallback.id;
+      }
+    }
+
+    if (!motionTypeId) {
+      return {
+        success: false,
+        error: 'No motion types configured in database',
+      };
+    }
+
+    // Step 5: Check if workflow already exists
+    const { data: existingWorkflow } = await supabase
+      .from('order_workflows')
+      .select('id, status, current_phase')
+      .eq('order_id', orderId)
+      .single();
+
+    let workflowId: string;
+
+    if (existingWorkflow) {
+      workflowId = existingWorkflow.id;
+    } else {
+      // Step 6: Build superprompt and start workflow
+      const superprompt = buildOrderSuperprompt({
+        orderContext,
+        motionTemplate,
+        workflowPath,
+      });
+
+      const startResult = await startWorkflow({
+        orderId,
+        motionTypeId,
+        workflowPath,
+        metadata: {
+          superprompt,
+          orderContext: {
+            caseNumber: orderContext.caseNumber,
+            caseCaption: orderContext.caseCaption,
+            jurisdiction: orderContext.jurisdiction,
+            motionType: orderContext.motionType,
+            motionTier: orderContext.motionTier,
+          },
+        },
+      });
+
+      if (!startResult.success || !startResult.data || !startResult.data.workflowId) {
+        return {
+          success: false,
+          error: startResult.error || 'Failed to start workflow',
+        };
+      }
+
+      workflowId = startResult.data.workflowId;
+    }
+
+    // Step 7: Update order status
+    await supabase
+      .from('orders')
+      .update({ status: 'in_progress' })
+      .eq('id', orderId);
+
+    // Fire-and-forget confirmation email
+    notifyWorkflowEvent('order_confirmed', orderId).catch(() => {});
+
+    return {
+      success: true,
+      data: {
+        success: true,
+        workflowId,
+        status: 'started',
+        message: 'Workflow initialized. Fire "order/submitted" Inngest event to begin execution.',
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Initialization failed',
+    };
+  }
+}
+
+/**
+ * @deprecated REMOVED — Use initializeWorkflow() + Inngest "order/submitted" event instead.
+ * This function is retained for export compatibility only. It always returns failure.
+ */
+export async function orchestrateWorkflow(
+  _orderId: string,
+  _options: {
     autoRun?: boolean;
     workflowPath?: WorkflowPath;
   } = {}
 ): Promise<OperationResult<OrchestrationResult>> {
-  const errorMessage = [
-    `[ORCHESTRATOR] FATAL: orchestrateWorkflow() is DEPRECATED and DISABLED.`,
-    `Called with orderId=${orderId}, options=${JSON.stringify(options)}`,
-    `All workflow execution must go through Inngest.`,
-    `Use: inngest.send({ name: "order/submitted", data: { orderId } })`,
-    `See: lib/workflow/automation-service.ts`,
-  ].join('\n');
-
-  console.error(errorMessage);
-
+  console.error(
+    '[ORCHESTRATOR] orchestrateWorkflow() is DEPRECATED. ' +
+    'Use initializeWorkflow() + Inngest "order/submitted" event.'
+  );
   return {
     success: false,
-    error: 'orchestrateWorkflow is deprecated. Use Inngest workflow via automation-service.ts.',
-    data: undefined as unknown as OrchestrationResult,
+    error: 'DEPRECATED: orchestrateWorkflow() has been removed. Use initializeWorkflow() + Inngest event.',
   };
 }
 

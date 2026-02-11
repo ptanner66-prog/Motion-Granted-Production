@@ -60,6 +60,7 @@ export {
 export {
   gatherOrderContext,
   buildOrderSuperprompt,
+  initializeWorkflow,
   orchestrateWorkflow,
   getWorkflowSuperprompt,
 } from './orchestrator';

@@ -121,11 +121,32 @@ export async function POST(req: Request) {
     // Scan file BEFORE uploading to storage. Gracefully degrades if VT unavailable.
     const scanResult = await scanFile(arrayBuffer, file.name)
 
+    // Audit log: record scan result for both pass and fail
+    const auditPayload = {
+      action_type: scanResult.safe ? 'malware_scan_pass' : 'malware_scan_block',
+      order_id: orderId || null,
+      details: {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        hash: scanResult.hash,
+        scanned: scanResult.scanned,
+        detections: scanResult.detections,
+        totalEngines: scanResult.totalEngines,
+        threatName: scanResult.threatName,
+        userId: user.id,
+        timestamp: new Date().toISOString(),
+      },
+      status: scanResult.safe ? 'completed' : 'failed',
+    }
+    const { error: logErr } = await supabase.from('automation_logs').insert(auditPayload)
+    if (logErr) console.error('[upload] Failed to write scan audit log:', logErr.message)
+
     if (!scanResult.safe) {
       console.error(
         `[UPLOAD] Malware detected in ${file.name}: ` +
         `${scanResult.detections}/${scanResult.totalEngines} detections, ` +
-        `threat: ${scanResult.threatName}`
+        `threat: ${scanResult.threatName}, hash: ${scanResult.hash}`
       )
 
       // Log to audit trail
@@ -144,14 +165,13 @@ export async function POST(req: Request) {
       }).catch(() => { /* audit log failure is non-fatal */ })
 
       return NextResponse.json(
-        { error: 'File rejected: security scan failed. Please contact support if you believe this is an error.' },
+        { error: 'File rejected: security scan failed. Please scan your file locally and try again.' },
         { status: 422 }
       )
     }
 
-    // Log successful scans too (for audit trail completeness)
     if (scanResult.scanned) {
-      console.log(`[UPLOAD] File ${file.name} passed malware scan (${scanResult.detections || 0} detections)`)
+      console.log(`[upload] Scan passed: "${file.name}" (${scanResult.hash.substring(0, 12)}…)`)
     }
 
     // Check if bucket exists first
