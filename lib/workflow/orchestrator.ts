@@ -544,6 +544,10 @@ export async function orchestrateWorkflow(
       .update({ status: 'in_progress' })
       .eq('id', orderId);
 
+    // === EMAIL TRIGGER: Order Confirmed ===
+    // Fire-and-forget — email failure must not block the workflow
+    notifyWorkflowEvent('order_confirmed', orderId).catch(() => {});
+
     // Step 8: Optionally run the workflow automatically
     if (options.autoRun) {
       const runResult = await runWorkflow(workflowId);
@@ -753,4 +757,61 @@ export async function getWorkflowSuperprompt(workflowId: string): Promise<Operat
   });
 
   return { success: true, data: superprompt };
+}
+
+// ============================================================================
+// EMAIL TRIGGER INTEGRATION
+// ============================================================================
+
+/**
+ * Phase-to-email event mapping.
+ * Called after a phase completes to send progress/milestone emails.
+ */
+const PHASE_EMAIL_MAP: Record<string, string> = {
+  'V.1': 'research_complete',
+  'VII': 'draft_reviewed',
+  'X': 'documents_ready',
+};
+
+/**
+ * Notify a workflow event via email.
+ * Fire-and-forget — never throws, never blocks the workflow.
+ *
+ * @param event - The workflow event name (e.g., 'order_confirmed', 'hold_created')
+ * @param orderId - The order ID
+ */
+export async function notifyWorkflowEvent(
+  event: string,
+  orderId: string
+): Promise<void> {
+  try {
+    const { triggerEmail } = await import('../integration/email-triggers');
+    const { createClient: createSbClient } = await import('@supabase/supabase-js');
+    const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!sbUrl || !sbKey) {
+      console.warn(`[orchestrator] Email trigger skipped (no Supabase creds): ${event}`);
+      return;
+    }
+
+    const adminClient = createSbClient(sbUrl, sbKey);
+    triggerEmail(adminClient, event as Parameters<typeof triggerEmail>[1], orderId).catch(err =>
+      console.error('[orchestrator] Email trigger failed:', { orderId, event, error: err instanceof Error ? err.message : err })
+    );
+  } catch (err) {
+    console.error('[orchestrator] Email trigger import failed:', { orderId, event, error: err instanceof Error ? err.message : err });
+  }
+}
+
+/**
+ * Called after a phase completes to trigger phase-specific emails.
+ * Maps phases to workflow events and fires the email trigger.
+ *
+ * Safe to call from phase-executor.ts or workflow-engine.ts.
+ */
+export function notifyPhaseComplete(phase: string, orderId: string): void {
+  const event = PHASE_EMAIL_MAP[phase];
+  if (!event) return;
+  notifyWorkflowEvent(event, orderId).catch(() => {});
 }

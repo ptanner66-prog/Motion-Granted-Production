@@ -3220,6 +3220,45 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
     console.log(`[Phase VIII] ========== PHASE VIII COMPLETE ==========`);
     console.log(`[Phase VIII] Citation validation: ${validationResultVIII.isValid ? 'PASSED' : 'FAILED (stripped unauthorized)'}`);
 
+    // === DOC GEN INTEGRATION ===
+    // After Phase VIII content is saved, trigger document generation.
+    // Uses dynamic import so integration module issues don't break phase execution.
+    // Doc gen is a side effect — the phase succeeds even if doc gen fails.
+    try {
+      const { generateAndStoreFilingPackage } = await import('../integration/doc-gen-bridge');
+      const { createClient: createSbClient } = await import('@supabase/supabase-js');
+      const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (sbUrl && sbKey) {
+        const adminClient = createSbClient(sbUrl, sbKey);
+        const docGenResult = await generateAndStoreFilingPackage(adminClient, {
+          orderId: input.orderId,
+          orderNumber: input.orderNumber || '',
+        });
+
+        if (!docGenResult.success) {
+          console.error('[Phase VIII] Doc gen failed:', {
+            orderId: input.orderId,
+            errors: docGenResult.errors,
+          });
+        } else {
+          console.log('[Phase VIII] Filing package generated:', {
+            orderId: input.orderId,
+            documentCount: docGenResult.uploadedDocuments.length,
+            warnings: docGenResult.warnings,
+          });
+        }
+      } else {
+        console.warn('[Phase VIII] Doc gen skipped — Supabase credentials not configured');
+      }
+    } catch (docGenError) {
+      console.error('[Phase VIII] Doc gen exception:', {
+        orderId: input.orderId,
+        error: docGenError instanceof Error ? docGenError.message : 'Unknown',
+      });
+    }
+    // === END DOC GEN INTEGRATION ===
+
     return {
       success: true,
       phase: 'VIII',
