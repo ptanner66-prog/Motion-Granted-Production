@@ -107,10 +107,13 @@ export {
   getMotionAdvisory,
   formatAdvisoryForPrompt,
   hasAdvisory,
+  detectMotionType,
+  generateAdvisories,
 } from './motion-advisories';
 
 export type {
   MotionAdvisory,
+  Advisory,
 } from './motion-advisories';
 
 // Re-export types

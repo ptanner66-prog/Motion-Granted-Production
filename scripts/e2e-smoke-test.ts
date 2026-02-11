@@ -262,6 +262,51 @@ async function main() {
     if (typeof mod.executePhase !== 'function') throw new Error('executePhase not exported');
   });
 
+  // --- 10. SP8 VERIFICATION ---
+  console.log('');
+  console.log('\uD83D\uDD27 SP8 Pre-Launch');
+
+  await test('Malware scanner loads', async () => {
+    const mod = await import('../lib/security/malware-scanner');
+    if (typeof mod.scanFile !== 'function') throw new Error('scanFile not exported');
+  });
+
+  await test('Motion advisories load', async () => {
+    const mod = await import('../lib/workflow/motion-advisories');
+    if (typeof mod.detectMotionType !== 'function') throw new Error('detectMotionType not exported');
+    if (typeof mod.generateAdvisories !== 'function') throw new Error('generateAdvisories not exported');
+
+    // Functional test: detect TRO
+    const types = mod.detectMotionType('Temporary Restraining Order', '');
+    if (!types.includes('TRO')) throw new Error('Failed to detect TRO motion type');
+
+    // Functional test: generate LA advisory
+    const advisories = mod.generateAdvisories(['TRO'], 'LA');
+    if (advisories.length === 0) throw new Error('No advisories generated for LA TRO');
+    if (!advisories[0].statutes.includes('C.C.P. Art. 3601-3613')) {
+      throw new Error('LA TRO advisory missing correct statute reference');
+    }
+  });
+
+  await test('orchestrateWorkflow is deprecated', async () => {
+    const mod = await import('../lib/workflow/orchestrator');
+    if (typeof mod.orchestrateWorkflow !== 'function') throw new Error('orchestrateWorkflow not exported');
+    const result = await mod.orchestrateWorkflow('test-order-id');
+    if (result.success !== false) throw new Error('Deprecated function should return success: false');
+  });
+
+  await test('Advisory injector loads', async () => {
+    const mod = await import('../lib/workflow/advisory-injector');
+    if (typeof mod.injectAdvisories !== 'function') throw new Error('injectAdvisories not exported');
+
+    // Functional test: inject MSJ advisory
+    const { advisories, result } = mod.injectAdvisories('Motion for Summary Judgment', undefined, 'LA');
+    if (result.advisoriesAdded === 0) throw new Error('No advisories injected for MSJ');
+    if (!advisories[0].statutes.includes('C.C.P. Art. 966-967')) {
+      throw new Error('MSJ advisory missing LA statute reference');
+    }
+  });
+
   // --- REPORT ---
   console.log('');
   console.log('\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550');

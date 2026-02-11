@@ -117,18 +117,41 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer()
     const uint8Array = new Uint8Array(arrayBuffer)
 
-    // SEC-013: Malware scanning via VirusTotal
+    // === MALWARE SCAN (SEC-013) ===
+    // Scan file BEFORE uploading to storage. Gracefully degrades if VT unavailable.
     const scanResult = await scanFile(arrayBuffer, file.name)
+
     if (!scanResult.safe) {
       console.error(
-        `[upload] MALWARE BLOCKED: "${file.name}" — ` +
+        `[UPLOAD] Malware detected in ${file.name}: ` +
         `${scanResult.detections}/${scanResult.totalEngines} detections, ` +
         `threat: ${scanResult.threatName}`
       )
+
+      // Log to audit trail
+      const supabaseForLog = await createClient()
+      await supabaseForLog.from('automation_logs').insert({
+        action_type: 'malware_detected',
+        action_details: {
+          fileName: file.name,
+          fileSize: file.size,
+          userId: user.id,
+          orderId: orderId || null,
+          threats: scanResult.threatName ? [scanResult.threatName] : [],
+          detections: scanResult.detections,
+          timestamp: new Date().toISOString(),
+        },
+      }).catch(() => { /* audit log failure is non-fatal */ })
+
       return NextResponse.json(
-        { error: 'File rejected: malware detected. Please scan your file and try again.' },
-        { status: 400 }
+        { error: 'File rejected: security scan failed. Please contact support if you believe this is an error.' },
+        { status: 422 }
       )
+    }
+
+    // Log successful scans too (for audit trail completeness)
+    if (scanResult.scanned) {
+      console.log(`[UPLOAD] File ${file.name} passed malware scan (${scanResult.detections || 0} detections)`)
     }
 
     // Check if bucket exists first

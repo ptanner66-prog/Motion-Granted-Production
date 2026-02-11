@@ -94,6 +94,9 @@ import {
   type PhaseIVBatchResult,
 } from "@/lib/workflow/phase-iv/multi-step-executor";
 
+// SP8: Motion type advisories
+import { detectMotionType, generateAdvisories } from "@/lib/workflow/motion-advisories";
+
 // ============================================================================
 // SUPABASE CLIENT
 // ============================================================================
@@ -1825,6 +1828,30 @@ export const generateOrderWorkflow = inngest.createFunction(
       workflowState.phaseOutputs["IX"] = phaseIXResult.output;
     }
     console.log('[Orchestration] Accumulated after IX:', Object.keys(workflowState.phaseOutputs));
+
+    // SP8: Inject motion type advisories into Phase IX output
+    const detectedTypes = detectMotionType(
+      workflowState.orderContext.motionType || '',
+      workflowState.orderContext.statementOfFacts || ''
+    );
+
+    if (detectedTypes.length > 0) {
+      const advisories = generateAdvisories(
+        detectedTypes,
+        workflowState.orderContext.jurisdiction || 'LA'
+      );
+
+      if (advisories.length > 0) {
+        console.log(`[Orchestration] Motion advisories generated: ${advisories.map(a => a.id).join(', ')}`);
+
+        // Attach advisories to the phase output for inclusion in AIS
+        const phaseIXOutput = (workflowState.phaseOutputs["IX"] || {}) as Record<string, unknown>;
+        workflowState.phaseOutputs["IX"] = {
+          ...phaseIXOutput,
+          motionAdvisories: advisories,
+        };
+      }
+    }
 
     // ========================================================================
     // STEP 14: Phase IX.1 - Separate Statement Check (MSJ/MSA only)

@@ -16,7 +16,6 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
 import {
-  orchestrateWorkflow,
   gatherOrderContext,
   getWorkflowSuperprompt,
   buildOrderSuperprompt,
@@ -61,23 +60,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid workflow path' }, { status: 400 });
     }
 
-    // Initialize workflow record (gathers context, creates DB records)
-    const result = await orchestrateWorkflow(orderId, {
-      workflowPath: workflowPath as WorkflowPath,
-    });
-
-    if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
-    }
-
-    // Fire Inngest event to start the 14-phase pipeline
-    const { data: order } = await supabase
+    // SP8: orchestrateWorkflow() is deprecated. Validate order and fire Inngest directly.
+    const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('filing_deadline')
+      .select('id, filing_deadline, status')
       .eq('id', orderId)
       .single();
 
-    const priority = order?.filing_deadline
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // Fire Inngest event to start the 14-phase pipeline
+    const priority = order.filing_deadline
       ? calculatePriority(order.filing_deadline)
       : 5000;
 
@@ -86,14 +81,14 @@ export async function POST(request: Request) {
       data: {
         orderId,
         priority,
-        filingDeadline: order?.filing_deadline
+        filingDeadline: order.filing_deadline
           || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       },
     });
 
     return NextResponse.json({
       success: true,
-      ...result.data,
+      status: 'started',
       message: 'Workflow initialized. 14-phase pipeline started via Inngest.',
     });
   } catch (error) {

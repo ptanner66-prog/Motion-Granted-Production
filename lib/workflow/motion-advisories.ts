@@ -172,3 +172,139 @@ ${advisory.additionalContext}
 export function hasAdvisory(motionType: string): boolean {
   return getMotionAdvisory(motionType) !== null;
 }
+
+// ============================================================================
+// SP8: Detection & Generation API for Advisory Injector
+// ============================================================================
+
+/**
+ * Advisory with jurisdiction-specific statute references.
+ * Used by the advisory injector to attach advisories to Phase IX output.
+ */
+export interface Advisory {
+  id: string;
+  motionType: string;
+  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+  title: string;
+  statutes: string;
+  requirements: string[];
+  commonPitfalls: string[];
+  additionalContext: string;
+}
+
+/**
+ * Motion type detection patterns.
+ * Maps keywords in motion type strings and case descriptions to type identifiers.
+ */
+const DETECTION_PATTERNS: Array<{ type: string; patterns: RegExp[] }> = [
+  {
+    type: 'TRO',
+    patterns: [
+      /\btro\b/i,
+      /temporary\s+restraining\s+order/i,
+      /preliminary\s+injunction/i,
+      /\binjunctive\s+relief\b/i,
+    ],
+  },
+  {
+    type: 'ANTI_SLAPP',
+    patterns: [
+      /anti[_\-\s]?slapp/i,
+      /\bslapp\b/i,
+      /strategic\s+lawsuit\s+against\s+public\s+participation/i,
+    ],
+  },
+  {
+    type: 'MSJ',
+    patterns: [
+      /\bmsj\b/i,
+      /summary\s+judgment/i,
+      /motion\s+for\s+summary/i,
+      /partial\s+summary/i,
+    ],
+  },
+];
+
+/**
+ * Jurisdiction-specific statute references.
+ * Maps (motionType, jurisdiction) to the primary statute citation.
+ */
+const STATUTE_MAP: Record<string, Record<string, string>> = {
+  TRO: {
+    LA: 'C.C.P. Art. 3601-3613',
+    DEFAULT: 'FRCP 65',
+  },
+  ANTI_SLAPP: {
+    CA: 'CCP 425.16',
+    TX: 'TCPA Ch. 27',
+    DEFAULT: 'No federal anti-SLAPP statute; check state law',
+  },
+  MSJ: {
+    LA: 'C.C.P. Art. 966-967',
+    DEFAULT: 'FRCP 56',
+  },
+};
+
+/**
+ * Map from detected type identifier to the base advisory.
+ */
+const TYPE_TO_ADVISORY: Record<string, MotionAdvisory> = {
+  TRO: TRO_ADVISORY,
+  ANTI_SLAPP: ANTI_SLAPP_ADVISORY,
+  MSJ: MSJ_ADVISORY,
+};
+
+/**
+ * Detect which advisory-eligible motion types are present in the motion type
+ * string and/or case description.
+ *
+ * @param motionType - The order's motion type string (e.g., "Temporary Restraining Order")
+ * @param caseDescription - Optional case description text for additional detection
+ * @returns Array of detected type identifiers (e.g., ['TRO', 'MSJ'])
+ */
+export function detectMotionType(motionType: string, caseDescription?: string): string[] {
+  const searchText = `${motionType} ${caseDescription || ''}`;
+  const detected: string[] = [];
+
+  for (const { type, patterns } of DETECTION_PATTERNS) {
+    if (patterns.some(p => p.test(searchText))) {
+      detected.push(type);
+    }
+  }
+
+  return detected;
+}
+
+/**
+ * Generate jurisdiction-specific advisories for detected motion types.
+ *
+ * @param detectedTypes - Array of detected type identifiers from detectMotionType()
+ * @param jurisdiction - State abbreviation (e.g., 'LA', 'CA') or 'Federal'
+ * @returns Array of Advisory objects with statute references
+ */
+export function generateAdvisories(detectedTypes: string[], jurisdiction: string): Advisory[] {
+  const advisories: Advisory[] = [];
+
+  for (const type of detectedTypes) {
+    const baseAdvisory = TYPE_TO_ADVISORY[type];
+    if (!baseAdvisory) continue;
+
+    const statuteMap = STATUTE_MAP[type];
+    const statutes = statuteMap
+      ? (statuteMap[jurisdiction.toUpperCase()] || statuteMap['DEFAULT'] || '')
+      : '';
+
+    advisories.push({
+      id: `${type}_${jurisdiction.toUpperCase()}`,
+      motionType: baseAdvisory.motionType,
+      severity: baseAdvisory.severity,
+      title: baseAdvisory.title,
+      statutes,
+      requirements: baseAdvisory.requirements,
+      commonPitfalls: baseAdvisory.commonPitfalls,
+      additionalContext: baseAdvisory.additionalContext,
+    });
+  }
+
+  return advisories;
+}

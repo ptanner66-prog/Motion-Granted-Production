@@ -409,164 +409,36 @@ CRITICAL REQUIREMENTS:
 // ============================================================================
 
 /**
- * Start and optionally run the complete workflow for an order
- * This is the main orchestration entry point
+ * @deprecated SP8: This function is PERMANENTLY DISABLED.
+ * All workflow execution MUST go through Inngest via inngest.send("order/submitted").
+ * See: lib/workflow/automation-service.ts for the correct entry point.
  *
- * PHASE ENFORCEMENT: This function enforces strict phase ordering.
- * Phases cannot be skipped. All required phases must complete in order.
+ * This function existed as the pre-Inngest orchestration path.
+ * It was disabled in SP7 (Feb 2026) when all callers were migrated to Inngest.
+ * The function body was removed in SP8 to prevent accidental use.
  */
 export async function orchestrateWorkflow(
   orderId: string,
   options: {
-    autoRun?: boolean; // If true, runs all phases automatically
+    autoRun?: boolean;
     workflowPath?: WorkflowPath;
-    // NOTE: skipDocumentParsing has been REMOVED - phases cannot be skipped
   } = {}
 ): Promise<OperationResult<OrchestrationResult>> {
-  const supabase = await createClient();
+  const errorMessage = [
+    `[ORCHESTRATOR] FATAL: orchestrateWorkflow() is DEPRECATED and DISABLED.`,
+    `Called with orderId=${orderId}, options=${JSON.stringify(options)}`,
+    `All workflow execution must go through Inngest.`,
+    `Use: inngest.send({ name: "order/submitted", data: { orderId } })`,
+    `See: lib/workflow/automation-service.ts`,
+  ].join('\n');
 
-  console.log(`[ORCHESTRATOR] Starting workflow for order ${orderId}`);
+  console.error(errorMessage);
 
-  try {
-    // Step 1: Gather all order context
-    const contextResult = await gatherOrderContext(orderId);
-    if (!contextResult.success || !contextResult.data) {
-      return {
-        success: false,
-        error: contextResult.error || 'Failed to gather order context',
-      };
-    }
-
-    const orderContext = contextResult.data;
-
-    // Step 2: Parse documents - ALWAYS REQUIRED (no skip option)
-    // Document parsing is part of Phase II and cannot be bypassed
-    await parseOrderDocuments(orderId);
-    // Refresh parsed docs in context
-    const refreshedParsed = await getOrderParsedDocuments(orderId);
-    if (refreshedParsed.success && refreshedParsed.data) {
-      orderContext.documents.parsed = refreshedParsed.data.map(d => ({
-        fileName: d.document_id,
-        documentType: d.document_type || 'unknown',
-        summary: d.summary || '',
-        keyFacts: d.key_facts || [],
-        legalIssues: d.legal_issues || [],
-      }));
-    }
-
-    // Step 3: Determine motion type and get template
-    const motionCode = mapMotionTypeToCode(orderContext.motionType, orderContext.motionTier);
-    const workflowPath = options.workflowPath || 'path_a';
-    const motionTemplate = getTemplateForPath(motionCode, workflowPath);
-
-    // Step 4: Get or lookup motion type ID
-    let motionTypeId: string | null = null;
-
-    const { data: motionTypeData } = await supabase
-      .from('motion_types')
-      .select('id')
-      .eq('code', motionCode)
-      .single();
-
-    if (motionTypeData) {
-      motionTypeId = motionTypeData.id;
-    } else {
-      // Fallback to first motion type
-      const { data: fallback } = await supabase
-        .from('motion_types')
-        .select('id')
-        .limit(1)
-        .single();
-
-      if (fallback) {
-        motionTypeId = fallback.id;
-      }
-    }
-
-    if (!motionTypeId) {
-      return {
-        success: false,
-        error: 'No motion types configured in database',
-      };
-    }
-
-    // Step 5: Check if workflow already exists
-    const { data: existingWorkflow } = await supabase
-      .from('order_workflows')
-      .select('id, status, current_phase')
-      .eq('order_id', orderId)
-      .single();
-
-    let workflowId: string;
-
-    if (existingWorkflow) {
-      workflowId = existingWorkflow.id;
-    } else {
-      // Step 6: Build superprompt from order context
-      // NOTE: Actual phase prompts are loaded from /prompts/PHASE_*_v75.md files
-      // via phase-executors.ts. This superprompt is stored in metadata for reference only.
-      const superprompt = buildOrderSuperprompt({
-        orderContext,
-        motionTemplate,
-        workflowPath,
-      });
-
-      // Step 7: Start the workflow
-      const startResult = await startWorkflow({
-        orderId,
-        motionTypeId,
-        workflowPath,
-        metadata: {
-          superprompt,
-          orderContext: {
-            caseNumber: orderContext.caseNumber,
-            caseCaption: orderContext.caseCaption,
-            jurisdiction: orderContext.jurisdiction,
-            motionType: orderContext.motionType,
-            motionTier: orderContext.motionTier,
-          },
-        },
-      });
-
-      if (!startResult.success || !startResult.data || !startResult.data.workflowId) {
-        return {
-          success: false,
-          error: startResult.error || 'Failed to start workflow',
-        };
-      }
-
-      workflowId = startResult.data.workflowId;
-    }
-
-    // Step 7: Update order status to in_progress
-    await supabase
-      .from('orders')
-      .update({ status: 'in_progress' })
-      .eq('id', orderId);
-
-    // === EMAIL TRIGGER: Order Confirmed ===
-    // Fire-and-forget — email failure must not block the workflow
-    notifyWorkflowEvent('order_confirmed', orderId).catch(() => {});
-
-    // Workflow execution is handled by the Inngest pipeline
-    // (generateOrderWorkflow in workflow-orchestration.ts).
-    // The autoRun option is no longer supported here — the Inngest event
-    // "order/submitted" triggers the full 14-phase workflow automatically.
-    return {
-      success: true,
-      data: {
-        success: true,
-        workflowId,
-        status: 'started',
-        message: 'Workflow initialized. Execution is handled by the Inngest pipeline.',
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Orchestration failed',
-    };
-  }
+  return {
+    success: false,
+    error: 'orchestrateWorkflow is deprecated. Use Inngest workflow via automation-service.ts.',
+    data: undefined as unknown as OrchestrationResult,
+  };
 }
 
 /**
