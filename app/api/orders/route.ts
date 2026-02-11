@@ -15,7 +15,7 @@ const createOrderSchema = z.object({
   base_price: z.number().nullable(),
   turnaround: z.enum(['standard', 'rush_72', 'rush_48']),
   rush_surcharge: z.number().min(0),
-  total_price: z.number().min(0),
+  total_price: z.number().min(1, 'Total price must be at least $1'),
   filing_deadline: z.string().min(1, 'Filing deadline is required'),
   jurisdiction: z.string().min(1, 'Jurisdiction is required'),
   court_division: z.string().nullable().optional(),
@@ -233,7 +233,7 @@ export async function POST(req: Request) {
         console.error('Failed to send confirmation email:', err)
       })
     } else {
-      console.warn(`User ${user.id} has no email address, skipping confirmation email`)
+      console.warn('[Orders] User has no email address, skipping confirmation email')
     }
 
     // NOTE: Automation is NOT started here. It is triggered by:

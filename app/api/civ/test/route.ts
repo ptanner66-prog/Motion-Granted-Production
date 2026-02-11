@@ -126,8 +126,7 @@ export async function POST(request: Request) {
       {
         success: false,
         duration_ms: duration,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack?.split('\n').slice(0, 5) : undefined,
+        error: 'CIV pipeline test failed. Check server logs for details.',
       },
       { status: 500 }
     );

@@ -21,7 +21,15 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Require explicit confirmation
-    const body = await request.json().catch(() => ({}));
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid request body. Must include confirmDelete: "DELETE MY ACCOUNT"' },
+        { status: 400 }
+      );
+    }
     if (!body.confirmDelete || body.confirmDelete !== 'DELETE MY ACCOUNT') {
       return NextResponse.json(
         { error: 'Must include confirmDelete: "DELETE MY ACCOUNT" in request body' },
