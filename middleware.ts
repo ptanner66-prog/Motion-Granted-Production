@@ -104,7 +104,6 @@ export async function middleware(request: NextRequest) {
   const clientId = request.headers.get('x-vercel-forwarded-for')?.split(',')[0] ||
     request.headers.get('x-forwarded-for')?.split(',')[0] ||
     request.headers.get('x-real-ip') ||
-    request.ip ||
     'unknown';
 
   // ============================================================================

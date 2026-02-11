@@ -199,6 +199,8 @@ function buildPhaseInput(state: WorkflowState): PhaseInput {
     firmEmail: state.orderContext.firmEmail || '',
     firmFullAddress: state.orderContext.firmFullAddress || '',
     filingDeadline: state.orderContext.filingDeadline ?? undefined,
+    orderNumber: state.orderContext.orderNumber || '',
+    division: state.orderContext.courtDivision || undefined,
   };
 }
 

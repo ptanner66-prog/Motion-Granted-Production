@@ -71,6 +71,11 @@ export interface PhaseInput {
   firmFullAddress: string;  // Pre-formatted: "123 Main St\nBaton Rouge, LA 70801"
   // Extended case data for complete motion generation
   filingDeadline?: string;
+  orderNumber?: string;
+  court?: string;
+  parish?: string;
+  division?: string;
+  clientRole?: string;
 }
 
 export interface PhaseOutput {
@@ -696,7 +701,7 @@ JURISDICTION: ${input.jurisdiction}
 Provide your Phase II legal framework analysis as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('II', input.tier),
+      model: getModel('II', input.tier) ?? MODELS.SONNET,
       max_tokens: 64000, // Phase II: Legal framework analysis
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -874,7 +879,7 @@ ${JSON.stringify(phaseIIOutput, null, 2)}
 Provide your Phase III evidence strategy as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('III', input.tier),
+      model: getModel('III', input.tier) ?? MODELS.SONNET,
       max_tokens: 64000, // Phase III: Extended legal research
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -1410,7 +1415,7 @@ REMINDER - USE THESE EXACT VALUES IN THE MOTION:
 
 Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON.`;
 
-    const model = getModel('V', input.tier);
+    const model = getModel('V', input.tier) ?? MODELS.SONNET;
     console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 64000`);
     console.log(`[Phase V] User message length: ${userMessage.length} chars`);
 
@@ -2544,7 +2549,7 @@ OUTPUT FORMAT (JSON only):
 }`;
 
       const cleanupResponse = await createMessageWithStreaming(client, {
-        model: getModel('V.1', input.tier),
+        model: getModel('V.1', input.tier) ?? MODELS.SONNET,
         max_tokens: 64000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
@@ -2721,7 +2726,7 @@ JURISDICTION: ${input.jurisdiction}
 Analyze potential opposition. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
-      model: getModel('VI', input.tier),
+      model: getModel('VI', input.tier) ?? MODELS.SONNET,
       max_tokens: 64000, // Phase VI: Opposition anticipation with 8K thinking (Opus for B/C)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -2850,7 +2855,7 @@ Provide your judicial evaluation as JSON.`;
 
     // PHASE VII: ALWAYS Opus, ALWAYS Extended Thinking (10K tokens)
     const response = await createMessageWithStreaming(client, {
-      model: getModel('VII', input.tier), // Always Opus
+      model: getModel('VII', input.tier) ?? MODELS.SONNET, // Always Opus
       max_tokens: 64000, // Phase VII: Judge simulation (always Opus with extended thinking)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -2928,7 +2933,7 @@ ${JSON.stringify(phaseVIIIOutput, null, 2)}
 Verify any new citations. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('VII.1', input.tier),
+      model: getModel('VII.1', input.tier) ?? MODELS.SONNET,
       max_tokens: 64000, // Phase VII.1: Revision implementation
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -3127,7 +3132,7 @@ ${JSON.stringify(phaseVIIOutput, null, 2)}
 Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in the signature block. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
-      model: getModel('VIII', input.tier),
+      model: getModel('VIII', input.tier) ?? MODELS.SONNET,
       max_tokens: 64000, // Phase VIII: Final draft with 8K thinking (Opus for B/C)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -3412,7 +3417,7 @@ ${JSON.stringify(finalMotion, null, 2)}
 Generate supporting documents. The Certificate of Service MUST include the exact attorney signature block shown above. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('IX', input.tier),
+      model: getModel('IX', input.tier) ?? MODELS.SONNET,
       max_tokens: 64000, // Phase IX: Document formatting and assembly
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -3510,7 +3515,7 @@ ${JSON.stringify(phaseVOutput, null, 2)}
 Verify Separate Statement complies with ${formatRules}. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('IX.1', input.tier),
+      model: getModel('IX.1', input.tier) ?? MODELS.SONNET,
       max_tokens: 64000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
