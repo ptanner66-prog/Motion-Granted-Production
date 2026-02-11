@@ -15,7 +15,7 @@ Sentry.init({
 
   environment: process.env.NODE_ENV || 'development',
 
-  beforeSend(event) {
+  beforeSend(event: Sentry.ErrorEvent) {
     if (event.user) {
       delete event.user.email;
       delete event.user.username;

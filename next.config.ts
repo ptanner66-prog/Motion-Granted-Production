@@ -91,5 +91,7 @@ export default withSentryConfig(nextConfig, {
   disableLogger: true,
 
   // Hide source maps from client bundles
-  hideSourceMaps: true,
+  sourcemaps: {
+    disable: true,
+  },
 });

@@ -21,7 +21,7 @@ Sentry.init({
   environment: process.env.NODE_ENV || 'development',
 
   // PII stripping — never send user data to Sentry
-  beforeSend(event) {
+  beforeSend(event: Sentry.ErrorEvent) {
     // Strip user data
     if (event.user) {
       delete event.user.email;
