@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     }
 
     // Fire Inngest event to start the 14-phase pipeline
-    const { data: order } = await supabase
+    const { data: order, error: orderError } = await supabase
       .from('orders')
       .select('id, filing_deadline, status')
       .eq('id', orderId)
