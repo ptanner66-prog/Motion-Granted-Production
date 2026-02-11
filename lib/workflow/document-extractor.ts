@@ -300,7 +300,7 @@ export async function extractOrderDocuments(
       .from('documents')
       .select('id, file_name, file_type, file_url')
       .eq('order_id', orderId)
-      .eq('is_deliverable', false);
+      .neq('is_deliverable', true);
 
     if (docsError) {
       return { success: false, error: docsError.message };

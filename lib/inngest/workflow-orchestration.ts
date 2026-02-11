@@ -1243,7 +1243,6 @@ export const generateOrderWorkflow = inngest.createFunction(
     // BUG-04: HOLD CHECKPOINT AFTER PHASE III — ENHANCED DETECTION
     // ========================================================================
     // DEFENSIVE CODING: Check BOTH snake_case AND camelCase field names.
-    // Also parse narrative text for HOLD signal keywords as backup.
     const phaseIIIOutput = phaseIIIResult?.output as Record<string, unknown> | undefined;
 
     // Check all possible field name variants for hold signal
@@ -1251,13 +1250,7 @@ export const generateOrderWorkflow = inngest.createFunction(
     const holdFromSnakeCase = phaseIIIOutput?.hold_recommended === true;
     const holdFromCamelRecommended = phaseIIIOutput?.holdRecommended === true;
 
-    // BUG-04: Keyword-based backup detection — parse Phase III narrative
-    const phaseIIINarrative = JSON.stringify(phaseIIIOutput || '').toUpperCase();
-    const holdKeywords = ['CRITICAL', 'EVIDENCE GAPS', 'HOLD', 'MISSING', 'INSUFFICIENT'];
-    const keywordCount = holdKeywords.filter(kw => phaseIIINarrative.includes(kw)).length;
-    const holdFromKeywords = keywordCount >= 2; // At least 2 keywords = likely HOLD signal
-
-    const holdRequired = holdFromCamelCase || holdFromSnakeCase || holdFromCamelRecommended || holdFromKeywords;
+    const holdRequired = holdFromCamelCase || holdFromSnakeCase || holdFromCamelRecommended;
     const holdReason = (
       phaseIIIOutput?.holdReason ??
       phaseIIIOutput?.hold_reason ??
