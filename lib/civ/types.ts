@@ -190,6 +190,8 @@ export interface QuoteVerificationOutput {
   result: QuoteVerificationResult;
   actionTaken: 'NONE' | 'AUTO_CORRECTED' | 'FLAGGED' | 'PARAPHRASED';
   correctedQuote?: string;
+  ellipsisIssues?: string[];
+  ellipsisWarnings?: string[];
   proceedToStep5: boolean;
 }
 
