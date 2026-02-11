@@ -17,6 +17,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { HOLD_TIMEOUTS } from '@/lib/config/workflow-config';
 import type { OperationResult } from '@/types/automation';
 
 // ============================================================================
@@ -725,10 +726,10 @@ export function isCheckpointPhase(phaseNumber: number, workflowPath: string): Ch
  * 2. PROCEED_WITH_ACKNOWLEDGMENT - Confirm risk understood
  * 3. CANCEL_ORDER - Full refund
  *
- * Timers:
- * - 48hr reminder email
- * - 7-day admin escalation
- * - 14-day auto-cancel with refund
+ * Timers (canonical values from HOLD_TIMEOUTS):
+ * - 24hr reminder email
+ * - 72hr admin escalation
+ * - 7-day auto-cancel with refund
  */
 export async function triggerHoldCheckpoint(
   workflowId: string,
@@ -741,9 +742,9 @@ export async function triggerHoldCheckpoint(
 
   try {
     const now = new Date();
-    const reminderAt = new Date(now.getTime() + 48 * 60 * 60 * 1000); // 48 hours
-    const escalationAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    const autoCancelAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000); // 14 days
+    const reminderAt = new Date(now.getTime() + HOLD_TIMEOUTS.REMINDER_1_HOURS * 60 * 60 * 1000); // 24 hours
+    const escalationAt = new Date(now.getTime() + HOLD_TIMEOUTS.ESCALATION_HOURS * 60 * 60 * 1000); // 72 hours
+    const autoCancelAt = new Date(now.getTime() + HOLD_TIMEOUTS.AUTO_REFUND_DAYS * 24 * 60 * 60 * 1000); // 7 days
 
     const holdData: HoldCheckpointData = {
       checkpoint: 'HOLD',
@@ -812,7 +813,7 @@ export async function triggerHoldCheckpoint(
         ts: reminderAt.getTime(),
       });
 
-      // 7-day escalation
+      // 72hr escalation
       await inngest.send({
         name: 'workflow/hold.escalation',
         data: {
@@ -822,7 +823,7 @@ export async function triggerHoldCheckpoint(
         ts: escalationAt.getTime(),
       });
 
-      // 14-day auto-cancel
+      // 7-day auto-cancel
       await inngest.send({
         name: 'workflow/hold.auto-cancel',
         data: {
