@@ -212,16 +212,28 @@ interface NotificationPayload {
 
 /**
  * Send notification to admin channels.
- * In production, integrate with Slack/email/PagerDuty.
+ * Sends email alerts for HIGH/CRITICAL violations in production.
  */
 async function sendAdminNotification(payload: NotificationPayload): Promise<void> {
-  // Log for now - implement actual notification in production
-  if (process.env.NODE_ENV === 'production') {
-    // TODO: Integrate with notification service
-    // await sendSlackAlert(payload);
-    // await sendEmail(payload);
+  const adminEmail = process.env.ADMIN_ALERT_EMAIL || 'admin@motiongranted.com';
 
-    // For critical violations, could also pause the workflow
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      const { sendAlertEmail } = await import('@/lib/monitoring/alert-sender');
+      await sendAlertEmail({
+        to: adminEmail,
+        subject: `[${payload.severity}] Workflow Violation: ${payload.type}`,
+        level: payload.severity === 'CRITICAL' ? 'FATAL' : 'ERROR',
+        category: 'WORKFLOW_ERROR',
+        message: `Violation detected: ${payload.type}${payload.orderId ? ` (Order: ${payload.orderId})` : ''}`,
+        orderId: payload.orderId,
+        metadata: payload,
+      });
+    } catch (emailError) {
+      console.error('[ViolationAlerts] Failed to send admin alert email:', emailError);
+    }
+
+    // For critical violations, also pause the workflow
     if (payload.severity === 'CRITICAL' && payload.orderId) {
       await pauseWorkflowForReview(payload.orderId);
     }

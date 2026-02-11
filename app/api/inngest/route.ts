@@ -18,6 +18,12 @@ import {
   handleCheckpointApproval,
 } from "@/lib/inngest/functions";
 
+// Conflict checking
+import { conflictCheckJob } from "@/lib/inngest/conflict-check-job";
+
+// Data retention cron jobs
+import { sendDeletionReminders, autoDeleteExpired } from "@/lib/inngest/retention-jobs";
+
 /**
  * Inngest API Route Handler
  *
@@ -41,5 +47,10 @@ export const { GET, POST, PUT } = serve({
     deadlineCheck,
     updateQueuePositions,
     handleCheckpointApproval,
+    // CONFLICT CHECK: Runs on order/created events
+    conflictCheckJob,
+    // RETENTION: Scheduled cron jobs for data lifecycle
+    sendDeletionReminders,
+    autoDeleteExpired,
   ],
 });
