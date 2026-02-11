@@ -169,6 +169,14 @@ interface DeliverableResult {
  * CRITICAL: Include ALL case data so phases can inject it into prompts
  */
 function buildPhaseInput(state: WorkflowState): PhaseInput {
+  const parsedSummaries = state.orderContext.documents.parsed.map((d) => d.summary).filter(Boolean);
+  const rawDocText = state.orderContext.documents.raw;
+  const documents = parsedSummaries.length > 0
+    ? parsedSummaries
+    : rawDocText
+      ? [rawDocText]
+      : [];
+
   return {
     orderId: state.orderId,
     workflowId: state.workflowId,
@@ -182,7 +190,7 @@ function buildPhaseInput(state: WorkflowState): PhaseInput {
     proceduralHistory: state.orderContext.proceduralHistory,
     instructions: state.orderContext.instructions,
     previousPhaseOutputs: state.phaseOutputs as Record<WorkflowPhaseCode, unknown>,
-    documents: state.orderContext.documents.parsed.map((d) => d.summary),
+    documents,
 
     // Party information for caption and signature blocks
     parties: state.orderContext.parties.map((p) => ({
