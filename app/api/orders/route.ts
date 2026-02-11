@@ -6,6 +6,7 @@ import { sendEmail } from '@/lib/resend'
 import { OrderConfirmationEmail } from '@/emails/order-confirmation'
 import { formatMotionType } from '@/config/motion-types'
 import { startOrderAutomation } from '@/lib/workflow/automation-service'
+import { isStateAcceptingOrders } from '@/lib/admin/state-toggle'
 
 // Server-side validation schema for order creation
 const createOrderSchema = z.object({
@@ -89,6 +90,21 @@ export async function POST(req: Request) {
       )
     }
     const body = parseResult.data
+
+    // Server-side jurisdiction validation: verify the selected state is accepting orders
+    const jurisdictionValue = body.jurisdiction.toUpperCase().trim()
+    // Extract state code: handle both "LA" format and "Louisiana State Court" format
+    const stateCodeMatch = jurisdictionValue.match(/^([A-Z]{2})(?:\s|$)/)
+    if (stateCodeMatch) {
+      const stateCode = stateCodeMatch[1]
+      const stateAccepting = await isStateAcceptingOrders(supabase, stateCode, body.motion_type)
+      if (!stateAccepting) {
+        return NextResponse.json(
+          { error: `We are not currently accepting orders for ${stateCode}. Please contact support@motiongranted.com.` },
+          { status: 400 }
+        )
+      }
+    }
 
     // Create Stripe PaymentIntent if Stripe is configured
     // SECURITY FIX: Use crypto.randomUUID() for cryptographically secure idempotency key

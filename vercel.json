@@ -37,5 +37,15 @@
     "app/api/settings/legal-research/test/route.ts": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/hold-enforcer",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/daily-cleanup",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }
