@@ -76,7 +76,26 @@ async function logInvalidWebhookAttempt(
         },
       });
 
-      // TODO: Send alert notification to admin (email/Slack)
+      // Send security alert to admin
+      try {
+        const { sendAlertEmail } = await import('@/lib/monitoring/alert-sender');
+        const adminEmail = process.env.ADMIN_ALERT_EMAIL || 'admin@motiongranted.com';
+        await sendAlertEmail({
+          to: adminEmail,
+          subject: `[SECURITY] Suspected Stripe webhook attack — ${count} invalid attempts`,
+          level: 'FATAL',
+          category: 'SYSTEM_ERROR',
+          message: `${count} invalid Stripe webhook attempts detected in the last hour. Possible webhook replay/tampering attack.`,
+          metadata: {
+            invalidAttempts: count,
+            timeWindow: '1 hour',
+            clientIP,
+            source: 'stripe',
+          },
+        });
+      } catch (alertError) {
+        console.error('[Stripe Webhook] Failed to send security alert:', alertError);
+      }
     }
   } catch (error) {
     console.error('[Stripe Webhook] Failed to log invalid attempt:', error);

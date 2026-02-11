@@ -565,8 +565,28 @@ export async function processScheduledExport(
 
     console.log(`[Export] Completed export ${exportId} with ${result.recordCount} records`);
 
-    // TODO: Send email to recipient with download link
-    // await sendExportEmail(exportRecord.recipient_email, urlData?.signedUrl);
+    // Send email to recipient with download link
+    if (exportRecord.recipient_email && urlData?.signedUrl) {
+      try {
+        const { sendEmailAsync } = await import('@/lib/email/email-service');
+        sendEmailAsync(
+          exportRecord.recipient_email,
+          `Your Motion Granted Export is Ready`,
+          `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1a1a1a;">Export Ready</h1>
+            <p>Your requested data export is complete.</p>
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Records:</strong> ${result.recordCount}</p>
+              <p><strong>Format:</strong> ${exportRecord.export_type?.toUpperCase() || 'CSV'}</p>
+            </div>
+            <p><a href="${urlData.signedUrl}" style="display: inline-block; background: #0066cc; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none;">Download Export</a></p>
+            <p style="font-size: 12px; color: #666;">This download link expires in 24 hours.</p>
+          </div>`
+        );
+      } catch (emailError) {
+        console.warn('[Export] Failed to send export email:', emailError);
+      }
+    }
 
     return true;
   } catch (error) {

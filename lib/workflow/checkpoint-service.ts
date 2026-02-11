@@ -142,8 +142,34 @@ export async function triggerCheckpoint(
     // Create handoff file for checkpoint
     await createCheckpointHandoff(workflowId, checkpoint, checkpointData);
 
-    // TODO: Send notification email to customer
+    // Send notification email to customer
     console.log(`[CHECKPOINT] ${checkpoint} triggered for workflow ${workflowId}`);
+    try {
+      const { data: workflow } = await supabase
+        .from('order_workflows')
+        .select('order_id')
+        .eq('id', workflowId)
+        .single();
+
+      if (workflow?.order_id) {
+        const checkpointNotificationMap: Record<string, string> = {
+          CP1: 'checkpoint_cp1',
+          CP2: 'checkpoint_cp2',
+          CP3: 'checkpoint_cp3',
+        };
+        const notificationType = checkpointNotificationMap[checkpoint];
+        if (notificationType) {
+          const { queueOrderNotification } = await import('@/lib/automation/notification-sender');
+          await queueOrderNotification(
+            workflow.order_id,
+            notificationType as import('@/types/automation').NotificationType
+          );
+        }
+      }
+    } catch (emailError) {
+      // Email failure must not block checkpoint creation
+      console.warn(`[CHECKPOINT] Failed to queue notification for ${checkpoint}:`, emailError);
+    }
 
     return { success: true };
   } catch (error) {
