@@ -76,6 +76,12 @@ function buildDocument(rules: FormattingRules, options: DocumentOptions): Docume
   // Build footer if required
   const footers = buildFooters(rules, options);
 
+  // Merge section properties with optional headers/footers
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const properties: any = { ...sectionProperties };
+  if (headers) properties.headers = headers;
+  if (footers) properties.footers = footers;
+
   return new Document({
     styles: {
       default: {
@@ -94,11 +100,7 @@ function buildDocument(rules: FormattingRules, options: DocumentOptions): Docume
     },
     sections: [
       {
-        properties: {
-          ...sectionProperties,
-          ...(headers ? { headers } : {}),
-          ...(footers ? { footers } : {}),
-        },
+        properties,
         children: options.content,
       },
     ],
