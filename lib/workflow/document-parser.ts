@@ -580,7 +580,7 @@ export async function parseOrderDocuments(
       .from('documents')
       .select('id, file_url, file_name, file_type')
       .eq('order_id', orderId)
-      .eq('is_deliverable', false);
+      .neq('is_deliverable', true);
 
     if (docsError) {
       return { success: false, error: docsError.message };

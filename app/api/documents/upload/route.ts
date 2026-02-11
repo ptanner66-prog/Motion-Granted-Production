@@ -233,6 +233,7 @@ export async function POST(req: Request) {
           file_url: filePath, // Store file path, not signed URL
           document_type: documentType || 'other',
           uploaded_by: user.id,
+          is_deliverable: false,
         })
 
       if (dbError) {
