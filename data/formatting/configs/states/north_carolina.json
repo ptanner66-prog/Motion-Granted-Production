@@ -1,0 +1,109 @@
+{
+  "metadata": {
+    "stateCode": "NC",
+    "stateName": "North Carolina",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "4th Circuit",
+    "sources": [
+      "N.C. R. Civ. P. 10(a) (caption format)",
+      "N.C. R. Civ. P. 7(b) (motion requirements)",
+      "N.C. Gen. Stat. \u00a7 7A-49.5 (e-filing)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "STATE OF NORTH CAROLINA, {COUNTY} COUNTY, IN THE GENERAL COURT OF JUSTICE, SUPERIOR COURT DIVISION",
+    "caseNumberLabel": "File No.",
+    "sampleTemplate": "STATE OF NORTH CAROLINA\n{COUNTY} COUNTY\n\nIN THE GENERAL COURT OF JUSTICE\nSUPERIOR COURT DIVISION\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nFile No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of North Carolina that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "NC eCourts",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "ednc": {
+      "name": "Eastern District of North Carolina",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["E.D.N.C. L.R. 7.1 (page limits)"]
+    },
+    "mdnc": {
+      "name": "Middle District of North Carolina",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["M.D.N.C. L.R. 7.1 (page limits)"]
+    },
+    "wdnc": {
+      "name": "Western District of North Carolina",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["W.D.N.C. L.R. 7.1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "North Carolina uses 'File No.' as the case label",
+    "General Court of Justice encompasses Superior Court Division and District Court Division",
+    "Three federal districts — Eastern (Raleigh), Middle (Greensboro), Western (Charlotte)"
+  ]
+}

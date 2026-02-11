@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "stateCode": "MI",
+    "stateName": "Michigan",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "6th Circuit",
+    "sources": [
+      "MCR 2.113 (caption format)",
+      "MCR 2.119 (motion practice)",
+      "MCR 1.109 (e-filing)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE CIRCUIT COURT FOR THE COUNTY OF {COUNTY}",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "IN THE CIRCUIT COURT FOR THE COUNTY OF {COUNTY}\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCase No. {CASE_NUMBER}\n\nHon. {JUDGE_NAME}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of Michigan that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "MiFILE",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "edmi": {
+      "name": "Eastern District of Michigan",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["E.D. Mich. L.R. 7.1 (page limits)"]
+    },
+    "wdmi": {
+      "name": "Western District of Michigan",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["W.D. Mich. L.R. 7.1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Michigan captions typically include the judge's name",
+    "Circuit Court is the trial court of general jurisdiction",
+    "Two federal districts — Eastern (Detroit) and Western (Grand Rapids)"
+  ]
+}

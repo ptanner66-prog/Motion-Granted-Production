@@ -1,0 +1,113 @@
+{
+  "metadata": {
+    "stateCode": "IL",
+    "stateName": "Illinois",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "7th Circuit",
+    "sources": [
+      "Ill. Sup. Ct. R. 10-1 (formatting)",
+      "735 ILCS 5/2-606 (verification requirements)",
+      "Ill. Sup. Ct. R. 11 (signing requirements)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE CIRCUIT COURT OF {COUNTY} COUNTY, ILLINOIS",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "IN THE CIRCUIT COURT OF {COUNTY} COUNTY, ILLINOIS\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCase No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "Under penalties as provided by law pursuant to Section 1-109 of the Code of Civil Procedure, I, {NAME}, certify that the statements set forth in this instrument are true and correct, except as to matters therein stated to be on information and belief, and as to such matters, I certify as aforesaid that I verily believe the same to be true. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "firstPage": {
+    "topMarginDXA": 2880,
+    "topMarginInches": 2.0
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Odyssey eFileIL",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "ndil": {
+      "name": "Northern District of Illinois",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["N.D. Ill. L.R. 7.1 (page limits)"]
+    },
+    "cdil": {
+      "name": "Central District of Illinois",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["C.D. Ill. L.R. 7.1 (page limits)"]
+    },
+    "sdil": {
+      "name": "Southern District of Illinois",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["S.D. Ill. L.R. 7.1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Illinois has a 2-inch first page top margin for court use",
+    "Illinois uses Section 1-109 certification instead of standard declaration language",
+    "Cook County (Chicago) may have additional local rules — check individual judge requirements"
+  ]
+}

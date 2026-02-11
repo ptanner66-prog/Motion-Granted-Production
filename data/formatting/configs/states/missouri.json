@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "stateCode": "MO",
+    "stateName": "Missouri",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "8th Circuit",
+    "sources": [
+      "Mo. Sup. Ct. R. 55.03 (formatting requirements)",
+      "Mo. Sup. Ct. R. 55.03(a) (13-point font)",
+      "Mo. Sup. Ct. R. 55.03(b) (1.5 line spacing)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 13,
+    "lineSpacing": "1.5"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE CIRCUIT COURT OF {COUNTY} COUNTY, STATE OF MISSOURI",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "IN THE CIRCUIT COURT OF {COUNTY} COUNTY\nSTATE OF MISSOURI\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCase No. {CASE_NUMBER}\n\nDivision {DIVISION}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE} in {COUNTY} County, Missouri.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Show-Me Courts",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "edmo": {
+      "name": "Eastern District of Missouri",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["E.D. Mo. L.R. 4.01 (page limits)"]
+    },
+    "wdmo": {
+      "name": "Western District of Missouri",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["W.D. Mo. L.R. 7.0 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Missouri REQUIRES 13-point font — different from most states' 12-point requirement",
+    "Missouri uses 1.5 line spacing instead of double spacing",
+    "St. Louis City is an independent city with its own Circuit Court — not in a county"
+  ]
+}

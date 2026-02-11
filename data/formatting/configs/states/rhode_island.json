@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "stateCode": "RI",
+    "stateName": "Rhode Island",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "1st Circuit",
+    "sources": [
+      "R.I. Super. R. Civ. P. 10(a) (caption format)",
+      "R.I. Super. R. Civ. P. 7(b) (motion requirements)",
+      "R.I. Gen. Laws \u00a7 8-15-5 (e-filing)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "STATE OF RHODE ISLAND, {COUNTY} COUNTY SUPERIOR COURT",
+    "caseNumberLabel": "C.A. No.",
+    "sampleTemplate": "STATE OF RHODE ISLAND\n{COUNTY} COUNTY SUPERIOR COURT\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nC.A. No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of Rhode Island that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Rhode Island e-Filing",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dri": {
+      "name": "District of Rhode Island",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D.R.I. L.R. 7.1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Rhode Island uses 'C.A. No.' (Civil Action Number) as the case label",
+    "Superior Court is the trial court of general jurisdiction",
+    "Providence County handles the majority of civil filings"
+  ]
+}

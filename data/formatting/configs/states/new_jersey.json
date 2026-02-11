@@ -1,0 +1,93 @@
+{
+  "metadata": {
+    "stateCode": "NJ",
+    "stateName": "New Jersey",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "3rd Circuit",
+    "sources": [
+      "N.J. Ct. R. 1:4-1 (caption format)",
+      "N.J. Ct. R. 1:6-2 (motion requirements)",
+      "N.J. Ct. R. 1:4-9 (3-inch margin first page)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "SUPERIOR COURT OF NEW JERSEY, {DIVISION} DIVISION, {COUNTY} COUNTY",
+    "caseNumberLabel": "Docket No.",
+    "sampleTemplate": "SUPERIOR COURT OF NEW JERSEY\n{DIVISION} DIVISION\n{COUNTY} COUNTY\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nDocket No. {CASE_NUMBER}\n\nCivil Action\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, certify that the foregoing statements made by me are true. I am aware that if any of the foregoing statements made by me are willfully false, I am subject to punishment. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "firstPage": {
+    "topMarginDXA": 4320,
+    "topMarginInches": 3.0
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "eCourts",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dnj": {
+      "name": "District of New Jersey",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D.N.J. L.R. 7.2 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "New Jersey has a 3-inch top margin on first page for court use",
+    "NJ uses certification in lieu of affidavit per N.J. Ct. R. 1:4-4",
+    "Superior Court has three divisions: Law, Chancery, and Family — caption must specify which"
+  ]
+}

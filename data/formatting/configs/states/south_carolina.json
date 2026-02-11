@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "stateCode": "SC",
+    "stateName": "South Carolina",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "4th Circuit",
+    "sources": [
+      "S.C.R.C.P. 10(a) (caption format)",
+      "S.C.R.C.P. 7(b) (motion requirements)",
+      "S.C. Sup. Ct. Admin. Order (1.5 line spacing)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "1.5"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "STATE OF SOUTH CAROLINA, COUNTY OF {COUNTY}, IN THE COURT OF COMMON PLEAS, {JUDICIAL_CIRCUIT} JUDICIAL CIRCUIT",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "STATE OF SOUTH CAROLINA\nCOUNTY OF {COUNTY}\n\nIN THE COURT OF COMMON PLEAS\n{JUDICIAL_CIRCUIT} JUDICIAL CIRCUIT\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCase No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of South Carolina that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Odyssey",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dsc": {
+      "name": "District of South Carolina",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D.S.C. L.R. 7.05 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "South Carolina uses 1.5 line spacing instead of double spacing",
+    "Court of Common Pleas is the trial court of general jurisdiction for civil matters",
+    "Caption includes judicial circuit designation"
+  ]
+}

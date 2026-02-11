@@ -1,0 +1,103 @@
+{
+  "metadata": {
+    "stateCode": "IA",
+    "stateName": "Iowa",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "8th Circuit",
+    "sources": [
+      "Iowa R. Civ. P. 1.301 (caption format)",
+      "Iowa R. Civ. P. 1.431 (motion requirements)",
+      "Iowa Ct. R. 16.302 (e-filing)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE IOWA DISTRICT COURT FOR {COUNTY} COUNTY",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "IN THE IOWA DISTRICT COURT\nFOR {COUNTY} COUNTY\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCase No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of Iowa that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Iowa EDMS (Electronic Document Management System)",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {
+    "caseNumberPrefix": {
+      "note": "Iowa civil case numbers use prefixes: EQCV (equity), LACV (law), FECR (felony criminal)"
+    }
+  },
+  "federalDistricts": {
+    "ndia": {
+      "name": "Northern District of Iowa",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["N.D. Iowa L.R. 7(g) (page limits)"]
+    },
+    "sdia": {
+      "name": "Southern District of Iowa",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["S.D. Iowa L.R. 7(g) (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Iowa uses case number prefixes: EQCV for equity, LACV for law actions, FECR for criminal",
+    "Two federal districts — Northern (Cedar Rapids) and Southern (Des Moines)",
+    "Iowa District Court format puts 'IOWA' before 'DISTRICT COURT'"
+  ]
+}

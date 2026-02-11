@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "stateCode": "AR",
+    "stateName": "Arkansas",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "8th Circuit",
+    "sources": [
+      "Ark. R. Civ. P. 10(a) (caption format)",
+      "Ark. R. Civ. P. 11 (signing requirements)",
+      "Ark. Code § 16-46-101 (oath requirements)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE CIRCUIT COURT OF {COUNTY} COUNTY, ARKANSAS",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "IN THE CIRCUIT COURT OF {COUNTY} COUNTY, ARKANSAS\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCase No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "affidavit",
+    "language": "Before me, the undersigned Notary Public in and for the State of Arkansas, personally appeared {NAME}, who being duly sworn, deposes and says that the facts set forth in the foregoing {DOCUMENT_TYPE} are true and correct to the best of their knowledge, information, and belief.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "eFlex",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "edar": {
+      "name": "Eastern District of Arkansas",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["E.D. Ark. L.R. 7.2 (page limits)"]
+    },
+    "wdar": {
+      "name": "Western District of Arkansas",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["W.D. Ark. L.R. 7.2 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Arkansas requires affidavit jurat with notarization for state court filings",
+    "Circuit Court handles both civil and criminal matters of general jurisdiction",
+    "Two federal districts — check local rules for each"
+  ]
+}

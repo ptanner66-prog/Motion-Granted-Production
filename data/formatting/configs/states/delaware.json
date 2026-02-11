@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "stateCode": "DE",
+    "stateName": "Delaware",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "3rd Circuit",
+    "sources": [
+      "Del. Super. Ct. Civ. R. 107 (formatting requirements)",
+      "Del. Super. Ct. Admin. Dir. 2011-2 (font requirements — 14pt)",
+      "Del. Super. Ct. Civ. R. 10(a) (caption)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 14,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE SUPERIOR COURT OF THE STATE OF DELAWARE IN AND FOR {COUNTY} COUNTY",
+    "caseNumberLabel": "C.A. No.",
+    "sampleTemplate": "IN THE SUPERIOR COURT OF THE STATE OF DELAWARE\nIN AND FOR {COUNTY} COUNTY\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nC.A. No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of Delaware that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "File & ServeXpress",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dde": {
+      "name": "District of Delaware",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D. Del. L.R. 7.1.3 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Delaware Superior Court REQUIRES 14-point font — this is larger than most states",
+    "C.A. No. (Civil Action Number) is the standard case label",
+    "Delaware Chancery Court has separate rules — this config covers Superior Court only"
+  ]
+}

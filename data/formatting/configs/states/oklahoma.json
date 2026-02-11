@@ -1,0 +1,113 @@
+{
+  "metadata": {
+    "stateCode": "OK",
+    "stateName": "Oklahoma",
+    "confidence": 0.95,
+    "lastUpdated": "2026-02-11",
+    "circuit": "10th Circuit",
+    "sources": [
+      "12 O.S. \u00a7 2010 (caption format)",
+      "12 O.S. \u00a7 2007 (motion requirements)",
+      "Okla. Sup. Ct. R. 1.4 (2-inch first page margin)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE DISTRICT COURT OF {COUNTY} COUNTY, STATE OF OKLAHOMA",
+    "caseNumberLabel": "Case No.",
+    "sampleTemplate": "IN THE DISTRICT COURT OF {COUNTY} COUNTY\nSTATE OF OKLAHOMA\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCase No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of Oklahoma that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "firstPage": {
+    "topMarginDXA": 2880,
+    "topMarginInches": 2.0
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Oklahoma e-Filing",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "ndok": {
+      "name": "Northern District of Oklahoma",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["N.D. Okla. L.R. 7.1 (page limits)"]
+    },
+    "edok": {
+      "name": "Eastern District of Oklahoma",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["E.D. Okla. L.R. 7.1 (page limits)"]
+    },
+    "wdok": {
+      "name": "Western District of Oklahoma",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["W.D. Okla. L.R. 7.1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Oklahoma has a 2-inch first page top margin for court use",
+    "District Court is the trial court of general jurisdiction",
+    "Three federal districts — Northern (Tulsa), Eastern (Muskogee), Western (Oklahoma City)"
+  ]
+}

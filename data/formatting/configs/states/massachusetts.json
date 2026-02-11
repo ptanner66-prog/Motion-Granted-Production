@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "stateCode": "MA",
+    "stateName": "Massachusetts",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "1st Circuit",
+    "sources": [
+      "Mass. R. Civ. P. 10(a) (caption format)",
+      "Mass. R. Civ. P. 7(b) (motion requirements)",
+      "Mass. R. Sup. Ct. 9A (formatting)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "COMMONWEALTH OF MASSACHUSETTS, {COURT_TYPE}, {COUNTY} COUNTY",
+    "caseNumberLabel": "Civil Action No.",
+    "sampleTemplate": "COMMONWEALTH OF MASSACHUSETTS\n{COURT_TYPE}\n{COUNTY} COUNTY\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCivil Action No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the Commonwealth of Massachusetts that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "Massachusetts Trial Court E-Filing",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dma": {
+      "name": "District of Massachusetts",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D. Mass. L.R. 7.1 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Massachusetts uses 'Commonwealth' instead of 'State' in formal legal documents",
+    "Superior Court and District Court are the main trial courts",
+    "Suffolk County (Boston) may have additional local rules"
+  ]
+}

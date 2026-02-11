@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "stateCode": "HI",
+    "stateName": "Hawaii",
+    "confidence": 0.85,
+    "lastUpdated": "2026-02-11",
+    "circuit": "9th Circuit",
+    "sources": [
+      "HRCP Rule 10(a) (caption format)",
+      "HRCP Rule 7(b) (motion requirements)",
+      "Hawaii Rules of the Circuit Courts"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE CIRCUIT COURT OF THE {CIRCUIT} CIRCUIT, STATE OF HAWAII",
+    "caseNumberLabel": "Civil No.",
+    "sampleTemplate": "IN THE CIRCUIT COURT OF THE {CIRCUIT} CIRCUIT\nSTATE OF HAWAII\n\n{PLAINTIFFS},\n\n     Plaintiff(s),\n\nv.\n\n{DEFENDANTS},\n\n     Defendant(s).\n\nCivil No. {CASE_NUMBER}\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "I, {NAME}, declare under penalty of perjury under the laws of the State of Hawaii that the foregoing is true and correct. Executed on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 10,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "JEFS (Judiciary Electronic Filing System)",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "dhi": {
+      "name": "District of Hawaii",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["D. Haw. L.R. 7.4 (page limits)"]
+    }
+  },
+  "countyOverrides": {},
+  "implementationNotes": [
+    "Hawaii uses circuit numbers (First, Second, Third) instead of counties in court designation",
+    "First Circuit (Oahu) handles the majority of cases",
+    "Hawaii has unique local customs that may affect filings"
+  ]
+}
