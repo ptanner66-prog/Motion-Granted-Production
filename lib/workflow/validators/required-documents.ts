@@ -9,6 +9,10 @@
  *
  * UNMAPPED MOTION TYPES: Pass with generic warning.
  * With 88+ motion types, the lookup table will initially be incomplete.
+ *
+ * BUG-07 FIX: Missing required documents now produce ERRORS (blocking),
+ * not just warnings. The workflow will not proceed past Phase I if
+ * required documents are missing for a mapped motion type.
  */
 
 // ============================================================================
@@ -109,8 +113,12 @@ function normalizeMotionType(motionType: string): string {
 
 export interface DocumentValidationResult {
   complete: boolean;
+  /** Whether missing docs should block workflow execution */
+  blocked: boolean;
   missingCategories: string[];
   warnings: string[];
+  /** Blocking errors — workflow must not proceed */
+  errors: string[];
   motionTypeCode: string;
   isMapped: boolean;
   description: string;
@@ -122,6 +130,10 @@ export interface DocumentValidationResult {
 
 /**
  * Validate that required document types are uploaded for the motion type.
+ *
+ * BUG-07 FIX: Returns `blocked: true` and populates `errors[]` when
+ * required documents are missing for a MAPPED motion type. This prevents
+ * the workflow from proceeding without critical evidence.
  *
  * @param motionType - Natural language motion type (e.g., "Motion to Compel")
  * @param uploadedDocumentTypes - Array of document type/category strings that were uploaded
@@ -139,10 +151,12 @@ export function validateRequiredDocuments(
   if (!requirements) {
     return {
       complete: true,
+      blocked: false,
       missingCategories: [],
       warnings: [
         `No document requirements defined for motion type "${motionType}" (code: ${code}). Proceeding with available uploads.`,
       ],
+      errors: [],
       motionTypeCode: code,
       isMapped: false,
       description: 'Unmapped motion type — proceeding with available uploads',
@@ -153,8 +167,10 @@ export function validateRequiredDocuments(
   if (requirements.categories.length === 0) {
     return {
       complete: true,
+      blocked: false,
       missingCategories: [],
       warnings: [],
+      errors: [],
       motionTypeCode: code,
       isMapped: true,
       description: requirements.description,
@@ -176,10 +192,17 @@ export function validateRequiredDocuments(
   }
 
   if (missing.length > 0) {
+    // BUG-07 FIX: Missing required documents are now ERRORS, not warnings.
+    // The workflow MUST NOT proceed without these documents.
+    const errorMessage = `BLOCKED: ${requirements.description}. Missing required documents: ${missing.join(', ')}. Upload these documents before proceeding.`;
+    console.error(`[BUG-07] Document validation BLOCKED for ${code}: missing ${missing.join(', ')}`);
+
     return {
       complete: false,
+      blocked: true,
       missingCategories: missing,
-      warnings: [`${requirements.description}. Missing: ${missing.join(', ')}`],
+      warnings: [],
+      errors: [errorMessage],
       motionTypeCode: code,
       isMapped: true,
       description: requirements.description,
@@ -188,8 +211,10 @@ export function validateRequiredDocuments(
 
   return {
     complete: true,
+    blocked: false,
     missingCategories: [],
     warnings: [],
+    errors: [],
     motionTypeCode: code,
     isMapped: true,
     description: requirements.description,

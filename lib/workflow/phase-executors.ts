@@ -3708,17 +3708,46 @@ Assemble and check. Provide as JSON.`;
     }>;
     const citationsSaved = (phaseVOutput?.citationsSaved || {}) as Record<string, unknown>;
 
-    // Build citation metadata for the final package
+    // BUG-09 FIX: Filter citation list to only include citations that actually
+    // appear in the final motion text. The full caseCitationBank includes all
+    // researched citations, but only a subset may appear in the final draft.
+    const finalMotionText = (typeof phaseVIIIOutput?.revisedMotion === 'string'
+      ? phaseVIIIOutput.revisedMotion
+      : typeof phaseVOutput?.draftMotion === 'string'
+        ? phaseVOutput.draftMotion
+        : typeof (finalMotion as Record<string, unknown>)?.content === 'string'
+          ? (finalMotion as Record<string, unknown>).content as string
+          : JSON.stringify(finalMotion || ''));
+
+    const finalMotionTextNormalized = finalMotionText.toLowerCase().replace(/\s+/g, ' ');
+
+    const citationsInFinalMotion = caseCitationBank.filter(c => {
+      // Check if citation text appears in the final motion
+      if (c.citation) {
+        const normalizedCitation = c.citation.toLowerCase().replace(/\s+/g, ' ').trim();
+        if (finalMotionTextNormalized.includes(normalizedCitation)) return true;
+      }
+      // Also check case name
+      if (c.caseName) {
+        const normalizedName = c.caseName.toLowerCase().replace(/\s+/g, ' ').trim();
+        if (finalMotionTextNormalized.includes(normalizedName)) return true;
+      }
+      return false;
+    });
+
+    console.log(`[Phase X] BUG-09: Filtered ${caseCitationBank.length} total citations to ${citationsInFinalMotion.length} actually in final motion`);
+
+    // Build citation metadata for the final package — using FILTERED citations
     const citationMetadata = {
-      totalCitations: caseCitationBank.length + statutoryCitationBank.length,
-      caseCitations: caseCitationBank.length,
+      totalCitations: citationsInFinalMotion.length + statutoryCitationBank.length,
+      caseCitations: citationsInFinalMotion.length,
       statutoryCitations: statutoryCitationBank.length,
-      bindingAuthority: caseCitationBank.filter(c => c.authorityLevel === 'binding').length,
-      persuasiveAuthority: caseCitationBank.filter(c => c.authorityLevel === 'persuasive').length,
-      verifiedViaCourtListener: caseCitationBank.filter(c => c.courtlistener_id).length,
+      bindingAuthority: citationsInFinalMotion.filter(c => c.authorityLevel === 'binding').length,
+      persuasiveAuthority: citationsInFinalMotion.filter(c => c.authorityLevel === 'persuasive').length,
+      verifiedViaCourtListener: citationsInFinalMotion.filter(c => c.courtlistener_id).length,
       savedToDatabase: citationsSaved?.total || 0,
-      // Include citation list for quick reference
-      citationList: caseCitationBank.slice(0, 20).map(c => ({
+      // Include citation list for quick reference — only citations in final motion
+      citationList: citationsInFinalMotion.slice(0, 20).map(c => ({
         caseName: c.caseName,
         citation: c.citation,
         court: c.court,
@@ -3768,7 +3797,8 @@ Assemble and check. Provide as JSON.`;
         motionTitle: input.motionType || 'MOTION',
         motionBody: draftText,
         sections: [],
-        citations: caseCitationBank.map(c => ({
+        // BUG-09 FIX: Use filtered citations (only those in final motion text)
+        citations: citationsInFinalMotion.map(c => ({
           caseName: c.caseName || '',
           citation: c.citation || '',
           court: c.court || '',

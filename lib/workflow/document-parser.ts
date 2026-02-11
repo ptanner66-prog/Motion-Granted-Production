@@ -411,6 +411,26 @@ export async function parseDocument(
   if (!supabase) {
     return { success: false, error: 'Database not configured' };
   }
+
+  // BUG-16 FIX: Fail immediately on empty/whitespace-only content.
+  // An empty parse result means the document extraction failed (corrupt PDF,
+  // unsupported format, etc.). Proceeding with empty content produces a
+  // garbage motion. This must BLOCK the workflow, not silently continue.
+  if (!fileContent || fileContent.trim().length === 0) {
+    console.error(`[BUG-16] Document ${documentId} for order ${orderId} parsed to EMPTY content. Blocking workflow.`);
+    return {
+      success: false,
+      error: `Document parsing yielded empty content (document: ${documentId}). The uploaded file may be corrupt, password-protected, or in an unsupported format. Please re-upload the document.`,
+    };
+  }
+
+  // BUG-16: Also check for suspiciously short content (< 50 chars)
+  // which likely indicates a parsing failure rather than a real document.
+  const MINIMUM_CONTENT_LENGTH = 50;
+  if (fileContent.trim().length < MINIMUM_CONTENT_LENGTH) {
+    console.warn(`[BUG-16] Document ${documentId} content suspiciously short (${fileContent.trim().length} chars). May indicate parsing failure.`);
+  }
+
   const errors: ParseError[] = [];
 
   try {
