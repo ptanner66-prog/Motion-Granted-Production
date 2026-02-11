@@ -36,6 +36,8 @@ export async function generateMotionDocx(data: MotionData): Promise<Buffer> {
   const jurisdiction = normalizeJurisdiction(data.jurisdiction);
   const rules = getFormattingRules(jurisdiction);
 
+  console.log(`[DOCX-GEN] Jurisdiction: ${jurisdiction} → paper: ${rules.paperSize?.name ?? 'letter'} (${rules.paperSize?.widthDXA ?? 12240}×${rules.paperSize?.heightDXA ?? 15840}), margins: T${rules.margins.top}" B${rules.margins.bottom}" L${rules.margins.left}" R${rules.margins.right}"`);
+
   // Build all document sections
   const captionParagraphs = buildCaptionBlock(data);
   const bodyParagraphs = buildBodyParagraphs(data, rules);
@@ -64,8 +66,8 @@ export async function generateMotionDocx(data: MotionData): Promise<Buffer> {
       properties: {
         page: {
           size: {
-            width: 12240,   // US Letter width in DXA (8.5 inches)
-            height: 15840,  // US Letter height in DXA (11 inches)
+            width: rules.paperSize?.widthDXA ?? 12240,
+            height: rules.paperSize?.heightDXA ?? 15840,
           },
           margin: {
             top: convertInchesToTwip(rules.margins.top),
