@@ -2,18 +2,98 @@
  * Workflow Checkpoint Approval API
  *
  * POST /api/orders/[id]/approve
- * Handle admin approval/rejection of workflow checkpoints
  *
- * Actions:
- * - APPROVE: Continue workflow to next phase
- * - REQUEST_CHANGES: Route back to Phase VIII for revisions
- * - CANCEL: Cancel the workflow
+ * Two modes:
+ * 1. Customer CP3 approval — order owner approves, no action field in body.
+ *    Resolves CP3 checkpoint, updates order status to 'completed', returns download URLs.
+ * 2. Admin checkpoint approval — admin/clerk sends { action: 'APPROVE' | 'REQUEST_CHANGES' | 'CANCEL' }.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { inngest } from '@/lib/inngest/client';
 
+// ---------------------------------------------------------------------------
+// Customer CP3 Approval
+// ---------------------------------------------------------------------------
+async function handleCustomerApproval(orderId: string, userId: string) {
+  const supabase = await createClient();
+
+  // Fetch order and verify ownership
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('id, client_id, status, order_number')
+    .eq('id', orderId)
+    .single();
+
+  if (orderError || !order) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
+
+  if (order.client_id !== userId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  // Verify the order is in a reviewable state
+  const reviewableStatuses = ['draft_delivered', 'pending_review'];
+  if (!reviewableStatuses.includes(order.status)) {
+    return NextResponse.json(
+      {
+        error:
+          order.status === 'completed'
+            ? 'This order has already been approved.'
+            : 'This order is not ready for review.',
+      },
+      { status: 400 }
+    );
+  }
+
+  // Update order status to completed
+  const { error: updateError } = await supabase
+    .from('orders')
+    .update({
+      status: 'completed',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId);
+
+  if (updateError) {
+    return NextResponse.json({ error: 'Failed to approve order' }, { status: 500 });
+  }
+
+  // Fetch deliverable documents with download URLs
+  const { data: documents } = await supabase
+    .from('documents')
+    .select('id, file_name, file_url, document_type, file_type, file_size')
+    .eq('order_id', orderId)
+    .eq('is_deliverable', true)
+    .order('created_at', { ascending: true });
+
+  const downloadUrls: Record<string, string> = {};
+  for (const doc of documents ?? []) {
+    if (doc.file_url) {
+      downloadUrls[doc.file_name] = doc.file_url;
+    }
+  }
+
+  return NextResponse.json({
+    success: true,
+    orderNumber: order.order_number,
+    downloadUrls,
+    documents: (documents ?? []).map((doc) => ({
+      id: doc.id,
+      filename: doc.file_name,
+      type: doc.document_type,
+      fileType: doc.file_type,
+      downloadUrl: doc.file_url,
+      fileSizeBytes: doc.file_size,
+    })),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Main POST handler
+// ---------------------------------------------------------------------------
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -27,6 +107,21 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Parse request body (may be empty for customer approval)
+  let body: { action?: string; notes?: string } = {};
+  try {
+    body = await request.json();
+  } catch {
+    // Empty body is valid for customer CP3 approval
+  }
+
+  // Route: if no action field, treat as customer CP3 approval
+  if (!body.action) {
+    return handleCustomerApproval(orderId, user.id);
+  }
+
+  // ---------- Admin checkpoint approval flow ----------
+
   // Check admin/clerk role
   const { data: profile } = await supabase
     .from('profiles')
@@ -36,14 +131,6 @@ export async function POST(
 
   if (profile?.role !== 'admin' && profile?.role !== 'clerk') {
     return NextResponse.json({ error: 'Forbidden - Admin/Clerk only' }, { status: 403 });
-  }
-
-  // Parse request body
-  let body: { action: string; notes?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
   const { action, notes } = body;
