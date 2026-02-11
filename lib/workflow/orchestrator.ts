@@ -409,11 +409,13 @@ CRITICAL REQUIREMENTS:
 // ============================================================================
 
 /**
- * Start and optionally run the complete workflow for an order
- * This is the main orchestration entry point
+ * @deprecated SP8: This function is PERMANENTLY DISABLED.
+ * All workflow execution MUST go through Inngest via inngest.send("order/submitted").
+ * See: lib/workflow/automation-service.ts for the correct entry point.
  *
- * PHASE ENFORCEMENT: This function enforces strict phase ordering.
- * Phases cannot be skipped. All required phases must complete in order.
+ * This function existed as the pre-Inngest orchestration path.
+ * It was disabled in SP7 (Feb 2026) when all callers were migrated to Inngest.
+ * The function body was removed in SP8 to prevent accidental use.
  */
 /**
  * Initialize a workflow record for an order.

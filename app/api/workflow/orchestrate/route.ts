@@ -73,11 +73,16 @@ export async function POST(request: Request) {
     // Fire Inngest event to start the 14-phase pipeline
     const { data: order } = await supabase
       .from('orders')
-      .select('filing_deadline')
+      .select('id, filing_deadline, status')
       .eq('id', orderId)
       .single();
 
-    const priority = order?.filing_deadline
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // Fire Inngest event to start the 14-phase pipeline
+    const priority = order.filing_deadline
       ? calculatePriority(order.filing_deadline)
       : 5000;
 
@@ -86,14 +91,14 @@ export async function POST(request: Request) {
       data: {
         orderId,
         priority,
-        filingDeadline: order?.filing_deadline
+        filingDeadline: order.filing_deadline
           || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       },
     });
 
     return NextResponse.json({
       success: true,
-      ...result.data,
+      status: 'started',
       message: 'Workflow initialized. 14-phase pipeline started via Inngest.',
     });
   } catch (error) {
