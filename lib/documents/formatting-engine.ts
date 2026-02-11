@@ -15,6 +15,8 @@
 
 import { Document, Packer, Paragraph, TextRun, NumberFormat, AlignmentType, convertInchesToTwip, Header, Footer, PageNumber } from 'docx';
 import { createClient } from '@/lib/supabase/server';
+import { RuleLookupService } from '@/lib/services/formatting/rule-lookup';
+import type { FormattingRules as NewFormattingRules } from '@/lib/services/formatting/types';
 
 // ============================================================================
 // TYPES
@@ -30,6 +32,10 @@ export interface FormattingRules {
   footerFormat: string | null;
   headerFormat: string | null;
   pageLimit: number | null;
+  // SP9: New fields from RuleLookupService (optional for backward compat)
+  paperSize?: { widthDXA: number; heightDXA: number; name: string };
+  jurat?: { type: string; language: string };
+  paragraphNumbering?: boolean;
 }
 
 export interface FormatValidation {
@@ -54,6 +60,7 @@ export const JURISDICTION_RULES: Record<string, FormattingRules> = {
     footerFormat: 'MOTION FOR {MOTION_TYPE} - Page {PAGE}',
     headerFormat: null,
     pageLimit: null, // Varies by motion type
+    paperSize: { widthDXA: 12240, heightDXA: 15840, name: 'letter' },
   },
 
   'ca_federal': {
@@ -66,6 +73,7 @@ export const JURISDICTION_RULES: Record<string, FormattingRules> = {
     footerFormat: null,
     headerFormat: 'Case {CASE_NUMBER} - ECF Filing',
     pageLimit: 25,
+    paperSize: { widthDXA: 12240, heightDXA: 15840, name: 'letter' },
   },
 
   'la_state': {
@@ -73,11 +81,14 @@ export const JURISDICTION_RULES: Record<string, FormattingRules> = {
     linesPerPage: 28,
     lineSpacing: 'double',
     lineNumbers: false,
-    margins: { top: 1, bottom: 1, left: 1.5, right: 1 }, // Louisiana uses larger left margin
+    margins: { top: 2, bottom: 1, left: 1.5, right: 1 }, // SP9: Fixed top margin per La. Dist. Ct. R. 9.9
     font: { name: 'Times New Roman', size: 12 },
     footerFormat: null,
     headerFormat: null,
     pageLimit: 30,
+    paperSize: { widthDXA: 12240, heightDXA: 20160, name: 'legal' },
+    jurat: { type: 'affidavit', language: 'BEFORE ME, the undersigned Notary Public...' },
+    paragraphNumbering: false,
   },
 
   'federal_5th': {
@@ -90,6 +101,7 @@ export const JURISDICTION_RULES: Record<string, FormattingRules> = {
     footerFormat: null,
     headerFormat: null,
     pageLimit: 25,
+    paperSize: { widthDXA: 12240, heightDXA: 15840, name: 'letter' },
   },
 
   'federal_9th': {
@@ -102,6 +114,7 @@ export const JURISDICTION_RULES: Record<string, FormattingRules> = {
     footerFormat: null,
     headerFormat: null,
     pageLimit: 25,
+    paperSize: { widthDXA: 12240, heightDXA: 15840, name: 'letter' },
   },
 };
 
@@ -149,11 +162,163 @@ const MOTION_PAGE_LIMITS: Record<string, Record<string, number>> = {
 // HELPER FUNCTIONS
 // ============================================================================
 
+// ============================================================================
+// SP9: RULELOOKUPSERVICE BRIDGE
+// ============================================================================
+
 /**
- * Get formatting rules for a jurisdiction
+ * Module-level initialization trigger for RuleLookupService.
+ * Fire-and-forget: the service loads JSON configs asynchronously,
+ * and subsequent calls to getFormattingRules will use them once ready.
+ */
+let _initPromise: Promise<void> | null = null;
+function ensureRuleLookupInitialized(): void {
+  if (!_initPromise) {
+    try {
+      const service = RuleLookupService.getInstance();
+      _initPromise = service.initialize().catch(err => {
+        console.warn('[FormattingEngine] RuleLookupService async init failed:', err);
+      });
+    } catch {
+      // getInstance() itself failed — serverless cold start edge case
+    }
+  }
+}
+
+/**
+ * Convert RuleLookupService FormattingRules (DXA) to legacy FormattingRules (inches).
+ * This bridges the new 51-state configs into the old consumer interface.
+ */
+function convertToLegacyRules(newRules: NewFormattingRules, jurisdiction: string): FormattingRules {
+  return {
+    jurisdiction,
+    linesPerPage: newRules.lineNumbering?.linesPerPage ?? 28,
+    lineSpacing: dxaToLineSpacing(newRules.font.lineSpacingDXA),
+    lineNumbers: newRules.lineNumbering?.enabled ?? false,
+    margins: {
+      top: newRules.margins.topDXA / 1440,
+      bottom: newRules.margins.bottomDXA / 1440,
+      left: newRules.margins.leftDXA / 1440,
+      right: newRules.margins.rightDXA / 1440,
+    },
+    font: {
+      name: newRules.font.family,
+      size: newRules.font.sizePoints,
+    },
+    footerFormat: newRules.footer?.format ?? null,
+    headerFormat: newRules.header?.format ?? null,
+    pageLimit: newRules.pageLimit,
+    // SP9: New fields for DOCX/PDF generators
+    paperSize: {
+      widthDXA: newRules.paperSize.widthDXA,
+      heightDXA: newRules.paperSize.heightDXA,
+      name: newRules.paperSize.name,
+    },
+    jurat: newRules.jurat,
+    paragraphNumbering: newRules.paragraphNumbering,
+  };
+}
+
+/**
+ * Convert DXA line spacing value to named spacing.
+ * Single = 240, 1.5 = 360, Double = 480.
+ */
+function dxaToLineSpacing(dxa: number): 'single' | '1.5' | 'double' {
+  if (dxa <= 260) return 'single';
+  if (dxa <= 400) return '1.5';
+  return 'double';
+}
+
+/**
+ * Parse a jurisdiction string like 'la_state', 'ca_federal', 'federal_5th'
+ * into components for RuleLookupService.
+ */
+function parseJurisdictionString(jurisdiction: string): {
+  stateCode: string;
+  isFederal: boolean;
+  county?: string;
+  federalDistrict?: string;
+} {
+  const j = jurisdiction.toLowerCase().replace(/[\s-]+/g, '_');
+
+  // Federal circuit patterns: 'federal_5th', 'federal_9th', etc.
+  if (j.startsWith('federal_')) {
+    const circuitMatch = j.match(/federal_(\w+)/);
+    // Map circuits to primary states for config lookup
+    const circuitToState: Record<string, string> = {
+      '5th': 'la', 'fifth': 'la',
+      '9th': 'ca', 'ninth': 'ca',
+      '2nd': 'ny', 'second': 'ny',
+      '11th': 'fl', 'eleventh': 'fl',
+    };
+    const circuit = circuitMatch?.[1] || '';
+    return {
+      stateCode: circuitToState[circuit] || 'la',
+      isFederal: true,
+      federalDistrict: circuit,
+    };
+  }
+
+  // State + federal patterns: 'ca_federal', 'la_federal', etc.
+  if (j.includes('_federal')) {
+    const stateMatch = j.match(/^([a-z]{2})_federal/);
+    return {
+      stateCode: stateMatch?.[1] || 'la',
+      isFederal: true,
+    };
+  }
+
+  // State patterns: 'la_state', 'ca_superior', 'tx_state', etc.
+  const stateMatch = j.match(/^([a-z]{2})/);
+  return {
+    stateCode: stateMatch?.[1] || 'la',
+    isFederal: false,
+  };
+}
+
+/**
+ * Get formatting rules for a jurisdiction.
+ *
+ * SP9: Now delegates to RuleLookupService which loads from 51 JSON configs.
+ * Falls back to hardcoded defaults if RuleLookupService is not yet initialized
+ * or if the lookup fails.
  */
 export function getFormattingRules(jurisdiction: string): FormattingRules {
-  return JURISDICTION_RULES[jurisdiction] || JURISDICTION_RULES['federal_9th'];
+  // Trigger async initialization (no-op if already started)
+  ensureRuleLookupInitialized();
+
+  const parsed = parseJurisdictionString(jurisdiction);
+
+  try {
+    const service = RuleLookupService.getInstance();
+
+    // If service has no configs loaded yet, fall back to hardcoded rules
+    if (service.getAllLoadedStates().length === 0) {
+      return JURISDICTION_RULES[jurisdiction] || JURISDICTION_RULES['la_state'];
+    }
+
+    const newRules = service.getFormattingRules({
+      stateCode: parsed.stateCode,
+      isFederal: parsed.isFederal,
+      county: parsed.county,
+      federalDistrict: parsed.federalDistrict,
+    });
+
+    const legacy = convertToLegacyRules(newRules, jurisdiction);
+
+    // For circuit-level federal jurisdictions (e.g., 'federal_5th'), the
+    // RuleLookupService returns state margins since no specific district matched.
+    // Override to standard federal margins (1" all around) in this case.
+    if (parsed.isFederal && jurisdiction.toLowerCase().startsWith('federal_')) {
+      legacy.margins = { top: 1, bottom: 1, left: 1, right: 1 };
+    }
+
+    return legacy;
+  } catch (error) {
+    // Fallback to hardcoded rules if service fails
+    console.warn(`[FormattingEngine] RuleLookupService failed for ${jurisdiction}, using fallback:`, error);
+    return JURISDICTION_RULES[jurisdiction] || JURISDICTION_RULES['la_state'];
+  }
 }
 
 /**
