@@ -80,7 +80,7 @@ async function handleCustomerApproval(orderId: string, userId: string) {
     success: true,
     orderNumber: order.order_number,
     downloadUrls,
-    documents: (documents ?? []).map((doc) => ({
+    documents: (documents ?? []).map((doc: { id: string; file_name: string; document_type: string; file_type: string; file_url: string; file_size: number }) => ({
       id: doc.id,
       filename: doc.file_name,
       type: doc.document_type,
