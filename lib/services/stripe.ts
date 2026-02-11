@@ -1,18 +1,10 @@
 // /lib/services/stripe.ts
 // Stripe service utilities for Motion Granted
-// VERSION: 1.0 — January 28, 2026
+// VERSION: 1.1 — Uses shared Stripe instance from @/lib/stripe
 
 import Stripe from 'stripe';
+import { stripe } from '@/lib/stripe';
 import { createClient } from '@/lib/supabase/server';
-
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-
-// Only initialize Stripe if key is available and valid
-const stripe = stripeSecretKey && !stripeSecretKey.includes('xxxxx')
-  ? new Stripe(stripeSecretKey, {
-      apiVersion: '2026-01-28.clover',
-    })
-  : null;
 
 /**
  * Ensures a Stripe customer exists for the user

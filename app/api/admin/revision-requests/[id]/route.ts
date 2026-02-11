@@ -138,6 +138,17 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Check admin/clerk role
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (profile?.role !== 'admin' && profile?.role !== 'clerk') {
+    return NextResponse.json({ error: 'Forbidden - Admin/Clerk only' }, { status: 403 });
+  }
+
   try {
     const { data: revisionRequest, error } = await supabase
       .from('revision_requests')
