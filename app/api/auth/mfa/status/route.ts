@@ -19,6 +19,7 @@ export async function GET() {
     const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     const { data: factorsData } = await supabase.auth.mfa.listFactors();
 
+    // SP10: explicit type to avoid implicit any
     const verifiedFactor = factorsData?.totp?.find((f: { status: string }) => f.status === 'verified');
 
     return NextResponse.json({

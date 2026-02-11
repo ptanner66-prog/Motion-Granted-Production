@@ -190,11 +190,9 @@ export interface QuoteVerificationOutput {
   result: QuoteVerificationResult;
   actionTaken: 'NONE' | 'AUTO_CORRECTED' | 'FLAGGED' | 'PARAPHRASED';
   correctedQuote?: string;
-  ellipsisIssues?: string[];
-  ellipsisWarnings?: string[];
+  ellipsisIssues?: string[]; // SP10: added for CV-109 ellipsis validation
+  ellipsisWarnings?: string[]; // SP10: added for CV-109 ellipsis validation
   proceedToStep5: boolean;
-  ellipsisIssues?: string[];
-  ellipsisWarnings?: string[];
 }
 
 /**

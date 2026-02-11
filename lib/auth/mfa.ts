@@ -59,6 +59,7 @@ export async function getMFAStatusWithClient(supabase: SupabaseClient): Promise<
 
     // Find verified TOTP factor
     const verifiedFactor = factorsData.totp.find(f => f.status === 'verified');
+    // SP10: cast status to string to allow 'unverified' comparison (SDK type is overly narrow)
     const unverifiedFactor = factorsData.totp.find(f => (f.status as string) === 'unverified');
 
     return {

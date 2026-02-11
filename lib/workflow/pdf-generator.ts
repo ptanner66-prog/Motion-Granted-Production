@@ -17,6 +17,7 @@ import { PDFDocument, StandardFonts, rgb, PDFPage, PDFFont } from 'pdf-lib';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { OperationResult } from '@/types/automation';
+import { RuleLookupService } from '@/lib/services/formatting/rule-lookup';
 
 // Create admin client with service role key (bypasses RLS for server-side operations)
 function getAdminClient() {
@@ -57,6 +58,121 @@ const CONTENT_HEIGHT = PAGE_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
 const LINES_PER_PAGE = Math.floor(CONTENT_HEIGHT / LINE_HEIGHT);
 
 // ============================================================================
+// JURISDICTION-AWARE PAGE DIMENSIONS (SP9)
+// ============================================================================
+
+interface PageDimensions {
+  pageWidth: number;
+  pageHeight: number;
+  marginTop: number;
+  marginBottom: number;
+  marginLeft: number;
+  marginRight: number;
+  contentWidth: number;
+  contentHeight: number;
+  lineHeight: number;
+  linesPerPage: number;
+}
+
+/**
+ * Convert DXA to PDF points. 1 DXA = 1/20 point.
+ */
+function dxaToPoints(dxa: number): number {
+  return dxa / 20;
+}
+
+/**
+ * Parse jurisdiction string for PDF dimension lookup.
+ */
+function parseJurisdictionForPDF(jurisdiction: string): { stateCode: string; isFederal: boolean } {
+  const j = jurisdiction.toLowerCase().replace(/[\s-]+/g, '_');
+
+  // Federal circuit patterns
+  if (j.startsWith('federal_')) {
+    const circuitToState: Record<string, string> = {
+      '5th': 'la', 'fifth': 'la', '9th': 'ca', 'ninth': 'ca',
+      '2nd': 'ny', 'second': 'ny', '11th': 'fl', 'eleventh': 'fl',
+    };
+    const circuitMatch = j.match(/federal_(\w+)/);
+    const circuit = circuitMatch?.[1] || '';
+    return { stateCode: circuitToState[circuit] || 'la', isFederal: true };
+  }
+
+  // State + federal patterns
+  if (j.includes('_federal')) {
+    const match = j.match(/^([a-z]{2})_federal/);
+    return { stateCode: match?.[1] || 'la', isFederal: true };
+  }
+
+  // State patterns
+  const match = j.match(/^([a-z]{2})/);
+  return { stateCode: match?.[1] || 'la', isFederal: false };
+}
+
+/**
+ * Default page dimensions matching the module-level constants (letter paper, 1" margins).
+ */
+const DEFAULT_DIMENSIONS: PageDimensions = {
+  pageWidth: PAGE_WIDTH,
+  pageHeight: PAGE_HEIGHT,
+  marginTop: MARGIN_TOP,
+  marginBottom: MARGIN_BOTTOM,
+  marginLeft: MARGIN_LEFT,
+  marginRight: MARGIN_RIGHT,
+  contentWidth: CONTENT_WIDTH,
+  contentHeight: CONTENT_HEIGHT,
+  lineHeight: LINE_HEIGHT,
+  linesPerPage: LINES_PER_PAGE,
+};
+
+/**
+ * Get page dimensions for a jurisdiction. DXA → points (1 DXA = 1/20 point).
+ * Falls back to default letter-sized constants if jurisdiction is unknown.
+ */
+function getPageDimensions(jurisdiction?: string): PageDimensions {
+  if (!jurisdiction) {
+    return DEFAULT_DIMENSIONS;
+  }
+
+  try {
+    const parsed = parseJurisdictionForPDF(jurisdiction);
+    const service = RuleLookupService.getInstance();
+
+    // If service isn't initialized, return defaults
+    if (service.getAllLoadedStates().length === 0) {
+      return DEFAULT_DIMENSIONS;
+    }
+
+    const rules = service.getFormattingRules({
+      stateCode: parsed.stateCode,
+      isFederal: parsed.isFederal,
+    });
+
+    const pageWidth = dxaToPoints(rules.paperSize.widthDXA);
+    const pageHeight = dxaToPoints(rules.paperSize.heightDXA);
+    const marginTop = dxaToPoints(rules.margins.topDXA);
+    const marginBottom = dxaToPoints(rules.margins.bottomDXA);
+    const marginLeft = dxaToPoints(rules.margins.leftDXA);
+    const marginRight = dxaToPoints(rules.margins.rightDXA);
+    const contentWidth = pageWidth - marginLeft - marginRight;
+    const contentHeight = pageHeight - marginTop - marginBottom;
+    const lineHeight = rules.font.lineSpacingDXA >= 400 ? 24 : rules.font.lineSpacingDXA >= 300 ? 18 : 14;
+
+    console.log(`[PDF-GEN] Jurisdiction: ${jurisdiction} → paper: ${rules.paperSize.name} (${pageWidth}×${pageHeight}pt), margins: T${marginTop} B${marginBottom} L${marginLeft} R${marginRight}pt`);
+
+    return {
+      pageWidth, pageHeight,
+      marginTop, marginBottom, marginLeft, marginRight,
+      contentWidth, contentHeight,
+      lineHeight,
+      linesPerPage: Math.floor(contentHeight / lineHeight),
+    };
+  } catch {
+    return DEFAULT_DIMENSIONS;
+  }
+}
+
+// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -65,6 +181,7 @@ export interface MotionDocument {
   courtName: string;
   caseNumber: string;
   caseCaption: string;
+  jurisdiction?: string; // SP9: for page dimension lookup
 
   // Parties
   plaintiffs: string[];
@@ -170,24 +287,33 @@ async function drawCaption(
   page: PDFPage,
   doc: MotionDocument,
   font: PDFFont,
-  boldFont: PDFFont
+  boldFont: PDFFont,
+  dims?: PageDimensions
 ): Promise<number> {
-  let y = PAGE_HEIGHT - MARGIN_TOP;
+  const _PH = dims?.pageHeight ?? PAGE_HEIGHT;
+  const _PW = dims?.pageWidth ?? PAGE_WIDTH;
+  const _MT = dims?.marginTop ?? MARGIN_TOP;
+  const _ML = dims?.marginLeft ?? MARGIN_LEFT;
+  const _MR = dims?.marginRight ?? MARGIN_RIGHT;
+  const _CW = dims?.contentWidth ?? CONTENT_WIDTH;
+  const _LH = dims?.lineHeight ?? LINE_HEIGHT;
+
+  let y = _PH - _MT;
 
   // Court name (centered)
   const courtWidth = boldFont.widthOfTextAtSize(doc.courtName.toUpperCase(), FONT_SIZE_CAPTION);
   page.drawText(doc.courtName.toUpperCase(), {
-    x: (PAGE_WIDTH - courtWidth) / 2,
+    x: (_PW - courtWidth) / 2,
     y,
     size: FONT_SIZE_CAPTION,
     font: boldFont,
   });
-  y -= LINE_HEIGHT * 1.5;
+  y -= _LH * 1.5;
 
   // Parties block
-  const captionLeft = MARGIN_LEFT;
-  const captionMiddle = MARGIN_LEFT + CONTENT_WIDTH / 2 - 20;
-  const captionRight = MARGIN_LEFT + CONTENT_WIDTH / 2 + 20;
+  const captionLeft = _ML;
+  const captionMiddle = _ML + _CW / 2 - 20;
+  const captionRight = _ML + _CW / 2 + 20;
 
   // Plaintiffs
   for (const plaintiff of doc.plaintiffs) {
@@ -197,11 +323,11 @@ async function drawCaption(
       size: FONT_SIZE_CAPTION,
       font: font,
     });
-    y -= LINE_HEIGHT;
+    y -= _LH;
   }
 
   // Plaintiff label
-  const plaintiffY = y + LINE_HEIGHT * (doc.plaintiffs.length / 2);
+  const plaintiffY = y + _LH * (doc.plaintiffs.length / 2);
   page.drawText('Plaintiff(s),', {
     x: captionLeft + 200,
     y: plaintiffY,
@@ -220,12 +346,12 @@ async function drawCaption(
   // Case number (right side)
   page.drawText(`Case No. ${doc.caseNumber}`, {
     x: captionRight,
-    y: PAGE_HEIGHT - MARGIN_TOP - LINE_HEIGHT * 2,
+    y: _PH - _MT - _LH * 2,
     size: FONT_SIZE_CAPTION,
     font: boldFont,
   });
 
-  y -= LINE_HEIGHT;
+  y -= _LH;
 
   // Defendants
   for (const defendant of doc.defendants) {
@@ -235,21 +361,20 @@ async function drawCaption(
       size: FONT_SIZE_CAPTION,
       font: font,
     });
-    y -= LINE_HEIGHT;
+    y -= _LH;
   }
 
   // Defendant label
   page.drawText('Defendant(s).', {
     x: captionLeft + 200,
-    y: y + LINE_HEIGHT,
+    y: y + _LH,
     size: FONT_SIZE_CAPTION,
     font: font,
   });
 
   // Draw box around caption
-  const boxTop = PAGE_HEIGHT - MARGIN_TOP + 10;
+  const boxTop = _PH - _MT + 10;
   const boxBottom = y - 10;
-  const boxHeight = boxTop - boxBottom;
 
   // Vertical line
   page.drawLine({
@@ -261,20 +386,20 @@ async function drawCaption(
 
   // Horizontal lines
   page.drawLine({
-    start: { x: MARGIN_LEFT, y: boxTop },
-    end: { x: PAGE_WIDTH - MARGIN_RIGHT, y: boxTop },
+    start: { x: _ML, y: boxTop },
+    end: { x: _PW - _MR, y: boxTop },
     thickness: 1,
     color: rgb(0, 0, 0),
   });
 
   page.drawLine({
-    start: { x: MARGIN_LEFT, y: boxBottom },
-    end: { x: PAGE_WIDTH - MARGIN_RIGHT, y: boxBottom },
+    start: { x: _ML, y: boxBottom },
+    end: { x: _PW - _MR, y: boxBottom },
     thickness: 1,
     color: rgb(0, 0, 0),
   });
 
-  return boxBottom - LINE_HEIGHT * 2;
+  return boxBottom - _LH * 2;
 }
 
 /**
@@ -284,19 +409,23 @@ function drawTitle(
   page: PDFPage,
   title: string,
   y: number,
-  boldFont: PDFFont
+  boldFont: PDFFont,
+  dims?: PageDimensions
 ): number {
+  const _PW = dims?.pageWidth ?? PAGE_WIDTH;
+  const _LH = dims?.lineHeight ?? LINE_HEIGHT;
+
   const titleUpper = title.toUpperCase();
   const titleWidth = boldFont.widthOfTextAtSize(titleUpper, FONT_SIZE_TITLE);
 
   page.drawText(titleUpper, {
-    x: (PAGE_WIDTH - titleWidth) / 2,
+    x: (_PW - titleWidth) / 2,
     y,
     size: FONT_SIZE_TITLE,
     font: boldFont,
   });
 
-  return y - LINE_HEIGHT * 2;
+  return y - _LH * 2;
 }
 
 /**
@@ -309,19 +438,25 @@ function drawSection(
   startY: number,
   font: PDFFont,
   boldFont: PDFFont,
-  paragraphNumber?: number
+  paragraphNumber?: number,
+  dims?: PageDimensions
 ): { y: number; overflow: string | null } {
+  const _ML = dims?.marginLeft ?? MARGIN_LEFT;
+  const _MB = dims?.marginBottom ?? MARGIN_BOTTOM;
+  const _CW = dims?.contentWidth ?? CONTENT_WIDTH;
+  const _LH = dims?.lineHeight ?? LINE_HEIGHT;
+
   let y = startY;
 
   // Section heading
   const headingText = heading.toUpperCase();
   page.drawText(headingText, {
-    x: MARGIN_LEFT,
+    x: _ML,
     y,
     size: FONT_SIZE_HEADING,
     font: boldFont,
   });
-  y -= LINE_HEIGHT * 1.5;
+  y -= _LH * 1.5;
 
   // Body paragraphs
   const paragraphs = splitParagraphs(body);
@@ -329,7 +464,7 @@ function drawSection(
 
   for (const paragraph of paragraphs) {
     // Check if we have room for at least 3 lines
-    if (y < MARGIN_BOTTOM + LINE_HEIGHT * 3) {
+    if (y < _MB + _LH * 3) {
       // Return overflow text
       const remainingParagraphs = paragraphs.slice(paragraphs.indexOf(paragraph));
       return { y, overflow: remainingParagraphs.join('\n\n') };
@@ -338,19 +473,19 @@ function drawSection(
     // Paragraph number
     const numText = `${currentParagraphNum}.`;
     page.drawText(numText, {
-      x: MARGIN_LEFT,
+      x: _ML,
       y,
       size: FONT_SIZE_BODY,
       font: font,
     });
 
     // Paragraph text (indented)
-    const textX = MARGIN_LEFT + 36; // 0.5 inch indent
-    const textMaxWidth = CONTENT_WIDTH - 36;
+    const textX = _ML + 36; // 0.5 inch indent
+    const textMaxWidth = _CW - 36;
     const lines = wrapText(paragraph, font, FONT_SIZE_BODY, textMaxWidth);
 
     for (const line of lines) {
-      if (y < MARGIN_BOTTOM) {
+      if (y < _MB) {
         return { y, overflow: paragraph };
       }
 
@@ -360,10 +495,10 @@ function drawSection(
         size: FONT_SIZE_BODY,
         font: font,
       });
-      y -= LINE_HEIGHT;
+      y -= _LH;
     }
 
-    y -= LINE_HEIGHT * 0.5; // Extra space between paragraphs
+    y -= _LH * 0.5; // Extra space between paragraphs
     currentParagraphNum++;
   }
 
@@ -377,21 +512,27 @@ function drawBodyText(
   page: PDFPage,
   text: string,
   startY: number,
-  font: PDFFont
+  font: PDFFont,
+  dims?: PageDimensions
 ): { y: number; overflow: string | null } {
+  const _ML = dims?.marginLeft ?? MARGIN_LEFT;
+  const _MB = dims?.marginBottom ?? MARGIN_BOTTOM;
+  const _CW = dims?.contentWidth ?? CONTENT_WIDTH;
+  const _LH = dims?.lineHeight ?? LINE_HEIGHT;
+
   let y = startY;
   const paragraphs = splitParagraphs(text);
 
   for (const paragraph of paragraphs) {
-    if (y < MARGIN_BOTTOM + LINE_HEIGHT * 2) {
+    if (y < _MB + _LH * 2) {
       const remainingParagraphs = paragraphs.slice(paragraphs.indexOf(paragraph));
       return { y, overflow: remainingParagraphs.join('\n\n') };
     }
 
-    const lines = wrapText(paragraph, font, FONT_SIZE_BODY, CONTENT_WIDTH);
+    const lines = wrapText(paragraph, font, FONT_SIZE_BODY, _CW);
 
     for (const line of lines) {
-      if (y < MARGIN_BOTTOM) {
+      if (y < _MB) {
         return { y, overflow: paragraph };
       }
 
@@ -400,15 +541,15 @@ function drawBodyText(
       const indent = isFirstLine ? 36 : 0;
 
       page.drawText(line, {
-        x: MARGIN_LEFT + indent,
+        x: _ML + indent,
         y,
         size: FONT_SIZE_BODY,
         font: font,
       });
-      y -= LINE_HEIGHT;
+      y -= _LH;
     }
 
-    y -= LINE_HEIGHT * 0.5;
+    y -= _LH * 0.5;
   }
 
   return { y, overflow: null };
@@ -421,9 +562,12 @@ function drawSignatureBlock(
   page: PDFPage,
   doc: MotionDocument,
   y: number,
-  font: PDFFont
+  font: PDFFont,
+  dims?: PageDimensions
 ): number {
-  const signatureX = PAGE_WIDTH / 2;
+  const _PW = dims?.pageWidth ?? PAGE_WIDTH;
+  const _LH = dims?.lineHeight ?? LINE_HEIGHT;
+  const signatureX = _PW / 2;
 
   // Respectfully submitted
   page.drawText('Respectfully submitted,', {
@@ -432,7 +576,7 @@ function drawSignatureBlock(
     size: FONT_SIZE_BODY,
     font: font,
   });
-  y -= LINE_HEIGHT * 3;
+  y -= _LH * 3;
 
   // Signature line
   page.drawLine({
@@ -441,7 +585,7 @@ function drawSignatureBlock(
     thickness: 1,
     color: rgb(0, 0, 0),
   });
-  y -= LINE_HEIGHT;
+  y -= _LH;
 
   // Attorney info
   if (doc.attorneyName) {
@@ -451,7 +595,7 @@ function drawSignatureBlock(
       size: FONT_SIZE_BODY,
       font: font,
     });
-    y -= LINE_HEIGHT;
+    y -= _LH;
   }
 
   if (doc.attorneyBarNumber) {
@@ -461,7 +605,7 @@ function drawSignatureBlock(
       size: FONT_SIZE_BODY,
       font: font,
     });
-    y -= LINE_HEIGHT;
+    y -= _LH;
   }
 
   if (doc.firmName) {
@@ -471,7 +615,7 @@ function drawSignatureBlock(
       size: FONT_SIZE_BODY,
       font: font,
     });
-    y -= LINE_HEIGHT;
+    y -= _LH;
   }
 
   if (doc.firmAddress) {
@@ -483,7 +627,7 @@ function drawSignatureBlock(
         size: FONT_SIZE_BODY,
         font: font,
       });
-      y -= LINE_HEIGHT;
+      y -= _LH;
     }
   }
 
@@ -494,7 +638,7 @@ function drawSignatureBlock(
       size: FONT_SIZE_BODY,
       font: font,
     });
-    y -= LINE_HEIGHT;
+    y -= _LH;
   }
 
   if (doc.firmEmail) {
@@ -504,11 +648,11 @@ function drawSignatureBlock(
       size: FONT_SIZE_BODY,
       font: font,
     });
-    y -= LINE_HEIGHT;
+    y -= _LH;
   }
 
   // Attorney for
-  y -= LINE_HEIGHT;
+  y -= _LH;
   const partyType = doc.plaintiffs.length > 0 ? 'Plaintiff(s)' : 'Defendant(s)';
   page.drawText(`Attorney for ${partyType}`, {
     x: signatureX,
@@ -517,7 +661,7 @@ function drawSignatureBlock(
     font: font,
   });
 
-  return y - LINE_HEIGHT * 2;
+  return y - _LH * 2;
 }
 
 /**
@@ -528,30 +672,36 @@ function drawCertificateOfService(
   content: string,
   y: number,
   font: PDFFont,
-  boldFont: PDFFont
+  boldFont: PDFFont,
+  dims?: PageDimensions
 ): number {
+  const _PW = dims?.pageWidth ?? PAGE_WIDTH;
+  const _ML = dims?.marginLeft ?? MARGIN_LEFT;
+  const _CW = dims?.contentWidth ?? CONTENT_WIDTH;
+  const _LH = dims?.lineHeight ?? LINE_HEIGHT;
+
   // Heading
   const heading = 'CERTIFICATE OF SERVICE';
   const headingWidth = boldFont.widthOfTextAtSize(heading, FONT_SIZE_HEADING);
 
   page.drawText(heading, {
-    x: (PAGE_WIDTH - headingWidth) / 2,
+    x: (_PW - headingWidth) / 2,
     y,
     size: FONT_SIZE_HEADING,
     font: boldFont,
   });
-  y -= LINE_HEIGHT * 2;
+  y -= _LH * 2;
 
   // Content
-  const lines = wrapText(content, font, FONT_SIZE_BODY, CONTENT_WIDTH);
+  const lines = wrapText(content, font, FONT_SIZE_BODY, _CW);
   for (const line of lines) {
     page.drawText(line, {
-      x: MARGIN_LEFT,
+      x: _ML,
       y,
       size: FONT_SIZE_BODY,
       font: font,
     });
-    y -= LINE_HEIGHT;
+    y -= _LH;
   }
 
   return y;
@@ -560,13 +710,16 @@ function drawCertificateOfService(
 /**
  * Draw page number
  */
-function drawPageNumber(page: PDFPage, pageNum: number, totalPages: number, font: PDFFont): void {
+function drawPageNumber(page: PDFPage, pageNum: number, totalPages: number, font: PDFFont, dims?: PageDimensions): void {
+  const _PW = dims?.pageWidth ?? PAGE_WIDTH;
+  const _MB = dims?.marginBottom ?? MARGIN_BOTTOM;
+
   const text = `Page ${pageNum} of ${totalPages}`;
   const textWidth = font.widthOfTextAtSize(text, 10);
 
   page.drawText(text, {
-    x: (PAGE_WIDTH - textWidth) / 2,
-    y: MARGIN_BOTTOM / 2,
+    x: (_PW - textWidth) / 2,
+    y: _MB / 2,
     size: 10,
     font: font,
   });
@@ -660,6 +813,7 @@ export async function generatePDFFromWorkflow(
       courtName: order.jurisdiction || 'United States District Court',
       caseNumber: order.case_number || '[CASE NUMBER]',
       caseCaption: order.case_caption || 'PARTIES v. PARTIES',
+      jurisdiction: order.jurisdiction || 'la_state', // SP9: pass jurisdiction for page dimensions
       plaintiffs: plaintiffs.length > 0 ? plaintiffs : ['[PLAINTIFF]'],
       defendants: defendants.length > 0 ? defendants : ['[DEFENDANT]'],
       motionTitle: order.motion_type || 'Motion',
@@ -872,6 +1026,9 @@ export async function generateDetailedMotionPDF(
     const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
     const timesBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
 
+    // SP9: Get jurisdiction-aware page dimensions
+    const dims = getPageDimensions(doc.jurisdiction);
+
     // Calculate word count
     const allText = [
       doc.introduction,
@@ -883,200 +1040,200 @@ export async function generateDetailedMotionPDF(
     ].filter(Boolean).join(' ');
     const wordCount = countWords(allText);
 
-    // Create first page
-    let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    // Create first page with jurisdiction-appropriate dimensions
+    let page = pdfDoc.addPage([dims.pageWidth, dims.pageHeight]);
     let pageCount = 1;
 
     // Draw caption
-    let y = await drawCaption(page, doc, timesRoman, timesBold);
+    let y = await drawCaption(page, doc, timesRoman, timesBold, dims);
 
     // Draw title
-    y = drawTitle(page, doc.motionTitle, y, timesBold);
+    y = drawTitle(page, doc.motionTitle, y, timesBold, dims);
 
-    // Helper to add new page
+    // Helper to add new page with correct dimensions
     const addNewPage = (): PDFPage => {
-      const newPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      const newPage = pdfDoc.addPage([dims.pageWidth, dims.pageHeight]);
       pageCount++;
       return newPage;
     };
 
     // Draw introduction
     if (doc.introduction) {
-      const result = drawBodyText(page, doc.introduction, y, timesRoman);
+      const result = drawBodyText(page, doc.introduction, y, timesRoman, dims);
       y = result.y;
 
       if (result.overflow) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
-        const overflowResult = drawBodyText(page, result.overflow, y, timesRoman);
+        y = dims.pageHeight - dims.marginTop;
+        const overflowResult = drawBodyText(page, result.overflow, y, timesRoman, dims);
         y = overflowResult.y;
       }
 
-      y -= LINE_HEIGHT;
+      y -= dims.lineHeight;
     }
 
     // Draw statement of facts
     if (doc.statementOfFacts) {
-      if (y < MARGIN_BOTTOM + LINE_HEIGHT * 5) {
+      if (y < dims.marginBottom + dims.lineHeight * 5) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
+        y = dims.pageHeight - dims.marginTop;
       }
 
       const heading = 'STATEMENT OF FACTS';
       page.drawText(heading, {
-        x: MARGIN_LEFT,
+        x: dims.marginLeft,
         y,
         size: FONT_SIZE_HEADING,
         font: timesBold,
       });
-      y -= LINE_HEIGHT * 1.5;
+      y -= dims.lineHeight * 1.5;
 
-      const result = drawBodyText(page, doc.statementOfFacts, y, timesRoman);
+      const result = drawBodyText(page, doc.statementOfFacts, y, timesRoman, dims);
       y = result.y;
 
       if (result.overflow) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
-        const overflowResult = drawBodyText(page, result.overflow, y, timesRoman);
+        y = dims.pageHeight - dims.marginTop;
+        const overflowResult = drawBodyText(page, result.overflow, y, timesRoman, dims);
         y = overflowResult.y;
       }
 
-      y -= LINE_HEIGHT;
+      y -= dims.lineHeight;
     }
 
     // Draw procedural history
     if (doc.proceduralHistory) {
-      if (y < MARGIN_BOTTOM + LINE_HEIGHT * 5) {
+      if (y < dims.marginBottom + dims.lineHeight * 5) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
+        y = dims.pageHeight - dims.marginTop;
       }
 
       const heading = 'PROCEDURAL HISTORY';
       page.drawText(heading, {
-        x: MARGIN_LEFT,
+        x: dims.marginLeft,
         y,
         size: FONT_SIZE_HEADING,
         font: timesBold,
       });
-      y -= LINE_HEIGHT * 1.5;
+      y -= dims.lineHeight * 1.5;
 
-      const result = drawBodyText(page, doc.proceduralHistory, y, timesRoman);
+      const result = drawBodyText(page, doc.proceduralHistory, y, timesRoman, dims);
       y = result.y;
 
       if (result.overflow) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
-        const overflowResult = drawBodyText(page, result.overflow, y, timesRoman);
+        y = dims.pageHeight - dims.marginTop;
+        const overflowResult = drawBodyText(page, result.overflow, y, timesRoman, dims);
         y = overflowResult.y;
       }
 
-      y -= LINE_HEIGHT;
+      y -= dims.lineHeight;
     }
 
     // Draw legal standard
     if (doc.legalStandard) {
-      if (y < MARGIN_BOTTOM + LINE_HEIGHT * 5) {
+      if (y < dims.marginBottom + dims.lineHeight * 5) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
+        y = dims.pageHeight - dims.marginTop;
       }
 
       const heading = 'LEGAL STANDARD';
       page.drawText(heading, {
-        x: MARGIN_LEFT,
+        x: dims.marginLeft,
         y,
         size: FONT_SIZE_HEADING,
         font: timesBold,
       });
-      y -= LINE_HEIGHT * 1.5;
+      y -= dims.lineHeight * 1.5;
 
-      const result = drawBodyText(page, doc.legalStandard, y, timesRoman);
+      const result = drawBodyText(page, doc.legalStandard, y, timesRoman, dims);
       y = result.y;
 
       if (result.overflow) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
-        const overflowResult = drawBodyText(page, result.overflow, y, timesRoman);
+        y = dims.pageHeight - dims.marginTop;
+        const overflowResult = drawBodyText(page, result.overflow, y, timesRoman, dims);
         y = overflowResult.y;
       }
 
-      y -= LINE_HEIGHT;
+      y -= dims.lineHeight;
     }
 
     // Draw argument (main body)
     if (doc.argument) {
-      if (y < MARGIN_BOTTOM + LINE_HEIGHT * 5) {
+      if (y < dims.marginBottom + dims.lineHeight * 5) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
+        y = dims.pageHeight - dims.marginTop;
       }
 
       const heading = 'ARGUMENT';
       page.drawText(heading, {
-        x: MARGIN_LEFT,
+        x: dims.marginLeft,
         y,
         size: FONT_SIZE_HEADING,
         font: timesBold,
       });
-      y -= LINE_HEIGHT * 1.5;
+      y -= dims.lineHeight * 1.5;
 
       let remainingText: string | null = doc.argument;
       while (remainingText) {
-        const result = drawBodyText(page, remainingText, y, timesRoman);
+        const result = drawBodyText(page, remainingText, y, timesRoman, dims);
         y = result.y;
         remainingText = result.overflow;
 
         if (remainingText) {
           page = addNewPage();
-          y = PAGE_HEIGHT - MARGIN_TOP;
+          y = dims.pageHeight - dims.marginTop;
         }
       }
 
-      y -= LINE_HEIGHT;
+      y -= dims.lineHeight;
     }
 
     // Draw conclusion
     if (doc.conclusion) {
-      if (y < MARGIN_BOTTOM + LINE_HEIGHT * 5) {
+      if (y < dims.marginBottom + dims.lineHeight * 5) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
+        y = dims.pageHeight - dims.marginTop;
       }
 
       const heading = 'CONCLUSION';
       page.drawText(heading, {
-        x: MARGIN_LEFT,
+        x: dims.marginLeft,
         y,
         size: FONT_SIZE_HEADING,
         font: timesBold,
       });
-      y -= LINE_HEIGHT * 1.5;
+      y -= dims.lineHeight * 1.5;
 
-      const result = drawBodyText(page, doc.conclusion, y, timesRoman);
+      const result = drawBodyText(page, doc.conclusion, y, timesRoman, dims);
       y = result.y;
 
-      y -= LINE_HEIGHT;
+      y -= dims.lineHeight;
     }
 
     // Draw signature block
-    if (y < MARGIN_BOTTOM + LINE_HEIGHT * 10) {
+    if (y < dims.marginBottom + dims.lineHeight * 10) {
       page = addNewPage();
-      y = PAGE_HEIGHT - MARGIN_TOP;
+      y = dims.pageHeight - dims.marginTop;
     }
 
-    y = drawSignatureBlock(page, doc, y, timesRoman);
+    y = drawSignatureBlock(page, doc, y, timesRoman, dims);
 
     // Draw certificate of service on new page if needed
     if (doc.certificateOfService) {
-      if (y < MARGIN_BOTTOM + LINE_HEIGHT * 8) {
+      if (y < dims.marginBottom + dims.lineHeight * 8) {
         page = addNewPage();
-        y = PAGE_HEIGHT - MARGIN_TOP;
+        y = dims.pageHeight - dims.marginTop;
       }
 
-      y = drawCertificateOfService(page, doc.certificateOfService, y, timesRoman, timesBold);
+      y = drawCertificateOfService(page, doc.certificateOfService, y, timesRoman, timesBold, dims);
     }
 
     // Add page numbers to all pages
     const pages = pdfDoc.getPages();
     for (let i = 0; i < pages.length; i++) {
-      drawPageNumber(pages[i], i + 1, pages.length, timesRoman);
+      drawPageNumber(pages[i], i + 1, pages.length, timesRoman, dims);
     }
 
     // Generate PDF bytes

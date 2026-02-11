@@ -1,0 +1,27 @@
+{
+  "motion_type": "compel_discovery",
+  "motion_tier": 1,
+  "base_price": 700,
+  "turnaround": "standard",
+  "rush_surcharge": 0,
+  "total_price": 700,
+  "filing_deadline": "2026-04-15",
+  "jurisdiction": "LA State Court",
+  "court_division": "19th Judicial District Court, East Baton Rouge Parish",
+  "case_number": "C-724391",
+  "case_caption": "Thibodaux Properties, LLC v. Boudreaux Construction, Inc.",
+  "statement_of_facts": "Plaintiff Thibodaux Properties, LLC ('Thibodaux') entered into a construction contract with Defendant Boudreaux Construction, Inc. ('Boudreaux') on March 8, 2025 for the renovation of a commercial property located at 4520 Government Street, Baton Rouge, Louisiana 70806. The contract specified a total project cost of $485,000 with a completion date of October 1, 2025. Boudreaux abandoned the project approximately 60% complete on August 15, 2025, leaving exposed structural elements and incomplete electrical and plumbing work. Thibodaux served Interrogatories and Requests for Production on November 1, 2025, seeking financial records, subcontractor agreements, communications regarding the project, and documents evidencing the reasons for project abandonment. The 30-day response deadline under La. C.C.P. art. 1462 expired on December 1, 2025, with no responses received. Plaintiff's counsel sent a meet-and-confer letter on December 10, 2025, and a follow-up letter on January 5, 2026, both requesting compliance within 10 days. Defendant's counsel responded only to state that responses were 'forthcoming' but has produced nothing to date.",
+  "procedural_history": "Petition for Breach of Contract and Damages filed October 15, 2025. Defendant answered November 1, 2025, denying material allegations and asserting affirmative defenses of force majeure and failure to make timely progress payments. Case Management Conference held December 5, 2025, at which the Court set a discovery cutoff of May 1, 2026 and trial date of August 15, 2026. Plaintiff served First Set of Interrogatories (15) and First Request for Production of Documents (22 categories) on November 1, 2025. No discovery responses received as of the filing date of this motion.",
+  "instructions": "Draft a Motion to Compel Discovery Responses under Louisiana Code of Civil Procedure articles 1461-1474. Emphasize that Plaintiff has satisfied the meet-and-confer requirement under La. Dist. Ct. R. 9.9. Request the Court order complete responses within 15 days. Request attorney's fees and costs under La. C.C.P. art. 1469 as a sanction for Defendant's failure to respond. Include a proposed order granting the motion. Ensure all citations are to Louisiana state authorities — do not cite federal rules. This is a Tier B motion requiring thorough treatment of the discovery dispute.",
+  "related_entities": "Acadian Plumbing & Electrical (subcontractor on the project), First National Bank of Louisiana (project lender)",
+  "parties": [
+    {
+      "name": "Thibodaux Properties, LLC",
+      "role": "Plaintiff"
+    },
+    {
+      "name": "Boudreaux Construction, Inc.",
+      "role": "Defendant"
+    }
+  ]
+}
