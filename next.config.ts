@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   // Increase body size limit for large document uploads (legal briefs can be 50MB+)
@@ -76,22 +75,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withSentryConfig(nextConfig, {
-  // Sentry webpack plugin options
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
-
-  // Suppress source map upload logs in CI
-  silent: !process.env.CI,
-
-  // Upload source maps for better stack traces
-  widenClientFileUpload: true,
-
-  // Automatically tree-shake Sentry logger in production
-  disableLogger: true,
-
-  // Hide source maps from client bundles
-  sourcemaps: {
-    deleteSourcemapsAfterUpload: true,
-  },
-});
+export default nextConfig;
