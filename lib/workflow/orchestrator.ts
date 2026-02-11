@@ -415,17 +415,24 @@ CRITICAL REQUIREMENTS:
  * PHASE ENFORCEMENT: This function enforces strict phase ordering.
  * Phases cannot be skipped. All required phases must complete in order.
  */
-export async function orchestrateWorkflow(
+/**
+ * Initialize a workflow record for an order.
+ *
+ * Gathers order context, parses documents, creates the DB workflow record,
+ * updates order status, and fires a confirmation email.
+ *
+ * Callers are responsible for firing the Inngest "order/submitted" event
+ * after this returns successfully.
+ */
+export async function initializeWorkflow(
   orderId: string,
   options: {
-    autoRun?: boolean; // If true, runs all phases automatically
     workflowPath?: WorkflowPath;
-    // NOTE: skipDocumentParsing has been REMOVED - phases cannot be skipped
   } = {}
 ): Promise<OperationResult<OrchestrationResult>> {
   const supabase = await createClient();
 
-  console.log(`[ORCHESTRATOR] Starting workflow for order ${orderId}`);
+  console.log(`[ORCHESTRATOR] Initializing workflow for order ${orderId}`);
 
   try {
     // Step 1: Gather all order context
@@ -439,10 +446,8 @@ export async function orchestrateWorkflow(
 
     const orderContext = contextResult.data;
 
-    // Step 2: Parse documents - ALWAYS REQUIRED (no skip option)
-    // Document parsing is part of Phase II and cannot be bypassed
+    // Step 2: Parse documents (always required)
     await parseOrderDocuments(orderId);
-    // Refresh parsed docs in context
     const refreshedParsed = await getOrderParsedDocuments(orderId);
     if (refreshedParsed.success && refreshedParsed.data) {
       orderContext.documents.parsed = refreshedParsed.data.map(d => ({
@@ -459,7 +464,7 @@ export async function orchestrateWorkflow(
     const workflowPath = options.workflowPath || 'path_a';
     const motionTemplate = getTemplateForPath(motionCode, workflowPath);
 
-    // Step 4: Get or lookup motion type ID
+    // Step 4: Lookup motion type ID
     let motionTypeId: string | null = null;
 
     const { data: motionTypeData } = await supabase
@@ -471,7 +476,6 @@ export async function orchestrateWorkflow(
     if (motionTypeData) {
       motionTypeId = motionTypeData.id;
     } else {
-      // Fallback to first motion type
       const { data: fallback } = await supabase
         .from('motion_types')
         .select('id')
@@ -502,16 +506,13 @@ export async function orchestrateWorkflow(
     if (existingWorkflow) {
       workflowId = existingWorkflow.id;
     } else {
-      // Step 6: Build superprompt from order context
-      // NOTE: Actual phase prompts are loaded from /prompts/PHASE_*_v75.md files
-      // via phase-executors.ts. This superprompt is stored in metadata for reference only.
+      // Step 6: Build superprompt and start workflow
       const superprompt = buildOrderSuperprompt({
         orderContext,
         motionTemplate,
         workflowPath,
       });
 
-      // Step 7: Start the workflow
       const startResult = await startWorkflow({
         orderId,
         motionTypeId,
@@ -538,35 +539,51 @@ export async function orchestrateWorkflow(
       workflowId = startResult.data.workflowId;
     }
 
-    // Step 7: Update order status to in_progress
+    // Step 7: Update order status
     await supabase
       .from('orders')
       .update({ status: 'in_progress' })
       .eq('id', orderId);
 
-    // === EMAIL TRIGGER: Order Confirmed ===
-    // Fire-and-forget — email failure must not block the workflow
+    // Fire-and-forget confirmation email
     notifyWorkflowEvent('order_confirmed', orderId).catch(() => {});
 
-    // Workflow execution is handled by the Inngest pipeline
-    // (generateOrderWorkflow in workflow-orchestration.ts).
-    // The autoRun option is no longer supported here — the Inngest event
-    // "order/submitted" triggers the full 14-phase workflow automatically.
     return {
       success: true,
       data: {
         success: true,
         workflowId,
         status: 'started',
-        message: 'Workflow initialized. Execution is handled by the Inngest pipeline.',
+        message: 'Workflow initialized. Fire "order/submitted" Inngest event to begin execution.',
       },
     };
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Orchestration failed',
+      error: error instanceof Error ? error.message : 'Initialization failed',
     };
   }
+}
+
+/**
+ * @deprecated REMOVED — Use initializeWorkflow() + Inngest "order/submitted" event instead.
+ * This function is retained for export compatibility only. It always returns failure.
+ */
+export async function orchestrateWorkflow(
+  _orderId: string,
+  _options: {
+    autoRun?: boolean;
+    workflowPath?: WorkflowPath;
+  } = {}
+): Promise<OperationResult<OrchestrationResult>> {
+  console.error(
+    '[ORCHESTRATOR] orchestrateWorkflow() is DEPRECATED. ' +
+    'Use initializeWorkflow() + Inngest "order/submitted" event.'
+  );
+  return {
+    success: false,
+    error: 'DEPRECATED: orchestrateWorkflow() has been removed. Use initializeWorkflow() + Inngest event.',
+  };
 }
 
 /**

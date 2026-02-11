@@ -193,6 +193,8 @@ export interface QuoteVerificationOutput {
   ellipsisIssues?: string[];
   ellipsisWarnings?: string[];
   proceedToStep5: boolean;
+  ellipsisIssues?: string[];
+  ellipsisWarnings?: string[];
 }
 
 /**
