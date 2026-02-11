@@ -58,10 +58,10 @@ export async function generateOrderDeliverableUrls(
 ): Promise<{ urls: DeliverableUrl[]; error?: string }> {
   const supabase = await createClient();
 
-  // Verify user owns this order
+  // SP12-06 FIX: Changed user_id to client_id — orders table uses client_id, not user_id.
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, user_id, status')
+    .select('id, client_id, status')
     .eq('id', orderId)
     .single();
 
@@ -69,7 +69,7 @@ export async function generateOrderDeliverableUrls(
     return { urls: [], error: 'Order not found' };
   }
 
-  if (order.user_id !== userId) {
+  if (order.client_id !== userId) {
     return { urls: [], error: 'Unauthorized' };
   }
 

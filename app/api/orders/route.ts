@@ -187,6 +187,9 @@ export async function POST(req: Request) {
         document_type: string
       }
 
+      // SP12-02 FIX: Explicitly set is_deliverable: false so document extractor
+      // query .neq('is_deliverable', true) can find these rows.
+      // Without this, Postgres defaults to NULL, and NULL != true → NULL → row excluded.
       const documentsData = body.documents.map((doc: DocumentInput) => ({
         order_id: order.id,
         file_name: doc.file_name,
@@ -195,6 +198,7 @@ export async function POST(req: Request) {
         file_url: doc.file_url,
         document_type: doc.document_type || 'other',
         uploaded_by: user.id,
+        is_deliverable: false,
       }))
 
       const { error: docError } = await supabase.from('documents').insert(documentsData)
