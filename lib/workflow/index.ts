@@ -61,7 +61,6 @@ export {
   gatherOrderContext,
   buildOrderSuperprompt,
   orchestrateWorkflow,
-  executePhaseWithContext,
   getWorkflowSuperprompt,
 } from './orchestrator';
 
@@ -102,6 +101,17 @@ export {
   AVAILABLE_PLACEHOLDERS,
   EXAMPLE_SUPERPROMPT_TEMPLATE,
 } from './superprompt-engine';
+
+// Motion Type Advisories (QC-024/025/026)
+export {
+  getMotionAdvisory,
+  formatAdvisoryForPrompt,
+  hasAdvisory,
+} from './motion-advisories';
+
+export type {
+  MotionAdvisory,
+} from './motion-advisories';
 
 // Re-export types
 export type {

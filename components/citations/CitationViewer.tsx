@@ -104,8 +104,11 @@ export function CitationViewer({
         )
       );
 
-      // TODO: Call API to update verification status
-      // await fetch(`/api/citations/${citationId}/verify`, { method: 'POST', body: JSON.stringify({ status }) });
+      await fetch(`/api/citations/${citationId}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
     } catch (err) {
       console.error('Error updating verification:', err);
       // Revert on error

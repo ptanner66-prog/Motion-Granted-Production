@@ -15,7 +15,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import { orchestrateWorkflow, gatherOrderContext } from './orchestrator';
+import { inngest, calculatePriority } from '@/lib/inngest/client';
 import { getWorkflowProgress } from './workflow-state';
 import { generatePDFFromWorkflow, savePDFAsDeliverable } from './pdf-generator';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
@@ -115,15 +115,14 @@ export async function startOrderAutomation(
   orderId: string,
   config: Partial<AutomationConfig> = {}
 ): Promise<OperationResult<AutomationResult>> {
-  const startTime = Date.now();
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
   const supabase = await createClient();
 
   try {
-    // Get order details
+    // Get order details (including filing_deadline for priority calculation)
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('order_number, status, motion_type')
+      .select('order_number, status, motion_type, filing_deadline')
       .eq('id', orderId)
       .single();
 
@@ -146,65 +145,35 @@ export async function startOrderAutomation(
       motionType: order.motion_type,
     });
 
-    // Start workflow orchestration
-    // NOTE: skipDocumentParsing has been removed - phases cannot be skipped
-    const workflowResult = await orchestrateWorkflow(orderId, {
-      autoRun: mergedConfig.autoRun,
-      workflowPath: mergedConfig.workflowPath,
+    // Fire Inngest event — the 14-phase pipeline runs asynchronously
+    const priority = order.filing_deadline
+      ? calculatePriority(order.filing_deadline)
+      : 5000;
+
+    await inngest.send({
+      name: 'order/submitted',
+      data: {
+        orderId,
+        priority,
+        filingDeadline: order.filing_deadline
+          || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      },
     });
 
-    if (!workflowResult.success || !workflowResult.data) {
-      await updateOrderStatus(orderId, 'blocked');
-      await logAutomationEvent(orderId, 'automation_failed', {
-        error: workflowResult.error,
-        phase: 'orchestration',
-      });
+    await logAutomationEvent(orderId, 'inngest_event_sent', {
+      event: 'order/submitted',
+      priority,
+    });
 
-      return {
-        success: false,
-        error: workflowResult.error || 'Workflow orchestration failed',
-      };
-    }
-
-    const { workflowId, status } = workflowResult.data;
-    const resolvedWorkflowId = workflowId || orderId; // Use orderId as fallback
-
-    // If workflow requires review, return current state
-    if (status === 'requires_review') {
-      await logAutomationEvent(orderId, 'review_required', {
-        workflowId: resolvedWorkflowId,
-        phase: workflowResult.data.currentPhase,
-      });
-
-      return {
-        success: true,
-        data: {
-          orderId,
-          orderNumber: order.order_number,
-          workflowId: resolvedWorkflowId,
-          status: 'requires_review',
-          currentPhase: workflowResult.data.currentPhase,
-          totalPhases: 14,
-          pdfGenerated: false,
-          notificationSent: false,
-        },
-      };
-    }
-
-    // If workflow completed, generate PDF and notify
-    if (status === 'completed') {
-      return await finalizeOrder(orderId, order.order_number, resolvedWorkflowId, mergedConfig, startTime);
-    }
-
-    // Workflow is still in progress
+    // Return immediately — workflow runs asynchronously via Inngest
     return {
       success: true,
       data: {
         orderId,
         orderNumber: order.order_number,
-        workflowId: resolvedWorkflowId,
+        workflowId: orderId,
         status: 'in_progress',
-        currentPhase: workflowResult.data.currentPhase || 1,
+        currentPhase: 1,
         totalPhases: 14,
         pdfGenerated: false,
         notificationSent: false,
@@ -370,8 +339,47 @@ export async function resumeOrderAutomation(
     );
   }
 
-  // Resume workflow from current phase
-  return startOrderAutomation(orderId, config);
+  // Get filing deadline for priority
+  const { data: order } = await supabase
+    .from('orders')
+    .select('order_number, filing_deadline')
+    .eq('id', orderId)
+    .single();
+
+  const priority = order?.filing_deadline
+    ? calculatePriority(order.filing_deadline)
+    : 5000;
+
+  // Fire Inngest event to resume — the pipeline picks up from current phase
+  await inngest.send({
+    name: 'order/submitted',
+    data: {
+      orderId,
+      priority,
+      filingDeadline: order?.filing_deadline
+        || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+  });
+
+  await logAutomationEvent(orderId, 'inngest_event_sent', {
+    event: 'order/submitted',
+    priority,
+    resumeFrom: workflow.current_phase,
+  });
+
+  return {
+    success: true,
+    data: {
+      orderId,
+      orderNumber: order?.order_number || 'UNKNOWN',
+      workflowId: workflow.id,
+      status: 'in_progress',
+      currentPhase: workflow.current_phase,
+      totalPhases: 14,
+      pdfGenerated: false,
+      notificationSent: false,
+    },
+  };
 }
 
 // ============================================================================
@@ -588,7 +596,7 @@ export async function processPendingOrders(
     // Get pending orders that need processing
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
-      .select('id')
+      .select('id, filing_deadline')
       .in('status', ['submitted', 'under_review'])
       .order('created_at', { ascending: true })
       .limit(limit);
@@ -609,15 +617,31 @@ export async function processPendingOrders(
         .single();
 
       if (existingWorkflow) {
-        // Already has workflow, skip
         continue;
       }
 
-      const result = await startOrderAutomation(order.id);
+      try {
+        const priority = order.filing_deadline
+          ? calculatePriority(order.filing_deadline)
+          : 5000;
 
-      if (result.success) {
+        await inngest.send({
+          name: 'order/submitted',
+          data: {
+            orderId: order.id,
+            priority,
+            filingDeadline: order.filing_deadline
+              || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        });
+
+        await supabase
+          .from('orders')
+          .update({ status: 'in_progress', updated_at: new Date().toISOString() })
+          .eq('id', order.id);
+
         processed++;
-      } else {
+      } catch {
         failed++;
       }
     }
@@ -640,10 +664,10 @@ export async function retryFailedWorkflows(
   const supabase = await createClient();
 
   try {
-    // Get blocked/failed workflows
+    // Get blocked/failed workflows with filing deadline for priority
     const { data: workflows, error: wfError } = await supabase
       .from('order_workflows')
-      .select('id, order_id, error_count')
+      .select('id, order_id, error_count, orders(filing_deadline)')
       .eq('status', 'blocked')
       .lt('error_count', 3) // Max 3 retries
       .order('updated_at', { ascending: true })
@@ -657,11 +681,25 @@ export async function retryFailedWorkflows(
     let failed = 0;
 
     for (const workflow of workflows || []) {
-      const result = await resumeOrderAutomation(workflow.order_id);
+      try {
+        const orderData = workflow.orders as { filing_deadline: string | null } | null;
+        const filingDeadline = orderData?.filing_deadline;
+        const priority = filingDeadline
+          ? calculatePriority(filingDeadline)
+          : 5000;
 
-      if (result.success) {
+        await inngest.send({
+          name: 'order/submitted',
+          data: {
+            orderId: workflow.order_id,
+            priority,
+            filingDeadline: filingDeadline
+              || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        });
+
         retried++;
-      } else {
+      } catch {
         failed++;
 
         // Increment error count

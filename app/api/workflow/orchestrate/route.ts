@@ -1,11 +1,11 @@
 /**
  * Workflow Orchestration API
  *
- * POST: Start and optionally run complete workflow for an order
- * GET: Get workflow status and superprompt
+ * POST: Initialize workflow for an order and fire Inngest event to start processing.
+ * GET: Get workflow status and superprompt (read-only).
  *
- * This endpoint combines checkout data + documents + superprompt
- * and runs the complete 9-phase workflow.
+ * The actual 14-phase pipeline runs via the Inngest-driven workflow-orchestration.ts.
+ * This endpoint only initializes the workflow record and triggers the event.
  */
 
 // Vercel serverless function configuration
@@ -14,13 +14,14 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { inngest, calculatePriority } from '@/lib/inngest/client';
 import {
   orchestrateWorkflow,
   gatherOrderContext,
   getWorkflowSuperprompt,
   buildOrderSuperprompt,
-  getWorkflowProgress,
 } from '@/lib/workflow';
+import { getWorkflowProgress } from '@/lib/workflow/workflow-state';
 import { getTemplateForPath } from '@/lib/workflow/motion-templates';
 import type { WorkflowPath, MotionTier } from '@/types/workflow';
 
@@ -48,9 +49,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const {
       orderId,
-      autoRun = false,
       workflowPath = 'path_a',
-      // NOTE: skipDocumentParsing has been REMOVED - phases cannot be skipped
     } = body;
 
     if (!orderId) {
@@ -62,10 +61,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid workflow path' }, { status: 400 });
     }
 
-    // Run orchestration
-    // PHASE ENFORCEMENT: All phases execute in order, no skipping
+    // Initialize workflow record (gathers context, creates DB records)
     const result = await orchestrateWorkflow(orderId, {
-      autoRun,
       workflowPath: workflowPath as WorkflowPath,
     });
 
@@ -73,9 +70,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
 
+    // Fire Inngest event to start the 14-phase pipeline
+    const { data: order } = await supabase
+      .from('orders')
+      .select('filing_deadline')
+      .eq('id', orderId)
+      .single();
+
+    const priority = order?.filing_deadline
+      ? calculatePriority(order.filing_deadline)
+      : 5000;
+
+    await inngest.send({
+      name: 'order/submitted',
+      data: {
+        orderId,
+        priority,
+        filingDeadline: order?.filing_deadline
+          || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    });
+
     return NextResponse.json({
       success: true,
       ...result.data,
+      message: 'Workflow initialized. 14-phase pipeline started via Inngest.',
     });
   } catch (error) {
     console.error('Orchestration error:', error);
@@ -161,7 +180,6 @@ export async function GET(request: Request) {
       }
 
       if (includeSuperprompt) {
-        // Build superprompt
         const workflowPath = (existingWorkflow?.workflow_path || 'path_a') as WorkflowPath;
         const motionCode = mapMotionTypeToCode(context.motionType, context.motionTier);
         const motionTemplate = getTemplateForPath(motionCode, workflowPath);
