@@ -1,0 +1,125 @@
+{
+  "metadata": {
+    "stateCode": "TX",
+    "stateName": "Texas",
+    "confidence": 0.97,
+    "lastUpdated": "2025-01-15",
+    "circuit": "5th Circuit",
+    "sources": [
+      "Tex. R. Civ. P. 21(f) (e-filing format)",
+      "Tex. R. App. P. 9.4(e) (page limits)",
+      "Tex. R. Civ. P. 45 (pleading requirements)",
+      "Tex. R. Civ. P. 22 (caption format with section symbols)"
+    ]
+  },
+  "paperSize": {
+    "widthDXA": 12240,
+    "heightDXA": 15840,
+    "name": "letter"
+  },
+  "margins": {
+    "topDXA": 1440,
+    "bottomDXA": 1440,
+    "leftDXA": 1440,
+    "rightDXA": 1440
+  },
+  "font": {
+    "family": "Times New Roman",
+    "sizePoints": 12,
+    "lineSpacing": "double"
+  },
+  "lineNumbering": {
+    "enabled": false,
+    "linesPerPage": 28,
+    "position": "left",
+    "federalOverride": false
+  },
+  "caption": {
+    "courtNameFormat": "IN THE {COURT_TYPE} OF {COUNTY} COUNTY, TEXAS",
+    "caseNumberLabel": "CAUSE NO.",
+    "sectionSymbol": true,
+    "sampleTemplate": "IN THE {COURT_TYPE}\n{COUNTY} COUNTY, TEXAS\n\n{PLAINTIFFS},              \u00a7\n                           \u00a7    CAUSE NO. {CASE_NUMBER}\n     Plaintiff(s),         \u00a7\n                           \u00a7\nv.                         \u00a7\n                           \u00a7\n{DEFENDANTS},              \u00a7\n                           \u00a7\n     Defendant(s).         \u00a7\n\n{MOTION_TITLE}"
+  },
+  "jurat": {
+    "type": "declaration",
+    "language": "My name is {NAME}. I am over the age of 18 years and am competent to make this declaration. I declare under penalty of perjury that the foregoing is true and correct. Executed in {COUNTY} County, Texas, on {DATE}.",
+    "federalOverride": "I declare under penalty of perjury that the foregoing is true and correct. Executed on {DATE}."
+  },
+  "footer": {
+    "required": true,
+    "includePageNumber": true,
+    "format": "Page {PAGE} of {TOTAL}"
+  },
+  "header": {
+    "required": false
+  },
+  "pageLimits": {
+    "motion": 20,
+    "memorandum": 20,
+    "opposition": 20,
+    "reply": 15,
+    "wordCountAlternative": null
+  },
+  "paragraphNumbering": {
+    "required": false
+  },
+  "eFiling": {
+    "required": true,
+    "system": "eFileTexas",
+    "format": "pdf",
+    "maxFileSizeMB": 25
+  },
+  "specialRules": {},
+  "federalDistricts": {
+    "sdtx": {
+      "name": "Southern District of Texas",
+      "paperSize": { "widthDXA": 12240, "heightDXA": 15840, "name": "letter" },
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15,
+        "msj": 25
+      },
+      "localRules": ["S.D. Tex. L.R. 7.2 (page limits)"]
+    },
+    "ndtx": {
+      "name": "Northern District of Texas",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["N.D. Tex. L.R. 7.2 (page limits)"]
+    },
+    "edtx": {
+      "name": "Eastern District of Texas",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["E.D. Tex. L.R. CV-7(a) (page limits)"]
+    },
+    "wdtx": {
+      "name": "Western District of Texas",
+      "pageLimits": {
+        "motion": 25,
+        "opposition": 25,
+        "reply": 15
+      },
+      "localRules": ["W.D. Tex. L.R. CV-7(e) (page limits)"]
+    }
+  },
+  "countyOverrides": {
+    "harris": {
+      "caption": {
+        "courtNameFormat": "IN THE {COURT_NUMBER} DISTRICT COURT OF HARRIS COUNTY, TEXAS"
+      }
+    },
+    "dallas": {
+      "caption": {
+        "courtNameFormat": "IN THE {COURT_NUMBER} DISTRICT COURT OF DALLAS COUNTY, TEXAS"
+      }
+    }
+  }
+}
