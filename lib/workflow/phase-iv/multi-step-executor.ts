@@ -464,7 +464,7 @@ export interface StatutoryCitation {
 
 const SEARCHES_PER_BATCH = 1; // ONE search per step - CourtListener is too slow for batching (150s × 3 = 450s > 300s Vercel limit)
 const MAX_QUERIES_PER_ELEMENT = 3; // Limit queries per element
-const MINIMUM_CITATIONS_HARD_STOP = 4;
+const MINIMUM_CITATIONS_HARD_STOP = 2;
 const MINIMUM_CITATIONS_IDEAL = 6;
 
 // Standard elements for motion types (fallback if Phase II/III don't provide)
