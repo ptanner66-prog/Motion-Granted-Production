@@ -364,27 +364,27 @@ export async function batchGetCitationDetailsService(
           results.push(details);
 
           // Cache each result (fire and forget)
-          supabase
-            .from('citation_cache')
-            .upsert({
-              courtlistener_opinion_id: details.opinionId,
-              courtlistener_cluster_id: details.clusterId,
-              case_name: details.caseName,
-              case_name_short: details.caseNameShort,
-              citation_string: details.citation,
-              court: details.court,
-              court_short: details.courtShort,
-              date_filed: details.dateFiled,
-              date_filed_display: details.dateFiledDisplay,
-              syllabus: details.syllabus,
-              cited_by_count: details.citedByCount,
-              treatment_history: details.treatment,
-              fetch_source: 'batch_endpoint',
-              fetched_at: new Date().toISOString(),
-              expires_at: new Date(Date.now() + CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString(),
-            }, { onConflict: 'courtlistener_opinion_id' })
-            .then(() => { /* ignore */ })
-            .catch((err: unknown) => console.warn('[CitationService] Failed to cache:', err));
+          Promise.resolve(
+            supabase
+              .from('citation_cache')
+              .upsert({
+                courtlistener_opinion_id: details.opinionId,
+                courtlistener_cluster_id: details.clusterId,
+                case_name: details.caseName,
+                case_name_short: details.caseNameShort,
+                citation_string: details.citation,
+                court: details.court,
+                court_short: details.courtShort,
+                date_filed: details.dateFiled,
+                date_filed_display: details.dateFiledDisplay,
+                syllabus: details.syllabus,
+                cited_by_count: details.citedByCount,
+                treatment_history: details.treatment,
+                fetch_source: 'batch_endpoint',
+                fetched_at: new Date().toISOString(),
+                expires_at: new Date(Date.now() + CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+              }, { onConflict: 'courtlistener_opinion_id' })
+          ).catch((err: unknown) => console.warn('[CitationService] Failed to cache:', err));
         }
       }
 
