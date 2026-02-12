@@ -223,6 +223,17 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
     const firmPhone = profile?.firm_phone || '';
     const firmEmail = profile?.email || '';
 
+    // Warn if critical attorney fields are empty
+    const missingFields = [];
+    if (!barNumber) missingFields.push('bar_number');
+    if (!firmName) missingFields.push('firm_name');
+    if (!firmAddress) missingFields.push('firm_address');
+    if (!firmCity) missingFields.push('firm_city');
+    if (missingFields.length > 0) {
+      console.warn(`[OrderContext] WARNING: Missing attorney profile fields: ${missingFields.join(', ')}`);
+      console.warn(`[OrderContext] Signature block will be incomplete. Client ID: ${order.client_id}`);
+    }
+
     // Build formatted full address for signature blocks
     const firmFullAddress = [
       firmAddress,

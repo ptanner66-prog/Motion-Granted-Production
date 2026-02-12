@@ -1254,6 +1254,10 @@ async function executePhaseV(input: PhaseInput): Promise<PhaseOutput> {
     console.log(citationEnforcementBlock.substring(0, 500));
     console.log('[Phase V] ... (enforcement block continues with full citation bank)');
 
+    const todayDate = new Date().toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric'
+    });
+
     // =========================================================================
     // Continue with normal Phase V execution
     // =========================================================================
@@ -1319,6 +1323,8 @@ City, State ZIP: ${input.firmCity}, ${input.firmState} ${input.firmZip}
 Phone: ${input.firmPhone}
 Email: ${input.firmEmail}
 Representing: ${getRepresentedPartyName()}
+
+Today's Date for Certificate of Service: ${todayDate}
 
 THE SIGNATURE BLOCK IN THE MOTION MUST APPEAR EXACTLY AS:
 ${signatureBlock}
@@ -3098,8 +3104,6 @@ OUTPUT FORMAT (JSON only):
     "prayerForRelief": "...",
     "signature": "EXACT signature block with real attorney info - NO PLACEHOLDERS",
     "certificateOfService": "full COS with real attorney signature"
-    "certificateOfService": "[CERTIFICATE OF SERVICE - to be completed with service details]",
-    "signature": "[ATTORNEY SIGNATURE BLOCK - to be signed]"
   },
   "changesMade": [
     { "section": "string", "change": "description of revision" }
