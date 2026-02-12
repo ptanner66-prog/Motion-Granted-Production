@@ -1310,8 +1310,47 @@ export const generateOrderWorkflow = inngest.createFunction(
       'Critical gaps detected in evidence/case data'
     ) as string;
 
+    // ========================================================================
+    // HOLD OVERRIDE: Simple procedural motions should almost never hold
+    // ========================================================================
+    // Tier A procedural motions (extensions, continuances, substitutions) rarely
+    // need additional evidence beyond the statement of facts. If the AI recommends
+    // hold on these, downgrade to warn-only unless the reason mentions genuinely
+    // missing critical info like "no case number" or "wrong jurisdiction".
+    const PROCEDURAL_MOTION_TYPES = [
+      'extension of time', 'extend deadline', 'continuance',
+      'substitution of counsel', 'withdrawal of counsel',
+      'consent judgment', 'motion to enroll', 'pro hac vice',
+    ];
+
+    const motionTypeLower = (workflowState.orderContext.motionType || '').toLowerCase();
+    const isProceduralMotion = PROCEDURAL_MOTION_TYPES.some(t => motionTypeLower.includes(t));
+    const isTierA = workflowState.tier === 'A';
+
+    let effectiveHoldRequired = holdRequired;
+
+    if (holdRequired && isProceduralMotion && isTierA) {
+      console.log(`[Orchestration] HOLD override: Tier A procedural motion "${workflowState.orderContext.motionType}" — downgrading hold to warn`);
+      console.log(`[Orchestration] Original hold reason: ${holdReason}`);
+      effectiveHoldRequired = false;
+
+      // Log the override for audit trail
+      await supabase.from("automation_logs").insert({
+        order_id: orderId,
+        action_type: "hold_override",
+        action_details: {
+          workflowId: workflowState.workflowId,
+          phase: "III",
+          originalHoldReason: holdReason,
+          overrideReason: "Tier A procedural motion — hold downgraded to warn",
+          motionType: workflowState.orderContext.motionType,
+          tier: workflowState.tier,
+        },
+      });
+    }
+
     const holdMode = getHoldEnforcementMode();
-    if (holdRequired) {
+    if (effectiveHoldRequired) {
       if (holdMode === 'enforce') {
         console.log('[Orchestration] ========== HOLD TRIGGERED (mode=enforce) ==========');
         console.log('[Orchestration] Reason:', holdReason);
