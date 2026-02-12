@@ -15,7 +15,7 @@ const createOrderSchema = z.object({
   base_price: z.number().nullable(),
   turnaround: z.enum(['standard', 'rush_72', 'rush_48']),
   rush_surcharge: z.number().min(0),
-  total_price: z.number().min(1, 'Total price must be at least $1'),
+  total_price: z.number().min(0),
   filing_deadline: z.string().min(1, 'Filing deadline is required'),
   jurisdiction: z.string().min(1, 'Jurisdiction is required'),
   court_division: z.string().nullable().optional(),
