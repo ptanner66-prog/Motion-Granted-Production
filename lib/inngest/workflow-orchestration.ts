@@ -190,7 +190,23 @@ function buildPhaseInput(state: WorkflowState): PhaseInput {
     proceduralHistory: state.orderContext.proceduralHistory,
     instructions: state.orderContext.instructions,
     previousPhaseOutputs: state.phaseOutputs as Record<WorkflowPhaseCode, unknown>,
-    documents,
+    // SP12-01 FIX: Fall back to raw document text when parsed summaries are empty.
+    // Before this fix, Phase I (and all phases) received empty documents because
+    // parsed_documents table has no entries before Phase I runs.
+    documents: (() => {
+      const parsedSummaries = state.orderContext.documents.parsed
+        .map((d) => d.summary)
+        .filter(Boolean);
+      if (parsedSummaries.length > 0) {
+        return parsedSummaries;
+      }
+      // Fallback: split raw text into per-document entries if available
+      const raw = state.orderContext.documents.raw;
+      if (raw && raw.trim().length > 0) {
+        return [raw];
+      }
+      return [];
+    })(),
 
     // Party information for caption and signature blocks
     parties: state.orderContext.parties.map((p) => ({
@@ -861,6 +877,34 @@ async function generateDeliverables(
       console.log('[generateDeliverables] Caption QC report generated:', captionUrl);
     } catch (error) {
       console.error('[generateDeliverables] Error generating caption QC report:', error);
+    }
+
+    // SP12-04 FIX: Insert deliverable records into documents table with is_deliverable: true.
+    // Before this fix, auto-generated PDFs were only stored in orders.deliverable_urls JSONB,
+    // but the client GET /api/orders/[id]/deliverables queries documents table for is_deliverable=true.
+    const deliverableEntries: Array<{ name: string; url: string | undefined; type: string }> = [
+      { name: 'motion.pdf', url: deliverableUrls.motionPdf, type: 'motion' },
+      { name: 'instruction-sheet.pdf', url: deliverableUrls.attorneyInstructionSheet, type: 'instruction_sheet' },
+      { name: 'citation-report.pdf', url: deliverableUrls.citationAccuracyReport, type: 'citation_report' },
+      { name: 'caption-qc-report.pdf', url: deliverableUrls.captionQcReport, type: 'caption_qc_report' },
+    ];
+
+    for (const entry of deliverableEntries) {
+      if (entry.url) {
+        await supabase.from('documents').insert({
+          order_id: orderId,
+          file_name: entry.name,
+          file_type: 'application/pdf',
+          file_size: 0, // Size unknown from storage upload
+          file_url: `${storagePath}/${entry.name}`,
+          document_type: entry.type,
+          is_deliverable: true,
+        }).then(({ error }) => {
+          if (error) {
+            console.warn(`[generateDeliverables] Failed to insert ${entry.name} into documents table:`, error.message);
+          }
+        });
+      }
     }
 
     // 5. Update order with deliverable URLs
