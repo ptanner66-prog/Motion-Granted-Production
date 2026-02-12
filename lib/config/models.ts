@@ -1,3 +1,15 @@
+/**
+ * @deprecated This file is superseded by lib/config/phase-registry.ts.
+ * Active imports still exist — DO NOT DELETE until imports are migrated.
+ * See: CGA6-037, CGA6-038 in Clay's audit.
+ *
+ * Remaining imports:
+ * - lib/workflow/phase-executors.ts (MODELS)
+ * - lib/civ/model-router.ts (MODELS)
+ * - lib/workflow/model-router.ts (MODELS)
+ * - __tests__/citations/citation-models.test.ts (MODELS)
+ */
+
 // /lib/config/models.ts
 // Centralized model string configuration for Motion Granted
 // VERSION: 7.4.1 — January 28, 2026

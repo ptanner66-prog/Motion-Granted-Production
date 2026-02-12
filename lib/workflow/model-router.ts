@@ -1,4 +1,11 @@
 /**
+ * @deprecated This file is superseded by lib/config/phase-registry.ts.
+ * Active imports still exist — DO NOT DELETE until imports are migrated.
+ * See: CGA6-037, CGA6-038 in Clay's audit.
+ *
+ * Remaining imports:
+ * - lib/inngest/workflow-orchestration.ts (getModelConfig, getModelId, createMessageParams, shouldUseOpus)
+ *
  * Model Router — Backward-compatible re-exports from phase-registry.
  *
  * ╔══════════════════════════════════════════════════════════════════╗
@@ -10,8 +17,6 @@
  * Previously this was 243 lines that imported from types/workflow.ts
  * (which had the WRONG Sonnet model string: claude-sonnet-4-5-20250929).
  * All of that logic is now in phase-registry.ts with correct values.
- *
- * @deprecated Import from '@/lib/config/phase-registry' instead.
  */
 
 import Anthropic from '@anthropic-ai/sdk';

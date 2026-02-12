@@ -1,11 +1,13 @@
+/** @deprecated Superseded by lib/config/phase-registry.ts. Only kept for reference. */
+
 /**
  * Motion Granted v7.2 Phase Configuration
  *
  * Centralized configuration for the 14-phase workflow system.
  * Defines model routing, extended thinking budgets, and phase flow.
  *
- * IMPORTANT: This file is the source of truth for phase configuration.
- * Changes here affect the entire workflow system.
+ * NOTE: No active imports remain after CGA6-051 cleanup.
+ * This file is retained for reference only.
  */
 
 // ============================================================================
