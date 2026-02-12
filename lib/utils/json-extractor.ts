@@ -59,12 +59,40 @@ export function extractJSON<T = Record<string, unknown>>(
     const data = JSON.parse(text) as T;
     return { success: true, data };
   } catch (firstError) {
-    // Log the failure with context
+    // RECOVERY PASS 1: Try all code fences
+    const allFences = [...raw.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/g)];
+    for (const fence of allFences) {
+      try {
+        const cleaned = fence[1].trim().replace(/,\s*([}\]])/g, '$1');
+        const data = JSON.parse(cleaned) as T;
+        return { success: true, data };
+      } catch { continue; }
+    }
+    // RECOVERY PASS 2: Brace-counted extraction (handles nested objects)
+    const braceStart = raw.indexOf('{');
+    if (braceStart !== -1) {
+      let depth = 0;
+      let end = -1;
+      for (let i = braceStart; i < raw.length; i++) {
+        if (raw[i] === '{') depth++;
+        if (raw[i] === '}') depth--;
+        if (depth === 0) { end = i; break; }
+      }
+      if (end !== -1) {
+        try {
+          let candidate = raw.slice(braceStart, end + 1);
+          candidate = candidate.replace(/,\s*([}\]])/g, '$1');
+          candidate = candidate.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ' ');
+          const data = JSON.parse(candidate) as T;
+          return { success: true, data };
+        } catch { /* fall through */ }
+      }
+    }
     const preview = raw.slice(0, 300).replace(/\n/g, '\\n');
     console.error(`[${context.phase}] JSON parse FAILED for order ${context.orderId}. Preview: ${preview}`);
     return {
       success: false,
-      error: `JSON parse failed: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+      error: `JSON parse failed after 3 attempts: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
       rawText: raw,
     };
   }

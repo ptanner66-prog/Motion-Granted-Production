@@ -7,7 +7,7 @@
  * Citation Viewer Feature — January 30, 2026
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import {
   getCitationDetailsForViewer,
   batchGetCitationDetails,
@@ -19,6 +19,17 @@ import type {
   SaveCitationInput,
   CitationCacheEntry,
 } from '@/types/citations';
+
+/**
+ * Get a Supabase service-role client for background operations.
+ * This avoids the cookie-based client which fails in Inngest context.
+ */
+function getServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Supabase service credentials not configured');
+  return createAdminClient(url, key);
+}
 
 // Cache TTL: 30 days
 const CACHE_TTL_DAYS = 30;
@@ -70,7 +81,7 @@ export async function getOrderCitations(orderId: string): Promise<{
   error?: string;
 }> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceClient();
 
     const { data, error } = await supabase
       .from('order_citations')
@@ -145,7 +156,7 @@ export async function getCitationDetails(
   const forceRefresh = options?.forceRefresh ?? false;
 
   try {
-    const supabase = await createClient();
+    const supabase = getServiceClient();
 
     // Check cache first (unless force refresh)
     if (!forceRefresh) {
@@ -301,7 +312,7 @@ export async function batchGetCitationDetailsService(
   }
 
   try {
-    const supabase = await createClient();
+    const supabase = getServiceClient();
     const results: CitationDetails[] = [];
     const errors: string[] = [];
     let cacheHits = 0;
@@ -424,7 +435,7 @@ export async function saveOrderCitations(
   }
 
   try {
-    const supabase = await createClient();
+    const supabase = getServiceClient();
 
     // Transform to database format
     const dbRows = citations.map((citation, index) => ({
@@ -497,7 +508,7 @@ export async function flagCitation(
   adminId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceClient();
 
     const { error } = await supabase
       .from('order_citations')
@@ -541,7 +552,7 @@ export async function verifyCitation(
   adminId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceClient();
 
     const { error } = await supabase
       .from('order_citations')
@@ -581,7 +592,7 @@ export async function getCitationCount(orderId: string): Promise<{
   error?: string;
 }> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceClient();
 
     const { data, error } = await supabase
       .from('order_citations')
