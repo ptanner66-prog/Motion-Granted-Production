@@ -13,6 +13,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { ClaudeAnalysisRequest, ClaudeAnalysisResponse } from '@/types/automation';
 import { getAnthropicAPIKey } from '@/lib/api-keys';
+import { logger } from '@/lib/logger';
 
 // ============================================================================
 // CONFIGURATION
@@ -41,7 +42,7 @@ export async function getAnthropicClient(): Promise<Anthropic | null> {
       return new Anthropic({ apiKey });
     }
   } catch (error) {
-    console.error('Error getting Anthropic API key from database:', error);
+    logger.error(`Error getting Anthropic API key from database: ${error}`);
   }
 
   // Fall back to static client
@@ -157,7 +158,7 @@ export async function callClaude<T>(
   const model = options?.model || DEFAULT_MODEL;
   const maxTokens = options?.maxTokens || DEFAULT_MAX_TOKENS;
 
-  console.log('[Claude API - callClaudeWithRetry] Using model:', model);
+  logger.info(`[Claude API - callClaudeWithRetry] Using model: ${model}`);
 
   try {
     const response = await client.messages.create({
@@ -173,7 +174,7 @@ export async function callClaude<T>(
       ],
     });
 
-    console.log('[Claude API] Response model:', response.model);
+    logger.info(`[Claude API] Response model: ${response.model}`);
 
     // Extract text content from response
     const textContent = response.content.find((block) => block.type === 'text');
@@ -203,7 +204,7 @@ export async function callClaude<T>(
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error calling Claude API';
-    console.error('[Claude API Error]', errorMessage);
+    logger.error(`[Claude API Error] ${errorMessage}`);
     return {
       success: false,
       error: errorMessage,
@@ -240,7 +241,7 @@ export async function askClaude(options: {
   const maxTokens = options.maxTokens || DEFAULT_MAX_TOKENS;
   const useStreaming = maxTokens >= 16000; // LOWERED: Streaming required for 10+ min operations
 
-  console.log('[Claude API] Using model:', model, '| Max tokens:', maxTokens, '| Streaming:', useStreaming);
+  logger.info(`[Claude API] Using model: ${model} | Max tokens: ${maxTokens} | Streaming: ${useStreaming}`);
 
   try {
     // Use STREAMING for high-token operations (64K+) to prevent timeouts
@@ -276,7 +277,7 @@ export async function askClaude(options: {
       totalInputTokens = finalMessage.usage.input_tokens;
       totalOutputTokens = finalMessage.usage.output_tokens;
 
-      console.log('[Claude API - askClaude] STREAMING complete - Input:', totalInputTokens, 'Output:', totalOutputTokens);
+      logger.info(`[Claude API - askClaude] STREAMING complete - Input: ${totalInputTokens} Output: ${totalOutputTokens}`);
 
       return {
         success: true,
@@ -301,7 +302,7 @@ export async function askClaude(options: {
       ],
     });
 
-    console.log('[Claude API - askClaude] Response model:', response.model);
+    logger.info(`[Claude API - askClaude] Response model: ${response.model}`);
 
     // Extract text content from response
     const textContent = response.content.find((block) => block.type === 'text');
@@ -321,7 +322,7 @@ export async function askClaude(options: {
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error calling Claude API';
-    console.error('[Claude API Error]', errorMessage);
+    logger.error(`[Claude API Error] ${errorMessage}`);
     return {
       success: false,
       error: errorMessage,
@@ -655,14 +656,14 @@ export async function createMessageWithStreaming(
   const useStreaming = maxTokens >= 16000; // LOWERED: Streaming required for 10+ min operations
   const model = params.model || 'unknown';
 
-  console.log(`[Claude API] createMessageWithStreaming called`);
-  console.log(`[Claude API] Model: ${model}, Max tokens: ${maxTokens}, Streaming: ${useStreaming}`);
+  logger.info(`[Claude API] createMessageWithStreaming called`);
+  logger.info(`[Claude API] Model: ${model}, Max tokens: ${maxTokens}, Streaming: ${useStreaming}`);
 
   const startTime = Date.now();
 
   try {
     if (useStreaming) {
-      console.log(`[Claude API] Starting streaming request...`);
+      logger.info(`[Claude API] Starting streaming request...`);
       const stream = client.messages.stream(params);
 
       // Track progress during streaming
@@ -670,45 +671,45 @@ export async function createMessageWithStreaming(
       stream.on('text', () => {
         chunkCount++;
         if (chunkCount % 100 === 0) {
-          console.log(`[Claude API] Streaming progress: ${chunkCount} text chunks received`);
+          logger.info(`[Claude API] Streaming progress: ${chunkCount} text chunks received`);
         }
       });
 
       const finalMessage = await stream.finalMessage();
       const duration = Date.now() - startTime;
 
-      console.log(`[Claude API] Streaming complete in ${duration}ms`);
-      console.log(`[Claude API] Input tokens: ${finalMessage.usage.input_tokens}`);
-      console.log(`[Claude API] Output tokens: ${finalMessage.usage.output_tokens}`);
-      console.log(`[Claude API] Stop reason: ${finalMessage.stop_reason}`);
-      console.log(`[Claude API] Content blocks: ${finalMessage.content.length}`);
+      logger.info(`[Claude API] Streaming complete in ${duration}ms`);
+      logger.info(`[Claude API] Input tokens: ${finalMessage.usage.input_tokens}`);
+      logger.info(`[Claude API] Output tokens: ${finalMessage.usage.output_tokens}`);
+      logger.info(`[Claude API] Stop reason: ${finalMessage.stop_reason}`);
+      logger.info(`[Claude API] Content blocks: ${finalMessage.content.length}`);
 
       // Validate response has content
       if (!finalMessage.content || finalMessage.content.length === 0) {
-        console.error(`[Claude API] WARNING: Empty content in response!`);
+        logger.error(`[Claude API] WARNING: Empty content in response!`);
       }
 
       return finalMessage as Anthropic.Message;
     }
 
     // Standard non-streaming for smaller operations
-    console.log(`[Claude API] Starting non-streaming request...`);
+    logger.info(`[Claude API] Starting non-streaming request...`);
     const response = await client.messages.create(params) as Anthropic.Message;
     const duration = Date.now() - startTime;
 
-    console.log(`[Claude API] Non-streaming complete in ${duration}ms`);
+    logger.info(`[Claude API] Non-streaming complete in ${duration}ms`);
     if (response.usage) {
-      console.log(`[Claude API] Input tokens: ${response.usage.input_tokens}`);
-      console.log(`[Claude API] Output tokens: ${response.usage.output_tokens}`);
+      logger.info(`[Claude API] Input tokens: ${response.usage.input_tokens}`);
+      logger.info(`[Claude API] Output tokens: ${response.usage.output_tokens}`);
     }
-    console.log(`[Claude API] Stop reason: ${response.stop_reason}`);
+    logger.info(`[Claude API] Stop reason: ${response.stop_reason}`);
 
     return response;
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`[Claude API] Request FAILED after ${duration}ms`);
-    console.error(`[Claude API] Error type:`, error instanceof Error ? error.constructor.name : typeof error);
-    console.error(`[Claude API] Error message:`, error instanceof Error ? error.message : String(error));
+    logger.error(`[Claude API] Request FAILED after ${duration}ms`);
+    logger.error(`[Claude API] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
+    logger.error(`[Claude API] Error message: ${error instanceof Error ? error.message : String(error)}`);
 
     // Re-throw with more context
     if (error instanceof Error) {
@@ -749,7 +750,7 @@ export async function generateMotion(options: {
 
   const maxTokens = options.maxOutputTokens || MOTION_MAX_TOKENS;
 
-  console.log(`[Motion Generation] Starting STREAMING generation with ${maxTokens} max tokens`);
+  logger.info(`[Motion Generation] Starting STREAMING generation with ${maxTokens} max tokens`);
 
   try {
     let fullContent = '';
@@ -788,7 +789,7 @@ export async function generateMotion(options: {
     totalInputTokens = finalMessage.usage.input_tokens;
     totalOutputTokens = finalMessage.usage.output_tokens;
 
-    console.log(`[Motion Generation] COMPLETE - Input: ${totalInputTokens}, Output: ${totalOutputTokens} tokens`);
+    logger.info(`[Motion Generation] COMPLETE - Input: ${totalInputTokens}, Output: ${totalOutputTokens} tokens`);
 
     return {
       success: true,
@@ -800,7 +801,7 @@ export async function generateMotion(options: {
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error generating motion';
-    console.error('[Motion Generation Error]', errorMessage);
+    logger.error(`[Motion Generation Error] ${errorMessage}`);
     return {
       success: false,
       error: errorMessage,

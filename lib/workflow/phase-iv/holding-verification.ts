@@ -36,6 +36,7 @@ import {
 } from './scoring';
 import { buildElementPriorityMap } from './element-extraction';
 import { getOpinionText } from '@/lib/courtlistener/client';
+import { logger } from '@/lib/logger';
 
 // ============================================================================
 // BATCH VERIFICATION
@@ -62,11 +63,11 @@ export async function verifyHoldings(
 ): Promise<HoldingVerificationOutput> {
   const start = Date.now();
 
-  console.log(`╔══════════════════════════════════════════════════════════════╗`);
-  console.log(`║  PHASE IV-C: HOLDING VERIFICATION + SCORING                  ║`);
-  console.log(`╚══════════════════════════════════════════════════════════════╝`);
-  console.log(`[Phase IV-C] Candidates to verify: ${input.candidates.length}`);
-  console.log(`[Phase IV-C] Elements to cover: ${input.elements.length}`);
+  logger.info(`╔══════════════════════════════════════════════════════════════╗`);
+  logger.info(`║  PHASE IV-C: HOLDING VERIFICATION + SCORING                  ║`);
+  logger.info(`╚══════════════════════════════════════════════════════════════╝`);
+  logger.info(`[Phase IV-C] Candidates to verify: ${input.candidates.length}`);
+  logger.info(`[Phase IV-C] Elements to cover: ${input.elements.length}`);
 
   try {
     // Build element map for proposition lookup
@@ -85,11 +86,11 @@ export async function verifyHoldings(
     const scoredCitations: ScoredCitation[] = [];
     const batches = chunkArray(input.candidates, VERIFICATION_BATCH_SIZE);
 
-    console.log(`[Phase IV-C] Processing ${batches.length} batches of ${VERIFICATION_BATCH_SIZE}`);
+    logger.info(`[Phase IV-C] Processing ${batches.length} batches of ${VERIFICATION_BATCH_SIZE}`);
 
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      console.log(`[Phase IV-C] Batch ${i + 1}/${batches.length}: ${batch.length} candidates`);
+      logger.info(`[Phase IV-C] Batch ${i + 1}/${batches.length}: ${batch.length} candidates`);
 
       // Process batch in parallel
       const batchResults = await Promise.allSettled(
@@ -108,7 +109,7 @@ export async function verifyHoldings(
       }
     }
 
-    console.log(`[Phase IV-C] Verified citations: ${scoredCitations.length}`);
+    logger.info(`[Phase IV-C] Verified citations: ${scoredCitations.length}`);
 
     // ═══════════════════════════════════════════════════════════════════════
     // SELECTION: Pick top citations per element
@@ -132,11 +133,11 @@ export async function verifyHoldings(
 
     const duration = Date.now() - start;
 
-    console.log(`[Phase IV-C] Selected citations: ${sortedSelected.length}`);
-    console.log(`[Phase IV-C] Louisiana: ${counts.louisiana}, Federal: ${counts.federal}`);
-    console.log(`[Phase IV-C] Binding: ${counts.binding}, Persuasive: ${counts.persuasive}`);
-    console.log(`[Phase IV-C] Average score: ${avgScore.toFixed(1)}`);
-    console.log(`[Phase IV-C] Duration: ${duration}ms`);
+    logger.info(`[Phase IV-C] Selected citations: ${sortedSelected.length}`);
+    logger.info(`[Phase IV-C] Louisiana: ${counts.louisiana}, Federal: ${counts.federal}`);
+    logger.info(`[Phase IV-C] Binding: ${counts.binding}, Persuasive: ${counts.persuasive}`);
+    logger.info(`[Phase IV-C] Average score: ${avgScore.toFixed(1)}`);
+    logger.info(`[Phase IV-C] Duration: ${duration}ms`);
 
     return {
       success: sortedSelected.length >= 6,
@@ -150,7 +151,7 @@ export async function verifyHoldings(
       error: sortedSelected.length < 6 ? `Only ${sortedSelected.length} citations selected, minimum is 6` : undefined,
     };
   } catch (error) {
-    console.error('[Phase IV-C] Holding verification failed:', error);
+    logger.error('[Phase IV-C] Holding verification failed:', error);
     return {
       success: false,
       scoredCitations: [],
@@ -216,7 +217,7 @@ async function verifySingleCandidate(
 
     // If no support, skip this candidate
     if (verification.propositionMatch === 'NO_SUPPORT') {
-      console.log(`[Phase IV-C] Skipping ${candidate.caseName?.substring(0, 30)}... (NO_SUPPORT)`);
+      logger.info(`[Phase IV-C] Skipping ${candidate.caseName?.substring(0, 30)}... (NO_SUPPORT)`);
       return null;
     }
 

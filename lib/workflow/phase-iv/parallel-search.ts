@@ -38,6 +38,7 @@ import {
   type BatchSearchTask,
 } from '@/lib/courtlistener/batched-search';
 import { scoreRelevance, TOPICAL_RELEVANCE_THRESHOLD, type PropositionContext } from '@/lib/courtlistener/relevance-scorer';
+import { logger } from '@/lib/logger';
 
 // ============================================================================
 // JURISDICTION TYPE DETECTION
@@ -85,7 +86,7 @@ export function detectJurisdictionType(jurisdiction: string): JurisdictionType {
 
   for (const pattern of federalPatterns) {
     if (pattern.test(normalized)) {
-      console.log(`[JurisdictionDetect] FEDERAL detected: "${jurisdiction}" matched ${pattern}`);
+      logger.info(`[JurisdictionDetect] FEDERAL detected: "${jurisdiction}" matched ${pattern}`);
       return 'federal';
     }
   }
@@ -105,19 +106,19 @@ export function detectJurisdictionType(jurisdiction: string): JurisdictionType {
 
   for (const pattern of statePatterns) {
     if (pattern.test(normalized)) {
-      console.log(`[JurisdictionDetect] STATE detected: "${jurisdiction}" matched ${pattern}`);
+      logger.info(`[JurisdictionDetect] STATE detected: "${jurisdiction}" matched ${pattern}`);
       return 'state';
     }
   }
 
   // Default to STATE for Louisiana jurisdiction (most common use case)
   if (normalized.includes('louisiana')) {
-    console.log(`[JurisdictionDetect] STATE (default): "${jurisdiction}" contains "louisiana"`);
+    logger.info(`[JurisdictionDetect] STATE (default): "${jurisdiction}" contains "louisiana"`);
     return 'state';
   }
 
   // If unclear, default to state (conservative - better to get state citations)
-  console.log(`[JurisdictionDetect] STATE (fallback): "${jurisdiction}" - defaulting to state`);
+  logger.info(`[JurisdictionDetect] STATE (fallback): "${jurisdiction}" - defaulting to state`);
   return 'state';
 }
 
@@ -161,27 +162,27 @@ export async function executeParallelSearch(
   // ═══════════════════════════════════════════════════════════════════════
   const jurisdictionType = detectJurisdictionType(input.jurisdiction);
 
-  console.log(`╔══════════════════════════════════════════════════════════════╗`);
-  console.log(`║  PHASE IV-B: PARALLEL TARGETED SEARCH                        ║`);
-  console.log(`║  JURISDICTION FIX: 2026-02-03-CHEN-STATE-COURT-FIX           ║`);
-  console.log(`╚══════════════════════════════════════════════════════════════╝`);
-  console.log(`[Phase IV-B] Elements to search: ${input.elements.length}`);
-  console.log(`[Phase IV-B] Jurisdiction: "${input.jurisdiction}"`);
-  console.log(`[Phase IV-B] Jurisdiction TYPE: ${jurisdictionType.toUpperCase()}`);
-  console.log(`[Phase IV-B] Max candidates per element: ${input.maxCandidatesPerElement}`);
-  console.log(`[Phase IV-B] PARALLEL EXECUTION: Enabled`);
+  logger.info(`╔══════════════════════════════════════════════════════════════╗`);
+  logger.info(`║  PHASE IV-B: PARALLEL TARGETED SEARCH                        ║`);
+  logger.info(`║  JURISDICTION FIX: 2026-02-03-CHEN-STATE-COURT-FIX           ║`);
+  logger.info(`╚══════════════════════════════════════════════════════════════╝`);
+  logger.info(`[Phase IV-B] Elements to search: ${input.elements.length}`);
+  logger.info(`[Phase IV-B] Jurisdiction: "${input.jurisdiction}"`);
+  logger.info(`[Phase IV-B] Jurisdiction TYPE: ${jurisdictionType.toUpperCase()}`);
+  logger.info(`[Phase IV-B] Max candidates per element: ${input.maxCandidatesPerElement}`);
+  logger.info(`[Phase IV-B] PARALLEL EXECUTION: Enabled`);
 
   try {
     // Build all search tasks with jurisdiction-aware tier assignment
     const searchTasks = buildSearchTasks(input.elements, jurisdictionType);
-    console.log(`[Phase IV-B] Total search tasks: ${searchTasks.length}`);
+    logger.info(`[Phase IV-B] Total search tasks: ${searchTasks.length}`);
 
     // Track searches by tier
     const searchesByTier = { tier1: 0, tier2: 0, tier3: 0 };
     for (const task of searchTasks) {
       searchesByTier[task.tier]++;
     }
-    console.log(`[Phase IV-B] Searches by tier: T1=${searchesByTier.tier1}, T2=${searchesByTier.tier2}, T3=${searchesByTier.tier3}`);
+    logger.info(`[Phase IV-B] Searches by tier: T1=${searchesByTier.tier1}, T2=${searchesByTier.tier2}, T3=${searchesByTier.tier3}`);
 
     // ═══════════════════════════════════════════════════════════════════════
     // CHEN-TIMEOUT-FIX (2026-01-30): BATCHED EXECUTION
@@ -191,8 +192,8 @@ export async function executeParallelSearch(
     // - CourtListener server overload
     // ═══════════════════════════════════════════════════════════════════════
     const searchStart = Date.now();
-    console.log(`[Phase IV-B] >>> LAUNCHING BATCHED SEARCHES (NOT parallel)...`);
-    console.log(`[Phase IV-B] Total tasks: ${searchTasks.length}, Batch size: 5, Inter-batch delay: 1.5s`);
+    logger.info(`[Phase IV-B] >>> LAUNCHING BATCHED SEARCHES (NOT parallel)...`);
+    logger.info(`[Phase IV-B] Total tasks: ${searchTasks.length}, Batch size: 5, Inter-batch delay: 1.5s`);
 
     // Convert to BatchSearchTask format
     const batchTasks: BatchSearchTask[] = searchTasks.map((task, idx) => ({
@@ -207,7 +208,7 @@ export async function executeParallelSearch(
     const batchSummary = await executeBatchedSearches(batchTasks);
 
     const searchDuration = Date.now() - searchStart;
-    console.log(`[Phase IV-B] <<< BATCHED SEARCHES COMPLETE in ${searchDuration}ms`);
+    logger.info(`[Phase IV-B] <<< BATCHED SEARCHES COMPLETE in ${searchDuration}ms`);
 
     // Collect unique candidates from batch results
     const allCandidates = collectUniqueCandidates(batchSummary.results);
@@ -215,14 +216,14 @@ export async function executeParallelSearch(
     const successfulSearches = batchSummary.succeeded;
     const failedSearches = batchSummary.failed + batchSummary.timedOut;
 
-    console.log(`[Phase IV-B] Successful searches: ${successfulSearches}/${searchTasks.length}`);
+    logger.info(`[Phase IV-B] Successful searches: ${successfulSearches}/${searchTasks.length}`);
     if (failedSearches > 0) {
       console.warn(`[Phase IV-B] Failed searches: ${failedSearches} (${batchSummary.timedOut} timeouts)`);
     }
     if (batchSummary.partialResults) {
       console.warn(`[Phase IV-B] PARTIAL RESULTS: ${batchSummary.abortReason}`);
     }
-    console.log(`[Phase IV-B] Unique candidates found: ${allCandidates.length}`);
+    logger.info(`[Phase IV-B] Unique candidates found: ${allCandidates.length}`);
 
     // ═══════════════════════════════════════════════════════════════════════
     // CHEN JURISDICTION FIX (2026-02-03): Post-search jurisdiction validation
@@ -231,16 +232,16 @@ export async function executeParallelSearch(
     const validatedCandidates = validateJurisdiction(allCandidates, jurisdictionType);
     const filteredCount = allCandidates.length - validatedCandidates.length;
     if (filteredCount > 0) {
-      console.log(`[Phase IV-B] ⚠️ Filtered out ${filteredCount} wrong-jurisdiction cases`);
+      logger.info(`[Phase IV-B] ⚠️ Filtered out ${filteredCount} wrong-jurisdiction cases`);
     }
-    console.log(`[Phase IV-B] Validated candidates: ${validatedCandidates.length}`);
+    logger.info(`[Phase IV-B] Validated candidates: ${validatedCandidates.length}`);
 
     // ═══════════════════════════════════════════════════════════════════════
     // CHEN RELEVANCE FIX (2026-02-05): Topical relevance scoring
     // Score each candidate for relevance to its search element's proposition
     // Reject candidates below 0.70 threshold
     // ═══════════════════════════════════════════════════════════════════════
-    console.log(`[Phase IV-B] ═══ TOPICAL RELEVANCE SCORING ═══`);
+    logger.info(`[Phase IV-B] ═══ TOPICAL RELEVANCE SCORING ═══`);
     let relevanceRejections = 0;
     const relevanceScoredCandidates = validatedCandidates.filter(candidate => {
       // Build proposition context from the element this candidate was found for
@@ -270,17 +271,17 @@ export async function executeParallelSearch(
     });
 
     if (relevanceRejections > 0) {
-      console.log(`[Phase IV-B] ⛔ Relevance scoring rejected ${relevanceRejections} candidates (threshold: ${TOPICAL_RELEVANCE_THRESHOLD})`);
+      logger.info(`[Phase IV-B] ⛔ Relevance scoring rejected ${relevanceRejections} candidates (threshold: ${TOPICAL_RELEVANCE_THRESHOLD})`);
     }
-    console.log(`[Phase IV-B] After relevance scoring: ${relevanceScoredCandidates.length} candidates`);
+    logger.info(`[Phase IV-B] After relevance scoring: ${relevanceScoredCandidates.length} candidates`);
 
     // Sort candidates: Louisiana first, then by date (recent first)
     const sortedCandidates = sortCandidatesByAuthority(relevanceScoredCandidates);
 
     const duration = Date.now() - start;
 
-    console.log(`[Phase IV-B] Total candidates: ${sortedCandidates.length}`);
-    console.log(`[Phase IV-B] Duration: ${duration}ms`);
+    logger.info(`[Phase IV-B] Total candidates: ${sortedCandidates.length}`);
+    logger.info(`[Phase IV-B] Duration: ${duration}ms`);
 
     return {
       success: sortedCandidates.length > 0,
@@ -292,7 +293,7 @@ export async function executeParallelSearch(
       error: sortedCandidates.length === 0 ? 'No candidates found from CourtListener' : undefined,
     };
   } catch (error) {
-    console.error('[Phase IV-B] Parallel search failed:', error);
+    logger.error('[Phase IV-B] Parallel search failed:', error);
     return {
       success: false,
       candidates: [],
@@ -346,12 +347,12 @@ function buildSearchTasks(
     // STATE COURT: Only search state court tiers
     // tier1 = LA Supreme Court, tier2 = LA Courts of Appeal
     tiersToSearch = ['tier1', 'tier2'];
-    console.log(`[Phase IV-B] STATE COURT detected — searching ONLY tier1 (LA Supreme) and tier2 (LA App)`);
-    console.log(`[Phase IV-B] ⛔ tier3 (federal courts) EXCLUDED for primary searches`);
+    logger.info(`[Phase IV-B] STATE COURT detected — searching ONLY tier1 (LA Supreme) and tier2 (LA App)`);
+    logger.info(`[Phase IV-B] ⛔ tier3 (federal courts) EXCLUDED for primary searches`);
   } else {
     // FEDERAL COURT: Only search federal court tiers
     tiersToSearch = ['tier3'];
-    console.log(`[Phase IV-B] FEDERAL COURT detected — searching ONLY tier3 (5th Cir, District Courts)`);
+    logger.info(`[Phase IV-B] FEDERAL COURT detected — searching ONLY tier3 (5th Cir, District Courts)`);
   }
 
   for (const element of elements) {
@@ -392,8 +393,8 @@ function buildSearchTasks(
     }
   }
 
-  console.log(`[Phase IV-B] Built ${tasks.length} search tasks for ${jurisdictionType.toUpperCase()} jurisdiction`);
-  console.log(`[Phase IV-B] Tiers used: ${tiersToSearch.join(', ')}`);
+  logger.info(`[Phase IV-B] Built ${tasks.length} search tasks for ${jurisdictionType.toUpperCase()} jurisdiction`);
+  logger.info(`[Phase IV-B] Tiers used: ${tiersToSearch.join(', ')}`);
 
   return tasks;
 }
@@ -422,7 +423,7 @@ async function executeSearchTask(task: SearchTask): Promise<RawCandidate[]> {
     'tier3': 'louisiana_federal',  // ca5,laed,lamd,lawd (Fifth Circuit + LA Districts)
   };
 
-  console.log(`[executeSearchTask] Task "${task.query}" tier=${task.tier} → jurisdiction="${jurisdictionMap[task.tier]}"`);
+  logger.info(`[executeSearchTask] Task "${task.query}" tier=${task.tier} → jurisdiction="${jurisdictionMap[task.tier]}"`);
 
   const result = await searchOpinions(
     task.query,
@@ -539,7 +540,7 @@ function validateJurisdiction(
         pattern.test(courtName) || pattern.test(citation)
       );
       if (isFederal) {
-        console.log(`[JurisdictionFilter] ⛔ EXCLUDED federal case from STATE search: "${candidate.caseName?.substring(0, 50)}..." (${candidate.citation})`);
+        logger.info(`[JurisdictionFilter] ⛔ EXCLUDED federal case from STATE search: "${candidate.caseName?.substring(0, 50)}..." (${candidate.citation})`);
         return false;
       }
       return true;
@@ -549,7 +550,7 @@ function validateJurisdiction(
         pattern.test(courtName) || pattern.test(citation)
       );
       if (isState) {
-        console.log(`[JurisdictionFilter] ⛔ EXCLUDED state case from FEDERAL search: "${candidate.caseName?.substring(0, 50)}..." (${candidate.citation})`);
+        logger.info(`[JurisdictionFilter] ⛔ EXCLUDED state case from FEDERAL search: "${candidate.caseName?.substring(0, 50)}..." (${candidate.citation})`);
         return false;
       }
       return true;
