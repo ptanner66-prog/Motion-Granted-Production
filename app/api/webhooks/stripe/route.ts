@@ -655,6 +655,9 @@ async function handleCheckoutSessionCompleted(
   const orderId = session.metadata?.order_id;
   if (orderId) {
     // Similar to payment_intent.succeeded but for checkout sessions
+    // SP12-03 FIX: Include filing_deadline in select so the Inngest trigger
+    // condition on line 685 (order?.filing_deadline) can actually evaluate to true.
+    // Without this, order.filing_deadline was always undefined and the workflow never fired.
     const { data: order, error: updateError } = await supabase
       .from('orders')
       .update({
@@ -662,7 +665,7 @@ async function handleCheckoutSessionCompleted(
         status: 'under_review',
       })
       .eq('id', orderId)
-      .select('id, order_number')
+      .select('id, order_number, filing_deadline')
       .single();
 
     if (updateError) {

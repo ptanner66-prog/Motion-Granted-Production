@@ -30,10 +30,11 @@ export async function GET(
 
     const isAdmin = profile?.role === 'admin';
 
-    // Get order to verify ownership
+    // SP12-05 FIX: Changed user_id to client_id — orders table uses client_id, not user_id.
+    // Without this fix, the query returned null for user_id and non-admin downloads always failed.
     const { data: order } = await supabase
       .from('orders')
-      .select('user_id, status')
+      .select('client_id, status')
       .eq('id', orderId)
       .single();
 
@@ -42,7 +43,7 @@ export async function GET(
     }
 
     // Verify access
-    if (!isAdmin && order.user_id !== user.id) {
+    if (!isAdmin && order.client_id !== user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -54,14 +55,14 @@ export async function GET(
     }
 
     // Generate signed URLs
-    const result = await generateOrderDeliverableUrls(orderId, order.user_id);
+    const result = await generateOrderDeliverableUrls(orderId, order.client_id);
 
     if (result.error) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
 
     // Log admin access
-    if (isAdmin && order.user_id !== user.id) {
+    if (isAdmin && order.client_id !== user.id) {
       await logAdminActivity({
         adminUserId: user.id,
         action: 'DOWNLOAD_DELIVERABLE',

@@ -45,7 +45,10 @@ export async function resumeFromHold(orderId: string): Promise<HoldResult> {
       .single();
 
     if (fetchError || !order) return { success: false, error: 'Order not found' };
-    if (order.status !== 'hold_pending') return { success: false, error: 'Order not on hold' };
+    // SP12-07 FIX: Accept both 'hold_pending' (from hold-service triggerHold) and 'on_hold'
+    // (from workflow-orchestration HOLD handler). Without this, resumeFromHold() always failed
+    // for orders placed on hold by the workflow because it set status='on_hold', not 'hold_pending'.
+    if (order.status !== 'hold_pending' && order.status !== 'on_hold') return { success: false, error: 'Order not on hold' };
 
     await supabase.from('orders').update({ status: 'in_progress', hold_resolved_at: now, updated_at: now }).eq('id', orderId);
     await supabase.from('checkpoint_events').insert({ order_id: orderId, event_type: 'HOLD_RESOLVED', phase: order.hold_phase, data: { resolved_at: now }, created_at: now });
@@ -78,10 +81,11 @@ export async function processHoldTimeouts(): Promise<{ processed: number; errors
   const errors: string[] = [];
   let processed = 0;
 
+  // SP12-07 FIX: Also include 'on_hold' status (set by workflow orchestration)
   const { data: orders } = await supabase
     .from('orders')
     .select('id, hold_triggered_at, hold_reminder_sent, hold_escalated')
-    .eq('status', 'hold_pending')
+    .in('status', ['hold_pending', 'on_hold'])
     .not('hold_triggered_at', 'is', null);
 
   for (const order of orders || []) {
