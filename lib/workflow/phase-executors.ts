@@ -693,11 +693,14 @@ ${PHASE_PROMPTS.PHASE_II}`;
 
     const userMessage = `Based on the Phase I intake, identify the legal framework:
 
-PHASE I OUTPUT:
-${JSON.stringify(phaseIOutput, null, 2)}
-
 MOTION TYPE: ${input.motionType}
 JURISDICTION: ${input.jurisdiction}
+
+STATEMENT OF FACTS (from client):
+${input.statementOfFacts || '[No statement of facts provided]'}
+
+PHASE I OUTPUT:
+${JSON.stringify(phaseIOutput, null, 2)}
 
 Provide your Phase II legal framework analysis as JSON.`;
 
@@ -876,11 +879,30 @@ ${PHASE_PROMPTS.PHASE_III}`;
 
     const userMessage = `Analyze evidence and issues for Phase III:
 
-PHASE I OUTPUT (facts and case info):
+MOTION TYPE: ${input.motionType}
+JURISDICTION: ${input.jurisdiction}
+CASE NUMBER: ${input.caseNumber || '[Not provided]'}
+CASE CAPTION: ${input.caseCaption || '[Not provided]'}
+
+STATEMENT OF FACTS (from client):
+${input.statementOfFacts || '[No statement of facts provided]'}
+
+PROCEDURAL HISTORY:
+${input.proceduralHistory || '[No procedural history provided]'}
+
+CLIENT INSTRUCTIONS:
+${input.instructions || '[No special instructions]'}
+
+UPLOADED DOCUMENTS:
+${input.documents && input.documents.length > 0 ? input.documents.join('\n\n---\n\n') : '[No documents uploaded]'}
+
+PHASE I OUTPUT (intake analysis):
 ${JSON.stringify(phaseIOutput, null, 2)}
 
-PHASE II OUTPUT (legal elements):
+PHASE II OUTPUT (legal framework):
 ${JSON.stringify(phaseIIOutput, null, 2)}
+
+IMPORTANT: The statement of facts and uploaded documents above ARE the client's evidence for this motion. Evaluate evidence sufficiency based on what is actually provided, not what a perfect case file would contain. For procedural motions (extensions of time, continuances, substitutions of counsel), the statement of facts alone is typically sufficient evidence — do NOT recommend HOLD for these motion types unless genuinely critical information is missing.
 
 Provide your Phase III evidence strategy as JSON.`;
 
