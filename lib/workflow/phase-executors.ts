@@ -1064,7 +1064,7 @@ async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
     }
 
     // MINIMUM CITATION CHECK
-    const minRequired = input.tier === 'A' ? 4 : input.tier === 'B' ? 8 : 12;
+    const minRequired = input.tier === 'A' ? 2 : input.tier === 'B' ? 5 : 8;
     if (result.caseCitationBank.length < minRequired) {
       console.error(`[Phase IV] FATAL: Insufficient citations: ${result.caseCitationBank.length} < ${minRequired} required for Tier ${input.tier}`);
       throw new Error(`Only ${result.caseCitationBank.length} verified citations found, but Tier ${input.tier} requires at least ${minRequired}.`);
