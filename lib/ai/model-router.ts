@@ -1,4 +1,14 @@
 /**
+ * @deprecated This file is superseded by lib/config/phase-registry.ts.
+ * Active imports still exist — DO NOT DELETE until imports are migrated.
+ * See: CGA6-037, CGA6-038 in Clay's audit.
+ *
+ * Remaining imports:
+ * - lib/citation/citation-bank.ts (MotionTier type)
+ * - lib/citation/decision-handlers.ts (MotionTier type)
+ */
+
+/**
  * Model Router Module
  *
  * Tier-based AI model routing that reads from model_routing_config database table.

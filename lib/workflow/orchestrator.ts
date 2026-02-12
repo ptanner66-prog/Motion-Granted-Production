@@ -1,5 +1,20 @@
 /**
- * Workflow Orchestrator
+ * @deprecated This file is the original workflow orchestrator, superseded by
+ * lib/inngest/workflow-orchestration.ts for all execution logic.
+ * See: AUD-006, CGA6-037 in Clay's audit.
+ *
+ * Active imports still exist — DO NOT DELETE until imports are migrated:
+ * - lib/inngest/workflow-orchestration.ts (gatherOrderContext, OrderContext type)
+ * - lib/workflow/index.ts (re-exports gatherOrderContext, buildOrderSuperprompt,
+ *   initializeWorkflow, orchestrateWorkflow, getWorkflowSuperprompt,
+ *   OrderContext, SuperPromptContext, OrchestrationResult types)
+ * - lib/workflow/superprompt-engine.ts (gatherOrderContext)
+ *
+ * Only active export: gatherOrderContext() and related types.
+ * Everything else (executePhaseWithContext, orchestrateWorkflow, etc.) is dead code.
+ * Migration plan: Move gatherOrderContext to lib/workflow/context-builder.ts, then delete.
+ *
+ * Workflow Orchestrator (LEGACY)
  *
  * The central orchestration layer that combines:
  * 1. Client checkout data (statement of facts, procedural history, instructions)
