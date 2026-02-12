@@ -181,11 +181,12 @@ export async function middleware(request: NextRequest) {
 
     // SEC-002: MFA enforcement for admin accounts
     // Skip MFA check on MFA setup/verify pages and MFA API routes
+    const mfaMode = process.env.ADMIN_MFA_MODE?.toLowerCase().trim();
     const isMFARoute = pathname === '/admin/setup-mfa' ||
                        pathname === '/admin/verify-mfa' ||
                        pathname.startsWith('/api/auth/mfa');
 
-    if (!isMFARoute) {
+    if (mfaMode !== 'off' && !isMFARoute && !pathname.startsWith('/api/admin')) {
       const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       const { data: factorsData } = await supabase.auth.mfa.listFactors();
 
