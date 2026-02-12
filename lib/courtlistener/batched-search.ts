@@ -68,7 +68,7 @@ const TIER_JURISDICTION_MAP: Record<CourtTier, string> = {
 async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSearchResult> {
   const startTime = Date.now();
 
-  console.log(`[executeSearchWithTimeout] Starting task ${task.id}: query="${task.query}", tier=${task.tier}`);
+  logger.info(`[executeSearchWithTimeout] Starting task ${task.id}: query="${task.query}", tier=${task.tier}`);
 
   try {
     // Create abort controller for timeout
@@ -77,21 +77,21 @@ async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSea
 
     // Execute with rate limiting
     const searchResult = await withRateLimit(async () => {
-      console.log(`[executeSearchWithTimeout] Calling searchOpinions for task ${task.id}`);
+      logger.info(`[executeSearchWithTimeout] Calling searchOpinions for task ${task.id}`);
       const result = await searchOpinions(
         task.query,
         TIER_JURISDICTION_MAP[task.tier],
         10, // Max results per search
         { signal: controller.signal }
       );
-      console.log(`[executeSearchWithTimeout] searchOpinions returned for task ${task.id}: success=${result.success}, opinions=${result.data?.opinions?.length || 0}`);
+      logger.info(`[executeSearchWithTimeout] searchOpinions returned for task ${task.id}: success=${result.success}, opinions=${result.data?.opinions?.length || 0}`);
       return result;
     }, `search:${task.id}`);
 
     clearTimeout(timeoutId);
 
     if (!searchResult.success || !searchResult.data?.opinions) {
-      console.log(`[executeSearchWithTimeout] Task ${task.id} returned no results: success=${searchResult.success}, error=${searchResult.error}`);
+      logger.info(`[executeSearchWithTimeout] Task ${task.id} returned no results: success=${searchResult.success}, error=${searchResult.error}`);
       return {
         taskId: task.id,
         elementName: task.elementName,
@@ -132,9 +132,9 @@ async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSea
     // FIX: Use proper null/undefined check, not falsy check (ID 0 is valid)
     const candidatesWithId = candidates.filter(c => c.id !== undefined && c.id !== null);
     const candidatesWithoutId = candidates.filter(c => c.id === undefined || c.id === null);
-    console.log(`[executeSearchWithTimeout] Task ${task.id} transformed ${candidates.length} candidates:`);
-    console.log(`  - With valid ID: ${candidatesWithId.length}`);
-    console.log(`  - WITHOUT ID (will be dropped): ${candidatesWithoutId.length}`);
+    logger.info(`[executeSearchWithTimeout] Task ${task.id} transformed ${candidates.length} candidates:`);
+    logger.info(`  - With valid ID: ${candidatesWithId.length}`);
+    logger.info(`  - WITHOUT ID (will be dropped): ${candidatesWithoutId.length}`);
     if (candidatesWithoutId.length > 0) {
       console.warn(`[executeSearchWithTimeout] ⚠️ DROPPING ${candidatesWithoutId.length} candidates without ID!`);
       candidatesWithoutId.slice(0, 3).forEach((c, i) => {
@@ -224,9 +224,9 @@ export async function executeBatchedSearches(tasks: BatchSearchTask[]): Promise<
   const allResults: BatchSearchResult[] = [];
   let abortReason: string | undefined;
 
-  console.log(`\n${'='.repeat(66)}`);
-  console.log(`  BATCHED SEARCH EXECUTION`);
-  console.log(`${'='.repeat(66)}`);
+  logger.info(`\n${'='.repeat(66)}`);
+  logger.info(`  BATCHED SEARCH EXECUTION`);
+  logger.info(`${'='.repeat(66)}`);
   logger.info(`[BatchedSearch] Total tasks: ${tasks.length}`);
   logger.info(`[BatchedSearch] Batch size: ${BATCH_SIZE}`);
   logger.info(`[BatchedSearch] Estimated batches: ${Math.ceil(tasks.length / BATCH_SIZE)}`);
@@ -295,9 +295,9 @@ export async function executeBatchedSearches(tasks: BatchSearchTask[]): Promise<
     abortReason,
   };
 
-  console.log(`\n${'='.repeat(66)}`);
-  console.log(`  BATCHED SEARCH COMPLETE`);
-  console.log(`${'='.repeat(66)}`);
+  logger.info(`\n${'='.repeat(66)}`);
+  logger.info(`  BATCHED SEARCH COMPLETE`);
+  logger.info(`${'='.repeat(66)}`);
   logger.info(`[BatchedSearch] Completed: ${summary.completed}/${summary.totalTasks}`);
   logger.info(`[BatchedSearch] Succeeded: ${summary.succeeded}`);
   logger.info(`[BatchedSearch] Failed: ${summary.failed}`);
@@ -350,9 +350,9 @@ export function collectUniqueCandidates(results: BatchSearchResult[]): RawCandid
   const candidates: RawCandidate[] = [];
 
   // DIAGNOSTIC: Log input state
-  console.log(`[collectUniqueCandidates] Total batch results: ${results.length}`);
+  logger.info(`[collectUniqueCandidates] Total batch results: ${results.length}`);
   const successfulResults = results.filter(r => r.success);
-  console.log(`[collectUniqueCandidates] Successful results: ${successfulResults.length}`);
+  logger.info(`[collectUniqueCandidates] Successful results: ${successfulResults.length}`);
 
   let totalCandidatesBeforeFilter = 0;
   let candidatesWithoutId = 0;
@@ -360,7 +360,7 @@ export function collectUniqueCandidates(results: BatchSearchResult[]): RawCandid
 
   for (const result of results) {
     if (result.success) {
-      console.log(`[collectUniqueCandidates] Result ${result.taskId}: ${result.results.length} candidates`);
+      logger.info(`[collectUniqueCandidates] Result ${result.taskId}: ${result.results.length} candidates`);
       for (const candidate of result.results) {
         totalCandidatesBeforeFilter++;
         // FIX: Use typeof check instead of falsy check - ID 0 is valid!
@@ -375,15 +375,15 @@ export function collectUniqueCandidates(results: BatchSearchResult[]): RawCandid
         }
       }
     } else {
-      console.log(`[collectUniqueCandidates] Result ${result.taskId} FAILED: ${result.error}`);
+      logger.info(`[collectUniqueCandidates] Result ${result.taskId} FAILED: ${result.error}`);
     }
   }
 
-  console.log(`[collectUniqueCandidates] SUMMARY:`);
-  console.log(`  - Total candidates before filter: ${totalCandidatesBeforeFilter}`);
-  console.log(`  - Candidates without ID (DROPPED): ${candidatesWithoutId}`);
-  console.log(`  - Duplicate candidates: ${duplicateCandidates}`);
-  console.log(`  - Final unique candidates: ${candidates.length}`);
+  logger.info(`[collectUniqueCandidates] SUMMARY:`);
+  logger.info(`  - Total candidates before filter: ${totalCandidatesBeforeFilter}`);
+  logger.info(`  - Candidates without ID (DROPPED): ${candidatesWithoutId}`);
+  logger.info(`  - Duplicate candidates: ${duplicateCandidates}`);
+  logger.info(`  - Final unique candidates: ${candidates.length}`);
 
   // Sort by authority: LA Supreme > LA App > 5th Cir > District > Other
   return candidates.sort((a, b) => {

@@ -37,6 +37,7 @@ import { executeParallelSearch } from './parallel-search';
 import { verifyHoldings } from './holding-verification';
 import { countByCourtType } from './scoring';
 import { validateCourtListenerConfig } from '@/lib/courtlistener/client';
+import { logger } from '@/lib/logger';
 
 // ============================================================================
 // GRACEFUL DEGRADATION HELPER
@@ -78,14 +79,14 @@ async function flagForManualReview(
       .eq('id', orderId);
 
     if (error) {
-      console.error('[Phase IV] Failed to flag order for manual review:', error);
+      logger.error('[Phase IV] Failed to flag order for manual review:', error);
       return false;
     }
 
     console.warn(`[Phase IV] ⚠️ Order ${orderId} flagged for manual review: ${reason}`);
     return true;
   } catch (error) {
-    console.error('[Phase IV] Error flagging for manual review:', error);
+    logger.error('[Phase IV] Error flagging for manual review:', error);
     return false;
   }
 }
@@ -118,15 +119,15 @@ export async function executeLegalGradeResearch(
   const executionId = `p4-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   const start = Date.now();
 
-  console.log('╔' + '═'.repeat(72) + '╗');
-  console.log('║  PHASE IV: LEGAL-GRADE CITATION RESEARCH                             ║');
-  console.log('║  VERSION: ' + PHASE_IV_VERSION.padEnd(60) + '║');
-  console.log('║  EXECUTION ID: ' + executionId.padEnd(55) + '║');
-  console.log('╚' + '═'.repeat(72) + '╝');
-  console.log(`[Phase IV] Order ID: ${input.orderId}`);
-  console.log(`[Phase IV] Motion Type: ${input.motionType}`);
-  console.log(`[Phase IV] Jurisdiction: ${input.jurisdiction}`);
-  console.log(`[Phase IV] Tier: ${input.tier}`);
+  logger.info('╔' + '═'.repeat(72) + '╗');
+  logger.info('║  PHASE IV: LEGAL-GRADE CITATION RESEARCH                             ║');
+  logger.info('║  VERSION: ' + PHASE_IV_VERSION.padEnd(60) + '║');
+  logger.info('║  EXECUTION ID: ' + executionId.padEnd(55) + '║');
+  logger.info('╚' + '═'.repeat(72) + '╝');
+  logger.info(`[Phase IV] Order ID: ${input.orderId}`);
+  logger.info(`[Phase IV] Motion Type: ${input.motionType}`);
+  logger.info(`[Phase IV] Jurisdiction: ${input.jurisdiction}`);
+  logger.info(`[Phase IV] Tier: ${input.tier}`);
 
   try {
     // ═══════════════════════════════════════════════════════════════════════
@@ -140,7 +141,7 @@ export async function executeLegalGradeResearch(
     // ═══════════════════════════════════════════════════════════════════════
     // PHASE IV-A: ELEMENT EXTRACTION
     // ═══════════════════════════════════════════════════════════════════════
-    console.log(`\n[Phase IV] ═══ PHASE IV-A: ELEMENT EXTRACTION ═══`);
+    logger.info(`\n[Phase IV] ═══ PHASE IV-A: ELEMENT EXTRACTION ═══`);
     const phaseAStart = Date.now();
 
     const elementResult = await extractElements({
@@ -157,14 +158,14 @@ export async function executeLegalGradeResearch(
       throw new Error(`Element extraction failed: ${elementResult.error || 'No elements extracted'}`);
     }
 
-    console.log(`[Phase IV-A] Elements: ${elementResult.totalElements}`);
-    console.log(`[Phase IV-A] Critical: ${elementResult.criticalElements}`);
-    console.log(`[Phase IV-A] Duration: ${phaseADuration}ms`);
+    logger.info(`[Phase IV-A] Elements: ${elementResult.totalElements}`);
+    logger.info(`[Phase IV-A] Critical: ${elementResult.criticalElements}`);
+    logger.info(`[Phase IV-A] Duration: ${phaseADuration}ms`);
 
     // ═══════════════════════════════════════════════════════════════════════
     // PHASE IV-B: PARALLEL TARGETED SEARCH
     // ═══════════════════════════════════════════════════════════════════════
-    console.log(`\n[Phase IV] ═══ PHASE IV-B: PARALLEL TARGETED SEARCH ═══`);
+    logger.info(`\n[Phase IV] ═══ PHASE IV-B: PARALLEL TARGETED SEARCH ═══`);
     const phaseBStart = Date.now();
 
     const searchResult = await executeParallelSearch({
@@ -182,14 +183,14 @@ export async function executeLegalGradeResearch(
       throw new Error(`Phase IV failed: ${reason}. Order flagged for manual review.`);
     }
 
-    console.log(`[Phase IV-B] Candidates: ${searchResult.totalCandidates}`);
-    console.log(`[Phase IV-B] Searches: ${searchResult.searchesExecuted} (parallel)`);
-    console.log(`[Phase IV-B] Duration: ${phaseBDuration}ms`);
+    logger.info(`[Phase IV-B] Candidates: ${searchResult.totalCandidates}`);
+    logger.info(`[Phase IV-B] Searches: ${searchResult.searchesExecuted} (parallel)`);
+    logger.info(`[Phase IV-B] Duration: ${phaseBDuration}ms`);
 
     // ═══════════════════════════════════════════════════════════════════════
     // PHASE IV-C: HOLDING VERIFICATION + SCORING
     // ═══════════════════════════════════════════════════════════════════════
-    console.log(`\n[Phase IV] ═══ PHASE IV-C: HOLDING VERIFICATION + SCORING ═══`);
+    logger.info(`\n[Phase IV] ═══ PHASE IV-C: HOLDING VERIFICATION + SCORING ═══`);
     const phaseCStart = Date.now();
 
     const verificationResult = await verifyHoldings({
@@ -222,13 +223,13 @@ export async function executeLegalGradeResearch(
       console.warn(`[Phase IV-C] ⚠️ ${reason} - proceeding with flagged order`);
     } else {
       // 6+ citations - proceed normally
-      console.log(`[Phase IV-C] ✓ Citation count OK: ${citationCount} citations`);
+      logger.info(`[Phase IV-C] ✓ Citation count OK: ${citationCount} citations`);
     }
 
-    console.log(`[Phase IV-C] Verified: ${verificationResult.totalVerified}`);
-    console.log(`[Phase IV-C] Selected: ${verificationResult.totalSelected}`);
-    console.log(`[Phase IV-C] Avg Score: ${verificationResult.averageScore}`);
-    console.log(`[Phase IV-C] Duration: ${phaseCDuration}ms`);
+    logger.info(`[Phase IV-C] Verified: ${verificationResult.totalVerified}`);
+    logger.info(`[Phase IV-C] Selected: ${verificationResult.totalSelected}`);
+    logger.info(`[Phase IV-C] Avg Score: ${verificationResult.averageScore}`);
+    logger.info(`[Phase IV-C] Duration: ${phaseCDuration}ms`);
 
     // ═══════════════════════════════════════════════════════════════════════
     // FINAL VALIDATION & OUTPUT
@@ -251,10 +252,10 @@ export async function executeLegalGradeResearch(
     // ═══════════════════════════════════════════════════════════════════════
     // REPORT
     // ═══════════════════════════════════════════════════════════════════════
-    console.log(`\n╔════════════════════════════════════════════════════════════════════════╗`);
-    console.log(`║              LEGAL-GRADE CITATION RESEARCH — COMPLETE                  ║`);
-    console.log(`╚════════════════════════════════════════════════════════════════════════╝`);
-    console.log(`
+    logger.info(`\n╔════════════════════════════════════════════════════════════════════════╗`);
+    logger.info(`║              LEGAL-GRADE CITATION RESEARCH — COMPLETE                  ║`);
+    logger.info(`╚════════════════════════════════════════════════════════════════════════╝`);
+    logger.info(`
 PHASE IV-A: Element Extraction
 - Elements extracted: ${elementResult.totalElements}
 - Custom elements added: ${elementResult.customElements}
@@ -336,7 +337,7 @@ Total Duration: ${totalDuration}ms
         : undefined,
     };
   } catch (error) {
-    console.error('[Phase IV] FATAL ERROR:', error);
+    logger.error('[Phase IV] FATAL ERROR:', error);
 
     return {
       success: false,
