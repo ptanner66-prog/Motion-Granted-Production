@@ -4,6 +4,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { validateCSRF } from '@/lib/security/csrf';
 
 // ============================================================================
 // RATE LIMIT CONFIGURATION
@@ -96,8 +97,20 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session if needed
-  const { data: { session } } = await supabase.auth.getSession();
+  // CSRF protection — applied to all state-changing requests
+  // Webhooks, Inngest, and cron routes are exempted in csrf.ts
+  const csrfResult = validateCSRF(request);
+  if (!csrfResult.valid) {
+    console.warn(`[Middleware] CSRF blocked: ${csrfResult.reason}`);
+    return NextResponse.json(
+      { error: 'Request blocked by security policy' },
+      { status: 403 }
+    );
+  }
+
+  // Validate user token server-side (getUser makes a network call to Supabase,
+  // which is slower than getSession but validates the token rather than trusting the cookie)
+  const { data: { user } } = await supabase.auth.getUser();
 
   // Get client identifier for rate limiting
   // Prefer Vercel's platform-injected header (not spoofable) over standard x-forwarded-for
@@ -161,18 +174,18 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith('/admin') ||
                        pathname.startsWith('/api/admin');
 
-  if (isProtectedRoute && !session) {
+  if (isProtectedRoute && !user) {
     const redirectUrl = new URL('/login', request.url);
     redirectUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(redirectUrl);
   }
 
   // Admin route protection
-  if (isAdminRoute && session) {
+  if (isAdminRoute && user) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
-      .eq('id', session.user.id)
+      .eq('id', user.id)
       .single();
 
     if (profile?.role !== 'admin') {

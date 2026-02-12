@@ -12,12 +12,16 @@
  * 5. Court holidays are a KNOWN LIMITATION for v1 (weekend-only skip)
  */
 
+import { TIMEZONE, toChicagoTime } from '@/lib/utils/timezone';
+
+// Re-export for backward compatibility — existing imports from this file still work
+export { TIMEZONE, toChicagoTime };
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
 export const DEADLINE_BUFFER_BUSINESS_DAYS = 5;
-export const TIMEZONE = 'America/Chicago';
 
 // Turnaround days by tier (business days)
 export const TURNAROUND_DAYS: Record<string, number> = {
@@ -79,16 +83,7 @@ export function addBusinessDays(date: Date, days: number): Date {
 // TIMEZONE CONVERSION
 // ============================================================================
 
-/**
- * Convert a Date to America/Chicago timezone and return the local date parts.
- * This is essential because Vercel servers run in UTC, and a naive Date()
- * comparison gives wrong results for CST evening orders.
- */
-export function toChicagoTime(date: Date): Date {
-  // Get the date string in Chicago timezone
-  const chicagoStr = date.toLocaleString('en-US', { timeZone: TIMEZONE });
-  return new Date(chicagoStr);
-}
+// toChicagoTime is imported from @/lib/utils/timezone and re-exported above.
 
 /**
  * Format a date in America/Chicago timezone as ISO-like string with CST offset.
