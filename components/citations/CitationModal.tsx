@@ -499,7 +499,139 @@ export function CitationModal({
 
         {isLoading && renderSkeleton()}
         {error && renderError()}
-        {!isLoading && !error && renderContent()}
+        {!isLoading && !error && details && renderContent()}
+        {!isLoading && !error && !details && !effectiveOpinionId && citation && (
+          <div className="space-y-6">
+            {/* Fallback: Show citation info from DB when no CourtListener ID */}
+            <div>
+              <h2 className="text-xl font-bold text-navy uppercase tracking-wide">
+                {citation.caseName}
+              </h2>
+              <p className="text-lg text-gray-600 mt-1">
+                {citation.citationString}
+                {citation.courtShort && ` (${citation.courtShort})`}
+              </p>
+            </div>
+
+            {/* Status Badges */}
+            <div className="flex flex-wrap gap-2">
+              {citation.verificationStatus === 'verified' && (
+                <Badge variant="success" className="gap-1">
+                  <CheckCircle className="h-3 w-3" />
+                  Verified
+                </Badge>
+              )}
+              {citation.verificationStatus === 'flagged' && (
+                <Badge variant="destructive" className="gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  Flagged
+                </Badge>
+              )}
+              {citation.verificationStatus === 'unverified' && (
+                <Badge variant="warning" className="gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Unverified
+                </Badge>
+              )}
+              {citation.authorityLevel && (
+                <Badge variant={citation.authorityLevel === 'binding' ? 'default' : 'secondary'}>
+                  {citation.authorityLevel === 'binding' ? 'Binding Authority' : 'Persuasive Authority'}
+                </Badge>
+              )}
+              {citation.citationType && citation.citationType !== 'case' && (
+                <Badge variant="outline">
+                  {citation.citationType === 'statute' ? 'Statute' : 'Regulation'}
+                </Badge>
+              )}
+            </div>
+
+            {/* Proposition */}
+            {citation.proposition && (
+              <>
+                <Separator />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    Proposition in Your Motion
+                  </h3>
+                  <p className="text-gray-700 bg-blue-50 p-3 rounded-lg border-l-4 border-blue-400">
+                    &quot;{citation.proposition}&quot;
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* CourtListener link if URL stored in DB */}
+            {citation.courtlistenerUrl && (
+              <>
+                <Separator />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                    External Links
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" asChild className="gap-2">
+                      <a href={citation.courtlistenerUrl} target="_blank" rel="noopener noreferrer">
+                        <Link2 className="h-4 w-4" />
+                        CourtListener
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleCopy} className="gap-2">
+                      {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                      {copied ? 'Copied!' : 'Copy Citation'}
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {!citation.courtlistenerUrl && (
+              <>
+                <Separator />
+                <p className="text-sm text-gray-500 text-center">
+                  CourtListener details not available for this citation.
+                </p>
+              </>
+            )}
+
+            {/* Admin Actions */}
+            {mode === 'admin' && onVerificationChange && (
+              <>
+                <Separator />
+                <div className="flex gap-2">
+                  {citation.verificationStatus !== 'verified' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onVerificationChange(citation.id, 'verified')}
+                      className="gap-2 text-green-600 hover:text-green-700"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Mark Verified
+                    </Button>
+                  )}
+                  {citation.verificationStatus !== 'flagged' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onVerificationChange(citation.id, 'flagged')}
+                      className="gap-2 text-red-600 hover:text-red-700"
+                    >
+                      <Flag className="h-4 w-4" />
+                      Flag Citation
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+        {!isLoading && !error && !details && !effectiveOpinionId && !citation && (
+          <div className="text-center py-8 text-gray-500">
+            <Scale className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+            <p>No citation data available</p>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
