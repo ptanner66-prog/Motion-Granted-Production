@@ -291,10 +291,41 @@ async function uploadToSupabaseStorage(
 }
 
 /**
+ * Sanitize text for WinAnsi encoding (pdf-lib StandardFonts only support WinAnsi).
+ * Replaces Unicode characters that would crash PDF generation with ASCII equivalents.
+ */
+function sanitizeForWinAnsi(text: string): string {
+  return text
+    // Checkboxes (the specific crash cause)
+    .replace(/☐/g, '[ ]')
+    .replace(/☒/g, '[X]')
+    .replace(/☑/g, '[X]')
+    // Smart quotes and apostrophes
+    .replace(/\u201C/g, '"')  // left double quote
+    .replace(/\u201D/g, '"')  // right double quote
+    .replace(/\u2018/g, "'")  // left single quote
+    .replace(/\u2019/g, "'")  // right single quote
+    // Dashes
+    .replace(/\u2014/g, '--') // em dash
+    .replace(/\u2013/g, '-')  // en dash
+    // Ellipsis
+    .replace(/\u2026/g, '...')
+    // Legal symbols
+    .replace(/\u00A7/g, 'Sec.') // section sign
+    .replace(/\u00B6/g, 'P.')   // pilcrow
+    // Bullet points
+    .replace(/\u2022/g, '-')    // bullet
+    .replace(/\u2023/g, '>')    // triangular bullet
+    // Catch-all: remove any remaining non-Latin1 characters
+    .replace(/[^\x00-\xFF]/g, '');
+}
+
+/**
  * Create a simple motion PDF using pdf-lib
  */
 async function createSimpleMotionPDF(content: string, orderContext: OrderContext): Promise<Uint8Array> {
   const { PDFDocument, StandardFonts } = await import('pdf-lib');
+  content = sanitizeForWinAnsi(content);
 
   const pdfDoc = await PDFDocument.create();
   const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
@@ -377,6 +408,8 @@ async function createSimpleMotionPDF(content: string, orderContext: OrderContext
  */
 async function createSimpleTextPDF(title: string, content: string): Promise<Uint8Array> {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  title = sanitizeForWinAnsi(title);
+  content = sanitizeForWinAnsi(content);
 
   const pdfDoc = await PDFDocument.create();
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
