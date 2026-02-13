@@ -130,12 +130,8 @@ export interface OrderContext {
   barNumber: string;
   firmName: string;
   firmAddress: string;
-  firmCity: string;
-  firmState: string;
-  firmZip: string;
   firmPhone: string;
   firmEmail: string;
-  firmFullAddress: string;  // Pre-formatted multi-line address
 
   // Extracted document content
   documents: {
@@ -197,9 +193,6 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
           bar_number,
           firm_name,
           firm_address,
-          firm_city,
-          firm_state,
-          firm_zip,
           firm_phone,
           email
         )
@@ -217,9 +210,6 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
     const barNumber = profile?.bar_number || '';
     const firmName = profile?.firm_name || '';
     const firmAddress = profile?.firm_address || '';
-    const firmCity = profile?.firm_city || '';
-    const firmState = profile?.firm_state || 'LA';
-    const firmZip = profile?.firm_zip || '';
     const firmPhone = profile?.firm_phone || '';
     const firmEmail = profile?.email || '';
 
@@ -228,17 +218,10 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
     if (!barNumber) missingFields.push('bar_number');
     if (!firmName) missingFields.push('firm_name');
     if (!firmAddress) missingFields.push('firm_address');
-    if (!firmCity) missingFields.push('firm_city');
     if (missingFields.length > 0) {
       console.warn(`[OrderContext] WARNING: Missing attorney profile fields: ${missingFields.join(', ')}`);
       console.warn(`[OrderContext] Signature block will be incomplete. Client ID: ${order.client_id}`);
     }
-
-    // Build formatted full address for signature blocks
-    const firmFullAddress = [
-      firmAddress,
-      `${firmCity}, ${firmState} ${firmZip}`.trim()
-    ].filter(Boolean).join('\n');
 
     // Extract document content
     const extractResult = await extractOrderDocuments(orderId);
@@ -295,12 +278,8 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
       barNumber,
       firmName,
       firmAddress,
-      firmCity,
-      firmState,
-      firmZip,
       firmPhone,
       firmEmail,
-      firmFullAddress,
 
       // Documents
       documents: {

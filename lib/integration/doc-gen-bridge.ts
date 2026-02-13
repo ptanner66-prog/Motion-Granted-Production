@@ -261,9 +261,6 @@ export async function generateAndStoreFilingPackage(
           bar_number,
           firm_name,
           firm_address,
-          firm_city,
-          firm_state,
-          firm_zip,
           firm_phone,
           email
         )
@@ -298,10 +295,9 @@ export async function generateAndStoreFilingPackage(
       name: profile?.full_name || '',
       firmName: profile?.firm_name || undefined,
       barNumber: profile?.bar_number || '',
-      barState: profile?.firm_state || 'LA',
+      barState: 'LA',
       address: [
         profile?.firm_address || '',
-        `${profile?.firm_city || ''}, ${profile?.firm_state || 'LA'} ${profile?.firm_zip || ''}`.trim(),
       ].filter(Boolean),
       phone: profile?.firm_phone || '',
       email: profile?.email || '',
