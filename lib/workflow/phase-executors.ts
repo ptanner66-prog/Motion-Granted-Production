@@ -27,7 +27,7 @@ import type {
   LetterGrade,
 } from '@/types/workflow';
 import { PHASE_PROMPTS } from '@/prompts';
-import { getModel, getThinkingBudget, getMaxTokens } from '@/lib/config/phase-registry';
+import { getModel, getThinkingBudget, getMaxTokens, getExecutionMode } from '@/lib/config/phase-registry';
 import { MODELS } from '@/lib/config/models';
 import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
@@ -175,6 +175,62 @@ function buildExtendedThinkingParams(phase: string, tier: string): Record<string
       budget_tokens: budget,
     },
   };
+}
+
+/**
+ * Resolve the AI model for phase execution.
+ *
+ * For CHAT/ET phases: Returns the registry model directly. Throws if null
+ * (indicates a SKIP phase reached the executor, or a misconfiguration).
+ *
+ * For CODE mode phases (I, VIII.5, X) that still make LLM calls: Returns
+ * MODELS.SONNET as a temporary bridge. These phases will be refactored to
+ * pure TypeScript in a future task, eliminating the LLM call entirely.
+ *
+ * For CIV phases (V.1, VII.1, IX.1): Returns the registry's default
+ * (Stage 2 / Opus) when no stage is specified.
+ */
+function resolveModelForExecution(phase: string, tier: string): string {
+  const p = phase as Parameters<typeof getModel>[0];
+  const t = tier as Parameters<typeof getModel>[1];
+  const model = getModel(p, t);
+  if (model !== null) return model;
+
+  // CODE mode phases that still make LLM calls during migration.
+  // When the CODE mode refactor removes these LLM calls, this branch
+  // becomes unreachable and should be deleted.
+  if (getExecutionMode(p) === 'CODE') {
+    return MODELS.SONNET;
+  }
+
+  // CHAT/ET phase returned null — this is a bug.
+  throw new Error(
+    `[MODEL_ROUTER] Phase ${phase} tier ${tier} returned null model for CHAT mode. ` +
+    `Check isPhaseSkipped() before calling executor, or fix phase-registry.ts.`
+  );
+}
+
+/**
+ * Resolve max_tokens for phase execution.
+ *
+ * For phases with registry-defined tokens (> 0): Returns the registry value.
+ * For CODE mode phases returning 0: Returns 16384 as a temporary bridge.
+ */
+function resolveMaxTokensForExecution(phase: string, tier: string): number {
+  const p = phase as Parameters<typeof getMaxTokens>[0];
+  const t = tier as Parameters<typeof getMaxTokens>[1];
+  const maxTokens = getMaxTokens(p, t);
+  if (maxTokens > 0) return maxTokens;
+
+  // CODE mode phases return 0 but still need tokens during migration.
+  if (getExecutionMode(p) === 'CODE') {
+    return 16384;
+  }
+
+  throw new Error(
+    `[MODEL_ROUTER] Phase ${phase} tier ${tier} has maxTokens=0 for CHAT mode. ` +
+    `Check phase-registry.ts configuration.`
+  );
 }
 
 /**
@@ -607,14 +663,14 @@ ${input.documents?.join('\n') || 'None provided'}
 
 Provide your Phase I analysis as JSON.`;
 
-    const model = getModel('I', input.tier) ?? MODELS.SONNET;
-    console.log(`[Phase I] Calling Claude with model: ${model}, max_tokens: ${getMaxTokens('I', input.tier) || 16384}`);
+    const model = resolveModelForExecution('I', input.tier);
+    console.log(`[Phase I] Calling Claude with model: ${model}, max_tokens: ${resolveMaxTokensForExecution('I', input.tier)}`);
     console.log(`[Phase I] Input context length: ${userMessage.length} chars`);
 
     const callStart = Date.now();
     const response = await createMessageWithStreaming(client, {
       model,
-      max_tokens: getMaxTokens('I', input.tier) || 16384, // Phase I: Registry-driven
+      max_tokens: resolveMaxTokensForExecution('I', input.tier), // Phase I: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -771,8 +827,8 @@ ${JSON.stringify(phaseIOutput, null, 2)}
 Provide your Phase II legal framework analysis as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('II', input.tier) ?? MODELS.SONNET,
-      max_tokens: getMaxTokens('II', input.tier) || 16384, // Phase II: Registry-driven
+      model: resolveModelForExecution('II', input.tier),
+      max_tokens: resolveMaxTokensForExecution('II', input.tier), // Phase II: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -973,8 +1029,8 @@ IMPORTANT: The statement of facts and uploaded documents above ARE the client's 
 Provide your Phase III evidence strategy as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('III', input.tier) ?? MODELS.SONNET,
-      max_tokens: getMaxTokens('III', input.tier) || 16384, // Phase III: Registry-driven
+      model: resolveModelForExecution('III', input.tier),
+      max_tokens: resolveMaxTokensForExecution('III', input.tier), // Phase III: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1517,14 +1573,14 @@ REMINDER - USE THESE EXACT VALUES IN THE MOTION:
 
 Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON.`;
 
-    const model = getModel('V', input.tier) ?? MODELS.SONNET;
-    console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: ${getMaxTokens('V', input.tier) || 16384}`);
+    const model = resolveModelForExecution('V', input.tier);
+    console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: ${resolveMaxTokensForExecution('V', input.tier)}`);
     console.log(`[Phase V] User message length: ${userMessage.length} chars`);
 
     const callStart = Date.now();
     const response = await createMessageWithStreaming(client, {
       model,
-      max_tokens: getMaxTokens('V', input.tier) || 16384, // Phase V: Registry-driven
+      max_tokens: resolveMaxTokensForExecution('V', input.tier), // Phase V: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -2606,8 +2662,8 @@ OUTPUT FORMAT (JSON only):
 }`;
 
       const cleanupResponse = await createMessageWithStreaming(client, {
-        model: getModel('V.1', input.tier) ?? MODELS.SONNET,
-        max_tokens: getMaxTokens('V.1', input.tier) || 16384, // Phase V.1: Registry-driven
+        model: resolveModelForExecution('V.1', input.tier),
+        max_tokens: resolveMaxTokensForExecution('V.1', input.tier), // Phase V.1: Registry-driven
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       });
@@ -2780,8 +2836,8 @@ JURISDICTION: ${input.jurisdiction}
 Analyze potential opposition. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
-      model: getModel('VI', input.tier) ?? MODELS.SONNET,
-      max_tokens: getMaxTokens('VI', input.tier) || 16384, // Phase VI: Registry-driven
+      model: resolveModelForExecution('VI', input.tier),
+      max_tokens: resolveMaxTokensForExecution('VI', input.tier), // Phase VI: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       // CGA6-060 FIX: Standardized extended thinking via buildExtendedThinkingParams
@@ -2909,8 +2965,8 @@ Provide your judicial evaluation as JSON.`;
     // PHASE VII: ALWAYS Opus, ALWAYS Extended Thinking (10K tokens)
     // CGA6-060 FIX: Standardized extended thinking via buildExtendedThinkingParams
     const response = await createMessageWithStreaming(client, {
-      model: getModel('VII', input.tier) ?? MODELS.SONNET, // Always Opus
-      max_tokens: getMaxTokens('VII', input.tier) || 16384, // Phase VII: Registry-driven
+      model: resolveModelForExecution('VII', input.tier), // Always Opus
+      max_tokens: resolveMaxTokensForExecution('VII', input.tier), // Phase VII: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       ...buildExtendedThinkingParams('VII', input.tier),
@@ -2994,8 +3050,8 @@ ${JSON.stringify(phaseVIIIOutput, null, 2)}
 Verify any new citations. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('VII.1', input.tier) ?? MODELS.SONNET,
-      max_tokens: getMaxTokens('VII.1', input.tier) || 16384, // Phase VII.1: Registry-driven
+      model: resolveModelForExecution('VII.1', input.tier),
+      max_tokens: resolveMaxTokensForExecution('VII.1', input.tier), // Phase VII.1: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3209,8 +3265,8 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
 
     // CGA6-060 FIX: Standardized extended thinking via buildExtendedThinkingParams
     const requestParams: Anthropic.MessageCreateParams = {
-      model: getModel('VIII', input.tier) ?? MODELS.SONNET,
-      max_tokens: getMaxTokens('VIII', input.tier) || 16384, // Phase VIII: Registry-driven
+      model: resolveModelForExecution('VIII', input.tier),
+      max_tokens: resolveMaxTokensForExecution('VIII', input.tier), // Phase VIII: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       ...buildExtendedThinkingParams('VIII', input.tier),
@@ -3398,8 +3454,8 @@ JURISDICTION: ${input.jurisdiction}
 Validate captions. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('VIII.5', input.tier) ?? MODELS.SONNET,
-      max_tokens: getMaxTokens('VIII.5', input.tier) || 16384, // Phase VIII.5: Registry-driven
+      model: resolveModelForExecution('VIII.5', input.tier),
+      max_tokens: resolveMaxTokensForExecution('VIII.5', input.tier), // Phase VIII.5: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3534,8 +3590,8 @@ ${JSON.stringify(finalMotion, null, 2)}
 Generate supporting documents. The Certificate of Service MUST include the exact attorney signature block shown above. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('IX', input.tier) ?? MODELS.SONNET,
-      max_tokens: getMaxTokens('IX', input.tier) || 16384, // Phase IX: Registry-driven
+      model: resolveModelForExecution('IX', input.tier),
+      max_tokens: resolveMaxTokensForExecution('IX', input.tier), // Phase IX: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3637,8 +3693,8 @@ ${JSON.stringify(phaseVOutput, null, 2)}
 Verify Separate Statement complies with ${formatRules}. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('IX.1', input.tier) ?? MODELS.SONNET,
-      max_tokens: getMaxTokens('IX.1', input.tier) || 16384, // Phase IX.1: Registry-driven
+      model: resolveModelForExecution('IX.1', input.tier),
+      max_tokens: resolveMaxTokensForExecution('IX.1', input.tier), // Phase IX.1: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3738,8 +3794,8 @@ ${JSON.stringify(phaseIXOutput, null, 2)}
 Assemble and check. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
-      model: getModel('X', input.tier) ?? MODELS.SONNET,
-      max_tokens: getMaxTokens('X', input.tier) || 16384, // Phase X: Registry-driven
+      model: resolveModelForExecution('X', input.tier),
+      max_tokens: resolveMaxTokensForExecution('X', input.tier), // Phase X: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
