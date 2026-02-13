@@ -1,4 +1,7 @@
 /**
+ * @deprecated Superseded by lib/workflow/superprompt-engine.ts.
+ * Re-exported from lib/workflow/index.ts but no external consumers remain.
+ *
  * SUPERPROMPT: Production-Grade Legal Motion Generation
  *
  * This is the core AI instruction system that produces court-ready motions.

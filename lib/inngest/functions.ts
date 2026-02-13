@@ -19,10 +19,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
-import { createMessageWithRetry } from "@/lib/claude-client";
+import { createMessageWithRetry } from "@/lib/ai/claude-client";
 import { parseOrderDocuments, getOrderParsedDocuments } from "@/lib/workflow/document-parser";
 import { quickValidate } from "@/lib/workflow/quality-validator";
-import { extractCitations } from "@/lib/workflow/citation-verifier";
+import { extractCitations } from "@/lib/citation/citation-verifier";
 
 // Import the new 14-phase workflow orchestration
 import { generateOrderWorkflow, handleWorkflowFailure, workflowFunctions } from "./workflow-orchestration";

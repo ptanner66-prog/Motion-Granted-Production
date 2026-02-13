@@ -4,8 +4,8 @@
  * Authority: Clay's 2.5 Master Implementation Spec, Part C §3
  * Date: February 5, 2026
  *
- * This config is SEPARATE from lib/workflow/phase-config.ts.
- * phase-config.ts handles general phase routing (I-X).
+ * This config is SEPARATE from lib/config/phase-registry.ts.
+ * phase-registry.ts handles general phase routing (I-X).
  * This file handles per-STEP routing within citation phases (V.1, VII.1, IX.1).
  *
  * The citation pipeline uses LLMs as TOOLS (Code Mode), not conversational agents.
