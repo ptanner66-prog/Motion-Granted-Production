@@ -39,12 +39,6 @@ import { AdminNotifications } from '@/components/admin/admin-notifications'
 
 const mainNavigation = [
   {
-    name: 'Dashboard',
-    href: '/admin',
-    icon: LayoutDashboard,
-    description: 'Overview & stats'
-  },
-  {
     name: 'All Orders',
     href: '/admin/orders',
     icon: FileText,
