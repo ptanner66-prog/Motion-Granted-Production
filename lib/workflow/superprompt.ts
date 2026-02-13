@@ -789,7 +789,7 @@ export async function generateMotion(
   // Call Claude with the superprompt using Opus 4.5 for best legal reasoning
   const result = await askClaude({
     prompt: superprompt,
-    maxTokens: 128000, // MAXED OUT - Opus 4.5 supports 128K output
+    maxTokens: 64000, // Opus max output tokens is 64K
     model: MOTION_MODEL, // Use Opus 4.5 for motion generation
     systemPrompt: `You are an expert federal litigation attorney with extensive experience drafting court filings. You produce precise, well-cited, professionally formatted legal documents. You NEVER use placeholder text - every citation is real and accurate. You follow Bluebook citation format.`,
   });

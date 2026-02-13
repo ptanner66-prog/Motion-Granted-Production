@@ -463,7 +463,7 @@ export async function saveSuperpromptTemplate(
       motion_types: template.motionTypes,
       template: template.template,
       system_prompt: template.systemPrompt,
-      max_tokens: template.maxTokens || 128000, // MAXED OUT
+      max_tokens: Math.min(template.maxTokens || 64000, 64000), // Opus max is 64K
       is_default: template.isDefault || false,
     })
     .select()

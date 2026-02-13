@@ -69,7 +69,7 @@ interface RouteConfig {
   model: ModelId | null;
   /** Extended thinking budget in tokens. undefined = no extended thinking. */
   thinkingBudget?: number;
-  /** max_tokens for the API call. 128000 for ET phases, 16384 for standard CHAT, 4096 for CODE/JSON. */
+  /** max_tokens for the API call. 64000 for Opus ET phases, 16384 for standard CHAT, 4096 for CODE/JSON. */
   maxTokens: number;
 }
 
@@ -164,13 +164,13 @@ const OPUS_STANDARD: RouteConfig = {
 const OPUS_ET_8K: RouteConfig = {
   model: MODELS.OPUS,
   thinkingBudget: 8_000,
-  maxTokens: 128_000,
+  maxTokens: 64_000,
 };
 
 const OPUS_ET_10K: RouteConfig = {
   model: MODELS.OPUS,
   thinkingBudget: 10_000,
-  maxTokens: 128_000,
+  maxTokens: 64_000,
 };
 
 // ============================================================================
@@ -524,7 +524,7 @@ export function getThinkingBudget(
  * Get max_tokens for a phase/tier combination.
  *
  * @example
- * getMaxTokens('VII', 'C')  // → 128000 (ET phase)
+ * getMaxTokens('VII', 'C')  // → 64000 (Opus ET phase)
  * getMaxTokens('V', 'A')    // → 16384 (standard CHAT)
  */
 export function getMaxTokens(
