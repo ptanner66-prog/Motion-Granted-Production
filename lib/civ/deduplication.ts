@@ -1,8 +1,4 @@
 /**
- * @deprecated LEGACY PATH B — Use lib/civ/ (Path A) instead.
- * This file is retained for reference only. Do not import in new code.
- * See CIV Pipeline Master Plan, Part 11: Dual Code Path Audit.
- *
  * Citation Deduplication — SP21 Production Fix (BUG #7)
  *
  * Fixes the Eyecite truncation problem where partial citation strings

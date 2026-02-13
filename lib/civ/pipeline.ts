@@ -1,6 +1,7 @@
 /**
- * @deprecated Re-export shim. Canonical location: lib/citation/civ/pipeline.ts (CGA6-031).
- * New code should import from '@/lib/citation/civ/pipeline'.
+ * CIV Pipeline Orchestrator — Canonical Import Path (SP-03).
+ * All new code should import from '@/lib/civ/pipeline'.
+ * Implementation lives in lib/citation/civ/pipeline.ts (re-exported here).
  */
 export {
   verifyCitation,

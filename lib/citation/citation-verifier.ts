@@ -1,4 +1,8 @@
 /**
+ * @deprecated LEGACY PATH B — Use lib/civ/ (Path A) instead.
+ * This file is retained for reference only. Do not import in new code.
+ * See CIV Pipeline Master Plan, Part 11: Dual Code Path Audit.
+ *
  * Citation Verification System — Canonical Location (CGA6-050)
  *
  * Implements the 4-citation HARD STOP rule and comprehensive citation verification.

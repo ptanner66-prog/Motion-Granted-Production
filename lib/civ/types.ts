@@ -1,5 +1,6 @@
 /**
- * @deprecated Re-export shim. Canonical location: lib/citation/civ/types.ts (CGA6-031).
- * New code should import from '@/lib/citation/civ/types'.
+ * CIV Types — Canonical Import Path (SP-03).
+ * All new code should import from '@/lib/civ/types'.
+ * Implementation lives in lib/citation/civ/types.ts (re-exported here).
  */
 export * from '@/lib/citation/civ/types';

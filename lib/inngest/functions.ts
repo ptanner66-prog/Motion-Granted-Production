@@ -22,7 +22,7 @@ import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications
 import { createMessageWithRetry } from "@/lib/ai/claude-client";
 import { parseOrderDocuments, getOrderParsedDocuments } from "@/lib/workflow/document-parser";
 import { quickValidate } from "@/lib/workflow/quality-validator";
-import { extractCitations } from "@/lib/citation/citation-verifier";
+import { extractCitations } from "@/lib/workflow/citation-verifier";
 
 // Import the new 14-phase workflow orchestration
 import { generateOrderWorkflow, handleWorkflowFailure, workflowFunctions } from "./workflow-orchestration";

@@ -6,7 +6,7 @@
  */
 
 import type { QuoteVerificationOutput, QuoteVerificationResult } from '../types';
-import { validateEllipsis } from '@/lib/citation/ellipsis-validator';
+import { validateEllipsis } from '@/lib/civ/ellipsis-validator';
 
 /**
  * Execute Step 4: Quote Verification

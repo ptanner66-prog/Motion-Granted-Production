@@ -18,7 +18,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import { loadCitationBank, checkCitationInBank } from '@/lib/citation/citation-bank';
+import { loadCitationBank, checkCitationInBank } from '@/lib/civ/citation-bank';
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, BorderStyle, AlignmentType, HeadingLevel } from 'docx';
 
 // ============================================================================
