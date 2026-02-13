@@ -25,6 +25,11 @@ import { getFormattingRules, type FormattingRules } from './formatting-engine';
 import { buildCaptionBlock } from './caption-block';
 import { buildSignatureBlock } from './signature-block';
 import { buildCertificateOfService } from './certificate-of-service';
+import {
+  sanitizePartyName,
+  sanitizeForDocument,
+  sanitizeSectionContent,
+} from '@/lib/utils/text-sanitizer';
 
 /**
  * Generate a complete DOCX file for a motion.
@@ -33,16 +38,18 @@ import { buildCertificateOfService } from './certificate-of-service';
  * @returns Buffer containing the DOCX file
  */
 export async function generateMotionDocx(data: MotionData): Promise<Buffer> {
-  const jurisdiction = normalizeJurisdiction(data.jurisdiction);
+  // Sanitize all user-provided text before document generation (SP20: XSS-001–003)
+  const sanitizedData = sanitizeMotionData(data);
+  const jurisdiction = normalizeJurisdiction(sanitizedData.jurisdiction);
   const rules = getFormattingRules(jurisdiction);
 
   console.log(`[DOCX-GEN] Jurisdiction: ${jurisdiction} → paper: ${rules.paperSize?.name ?? 'letter'} (${rules.paperSize?.widthDXA ?? 12240}×${rules.paperSize?.heightDXA ?? 15840}), margins: T${rules.margins.top}" B${rules.margins.bottom}" L${rules.margins.left}" R${rules.margins.right}"`);
 
-  // Build all document sections
-  const captionParagraphs = buildCaptionBlock(data);
-  const bodyParagraphs = buildBodyParagraphs(data, rules);
-  const signatureParagraphs = buildSignatureBlock(data);
-  const certParagraphs = buildCertificateOfService(data);
+  // Build all document sections using sanitized data
+  const captionParagraphs = buildCaptionBlock(sanitizedData);
+  const bodyParagraphs = buildBodyParagraphs(sanitizedData, rules);
+  const signatureParagraphs = buildSignatureBlock(sanitizedData);
+  const certParagraphs = buildCertificateOfService(sanitizedData);
 
   // Line spacing value
   const lineSpacingValue = getLineSpacingDxa(rules.lineSpacing);
@@ -110,8 +117,44 @@ export async function generateMotionDocx(data: MotionData): Promise<Buffer> {
 
   // Pack to buffer
   const buffer = await Packer.toBuffer(doc);
-  console.log(`[DOCX-GEN] Generated ${buffer.length} bytes for order ${data.orderId}`);
+  console.log(`[DOCX-GEN] Generated ${buffer.length} bytes for order ${sanitizedData.orderId}`);
   return buffer;
+}
+
+/**
+ * Sanitize all user-provided fields in MotionData before document generation.
+ * Party names get aggressive sanitization; freeform text gets HTML stripping
+ * and control character removal.
+ */
+function sanitizeMotionData(data: MotionData): MotionData {
+  return {
+    ...data,
+    // Party names: aggressive sanitization
+    plaintiffs: data.plaintiffs.map(sanitizePartyName),
+    defendants: data.defendants.map(sanitizePartyName),
+    // Attorney info: general sanitization
+    attorneyName: sanitizeForDocument(data.attorneyName),
+    firmName: sanitizeForDocument(data.firmName),
+    firmAddress: sanitizeForDocument(data.firmAddress),
+    firmPhone: sanitizeForDocument(data.firmPhone),
+    firmEmail: sanitizeForDocument(data.firmEmail),
+    barNumber: sanitizeForDocument(data.barNumber),
+    // Case info: general sanitization
+    court: sanitizeForDocument(data.court),
+    caseNumber: sanitizeForDocument(data.caseNumber),
+    caseCaption: sanitizeForDocument(data.caseCaption),
+    motionTitle: sanitizeForDocument(data.motionTitle),
+    parish: data.parish ? sanitizeForDocument(data.parish) : undefined,
+    division: data.division ? sanitizeForDocument(data.division) : undefined,
+    department: data.department ? sanitizeForDocument(data.department) : undefined,
+    // Body content: section-level sanitization (preserves newlines/formatting)
+    motionBody: sanitizeSectionContent(data.motionBody),
+    sections: data.sections.map((section) => ({
+      ...section,
+      heading: sanitizeForDocument(section.heading),
+      content: sanitizeSectionContent(section.content),
+    })),
+  };
 }
 
 /**

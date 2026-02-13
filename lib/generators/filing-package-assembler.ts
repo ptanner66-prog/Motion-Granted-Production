@@ -19,6 +19,11 @@ import { generateDeclaration, DeclarationInput } from './declaration-generator';
 import { generateProofOfService } from './proof-of-service';
 import { generateAttorneyInstructions } from './attorney-instructions';
 import { createFormattedDocument } from './formatting-engine';
+import {
+  sanitizePartyName,
+  sanitizeForDocument,
+  sanitizeSectionContent,
+} from '@/lib/utils/text-sanitizer';
 
 export type DocumentType =
   | 'notice_of_motion'
@@ -136,11 +141,14 @@ function estimatePageCount(wordCount: number): number {
  * Assemble a complete filing package for an order.
  */
 export async function assembleFilingPackage(input: AssemblerInput): Promise<FilingPackage> {
+  // Sanitize all user-provided text before document generation (SP20: XSS-001–003)
+  const sanitizedInput = sanitizeAssemblerInput(input);
+
   const warnings: string[] = [];
   const documents: GeneratedDocument[] = [];
 
   const ruleLookup = RuleLookupService.getInstance();
-  if (!ruleLookup.getConfig(input.jurisdiction.stateCode.toLowerCase())) {
+  if (!ruleLookup.getConfig(sanitizedInput.jurisdiction.stateCode.toLowerCase())) {
     try {
       await ruleLookup.initialize();
     } catch (err) {
@@ -149,25 +157,25 @@ export async function assembleFilingPackage(input: AssemblerInput): Promise<Fili
   }
 
   const rules = ruleLookup.getFormattingRules({
-    stateCode: input.jurisdiction.stateCode,
-    isFederal: input.jurisdiction.isFederal,
-    county: input.jurisdiction.county,
-    federalDistrict: input.jurisdiction.federalDistrict,
+    stateCode: sanitizedInput.jurisdiction.stateCode,
+    isFederal: sanitizedInput.jurisdiction.isFederal,
+    county: sanitizedInput.jurisdiction.county,
+    federalDistrict: sanitizedInput.jurisdiction.federalDistrict,
   });
 
-  const requiredDocs = determineRequiredDocuments(input);
+  const requiredDocs = determineRequiredDocuments(sanitizedInput);
 
-  console.log(`[filing-package] Assembling ${requiredDocs.length} documents for order ${input.orderNumber}`, {
-    orderId: input.orderId,
-    jurisdiction: input.jurisdiction.stateCode,
-    isFederal: input.jurisdiction.isFederal,
-    motionType: input.motionType,
-    tier: input.tier,
+  console.log(`[filing-package] Assembling ${requiredDocs.length} documents for order ${sanitizedInput.orderNumber}`, {
+    orderId: sanitizedInput.orderId,
+    jurisdiction: sanitizedInput.jurisdiction.stateCode,
+    isFederal: sanitizedInput.jurisdiction.isFederal,
+    motionType: sanitizedInput.motionType,
+    tier: sanitizedInput.tier,
     documentTypes: requiredDocs,
   });
 
-  const captionParagraphs = generateCaptionBlock(input.caseInfo, rules);
-  const signatureParagraphs = generateSignatureBlock(input.attorney, {
+  const captionParagraphs = generateCaptionBlock(sanitizedInput.caseInfo, rules);
+  const signatureParagraphs = generateSignatureBlock(sanitizedInput.attorney, {
     isEfiled: true,
     includeDate: true,
   });
@@ -175,12 +183,12 @@ export async function assembleFilingPackage(input: AssemblerInput): Promise<Fili
   for (const docType of requiredDocs) {
     try {
       const result = await generateSingleDocument(
-        docType, input, rules, captionParagraphs, signatureParagraphs, requiredDocs, warnings
+        docType, sanitizedInput, rules, captionParagraphs, signatureParagraphs, requiredDocs, warnings
       );
       if (result) {
         documents.push(result);
         console.log(`[filing-package] Generated ${docType}:`, {
-          orderId: input.orderId,
+          orderId: sanitizedInput.orderId,
           wordCount: result.wordCount,
           pageCount: result.pageCount,
           bufferSize: result.buffer.byteLength,
@@ -190,7 +198,7 @@ export async function assembleFilingPackage(input: AssemblerInput): Promise<Fili
       const message = error instanceof Error ? error.message : 'Unknown error';
       warnings.push(`Failed to generate ${docType}: ${message}`);
       console.error(`[filing-package] Error generating ${docType}:`, {
-        orderId: input.orderId,
+        orderId: sanitizedInput.orderId,
         error: message,
       });
     }
@@ -199,14 +207,14 @@ export async function assembleFilingPackage(input: AssemblerInput): Promise<Fili
   const totalPages = documents.reduce((sum, d) => sum + d.pageCount, 0);
 
   return {
-    orderId: input.orderId,
-    orderNumber: input.orderNumber,
+    orderId: sanitizedInput.orderId,
+    orderNumber: sanitizedInput.orderNumber,
     documents,
     metadata: {
-      jurisdiction: input.jurisdiction.stateCode,
-      isFederal: input.jurisdiction.isFederal,
-      motionType: input.motionType,
-      tier: input.tier,
+      jurisdiction: sanitizedInput.jurisdiction.stateCode,
+      isFederal: sanitizedInput.jurisdiction.isFederal,
+      motionType: sanitizedInput.motionType,
+      tier: sanitizedInput.tier,
       generatedAt: new Date().toISOString(),
       totalPages,
       totalDocuments: documents.length,
@@ -369,4 +377,59 @@ async function generateSingleDocument(
   }
 
   return { type: docType, filename, buffer, pageCount, wordCount, isFiled };
+}
+
+/**
+ * Sanitize all user-provided fields in AssemblerInput before document generation.
+ * Party names get aggressive sanitization; freeform text gets HTML stripping
+ * and control character removal. (SP20: XSS-001–003)
+ */
+function sanitizeAssemblerInput(input: AssemblerInput): AssemblerInput {
+  return {
+    ...input,
+    caseInfo: {
+      ...input.caseInfo,
+      plaintiffs: input.caseInfo.plaintiffs.map(sanitizePartyName),
+      defendants: input.caseInfo.defendants.map(sanitizePartyName),
+      courtName: sanitizeForDocument(input.caseInfo.courtName),
+      caseNumber: sanitizeForDocument(input.caseInfo.caseNumber),
+      motionTitle: sanitizeForDocument(input.caseInfo.motionTitle),
+      county: input.caseInfo.county ? sanitizeForDocument(input.caseInfo.county) : undefined,
+      parish: input.caseInfo.parish ? sanitizeForDocument(input.caseInfo.parish) : undefined,
+      division: input.caseInfo.division ? sanitizeForDocument(input.caseInfo.division) : undefined,
+      department: input.caseInfo.department ? sanitizeForDocument(input.caseInfo.department) : undefined,
+      judgeName: input.caseInfo.judgeName ? sanitizeForDocument(input.caseInfo.judgeName) : undefined,
+      magistrateName: input.caseInfo.magistrateName ? sanitizeForDocument(input.caseInfo.magistrateName) : undefined,
+    },
+    attorney: {
+      ...input.attorney,
+      name: sanitizeForDocument(input.attorney.name),
+      firmName: input.attorney.firmName ? sanitizeForDocument(input.attorney.firmName) : undefined,
+      barNumber: sanitizeForDocument(input.attorney.barNumber),
+      email: sanitizeForDocument(input.attorney.email),
+      phone: sanitizeForDocument(input.attorney.phone),
+      address: input.attorney.address.map(sanitizeForDocument),
+      representingParty: sanitizeForDocument(input.attorney.representingParty),
+    },
+    content: {
+      ...input.content,
+      motionBody: sanitizeSectionContent(input.content.motionBody),
+      memorandumBody: sanitizeSectionContent(input.content.memorandumBody),
+      declarations: input.content.declarations?.map((decl) => ({
+        ...decl,
+        declarant: {
+          ...decl.declarant,
+          name: sanitizeForDocument(decl.declarant.name),
+          title: decl.declarant.title ? sanitizeForDocument(decl.declarant.title) : undefined,
+          relationship: decl.declarant.relationship ? sanitizeForDocument(decl.declarant.relationship) : undefined,
+        },
+        content: decl.content.map(sanitizeSectionContent),
+      })),
+      separateStatementFacts: input.content.separateStatementFacts?.map((f) => ({
+        fact: sanitizeSectionContent(f.fact),
+        evidence: sanitizeSectionContent(f.evidence),
+      })),
+      proposedOrderRelief: input.content.proposedOrderRelief?.map(sanitizeSectionContent),
+    },
+  };
 }

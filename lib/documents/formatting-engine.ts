@@ -17,6 +17,7 @@ import { Document, Packer, Paragraph, TextRun, NumberFormat, AlignmentType, conv
 import { createClient } from '@/lib/supabase/server';
 import { RuleLookupService } from '@/lib/services/formatting/rule-lookup';
 import type { FormattingRules as NewFormattingRules } from '@/lib/services/formatting/types';
+import { sanitizePartyName, sanitizeForDocument } from '@/lib/utils/text-sanitizer';
 
 // ============================================================================
 // TYPES
@@ -570,10 +571,18 @@ export function generateCaption(
   const rules = getFormattingRules(jurisdiction);
   const paragraphs: Paragraph[] = [];
 
+  // Sanitize user-provided text (SP20: XSS-001–003)
+  const safeCourtName = sanitizeForDocument(caseInfo.courtName);
+  const safePlaintiffs = caseInfo.plaintiffs.map(sanitizePartyName);
+  const safeDefendants = caseInfo.defendants.map(sanitizePartyName);
+  const safeCaseNumber = sanitizeForDocument(caseInfo.caseNumber);
+  const safeDivision = caseInfo.division ? sanitizeForDocument(caseInfo.division) : undefined;
+  const safeJudgeName = caseInfo.judgeName ? sanitizeForDocument(caseInfo.judgeName) : undefined;
+
   // Court name (centered, all caps)
   paragraphs.push(new Paragraph({
     children: [new TextRun({
-      text: caseInfo.courtName.toUpperCase(),
+      text: safeCourtName.toUpperCase(),
       bold: true,
       font: rules.font.name,
       size: rules.font.size * 2,
@@ -582,10 +591,10 @@ export function generateCaption(
   }));
 
   // Division/Department if applicable
-  if (caseInfo.division) {
+  if (safeDivision) {
     paragraphs.push(new Paragraph({
       children: [new TextRun({
-        text: caseInfo.division,
+        text: safeDivision,
         font: rules.font.name,
         size: rules.font.size * 2,
       })],
@@ -601,7 +610,7 @@ export function generateCaption(
     // Louisiana uses different caption format
     paragraphs.push(new Paragraph({
       children: [new TextRun({
-        text: caseInfo.plaintiffs.join(', '),
+        text: safePlaintiffs.join(', '),
         font: rules.font.name,
         size: rules.font.size * 2,
       })],
@@ -617,7 +626,7 @@ export function generateCaption(
     }));
     paragraphs.push(new Paragraph({
       children: [new TextRun({
-        text: caseInfo.defendants.join(', '),
+        text: safeDefendants.join(', '),
         font: rules.font.name,
         size: rules.font.size * 2,
       })],
@@ -627,7 +636,7 @@ export function generateCaption(
     // Standard federal/California format
     paragraphs.push(new Paragraph({
       children: [new TextRun({
-        text: `${caseInfo.plaintiffs.join(', ')},`,
+        text: `${safePlaintiffs.join(', ')},`,
         font: rules.font.name,
         size: rules.font.size * 2,
       })],
@@ -652,7 +661,7 @@ export function generateCaption(
     }));
     paragraphs.push(new Paragraph({
       children: [new TextRun({
-        text: `${caseInfo.defendants.join(', ')},`,
+        text: `${safeDefendants.join(', ')},`,
         font: rules.font.name,
         size: rules.font.size * 2,
       })],
@@ -672,7 +681,7 @@ export function generateCaption(
   // Case number (right side for federal, left for state)
   paragraphs.push(new Paragraph({
     children: [new TextRun({
-      text: `Case No. ${caseInfo.caseNumber}`,
+      text: `Case No. ${safeCaseNumber}`,
       bold: true,
       font: rules.font.name,
       size: rules.font.size * 2,
@@ -681,10 +690,10 @@ export function generateCaption(
   }));
 
   // Judge if applicable
-  if (caseInfo.judgeName) {
+  if (safeJudgeName) {
     paragraphs.push(new Paragraph({
       children: [new TextRun({
-        text: `Hon. ${caseInfo.judgeName}`,
+        text: `Hon. ${safeJudgeName}`,
         font: rules.font.name,
         size: rules.font.size * 2,
       })],
