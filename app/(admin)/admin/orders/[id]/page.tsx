@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
 import { formatMotionType } from '@/config/motion-types'
 import { StatusUpdateForm } from '@/components/admin/status-update-form'
 import { UploadDeliverableButton } from '@/components/admin/upload-deliverable-button'
+import { DeleteDeliverableButton } from '@/components/admin/delete-deliverable-button'
 import { DownloadAllButton } from '@/components/admin/download-all-button'
 import { DocumentDownloadButton } from '@/components/documents/document-download-button'
 import {
@@ -399,12 +400,19 @@ export default async function AdminOrderDetailPage({
                               </p>
                             </div>
                           </div>
-                          <DocumentDownloadButton
-                            filePath={doc.file_url}
-                            fileName={doc.file_name}
-                            variant="outline"
-                            className="border-teal/30 hover:bg-teal hover:text-white hover:border-teal"
-                          />
+                          <div className="flex items-center gap-2">
+                            <DocumentDownloadButton
+                              filePath={doc.file_url}
+                              fileName={doc.file_name}
+                              variant="outline"
+                              className="border-teal/30 hover:bg-teal hover:text-white hover:border-teal"
+                            />
+                            <DeleteDeliverableButton
+                              orderId={order.id}
+                              documentId={doc.id}
+                              fileName={doc.file_name}
+                            />
+                          </div>
                         </div>
                       ))}
                     </div>

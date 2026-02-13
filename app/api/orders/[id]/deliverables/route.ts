@@ -199,3 +199,87 @@ export async function GET(
     return NextResponse.json({ deliverables: [] })
   }
 }
+
+// DELETE /api/orders/[id]/deliverables
+// Delete a specific deliverable (admin/clerk only)
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
+  }
+
+  try {
+    const { id: orderId } = await params
+    const supabase = await createClient()
+
+    // Verify admin/clerk auth
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile || !['admin', 'clerk'].includes(profile.role)) {
+      return NextResponse.json({ error: 'Admin or clerk access required' }, { status: 403 })
+    }
+
+    // Get documentId from request body
+    const body = await req.json()
+    const documentId = body.documentId
+
+    if (!documentId) {
+      return NextResponse.json({ error: 'documentId is required' }, { status: 400 })
+    }
+
+    // Fetch the document record (verify it belongs to this order and is a deliverable)
+    const { data: doc, error: fetchError } = await supabase
+      .from('documents')
+      .select('id, file_url, file_name, order_id, document_type')
+      .eq('id', documentId)
+      .eq('order_id', orderId)
+      .single()
+
+    if (fetchError || !doc) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 })
+    }
+
+    // Delete from Supabase Storage first
+    if (doc.file_url) {
+      const { error: storageError } = await supabase.storage
+        .from('documents')
+        .remove([doc.file_url])
+
+      if (storageError) {
+        console.warn(`[Deliverable Delete] Storage delete warning for ${doc.file_url}:`, storageError.message)
+        // Continue with DB deletion even if storage fails — file may already be gone
+      }
+    }
+
+    // Delete from database
+    const { error: deleteError } = await supabase
+      .from('documents')
+      .delete()
+      .eq('id', documentId)
+      .eq('order_id', orderId)
+
+    if (deleteError) {
+      console.error('[Deliverable Delete] Database delete error:', deleteError)
+      return NextResponse.json({ error: 'Failed to delete document record' }, { status: 500 })
+    }
+
+    console.log(`[Deliverable Delete] Deleted ${doc.file_name} (${documentId}) from order ${orderId} by ${user.id}`)
+
+    return NextResponse.json({ success: true, deletedId: documentId })
+
+  } catch (error) {
+    console.error('Error deleting deliverable:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
