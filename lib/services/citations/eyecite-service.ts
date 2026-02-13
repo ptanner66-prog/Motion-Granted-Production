@@ -14,6 +14,7 @@ import type {
 import { extractLouisianaCitations, type LACitation } from "./la-statute-parser";
 import { fullPreprocess } from "./citation-preprocessor";
 import { resolveAllShorthand } from "./shorthand-resolver";
+import { deduplicateCitations } from "@/lib/citations/deduplication";
 
 const EYECITE_SCRIPT = path.join(process.cwd(), "scripts", "eyecite_extract.py");
 const CONTEXT_CHARS = 500; // Characters before/after citation for context
@@ -233,10 +234,42 @@ export async function extractCitations(text: string): Promise<Citation[]> {
     // Continue with LA citations only
   }
 
-  // 4. Sort by position in document
+  // 4. Deduplicate case law citations (BUG-07 fix)
+  // Removes partial/substring extractions like "185 So. 3" when "185 So. 3d 94" exists.
+  // Only dedup case law citations — statutory citations have their own dedup in la-statute-parser.
+  const caseLawCitations = citations.filter(
+    c => c.citation_type !== "LA_STATUTE" && c.citation_type !== "STATUTE"
+  );
+  const statutoryCitations = citations.filter(
+    c => c.citation_type === "LA_STATUTE" || c.citation_type === "STATUTE"
+  );
+
+  if (caseLawCitations.length > 1) {
+    const rawStrings = caseLawCitations.map(c => c.raw);
+    const dedupResult = deduplicateCitations(rawStrings);
+
+    if (dedupResult.stats.duplicatesRemoved > 0 || dedupResult.stats.incompleteRemoved > 0) {
+      console.log(
+        `[Citation] Deduplication: input=${dedupResult.stats.inputCount} ` +
+        `unique=${dedupResult.stats.uniqueCount} ` +
+        `duplicates_removed=${dedupResult.stats.duplicatesRemoved} ` +
+        `incomplete_removed=${dedupResult.stats.incompleteRemoved}`
+      );
+    }
+
+    // Keep only citations whose raw string survived dedup
+    const uniqueRawStrings = new Set(dedupResult.unique.map(u => u.raw));
+    const dedupedCaseLaw = caseLawCitations.filter(c => uniqueRawStrings.has(c.raw.trim()));
+
+    // Recombine statutory + deduped case law
+    citations.length = 0;
+    citations.push(...statutoryCitations, ...dedupedCaseLaw);
+  }
+
+  // 5. Sort by position in document
   citations.sort((a, b) => a.start_index - b.start_index);
 
-  // 5. Resolve shorthand citations (Id., supra, etc.)
+  // 6. Resolve shorthand citations (Id., supra, etc.)
   console.log("[Citation] Resolving shorthand citations...");
   resolveAllShorthand(citations);
 
