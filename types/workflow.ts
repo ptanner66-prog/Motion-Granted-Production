@@ -856,24 +856,7 @@ export function gradePassesForTier(grade: LetterGrade, tier?: string): boolean {
   return GRADE_VALUES[grade] >= threshold;
 }
 
-// ============================================================================
-// MODEL ROUTING — MOVED TO lib/config/phase-registry.ts
-// ============================================================================
-//
-// The following have been DELETED from this file (they contained wrong values):
-//   - SONNET_MODEL (had wrong string 'claude-sonnet-4-5-20250929')
-//   - OPUS_MODEL
-//   - MODEL_ROUTING array
-//   - getModelForPhase() function
-//   - EXTENDED_THINKING_CONFIG array
-//   - getExtendedThinkingBudget() function
-//   - CITATION_BATCH_SIZES
-//   - CITATION_CHECK_BATCH_SIZE
-//   - getCitationBatchSize() function
-//
-// Import from the single source of truth instead:
-//   import { getModel, getThinkingBudget, getBatchSize } from '@/lib/config/phase-registry';
-//
+// Model routing lives in lib/config/phase-registry.ts (single source of truth).
 
 // ============================================================================
 // GAP CLOSURE PROTOCOLS

@@ -17,7 +17,7 @@
  * Uses tier-based model selection for cross-vendor CIV.
  */
 
-import { callAnthropic, getTierFromMotionType, type MotionTier } from '../model-router';
+import { callCIVAnthropic as callAnthropic, getTierFromMotionType, type MotionTier } from '@/lib/ai/model-router';
 import { getCitationTreatment } from '@/lib/courtlistener/client';
 import { checkCuratedOverruledList, recordGoodLawCheck } from '../database';
 import {

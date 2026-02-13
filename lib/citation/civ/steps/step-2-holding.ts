@@ -16,13 +16,13 @@
  */
 
 import {
-  callOpenAI,
-  callAnthropic,
-  getModelForTask,
+  callCIVOpenAI as callOpenAI,
+  callCIVAnthropic as callAnthropic,
+  getCIVModelForTask as getModelForTask,
   getTierFromMotionType,
   shouldTriggerStage2,
   type MotionTier,
-} from '../model-router';
+} from '@/lib/ai/model-router';
 import type { Step2Result, PropositionType, VerificationResult } from '../types';
 import {
   getCitationModelWithLogging,

@@ -7,7 +7,7 @@
  * Uses tier-based model selection for cross-vendor CIV.
  */
 
-import { callAnthropic, getTierFromMotionType } from '../model-router';
+import { callCIVAnthropic as callAnthropic, getTierFromMotionType } from '@/lib/ai/model-router';
 import { DEFAULT_CIV_CONFIG, DICTA_DETECTION_PROMPT, type DictaDetectionOutput, type DictaClassification, type PropositionType } from '../types';
 import { getCitationModelWithLogging, type Tier } from '@/lib/config/citation-models';
 

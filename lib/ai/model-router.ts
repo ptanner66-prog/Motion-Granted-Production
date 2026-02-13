@@ -1,39 +1,22 @@
 /**
- * @deprecated This file is superseded by lib/config/phase-registry.ts.
- * Active imports still exist — DO NOT DELETE until imports are migrated.
- * See: CGA6-037, CGA6-038 in Clay's audit.
+ * Model Router Module — Canonical Source (CGA6-037)
  *
- * Remaining imports:
- * - lib/citation/citation-bank.ts (MotionTier type)
- * - lib/citation/decision-handlers.ts (MotionTier type)
- */
-
-/**
- * Model Router Module
+ * Unified model routing for both workflow phases (DB-based) and
+ * Citation Integrity Verification (config-based).
  *
- * Tier-based AI model routing that reads from model_routing_config database table.
- *
- * Config for TIER A/B:
- * - stage_1_holding = 'gpt-4-turbo'
- * - stage_2_adversarial = 'claude-opus-4-5-20251101'
- * - dicta_detection = 'claude-haiku-4-5-20251001'
- * - bad_law_analysis = 'claude-haiku-4-5-20251001'
- * - drafting = 'claude-sonnet-4-20250514'
- *
- * Config for TIER C:
- * - stage_1_holding = 'gpt-4-turbo'
- * - stage_2_adversarial = 'claude-opus-4-5-20251101'
- * - dicta_detection = 'claude-sonnet-4-20250514'
- * - bad_law_analysis = 'claude-sonnet-4-20250514'
- * - drafting = 'claude-opus-4-5-20251101'
- * - judge_simulation = 'claude-opus-4-5-20251101'
+ * DB-based routing reads from model_routing_config table.
+ * CIV routing uses hardcoded config aligned with lib/config/citation-models.ts.
  *
  * Source: API Architecture Spec Section 2, Quick Reference
  */
 
+import OpenAI from 'openai';
 import { createClient } from '@/lib/supabase/server';
 import { askOpenAI } from '@/lib/ai/openai-client';
-import { askClaude } from '@/lib/automation/claude';
+import { askClaude, getAnthropicClient } from '@/lib/automation/claude';
+import { getOpenAIAPIKey } from '@/lib/api-keys';
+import { getCitationModel, CITATION_GPT_MODELS } from '@/lib/config/citation-models';
+import { MODELS } from '@/lib/config/models';
 
 // ============================================================================
 // TYPES
@@ -406,6 +389,157 @@ export async function logModelSelection(
 }
 
 // ============================================================================
+// CIV MODEL ROUTING (migrated from lib/civ/model-router.ts — CGA6-037)
+// ============================================================================
+
+/**
+ * CIV-specific model routing config aligned with lib/config/citation-models.ts.
+ * Tier-based routing per Clay's Part C §3.
+ */
+export const CIV_MODEL_ROUTING = {
+  tier_a: {
+    stage_1_holding: CITATION_GPT_MODELS.STAGE_1_DEFAULT,
+    stage_2_adversarial: MODELS.OPUS,
+    steps_3_5: MODELS.HAIKU,
+  },
+  tier_b: {
+    stage_1_holding: CITATION_GPT_MODELS.STAGE_1_DEFAULT,
+    stage_2_adversarial: MODELS.OPUS,
+    steps_3_5: MODELS.HAIKU,
+  },
+  tier_c: {
+    stage_1_holding: CITATION_GPT_MODELS.STAGE_1_TIER_C,
+    stage_2_adversarial: MODELS.OPUS,
+    steps_3_5: MODELS.SONNET,
+  },
+} as const;
+
+/** Motion type to tier mapping for CIV */
+export const MOTION_TYPE_TO_TIER: Record<string, MotionTier> = {
+  // Tier A - Simple procedural
+  'extension_of_time': 'A',
+  'continuance': 'A',
+  'pro_hac_vice': 'A',
+  'substitution_of_counsel': 'A',
+
+  // Tier B - Standard substantive
+  'motion_to_compel': 'B',
+  'motion_for_protective_order': 'B',
+  'demurrer': 'B',
+  'motion_to_strike': 'B',
+  'motion_for_sanctions': 'B',
+  'anti_slapp': 'B',
+  'motion_to_dismiss': 'B',
+
+  // Tier C - Complex/high-stakes
+  'motion_for_summary_judgment': 'C',
+  'msj': 'C',
+  'preliminary_injunction': 'C',
+  'tro': 'C',
+  'class_certification': 'C',
+  'daubert_motion': 'C',
+};
+
+/** Get tier from motion type string */
+export function getTierFromMotionType(motionType: string): MotionTier {
+  const normalized = motionType.toLowerCase().replace(/\s+/g, '_');
+  return MOTION_TYPE_TO_TIER[normalized] || 'B';
+}
+
+/** Get the appropriate model for a CIV task and tier */
+export function getCIVModelForTask(
+  task: 'stage_1_holding' | 'stage_2_adversarial' | 'steps_3_5',
+  tier: MotionTier
+): string {
+  const tierKey = `tier_${tier.toLowerCase()}` as keyof typeof CIV_MODEL_ROUTING;
+  return CIV_MODEL_ROUTING[tierKey][task];
+}
+
+// OpenAI client singleton for CIV
+let civOpenAIClient: OpenAI | null = null;
+
+/** Get or create OpenAI client for CIV pipeline */
+export async function getCIVOpenAIClient(): Promise<OpenAI> {
+  if (!civOpenAIClient) {
+    const apiKey = await getOpenAIAPIKey();
+    civOpenAIClient = new OpenAI({ apiKey });
+  }
+  return civOpenAIClient;
+}
+
+/** Call OpenAI directly (for CIV Stage 1 holding verification) */
+export async function callCIVOpenAI(
+  model: string,
+  prompt: string,
+  maxTokens: number = 32000
+): Promise<string> {
+  const client = await getCIVOpenAIClient();
+
+  const response = await client.chat.completions.create({
+    model,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: maxTokens,
+    temperature: 0.1,
+  });
+
+  return response.choices[0]?.message?.content || '';
+}
+
+/** Call Anthropic directly (for CIV Stage 2 and Steps 3-5) */
+export async function callCIVAnthropic(
+  model: string,
+  prompt: string,
+  maxTokens: number = 32000
+): Promise<string> {
+  const client = await getAnthropicClient();
+
+  if (!client) {
+    throw new Error('Anthropic client not configured');
+  }
+
+  const response = await client.messages.create({
+    model,
+    max_tokens: maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const textBlock = response.content.find((block: { type: string }) => block.type === 'text');
+  return (textBlock && 'text' in textBlock) ? (textBlock as { type: 'text'; text: string }).text : '';
+}
+
+/**
+ * Stage 2 trigger logic — Clay's Part C §4 BINDING
+ *
+ * Trigger adversarial verification when:
+ * - Confidence is borderline (80-94%) -> HOLDING_STAGE_2
+ * - Confidence is low (<80%) -> HOLDING_FAIL (will also get Stage 2 for audit)
+ * - HIGH_STAKES flag is set (always triggers Stage 2 regardless of confidence)
+ *
+ * >=95% AND NOT HIGH_STAKES = skip Stage 2 (VERIFIED)
+ */
+export function shouldTriggerStage2(
+  confidence: number,
+  flags: string[] = []
+): boolean {
+  if (flags.includes('HIGH_STAKES')) {
+    return true;
+  }
+
+  const normalizedConf = confidence > 1 ? confidence / 100 : confidence;
+
+  if (normalizedConf >= 0.95) {
+    return false;
+  }
+
+  return true;
+}
+
+/** Reset CIV OpenAI client (for testing or key rotation) */
+export function resetCIVOpenAIClient(): void {
+  civOpenAIClient = null;
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -418,4 +552,10 @@ export default {
   clearModelCache,
   refreshTierCache,
   logModelSelection,
+  // CIV exports
+  getTierFromMotionType,
+  getCIVModelForTask,
+  callCIVOpenAI,
+  callCIVAnthropic,
+  shouldTriggerStage2,
 };
