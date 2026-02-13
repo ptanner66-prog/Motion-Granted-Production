@@ -155,6 +155,82 @@ function getAnthropicClient(): Anthropic {
 }
 
 // ============================================================================
+// HELPERS — Shared utilities for phase executors
+// ============================================================================
+
+/**
+ * Build extended thinking parameters for phases that require deep reasoning.
+ * Standardized across all ET phases (VI, VII, VIII) to prevent SDK update breakage.
+ *
+ * Returns an empty object for non-ET phases or phase/tier combos without a thinking budget,
+ * so it is safe to spread into any request params.
+ *
+ * @param phase - Workflow phase code (e.g., 'VII', 'VIII')
+ * @param tier - Motion complexity tier ('A', 'B', 'C')
+ * @returns Extended thinking params to spread into MessageCreateParams, or empty object
+ */
+function buildExtendedThinkingParams(phase: string, tier: string): Record<string, unknown> {
+  const budget = getThinkingBudget(phase as Parameters<typeof getThinkingBudget>[0], tier as Parameters<typeof getThinkingBudget>[1]);
+  if (!budget || budget <= 0) return {};
+
+  return {
+    thinking: {
+      type: 'enabled',
+      budget_tokens: budget,
+    },
+  };
+}
+
+/**
+ * Sanitize blank/empty signature block fields before passing to the LLM prompt.
+ * Replaces empty strings and minimal patterns (e.g., ", LA") with explicit
+ * placeholder tokens that Claude will preserve literally, rather than
+ * interpreting them as template instructions and outputting '[blank]'.
+ *
+ * This prevents Phase VIII JSON parse failures when attorney info fields
+ * are empty (BUG #3).
+ */
+function sanitizeSignatureFields(input: PhaseInput): {
+  barNumber: string;
+  firmAddress: string;
+  firmCity: string;
+  firmState: string;
+  firmZip: string;
+  firmPhone: string;
+  firmEmail: string;
+  attorneyName: string;
+  firmName: string;
+} {
+  const isEmpty = (val: string | undefined): boolean =>
+    !val || val.trim() === '' || val.trim() === ',';
+
+  return {
+    attorneyName: isEmpty(input.attorneyName) ? '[ATTORNEY_NAME]' : input.attorneyName,
+    barNumber: isEmpty(input.barNumber) ? '[ATTORNEY_BAR_NUMBER]' : input.barNumber,
+    firmName: isEmpty(input.firmName) ? '[FIRM_NAME]' : input.firmName,
+    firmAddress: isEmpty(input.firmAddress) ? '[ATTORNEY_ADDRESS]' : input.firmAddress,
+    firmCity: isEmpty(input.firmCity) ? '[CITY]' : input.firmCity,
+    firmState: isEmpty(input.firmState) ? 'LA' : input.firmState,
+    firmZip: isEmpty(input.firmZip) ? '[ZIP_CODE]' : input.firmZip,
+    firmPhone: isEmpty(input.firmPhone) ? '[ATTORNEY_PHONE]' : input.firmPhone,
+    firmEmail: isEmpty(input.firmEmail) ? '[ATTORNEY_EMAIL]' : input.firmEmail,
+  };
+}
+
+/**
+ * Check whether a flagged generic name (e.g., "John Doe") is actually a real
+ * party name from the intake data. If so, it should NOT block delivery.
+ */
+function isRealPartyName(
+  name: string,
+  parties: PhaseInput['parties']
+): boolean {
+  if (!parties || parties.length === 0) return false;
+  const normalizedName = name.toLowerCase().trim();
+  return parties.some(p => p.name.toLowerCase().trim() === normalizedName);
+}
+
+// ============================================================================
 // CITATION ENFORCEMENT — ZERO TOLERANCE FOR HALLUCINATED CITATIONS
 // ============================================================================
 
@@ -542,13 +618,13 @@ ${input.documents?.join('\n') || 'None provided'}
 Provide your Phase I analysis as JSON.`;
 
     const model = getModel('I', input.tier) ?? MODELS.SONNET;
-    console.log(`[Phase I] Calling Claude with model: ${model}, max_tokens: 64000`);
+    console.log(`[Phase I] Calling Claude with model: ${model}, max_tokens: ${getMaxTokens('I', input.tier) || 16384}`);
     console.log(`[Phase I] Input context length: ${userMessage.length} chars`);
 
     const callStart = Date.now();
     const response = await createMessageWithStreaming(client, {
       model,
-      max_tokens: 64000, // Phase I: Document intake analysis
+      max_tokens: getMaxTokens('I', input.tier) || 16384, // Phase I: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -706,7 +782,7 @@ Provide your Phase II legal framework analysis as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModel('II', input.tier) ?? MODELS.SONNET,
-      max_tokens: 64000, // Phase II: Legal framework analysis
+      max_tokens: getMaxTokens('II', input.tier) || 16384, // Phase II: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -908,7 +984,7 @@ Provide your Phase III evidence strategy as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModel('III', input.tier) ?? MODELS.SONNET,
-      max_tokens: 64000, // Phase III: Extended legal research
+      max_tokens: getMaxTokens('III', input.tier) || 16384, // Phase III: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -1455,13 +1531,13 @@ REMINDER - USE THESE EXACT VALUES IN THE MOTION:
 Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON.`;
 
     const model = getModel('V', input.tier) ?? MODELS.SONNET;
-    console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: 64000`);
+    console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: ${getMaxTokens('V', input.tier) || 16384}`);
     console.log(`[Phase V] User message length: ${userMessage.length} chars`);
 
     const callStart = Date.now();
     const response = await createMessageWithStreaming(client, {
       model,
-      max_tokens: 64000, // Phase V: Full motion draft with all arguments
+      max_tokens: getMaxTokens('V', input.tier) || 16384, // Phase V: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -2544,7 +2620,7 @@ OUTPUT FORMAT (JSON only):
 
       const cleanupResponse = await createMessageWithStreaming(client, {
         model: getModel('V.1', input.tier) ?? MODELS.SONNET,
-        max_tokens: 64000,
+        max_tokens: getMaxTokens('V.1', input.tier) || 16384, // Phase V.1: Registry-driven
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       });
@@ -2718,18 +2794,12 @@ Analyze potential opposition. Provide as JSON.`;
 
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModel('VI', input.tier) ?? MODELS.SONNET,
-      max_tokens: 64000, // Phase VI: Opposition anticipation with 8K thinking (Opus for B/C)
+      max_tokens: getMaxTokens('VI', input.tier) || 16384, // Phase VI: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-    };
-
-    // Add extended thinking if applicable (cast through unknown to satisfy TypeScript)
-    if (thinkingBudget) {
-      (requestParams as unknown as Record<string, unknown>).thinking = {
-        type: 'enabled',
-        budget_tokens: thinkingBudget,
-      };
-    }
+      // CGA6-060 FIX: Standardized extended thinking via buildExtendedThinkingParams
+      ...buildExtendedThinkingParams('VI', input.tier),
+    } as Anthropic.MessageCreateParams;
 
     const response = await createMessageWithStreaming(client, requestParams) as Anthropic.Message;
 
@@ -2850,15 +2920,13 @@ JURISDICTION: ${input.jurisdiction}
 Provide your judicial evaluation as JSON.`;
 
     // PHASE VII: ALWAYS Opus, ALWAYS Extended Thinking (10K tokens)
+    // CGA6-060 FIX: Standardized extended thinking via buildExtendedThinkingParams
     const response = await createMessageWithStreaming(client, {
       model: getModel('VII', input.tier) ?? MODELS.SONNET, // Always Opus
-      max_tokens: 64000, // Phase VII: Judge simulation (always Opus with extended thinking)
+      max_tokens: getMaxTokens('VII', input.tier) || 16384, // Phase VII: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-      thinking: {
-        type: 'enabled',
-        budget_tokens: thinkingBudget || 10000, // Use config, fallback to 10K
-      },
+      ...buildExtendedThinkingParams('VII', input.tier),
     } as Anthropic.MessageCreateParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
@@ -2940,7 +3008,7 @@ Verify any new citations. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModel('VII.1', input.tier) ?? MODELS.SONNET,
-      max_tokens: 64000, // Phase VII.1: Revision implementation
+      max_tokens: getMaxTokens('VII.1', input.tier) || 16384, // Phase VII.1: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3045,6 +3113,10 @@ async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
     // ========================================================================
     // SYSTEM PROMPT: Load v7.4.1 methodology prompt + case data injection
     // ========================================================================
+    // BUG #3 FIX: Sanitize blank signature fields before prompt construction.
+    // Empty fields like '', ', LA' cause Claude to output '[blank]' instead of JSON.
+    const sig = sanitizeSignatureFields(input);
+
     // Build attorney signature block for revisions
     const getRepresentedPartyName = () => {
       const represented = input.parties?.find(p => p.isRepresented);
@@ -3053,13 +3125,13 @@ async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
 
     const signatureBlock = `
 _________________________
-${input.attorneyName}
-Bar Roll No. ${input.barNumber}
-${input.firmName}
-${input.firmAddress}
-${input.firmCity}, ${input.firmState} ${input.firmZip}
-${input.firmPhone}
-${input.firmEmail}
+${sig.attorneyName}
+Bar Roll No. ${sig.barNumber}
+${sig.firmName}
+${sig.firmAddress}
+${sig.firmCity}, ${sig.firmState} ${sig.firmZip}
+${sig.firmPhone}
+${sig.firmEmail}
 Attorney for ${getRepresentedPartyName()}`.trim();
 
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
@@ -3132,13 +3204,13 @@ OUTPUT FORMAT (JSON only):
 ═══════════════════════════════════════════════════════════════
 FILING ATTORNEY (USE IN REVISED SIGNATURE BLOCK)
 ═══════════════════════════════════════════════════════════════
-${input.attorneyName}
-Bar Roll No. ${input.barNumber}
-${input.firmName}
-${input.firmAddress}
-${input.firmCity}, ${input.firmState} ${input.firmZip}
-${input.firmPhone}
-${input.firmEmail}
+${sig.attorneyName}
+Bar Roll No. ${sig.barNumber}
+${sig.firmName}
+${sig.firmAddress}
+${sig.firmCity}, ${sig.firmState} ${sig.firmZip}
+${sig.firmPhone}
+${sig.firmEmail}
 Attorney for ${getRepresentedPartyName()}
 
 ═══════════════════════════════════════════════════════════════
@@ -3150,20 +3222,14 @@ ${JSON.stringify(phaseVIIOutput, null, 2)}
 
 Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in the signature block. Provide as JSON.`;
 
+    // CGA6-060 FIX: Standardized extended thinking via buildExtendedThinkingParams
     const requestParams: Anthropic.MessageCreateParams = {
       model: getModel('VIII', input.tier) ?? MODELS.SONNET,
-      max_tokens: 64000, // Phase VIII: Final draft with 8K thinking (Opus for B/C)
+      max_tokens: getMaxTokens('VIII', input.tier) || 16384, // Phase VIII: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-    };
-
-    // Add extended thinking if applicable (cast through unknown to satisfy TypeScript)
-    if (thinkingBudget) {
-      (requestParams as unknown as Record<string, unknown>).thinking = {
-        type: 'enabled',
-        budget_tokens: thinkingBudget,
-      };
-    }
+      ...buildExtendedThinkingParams('VIII', input.tier),
+    } as Anthropic.MessageCreateParams;
 
     const response = await createMessageWithStreaming(client, requestParams) as Anthropic.Message;
 
@@ -3348,7 +3414,7 @@ Validate captions. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModel('VIII.5', input.tier) ?? MODELS.SONNET,
-      max_tokens: 64000,
+      max_tokens: getMaxTokens('VIII.5', input.tier) || 16384, // Phase VIII.5: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3486,7 +3552,7 @@ Generate supporting documents. The Certificate of Service MUST include the exact
 
     const response = await createMessageWithStreaming(client, {
       model: getModel('IX', input.tier) ?? MODELS.SONNET,
-      max_tokens: 64000, // Phase IX: Document formatting and assembly
+      max_tokens: getMaxTokens('IX', input.tier) || 16384, // Phase IX: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3589,7 +3655,7 @@ Verify Separate Statement complies with ${formatRules}. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModel('IX.1', input.tier) ?? MODELS.SONNET,
-      max_tokens: 64000,
+      max_tokens: getMaxTokens('IX.1', input.tier) || 16384, // Phase IX.1: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3690,7 +3756,7 @@ Assemble and check. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: getModel('X', input.tier) ?? MODELS.SONNET,
-      max_tokens: 64000, // Phase X: Final QA and deliverables - full output needed
+      max_tokens: getMaxTokens('X', input.tier) || 16384, // Phase X: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3741,8 +3807,20 @@ Assemble and check. Provide as JSON.`;
     // Add validation result to output
     phaseOutput.placeholderValidation = placeholderValidation;
 
+    // BUG #6 FIX: Determine delivery readiness from a SINGLE code path.
+    // Cross-reference generic names against actual party names from intake
+    // so that a real party named "John Doe" does not block delivery.
+    const realPlaceholders = placeholderValidation.placeholders || [];
+    const genericNamesFiltered = (placeholderValidation.genericNames || []).filter(
+      (name: string) => !isRealPartyName(name, input.parties)
+    );
+    const hasBlockingIssues =
+      !placeholderValidation.valid &&
+      placeholderValidation.severity === 'blocking' &&
+      (realPlaceholders.length > 0 || genericNamesFiltered.length > 0);
+
     // If placeholders detected, block delivery
-    if (!placeholderValidation.valid && placeholderValidation.severity === 'blocking') {
+    if (hasBlockingIssues) {
       console.error(`[Phase X] BLOCKING: Motion contains placeholders - cannot deliver`);
 
       // Generate revision instructions
@@ -3754,17 +3832,17 @@ Assemble and check. Provide as JSON.`;
         status: 'blocked', // Blocked by placeholder validation
         output: {
           ...phaseOutput,
-          readyForDelivery: false,
+          ready_for_delivery: false,
           blockingReason: 'PLACEHOLDER_DETECTED',
           placeholderValidation,
           revisionInstructions,
           adminSummary: {
             ...(phaseOutput.adminSummary || {}),
-            notesForAdmin: `CRITICAL: Motion contains ${placeholderValidation.placeholders.length} placeholder(s) and ${placeholderValidation.genericNames.length} generic name(s). Requires revision before delivery. Placeholders: ${placeholderValidation.placeholders.concat(placeholderValidation.genericNames).join(', ')}`,
+            notesForAdmin: `CRITICAL: Motion contains ${realPlaceholders.length} placeholder(s) and ${genericNamesFiltered.length} generic name(s). Requires revision before delivery. Placeholders: ${realPlaceholders.concat(genericNamesFiltered).join(', ')}`,
           },
         },
         requiresReview: true,
-        gapsDetected: placeholderValidation.placeholders.length + placeholderValidation.genericNames.length,
+        gapsDetected: realPlaceholders.length + genericNamesFiltered.length,
         tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
         durationMs: Date.now() - start,
       };
@@ -3914,7 +3992,7 @@ Assemble and check. Provide as JSON.`;
       status: 'requires_review', // Always requires admin approval
       output: {
         ...phaseOutput,
-        readyForDelivery: true,
+        ready_for_delivery: true, // BUG #6 FIX: Single field, snake_case per project convention
         placeholderValidation,
         citationMetadata, // Citation Viewer Feature
         documentUrl,
