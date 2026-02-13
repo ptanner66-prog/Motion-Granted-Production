@@ -88,6 +88,36 @@ export function extractJSON<T = Record<string, unknown>>(
         } catch { /* fall through */ }
       }
     }
+    // RECOVERY PASS 3: Replace common LLM artifacts and retry (BUG #3)
+    // When blank fields are in the prompt, Claude sometimes outputs [blank]/[N/A]
+    // as bare text instead of valid JSON string values.
+    {
+      let sanitized = raw.replace(/:\s*\[blank\]/gi, ': ""');
+      sanitized = sanitized.replace(/:\s*\[N\/A\]/gi, ': null');
+      sanitized = sanitized.replace(/:\s*\[empty\]/gi, ': ""');
+      sanitized = sanitized.replace(/:\s*\[none\]/gi, ': null');
+      if (sanitized !== raw) {
+        const sanitizedBraceStart = sanitized.indexOf('{');
+        if (sanitizedBraceStart !== -1) {
+          let depth = 0;
+          let end = -1;
+          for (let i = sanitizedBraceStart; i < sanitized.length; i++) {
+            if (sanitized[i] === '{') depth++;
+            if (sanitized[i] === '}') depth--;
+            if (depth === 0) { end = i; break; }
+          }
+          if (end !== -1) {
+            try {
+              let candidate = sanitized.slice(sanitizedBraceStart, end + 1);
+              candidate = candidate.replace(/,\s*([}\]])/g, '$1');
+              const data = JSON.parse(candidate) as T;
+              console.warn(`[${context.phase}] JSON recovered after LLM artifact replacement for order ${context.orderId}`);
+              return { success: true, data };
+            } catch { /* fall through */ }
+          }
+        }
+      }
+    }
     const preview = raw.slice(0, 300).replace(/\n/g, '\\n');
     console.error(`[${context.phase}] JSON parse FAILED for order ${context.orderId}. Preview: ${preview}`);
     return {

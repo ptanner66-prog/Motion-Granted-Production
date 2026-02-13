@@ -14,6 +14,7 @@ import type {
 import { extractLouisianaCitations, type LACitation } from "./la-statute-parser";
 import { fullPreprocess } from "./citation-preprocessor";
 import { resolveAllShorthand } from "./shorthand-resolver";
+import { deduplicateCitationsStrict } from "@/lib/citation/deduplication";
 
 const EYECITE_SCRIPT = path.join(process.cwd(), "scripts", "eyecite_extract.py");
 const CONTEXT_CHARS = 500; // Characters before/after citation for context
@@ -185,6 +186,18 @@ function mapLACitation(la: LACitation, text: string): Citation {
 }
 
 /**
+ * Determine if a citation is statutory rather than case law.
+ * Statutory citations bypass deduplication (BUG #7).
+ *
+ * Checks both the citation_type field (set by LA parser) and the raw text
+ * for common statutory patterns (Art., §, U.S.C., C.F.R., C.C.P., R.S., etc.).
+ */
+function isStatutoryCitation(citation: Citation): boolean {
+  if (citation.citation_type === "LA_STATUTE") return true;
+  return /\b(?:Art\.|§|U\.S\.C\.|C\.F\.R\.|C\.C\.P?\.|R\.S\.)\b/i.test(citation.raw);
+}
+
+/**
  * Extract all citations from text
  * Combines Louisiana parser + Eyecite
  */
@@ -233,15 +246,40 @@ export async function extractCitations(text: string): Promise<Citation[]> {
     // Continue with LA citations only
   }
 
-  // 4. Sort by position in document
-  citations.sort((a, b) => a.start_index - b.start_index);
+  // 4. BUG #7 FIX: Deduplicate case law citations to remove partial/truncated extractions
+  // (e.g., "185 So. 3" alongside full "185 So. 3d 94"). Statutory citations bypass dedup.
+  const caseLawCitations = citations.filter((c) => !isStatutoryCitation(c));
+  const statutoryCitations = citations.filter((c) => isStatutoryCitation(c));
 
-  // 5. Resolve shorthand citations (Id., supra, etc.)
+  let dedupedCitations: Citation[];
+  if (caseLawCitations.length > 0) {
+    const dedupResult = deduplicateCitationsStrict(
+      caseLawCitations,
+      (c: Citation) => c.raw
+    );
+    console.log(
+      `[Citation] Dedup: ${dedupResult.stats.inputCount} case law in → ` +
+      `${dedupResult.stats.uniqueCount} unique (removed ${dedupResult.removed.length}: ` +
+      `${dedupResult.stats.seriesTruncations} series, ` +
+      `${dedupResult.stats.prefixTruncations} prefix, ` +
+      `${dedupResult.stats.substringRemovals} substring, ` +
+      `${dedupResult.stats.exactDuplicates} exact, ` +
+      `${dedupResult.stats.incompleteRemovals} incomplete)`
+    );
+    dedupedCitations = [...dedupResult.unique, ...statutoryCitations];
+  } else {
+    dedupedCitations = [...statutoryCitations];
+  }
+
+  // 5. Sort by position in document
+  dedupedCitations.sort((a, b) => a.start_index - b.start_index);
+
+  // 6. Resolve shorthand citations (Id., supra, etc.)
   console.log("[Citation] Resolving shorthand citations...");
-  resolveAllShorthand(citations);
+  resolveAllShorthand(dedupedCitations);
 
-  console.log(`[Citation] Total citations extracted: ${citations.length}`);
-  return citations;
+  console.log(`[Citation] Total citations extracted: ${dedupedCitations.length}`);
+  return dedupedCitations;
 }
 
 /**
