@@ -64,12 +64,8 @@ export interface PhaseInput {
   barNumber: string;
   firmName: string;
   firmAddress: string;
-  firmCity: string;
-  firmState: string;
-  firmZip: string;
   firmPhone: string;
   firmEmail: string;
-  firmFullAddress: string;  // Pre-formatted: "123 Main St\nBaton Rouge, LA 70801"
   // Extended case data for complete motion generation
   filingDeadline?: string;
   orderNumber?: string;
@@ -193,9 +189,6 @@ function buildExtendedThinkingParams(phase: string, tier: string): Record<string
 function sanitizeSignatureFields(input: PhaseInput): {
   barNumber: string;
   firmAddress: string;
-  firmCity: string;
-  firmState: string;
-  firmZip: string;
   firmPhone: string;
   firmEmail: string;
   attorneyName: string;
@@ -209,9 +202,6 @@ function sanitizeSignatureFields(input: PhaseInput): {
     barNumber: isEmpty(input.barNumber) ? '[ATTORNEY_BAR_NUMBER]' : input.barNumber,
     firmName: isEmpty(input.firmName) ? '[FIRM_NAME]' : input.firmName,
     firmAddress: isEmpty(input.firmAddress) ? '[ATTORNEY_ADDRESS]' : input.firmAddress,
-    firmCity: isEmpty(input.firmCity) ? '[CITY]' : input.firmCity,
-    firmState: isEmpty(input.firmState) ? 'LA' : input.firmState,
-    firmZip: isEmpty(input.firmZip) ? '[ZIP_CODE]' : input.firmZip,
     firmPhone: isEmpty(input.firmPhone) ? '[ATTORNEY_PHONE]' : input.firmPhone,
     firmEmail: isEmpty(input.firmEmail) ? '[ATTORNEY_EMAIL]' : input.firmEmail,
   };
@@ -1363,7 +1353,6 @@ ${input.attorneyName}
 Bar Roll No. ${input.barNumber}
 ${input.firmName}
 ${input.firmAddress}
-${input.firmCity}, ${input.firmState} ${input.firmZip}
 ${input.firmPhone}
 ${input.firmEmail}
 Attorney for ${getRepresentedPartyName()}`.trim();
@@ -1394,8 +1383,7 @@ CRITICAL: FILING ATTORNEY INFORMATION (USE EXACTLY - NO PLACEHOLDERS)
 Attorney Name: ${input.attorneyName}
 Bar Roll Number: ${input.barNumber}
 Firm Name: ${input.firmName}
-Street Address: ${input.firmAddress}
-City, State ZIP: ${input.firmCity}, ${input.firmState} ${input.firmZip}
+Address: ${input.firmAddress}
 Phone: ${input.firmPhone}
 Email: ${input.firmEmail}
 Representing: ${getRepresentedPartyName()}
@@ -1504,7 +1492,6 @@ ${input.attorneyName}
 Bar Roll No. ${input.barNumber}
 ${input.firmName}
 ${input.firmAddress}
-${input.firmCity}, ${input.firmState} ${input.firmZip}
 ${input.firmPhone}
 ${input.firmEmail}
 Attorney for ${getRepresentedPartyName()}
@@ -3129,7 +3116,6 @@ ${sig.attorneyName}
 Bar Roll No. ${sig.barNumber}
 ${sig.firmName}
 ${sig.firmAddress}
-${sig.firmCity}, ${sig.firmState} ${sig.firmZip}
 ${sig.firmPhone}
 ${sig.firmEmail}
 Attorney for ${getRepresentedPartyName()}`.trim();
@@ -3208,7 +3194,6 @@ ${sig.attorneyName}
 Bar Roll No. ${sig.barNumber}
 ${sig.firmName}
 ${sig.firmAddress}
-${sig.firmCity}, ${sig.firmState} ${sig.firmZip}
 ${sig.firmPhone}
 ${sig.firmEmail}
 Attorney for ${getRepresentedPartyName()}
@@ -3498,7 +3483,6 @@ ${input.attorneyName}
 Bar Roll No. ${input.barNumber}
 ${input.firmName}
 ${input.firmAddress}
-${input.firmCity}, ${input.firmState} ${input.firmZip}
 ${input.firmPhone}
 ${input.firmEmail}
 Attorney for ${getRepresentedPartyName()}`.trim();
@@ -3539,7 +3523,6 @@ ${input.attorneyName}
 Bar Roll No. ${input.barNumber}
 ${input.firmName}
 ${input.firmAddress}
-${input.firmCity}, ${input.firmState} ${input.firmZip}
 ${input.firmPhone}
 ${input.firmEmail}
 Attorney for ${getRepresentedPartyName()}

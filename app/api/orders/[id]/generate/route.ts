@@ -291,12 +291,8 @@ export async function POST(
               barNumber: '',
               firmName: '',
               firmAddress: '',
-              firmCity: '',
-              firmState: 'LA',
-              firmZip: '',
               firmPhone: '',
               firmEmail: '',
-              firmFullAddress: '',
             };
 
             const result = await executePhase(currentPhase as any, phaseInput);

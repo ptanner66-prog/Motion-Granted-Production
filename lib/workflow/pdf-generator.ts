@@ -749,7 +749,7 @@ export async function generatePDFFromWorkflow(
       .select(`
         *,
         parties (party_name, party_role),
-        profiles (full_name, email)
+        profiles (full_name, email, bar_number, firm_name, firm_address, firm_phone, phone)
       `)
       .eq('id', orderId)
       .single();
@@ -824,10 +824,10 @@ export async function generatePDFFromWorkflow(
         : 'WHEREFORE, for the foregoing reasons, this Motion should be granted.',
       certificateOfService: allOutputs.certificate_of_service as string || generateDefaultCertificate(),
       attorneyName: order.profiles?.full_name || '[ATTORNEY NAME]',
-      attorneyBarNumber: '[BAR NUMBER]',
-      firmName: '[FIRM NAME]',
-      firmAddress: '[ADDRESS]',
-      firmPhone: '[PHONE]',
+      attorneyBarNumber: order.profiles?.bar_number || '[BAR NUMBER]',
+      firmName: order.profiles?.firm_name || '[FIRM NAME]',
+      firmAddress: order.profiles?.firm_address || '[ADDRESS]',
+      firmPhone: order.profiles?.firm_phone || order.profiles?.phone || '[PHONE]',
       firmEmail: order.profiles?.email || '[EMAIL]',
     };
 
