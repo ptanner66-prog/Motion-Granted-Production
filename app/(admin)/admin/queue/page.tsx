@@ -354,7 +354,7 @@ export default async function QueuePage() {
                       >
                         <td className="px-4 py-3">
                           <span className="font-mono text-sm text-gray-500">
-                            {order.queue_position || index + 1}
+                            {index + 1}
                           </span>
                         </td>
                         <td className="px-4 py-3">
