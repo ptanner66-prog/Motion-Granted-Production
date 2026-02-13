@@ -34,12 +34,10 @@ import {
   type PhaseInput,
   type PhaseOutput,
 } from "@/lib/workflow/phase-executors";
-import {
-  getModelConfig,
-  getModelId,
-  createMessageParams,
-  shouldUseOpus,
-} from "@/lib/workflow/model-router";
+// Model routing imports removed — getModelConfig/getModelId/createMessageParams/shouldUseOpus
+// were imported from the deprecated model-router shim but never used in this file.
+// All model routing flows through phase-registry.ts (the canonical source).
+// Import from @/lib/config/phase-registry if needed in the future.
 import { triggerCheckpoint, type CheckpointType } from "@/lib/workflow/checkpoint-service";
 import {
   checkCitationRequirements,
