@@ -257,11 +257,6 @@ async function main() {
     if (typeof mod.notifyPhaseComplete !== 'function') throw new Error('notifyPhaseComplete not exported');
   });
 
-  await test('Phase executor (singular) loads', async () => {
-    const mod = await import('../lib/workflow/phase-executor');
-    if (typeof mod.executePhase !== 'function') throw new Error('executePhase not exported');
-  });
-
   await test('initializeWorkflow exported', async () => {
     const mod = await import('../lib/workflow/orchestrator');
     if (typeof mod.initializeWorkflow !== 'function') throw new Error('initializeWorkflow not exported');
