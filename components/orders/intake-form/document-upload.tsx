@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useOrderForm } from '@/hooks/use-order-form'
 import { Label } from '@/components/ui/label'
@@ -13,6 +13,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Upload, FileText, X, AlertCircle, CheckCircle, Info } from 'lucide-react'
+import {
+  validateFilesClient,
+  formatFileSize,
+  MAX_FILE_SIZE_MB,
+  MAX_FILE_SIZE_BYTES,
+} from '@/lib/upload/client-validation'
 
 const DOCUMENT_TYPES = [
   { id: 'complaint', name: 'Complaint/Petition' },
@@ -26,13 +32,26 @@ const DOCUMENT_TYPES = [
 
 export function DocumentUpload() {
   const { documents, addDocument, removeDocument, updateDocument } = useOrderForm()
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
-      for (const file of acceptedFiles) {
+      // Clear previous errors
+      setValidationErrors([])
+
+      // Validate all files before adding any
+      const results = validateFilesClient(acceptedFiles)
+      const validFiles = results.filter((r) => r.valid).map((r) => r.file)
+      const errors = results.filter((r) => !r.valid).map((r) => r.error!)
+
+      if (errors.length > 0) {
+        setValidationErrors(errors)
+      }
+
+      // Only add files that passed validation
+      for (const file of validFiles) {
         const docId = `${Date.now()}-${Math.random().toString(36).substring(7)}`
 
-        // Add document to state
         const doc = {
           id: docId,
           file,
@@ -58,14 +77,8 @@ export function DocumentUpload() {
       'application/msword': ['.doc'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
     },
-    maxSize: 100 * 1024 * 1024, // 100MB for large legal briefs
+    maxSize: MAX_FILE_SIZE_BYTES,
   })
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
 
   const hasComplaint = documents.some((d) => d.documentType === 'complaint')
 
@@ -129,11 +142,32 @@ export function DocumentUpload() {
                 Drag and drop files here, or click to browse
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                PDF, DOC, DOCX • Max 100MB per file
+                PDF, DOC, DOCX • Max {MAX_FILE_SIZE_MB}MB per file
               </p>
             </>
           )}
         </div>
+
+        {/* Validation Errors */}
+        {validationErrors.length > 0 && (
+          <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+            <div className="flex gap-3">
+              <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-red-800">
+                  {validationErrors.length === 1
+                    ? 'File rejected'
+                    : `${validationErrors.length} files rejected`}
+                </p>
+                <ul className="mt-1 text-red-700 space-y-0.5">
+                  {validationErrors.map((error, index) => (
+                    <li key={index}>• {error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Document List */}
         {documents.length > 0 && (

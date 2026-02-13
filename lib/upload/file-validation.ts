@@ -1,11 +1,12 @@
 // /lib/upload/file-validation.ts
 // File upload security per SECURITY_IMPLEMENTATION_CHECKLIST_v1 Section 3
-// VERSION: 1.0 — January 28, 2026
+// VERSION: 1.1 — SP20: Added client-side validation (CGA6-030, UPLOAD-001–005)
 
 /**
  * File validation requirements:
- * - Whitelist allowed types (PDF, DOCX, DOC, TXT, JPG, PNG)
- * - Validate by magic bytes, not just extension
+ * - Whitelist allowed types (PDF, DOCX, DOC, TXT, JPG, PNG) — server-side
+ * - Client-side: PDF, DOCX, DOC only (no images per CGA6-008)
+ * - Validate by magic bytes, not just extension (server-side)
  * - Max 50MB per file, 500MB per order
  * - Sanitize filenames
  */
@@ -16,6 +17,7 @@ export const FILE_CONFIG = {
   MAX_FILENAME_LENGTH: 200,
 } as const;
 
+// Server-side: broader set (includes text and images for legacy support)
 export const ALLOWED_FILE_TYPES = {
   'application/pdf': { ext: ['pdf'], magic: [0x25, 0x50, 0x44, 0x46] }, // %PDF
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { ext: ['docx'], magic: [0x50, 0x4B, 0x03, 0x04] }, // PK (ZIP)
@@ -26,6 +28,25 @@ export const ALLOWED_FILE_TYPES = {
 } as const;
 
 export type AllowedMimeType = keyof typeof ALLOWED_FILE_TYPES;
+
+// ============================================================================
+// CLIENT-SIDE VALIDATION (SP20: UPLOAD-001 through UPLOAD-005)
+// ============================================================================
+// Re-exported from client-validation.ts for server-side usage.
+// Client components should import directly from '@/lib/upload/client-validation'
+// to avoid pulling in server-only dependencies (supabase/server → next/headers).
+
+export {
+  validateFileClient,
+  validateFilesClient,
+  formatFileSize,
+  CLIENT_ALLOWED_MIME_TYPES,
+  CLIENT_ALLOWED_EXTENSIONS,
+  MAX_FILE_SIZE_MB,
+  MAX_FILE_SIZE_BYTES,
+  type ClientFileValidationResult,
+  type ClientAllowedMimeType,
+} from './client-validation';
 
 export interface FileValidationResult {
   valid: boolean;
