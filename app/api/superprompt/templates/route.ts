@@ -12,6 +12,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { AVAILABLE_PLACEHOLDERS } from '@/lib/workflow/superprompt-engine';
 
+/** Hard ceiling for max_tokens — Opus/Sonnet support up to 64K output tokens. */
+const MAX_TOKENS_CEILING = 64000;
+
 interface TemplateInput {
   name: string;
   description?: string;
@@ -148,6 +151,13 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
+    // Validate max_tokens doesn't exceed model limits
+    if (body.maxTokens && body.maxTokens > MAX_TOKENS_CEILING) {
+      return NextResponse.json({
+        error: `max_tokens ${body.maxTokens} exceeds the maximum allowed value of ${MAX_TOKENS_CEILING}. Opus models support up to 64000 output tokens.`,
+      }, { status: 400 });
+    }
+
     // If setting as default, unset other defaults first
     if (body.isDefault) {
       await supabase
@@ -217,6 +227,13 @@ export async function PUT(request: Request) {
 
     if (!id) {
       return NextResponse.json({ error: 'Template id is required' }, { status: 400 });
+    }
+
+    // Validate max_tokens doesn't exceed model limits
+    if (updates.maxTokens !== undefined && updates.maxTokens > MAX_TOKENS_CEILING) {
+      return NextResponse.json({
+        error: `max_tokens ${updates.maxTokens} exceeds the maximum allowed value of ${MAX_TOKENS_CEILING}. Opus models support up to 64000 output tokens.`,
+      }, { status: 400 });
     }
 
     // If setting as default, unset other defaults first

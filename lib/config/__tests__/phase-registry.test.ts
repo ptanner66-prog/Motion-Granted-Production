@@ -258,10 +258,10 @@ describe('Phase Registry', () => {
   // ================================================================
 
   describe('Max Tokens', () => {
-    it('ET phases use 128000', () => {
-      expect(getMaxTokens('VII', 'A')).toBe(128_000);
-      expect(getMaxTokens('VI', 'B')).toBe(128_000);
-      expect(getMaxTokens('VIII', 'C')).toBe(128_000);
+    it('ET phases use 64000 (Opus max)', () => {
+      expect(getMaxTokens('VII', 'A')).toBe(64_000);
+      expect(getMaxTokens('VI', 'B')).toBe(64_000);
+      expect(getMaxTokens('VIII', 'C')).toBe(64_000);
     });
 
     it('standard CHAT phases use 16384', () => {
