@@ -7,7 +7,8 @@
  * Citation Viewer Feature — January 30, 2026
  */
 
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import {
   getCitationDetailsForViewer,
   batchGetCitationDetails,
@@ -21,14 +22,38 @@ import type {
 } from '@/types/citations';
 
 /**
- * Get a Supabase service-role client for background operations.
- * This avoids the cookie-based client which fails in Inngest context.
+ * Create a Supabase client using the service-role key.
+ *
+ * CRITICAL: saveOrderCitations() is called from Inngest background functions
+ * (Phase V executor in lib/workflow/phase-executors.ts:1697) where there is
+ * NO HTTP request context. The cookie-based createClient() from
+ * @/lib/supabase/server calls cookies() which throws outside request context.
+ *
+ * This service-role client bypasses both cookies and RLS, which is safe because:
+ * 1. It's only used for server-side write operations (not exposed to clients)
+ * 2. The order_citations table has a service_role policy: FOR ALL TO service_role
+ * 3. The caller (Phase V) has already validated the orderId through the workflow
+ *
+ * Pattern copied from lib/workflow/workflow-state.ts:33-44 (getAdminClient)
  */
 function getServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase service credentials not configured');
-  return createAdminClient(url, key);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error(
+      '[CitationService] Cannot create service client: ' +
+      `NEXT_PUBLIC_SUPABASE_URL=${supabaseUrl ? 'SET' : 'MISSING'}, ` +
+      `SUPABASE_SERVICE_ROLE_KEY=${supabaseServiceKey ? 'SET' : 'MISSING'}`
+    );
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
 }
 
 // Cache TTL: 30 days
@@ -81,7 +106,7 @@ export async function getOrderCitations(orderId: string): Promise<{
   error?: string;
 }> {
   try {
-    const supabase = getServiceClient();
+    const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('order_citations')
@@ -156,7 +181,7 @@ export async function getCitationDetails(
   const forceRefresh = options?.forceRefresh ?? false;
 
   try {
-    const supabase = getServiceClient();
+    const supabase = await createClient();
 
     // Check cache first (unless force refresh)
     if (!forceRefresh) {
@@ -312,7 +337,7 @@ export async function batchGetCitationDetailsService(
   }
 
   try {
-    const supabase = getServiceClient();
+    const supabase = await createClient();
     const results: CitationDetails[] = [];
     const errors: string[] = [];
     let cacheHits = 0;
@@ -435,6 +460,10 @@ export async function saveOrderCitations(
   }
 
   try {
+    // SERVICE-ROLE CLIENT: This function is called from Inngest background context
+    // (Phase V executor) where cookies() is unavailable. The cookie-based createClient
+    // from @/lib/supabase/server throws when called outside HTTP request context.
+    // See getServiceClient() JSDoc for full explanation.
     const supabase = getServiceClient();
 
     // Transform to database format
@@ -508,7 +537,7 @@ export async function flagCitation(
   adminId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = getServiceClient();
+    const supabase = await createClient();
 
     const { error } = await supabase
       .from('order_citations')
@@ -552,7 +581,7 @@ export async function verifyCitation(
   adminId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = getServiceClient();
+    const supabase = await createClient();
 
     const { error } = await supabase
       .from('order_citations')
@@ -592,7 +621,7 @@ export async function getCitationCount(orderId: string): Promise<{
   error?: string;
 }> {
   try {
-    const supabase = getServiceClient();
+    const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('order_citations')
