@@ -18,7 +18,7 @@ import {
   Shield,
   HelpCircle,
   ExternalLink,
-  Sparkles,
+  Brain,
   ListOrdered,
   Activity,
 } from 'lucide-react'
@@ -63,10 +63,10 @@ const mainNavigation = [
     description: 'View clients'
   },
   {
-    name: 'Superprompt',
+    name: 'AI Prompts',
     href: '/admin/superprompt',
-    icon: Sparkles,
-    description: 'AI templates'
+    icon: Brain,
+    description: 'Phase prompts'
   },
   {
     name: 'Analytics',
