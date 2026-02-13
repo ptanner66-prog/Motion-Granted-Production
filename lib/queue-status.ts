@@ -1,9 +1,140 @@
 /**
  * Queue Status Helper Functions
  *
- * Utilities for calculating and displaying queue position and
- * estimated completion times for client-facing dashboards.
+ * Utilities for calculating and displaying queue position,
+ * estimated completion times, and aggregate queue statistics
+ * for client-facing and admin dashboards.
  */
+
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+/**
+ * Result of queue statistics computation.
+ * null values indicate the underlying query failed — consumers should
+ * display an error indicator rather than defaulting to 0.
+ */
+export interface QueueStatsResult {
+  /** Count of orders waiting in queue (submitted / under_review) */
+  queue_depth: number | null
+  /** Count of orders currently being generated (in_progress) */
+  processing_count: number | null
+  /** Count of orders completed in the last 24 hours */
+  completed_today: number | null
+  /** Count of orders with generation_failed status */
+  failed_count: number | null
+  /** Average generation duration in seconds (last 7 days), 0 if no data */
+  avg_generation_seconds: number | null
+  /** Minutes since the oldest pending order was created, 0 if none pending */
+  oldest_pending_minutes: number | null
+}
+
+/**
+ * Compute queue statistics using direct Supabase queries.
+ *
+ * Does NOT rely on the get_queue_stats stored PostgreSQL function,
+ * which may not be deployed. Instead uses the same .from('orders')
+ * query patterns that power the Active Queue table and Recently
+ * Completed section — both of which are known to work.
+ *
+ * All 6 queries run in parallel via Promise.all for performance (< 500ms).
+ * Individual query failures yield null for that stat so the caller
+ * can render "Error" instead of a misleading 0.
+ *
+ * @param supabase - Any Supabase client (SSR or service-role)
+ * @returns Queue statistics with null indicating per-stat errors
+ */
+export async function getQueueStats(
+  supabase: SupabaseClient
+): Promise<QueueStatsResult> {
+  const now = new Date()
+  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+  const [
+    queueDepthResult,
+    processingResult,
+    completedTodayResult,
+    failedResult,
+    recentCompletionsResult,
+    oldestPendingResult,
+  ] = await Promise.all([
+    // R-01: Queue Depth — orders waiting for generation
+    supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['submitted', 'under_review']),
+
+    // R-02: Processing — orders actively being generated
+    supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'in_progress'),
+
+    // R-03: Completed Today — matches the Recently Completed section filter
+    supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['pending_review', 'draft_delivered', 'completed'])
+      .gte('generation_completed_at', twentyFourHoursAgo),
+
+    // R-04: Failed — matches the Active Queue table's "Failed" badge filter
+    supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'generation_failed'),
+
+    // R-05: Avg Generation Time data — completions from last 7 days
+    supabase
+      .from('orders')
+      .select('generation_started_at, generation_completed_at')
+      .not('generation_started_at', 'is', null)
+      .not('generation_completed_at', 'is', null)
+      .gte('generation_completed_at', sevenDaysAgo)
+      .limit(200),
+
+    // R-07: Oldest Pending — oldest order in submitted/under_review
+    supabase
+      .from('orders')
+      .select('created_at')
+      .in('status', ['submitted', 'under_review'])
+      .order('created_at', { ascending: true })
+      .limit(1),
+  ])
+
+  // R-05: Compute average generation seconds from fetched rows
+  let avgGenerationSeconds: number | null = null
+  if (!recentCompletionsResult.error && recentCompletionsResult.data?.length) {
+    const durations: number[] = []
+    for (const row of recentCompletionsResult.data) {
+      const started = new Date(row.generation_started_at as string).getTime()
+      const completed = new Date(row.generation_completed_at as string).getTime()
+      const durationSec = (completed - started) / 1000
+      // Exclude negative durations and extreme outliers (> 24h)
+      if (durationSec > 0 && durationSec < 86400) {
+        durations.push(durationSec)
+      }
+    }
+    if (durations.length > 0) {
+      avgGenerationSeconds = durations.reduce((sum, d) => sum + d, 0) / durations.length
+    }
+  }
+
+  // R-07: Compute oldest pending minutes from the earliest created_at
+  let oldestPendingMinutes: number | null = null
+  if (!oldestPendingResult.error && oldestPendingResult.data?.length) {
+    const oldestCreatedAt = new Date(oldestPendingResult.data[0].created_at as string).getTime()
+    oldestPendingMinutes = (now.getTime() - oldestCreatedAt) / (1000 * 60)
+  }
+
+  return {
+    queue_depth: queueDepthResult.error ? null : (queueDepthResult.count ?? 0),
+    processing_count: processingResult.error ? null : (processingResult.count ?? 0),
+    completed_today: completedTodayResult.error ? null : (completedTodayResult.count ?? 0),
+    failed_count: failedResult.error ? null : (failedResult.count ?? 0),
+    avg_generation_seconds: recentCompletionsResult.error ? null : (avgGenerationSeconds ?? 0),
+    oldest_pending_minutes: oldestPendingResult.error ? null : (oldestPendingMinutes ?? 0),
+  }
+}
 
 /**
  * Get the queue position for an order
