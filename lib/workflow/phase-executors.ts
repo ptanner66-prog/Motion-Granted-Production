@@ -2881,7 +2881,12 @@ Provide your judicial evaluation as JSON.`;
 
     // Extract pass/fail
     const evaluation = (phaseOutput.evaluation as Record<string, unknown>) || phaseOutput;
-    const passes = evaluation.passes === true || (evaluation.numericGrade as number) >= 3.3;
+    // SC-002 FIX: Grade numeric comparison is the SOLE quality determinant.
+    // DO NOT use evaluation.passes — Claude can set it to true on any grade.
+    const tierThreshold = input.tier === 'A' ? 3.0 : 3.3;
+    const numericGrade = (evaluation.numericGrade ?? evaluation.numeric_grade ?? 0) as number;
+    const passes = numericGrade >= tierThreshold;
+    console.log(`[Phase VII] Grade check: ${numericGrade} >= ${tierThreshold} (Tier ${input.tier}) = ${passes}`);
 
     return {
       success: true,
@@ -2999,6 +3004,14 @@ async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
     const phaseVIIOutput = (input.previousPhaseOutputs?.['VII'] ?? {}) as Record<string, unknown>;
     const thinkingBudget = getThinkingBudget('VIII', input.tier);
 
+    // BUG-1 FIX: Use latest Phase VIII revision if available (loop 2+ gets the revised draft)
+    const previousRevision = (input.previousPhaseOutputs?.['VIII'] ?? null) as Record<string, unknown> | null;
+    const currentDraft = previousRevision?.revisedMotion
+      ? previousRevision  // Use Phase VIII Loop N-1 output
+      : phaseVOutput;     // First loop: use Phase V original
+    const isSubsequentLoop = !!previousRevision?.revisedMotion;
+
+    console.log(`[Phase VIII] Draft source: ${isSubsequentLoop ? 'Phase VIII (previous revision)' : 'Phase V (original)'}`);
     console.log(`[Phase VIII] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
     console.log(`[Phase VIII] Phase VII keys: ${Object.keys(phaseVIIOutput).join(', ') || 'EMPTY'}`);
 
@@ -3090,7 +3103,9 @@ CRITICAL PLACEHOLDER PROHIBITION:
 - Do NOT use generic names like "John Doe", "Jane Smith"
 - Use ONLY the actual case data provided above
 - The revised motion must be ready to file with ZERO placeholder modifications
-
+${isSubsequentLoop ? `
+IMPORTANT: You are revising a PREVIOUSLY REVISED draft, not the original. Build upon the improvements already made. Do NOT revert to simpler language or remove details added in prior revisions.
+` : ''}
 OUTPUT FORMAT (JSON only):
 {
   "phaseComplete": "VIII",
@@ -3127,8 +3142,8 @@ ${input.firmEmail}
 Attorney for ${getRepresentedPartyName()}
 
 ═══════════════════════════════════════════════════════════════
-ORIGINAL DRAFT (Phase V):
-${JSON.stringify(phaseVOutput, null, 2)}
+${isSubsequentLoop ? 'CURRENT DRAFT (from previous revision loop — improve THIS version):' : 'ORIGINAL DRAFT (Phase V):'}
+${JSON.stringify(isSubsequentLoop ? currentDraft.revisedMotion : phaseVOutput, null, 2)}
 
 JUDGE EVALUATION (Phase VII):
 ${JSON.stringify(phaseVIIOutput, null, 2)}

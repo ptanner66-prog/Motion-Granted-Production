@@ -805,6 +805,16 @@ export const MINIMUM_PASSING_GRADE: LetterGrade = 'B+';
 export const MINIMUM_PASSING_VALUE = 3.3;
 export const MAX_REVISION_LOOPS = 3;
 
+// SC-001 FIX: Tier-specific thresholds per Master Workflow v7.5 Section VII.2
+// Tier A (procedural): B (3.0 / 83%) — simpler motions need lower bar
+// Tier B/C/D (substantive): B+ (3.3 / 87%) — complex motions need higher quality
+export const TIER_A_PASSING_VALUE = 3.0;  // B
+export const TIER_BCD_PASSING_VALUE = 3.3; // B+
+
+export function getPassingThreshold(tier?: string): number {
+  return tier === 'A' ? TIER_A_PASSING_VALUE : TIER_BCD_PASSING_VALUE;
+}
+
 export interface JudgeSimulationResult {
   grade: LetterGrade;
   numericGrade: number;
@@ -835,6 +845,15 @@ export function numericToGrade(value: number): LetterGrade {
 
 export function gradePasses(grade: LetterGrade): boolean {
   return GRADE_VALUES[grade] >= MINIMUM_PASSING_VALUE;
+}
+
+/**
+ * Check if a grade passes the threshold for the given tier.
+ * Tier A: B (3.0) | Tier B/C/D: B+ (3.3)
+ */
+export function gradePassesForTier(grade: LetterGrade, tier?: string): boolean {
+  const threshold = getPassingThreshold(tier);
+  return GRADE_VALUES[grade] >= threshold;
 }
 
 // ============================================================================

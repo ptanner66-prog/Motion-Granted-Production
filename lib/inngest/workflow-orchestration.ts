@@ -62,6 +62,8 @@ import {
   MAX_REVISION_LOOPS,
   GRADE_VALUES,
   gradePasses,
+  gradePassesForTier,
+  TIER_A_PASSING_VALUE,
 } from "@/types/workflow";
 
 // Configuration imports
@@ -1799,12 +1801,12 @@ export const generateOrderWorkflow = inngest.createFunction(
 
     while (
       workflowState.currentGrade &&
-      !gradePasses(workflowState.currentGrade) &&
+      !gradePassesForTier(workflowState.currentGrade, workflowState.tier) &&
       workflowState.revisionLoopCount < MAX_REVISION_LOOPS
     ) {
       const loopNum = workflowState.revisionLoopCount + 1;
       console.log(`[Orchestration] ===== REVISION LOOP ${loopNum}/${MAX_REVISION_LOOPS} =====`);
-      console.log(`[Orchestration] Current grade: ${workflowState.currentGrade} (needs A- / 3.3)`);
+      console.log(`[Orchestration] Current grade: ${workflowState.currentGrade} (Tier ${workflowState.tier}: needs ${workflowState.tier === 'A' ? 'B / 3.0' : 'B+ / 3.3'})`);
 
       // STEP A: Phase VIII — Apply revisions based on Phase VII feedback
       const phaseVIIIRevisionResult = await step.run(`phase-viii-revision-loop-${loopNum}`, async () => {
