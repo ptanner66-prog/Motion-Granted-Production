@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -13,10 +13,18 @@ import {
   Code,
   MessageSquare,
   AlertCircle,
+  Pencil,
+  Save,
+  X,
+  RotateCcw,
+  Clock,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +44,9 @@ interface PhaseData {
   wordCount: number;
   charCount: number;
   version: string;
+  editVersion: number | null;
+  lastEditor: string | null;
+  lastUpdated: string | null;
   routing: {
     A: TierRouting;
     B: TierRouting;
@@ -50,9 +61,28 @@ interface PromptsResponse {
   updatedAt: string;
 }
 
+interface VersionEntry {
+  id: string;
+  phase: string;
+  phaseKey: string;
+  editVersion: number;
+  wordCount: number;
+  charCount: number;
+  editedBy: string | null;
+  editNote: string | null;
+  createdAt: string;
+  promptContent: string;
+}
+
+interface SaveResult {
+  success: boolean;
+  edit_version?: number;
+  word_count?: number;
+  error?: string;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Returns a short display name for a model string. */
 function formatModelName(model: string | null): string {
   if (!model) return 'No LLM';
   if (model.includes('opus')) return 'Opus';
@@ -62,7 +92,6 @@ function formatModelName(model: string | null): string {
   return model;
 }
 
-/** Returns the badge variant for a given model string. */
 function modelBadgeVariant(model: string | null): 'info' | 'purple' | 'secondary' | 'emerald' | 'warning' {
   if (!model) return 'secondary';
   if (model.includes('opus')) return 'purple';
@@ -72,14 +101,32 @@ function modelBadgeVariant(model: string | null): 'info' | 'purple' | 'secondary
   return 'secondary';
 }
 
-/** Formats a number with commas. */
 function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
-/** Maps a registryKey like 'V.1' to a display label like 'V.1'. */
 function phaseLabel(registryKey: string): string {
   return registryKey;
+}
+
+function formatTimestamp(iso: string | null): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function wordCount(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -185,13 +232,167 @@ function StageRoutingTable({ stages }: { stages: NonNullable<PhaseData['stages']
   );
 }
 
-function PhaseCard({ phase, isExpanded, onToggle }: {
+// ── Version History Panel ────────────────────────────────────────────────────
+
+function VersionHistoryPanel({
+  phaseKey,
+  onRestore,
+}: {
+  phaseKey: string;
+  onRestore: (content: string, version: number) => void;
+}) {
+  const [versions, setVersions] = useState<VersionEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchVersions() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/admin/prompts/${phaseKey}/versions?limit=20`);
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        setVersions(data.versions ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load versions');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchVersions();
+  }, [phaseKey]);
+
+  if (loading) {
+    return (
+      <div className="py-4 text-center text-sm text-gray-400">
+        <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+        Loading version history...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="py-4 text-center text-sm text-red-500">
+        {error}
+      </div>
+    );
+  }
+
+  if (versions.length === 0) {
+    return (
+      <div className="py-4 text-center text-sm text-gray-400">
+        No version history available yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+      {versions.map((v) => (
+        <div
+          key={v.id}
+          className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-900">
+                v{v.editVersion}
+              </span>
+              <span className="text-xs text-gray-400">
+                {formatNumber(v.wordCount)} words
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+              {v.editedBy && <span>by {v.editedBy}</span>}
+              <span>{formatTimestamp(v.createdAt)}</span>
+            </div>
+            {v.editNote && (
+              <p className="text-xs text-gray-500 mt-0.5 italic truncate">
+                {v.editNote}
+              </p>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRestore(v.promptContent, v.editVersion)}
+            className="shrink-0 text-xs"
+          >
+            <RotateCcw className="h-3 w-3 mr-1" />
+            Restore
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Phase Card (with editing) ────────────────────────────────────────────────
+
+function PhaseCard({
+  phase,
+  isExpanded,
+  onToggle,
+  isEditing,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  editContent,
+  onEditContentChange,
+  originalContent,
+  saving,
+  saveResult,
+  onClearSaveResult,
+}: {
   phase: PhaseData;
   isExpanded: boolean;
   onToggle: () => void;
+  isEditing: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: () => void;
+  editContent: string;
+  onEditContentChange: (content: string) => void;
+  originalContent: string;
+  saving: boolean;
+  saveResult: SaveResult | null;
+  onClearSaveResult: () => void;
 }) {
+  const [showHistory, setShowHistory] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const hasChanges = editContent !== originalContent;
+  const currentWordCount = isEditing ? wordCount(editContent) : phase.wordCount;
+  const originalWordCount = wordCount(originalContent);
+  const wordDiff = currentWordCount - originalWordCount;
+
+  // Auto-focus textarea when entering edit mode
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isEditing]);
+
+  // Clear save result after 4 seconds
+  useEffect(() => {
+    if (saveResult) {
+      const timer = setTimeout(onClearSaveResult, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveResult, onClearSaveResult]);
+
+  function handleRestore(content: string, _version: number) {
+    onEditContentChange(content);
+    setShowHistory(false);
+  }
+
   return (
     <Card className="transition-shadow hover:shadow-md">
+      {/* Card Header (clickable to expand/collapse) */}
       <button
         onClick={onToggle}
         className="w-full text-left focus:outline-none focus:ring-2 focus:ring-teal/20 rounded-xl"
@@ -216,6 +417,11 @@ function PhaseCard({ phase, isExpanded, onToggle }: {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {phase.editVersion && phase.editVersion > 1 && (
+                <Badge variant="outline" className="text-[11px]">
+                  edit v{phase.editVersion}
+                </Badge>
+              )}
               <Badge variant={phase.mode === 'CHAT' ? 'info' : 'secondary'} className="text-[11px]">
                 {phase.mode === 'CHAT' ? (
                   <MessageSquare className="mr-1 h-3 w-3 inline" />
@@ -236,6 +442,7 @@ function PhaseCard({ phase, isExpanded, onToggle }: {
         </CardHeader>
       </button>
 
+      {/* Expanded Content */}
       {isExpanded && (
         <CardContent>
           <div className="space-y-4">
@@ -286,17 +493,138 @@ function PhaseCard({ phase, isExpanded, onToggle }: {
               <span>{formatNumber(phase.wordCount)} words</span>
               <span>{formatNumber(phase.charCount)} characters</span>
               <span>Version {phase.version}</span>
+              {phase.lastEditor && (
+                <span>Last edited by {phase.lastEditor}</span>
+              )}
+              {phase.lastUpdated && (
+                <span>{formatTimestamp(phase.lastUpdated)}</span>
+              )}
             </div>
 
-            {/* Prompt text */}
+            {/* Prompt Section — Edit or View */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                <FileText className="h-3.5 w-3.5 inline mr-1" />
-                System Prompt
-              </p>
-              <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm font-mono text-gray-700 leading-relaxed overflow-y-auto max-h-[500px] whitespace-pre-wrap break-words">
-                {phase.promptText}
-              </pre>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <FileText className="h-3.5 w-3.5 inline mr-1" />
+                  System Prompt
+                </p>
+                <div className="flex items-center gap-2">
+                  {isEditing && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowHistory(!showHistory); }}
+                      className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                    >
+                      <Clock className="h-3 w-3" />
+                      {showHistory ? 'Hide History' : 'Version History'}
+                    </button>
+                  )}
+                  {!isEditing ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
+                      className="text-xs"
+                    >
+                      <Pencil className="h-3 w-3 mr-1" />
+                      Edit
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); onCancelEdit(); setShowHistory(false); }}
+                        disabled={saving}
+                        className="text-xs"
+                      >
+                        <X className="h-3 w-3 mr-1" />
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); onSave(); }}
+                        disabled={!hasChanges || saving}
+                        className="text-xs"
+                      >
+                        {saving ? (
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        ) : (
+                          <Save className="h-3 w-3 mr-1" />
+                        )}
+                        Save
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Save result toast */}
+              {saveResult && (
+                <div
+                  className={`mb-3 rounded-lg px-3 py-2 text-sm flex items-center gap-2 ${
+                    saveResult.success
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}
+                >
+                  {saveResult.success ? (
+                    <>
+                      <Check className="h-4 w-4 shrink-0" />
+                      Saved — version {saveResult.edit_version} ({formatNumber(saveResult.word_count ?? 0)} words)
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {saveResult.error || 'Failed to save. Please try again.'}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Edit indicators */}
+              {isEditing && (
+                <div className="flex items-center gap-4 mb-2 text-xs text-gray-500">
+                  <span>{formatNumber(currentWordCount)} words</span>
+                  {hasChanges && (
+                    <span className={wordDiff > 0 ? 'text-emerald-600' : wordDiff < 0 ? 'text-amber-600' : ''}>
+                      {wordDiff > 0 ? '+' : ''}{formatNumber(wordDiff)} words changed
+                    </span>
+                  )}
+                  {!hasChanges && (
+                    <span className="text-gray-400">No changes</span>
+                  )}
+                </div>
+              )}
+
+              {/* Version history panel */}
+              {isEditing && showHistory && (
+                <div className="mb-3 border border-gray-200 rounded-lg p-3 bg-white">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    <Clock className="h-3 w-3 inline mr-1" />
+                    Version History
+                  </p>
+                  <VersionHistoryPanel
+                    phaseKey={phase.key}
+                    onRestore={handleRestore}
+                  />
+                </div>
+              )}
+
+              {/* Editor textarea or read-only display */}
+              {isEditing ? (
+                <textarea
+                  ref={textareaRef}
+                  value={editContent}
+                  onChange={(e) => onEditContentChange(e.target.value)}
+                  disabled={saving}
+                  className="w-full min-h-[500px] rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-mono text-gray-700 leading-relaxed transition-all duration-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 focus:outline-none disabled:opacity-50 resize-y"
+                  spellCheck={false}
+                />
+              ) : (
+                <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm font-mono text-gray-700 leading-relaxed overflow-y-auto max-h-[500px] whitespace-pre-wrap break-words">
+                  {phase.promptText}
+                </pre>
+              )}
             </div>
           </div>
         </CardContent>
@@ -314,7 +642,14 @@ export function PhasePromptViewer() {
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchPrompts = async () => {
+  // Edit state
+  const [editingPhase, setEditingPhase] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [originalContent, setOriginalContent] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState<SaveResult | null>(null);
+
+  const fetchPrompts = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -331,11 +666,22 @@ export function PhasePromptViewer() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchPrompts();
-  }, []);
+  }, [fetchPrompts]);
+
+  // Unsaved changes warning
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (editingPhase && editContent !== originalContent) {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [editingPhase, editContent, originalContent]);
 
   const filteredPhases = useMemo(() => {
     if (!data) return [];
@@ -356,8 +702,59 @@ export function PhasePromptViewer() {
   }, [data]);
 
   const handleToggle = (key: string) => {
+    // Don't collapse if currently editing this phase
+    if (editingPhase === key) return;
     setExpandedPhase((prev) => (prev === key ? null : key));
   };
+
+  function handleStartEdit(phase: PhaseData) {
+    setEditingPhase(phase.key);
+    setEditContent(phase.promptText);
+    setOriginalContent(phase.promptText);
+    setSaveResult(null);
+    // Ensure the phase is expanded
+    setExpandedPhase(phase.key);
+  }
+
+  function handleCancelEdit() {
+    setEditingPhase(null);
+    setEditContent('');
+    setOriginalContent('');
+    setSaveResult(null);
+  }
+
+  async function handleSave(phaseKey: string) {
+    setSaving(true);
+    setSaveResult(null);
+    try {
+      const res = await fetch('/api/admin/prompts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phase_key: phaseKey,
+          content: editContent,
+        }),
+      });
+      const result: SaveResult = await res.json();
+
+      if (result.success) {
+        setSaveResult(result);
+        setOriginalContent(editContent);
+        // Refresh to pick up new word count, version, etc.
+        await fetchPrompts();
+      } else {
+        setSaveResult({ success: false, error: result.error });
+      }
+    } catch {
+      setSaveResult({ success: false, error: 'Network error. Please try again.' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const handleClearSaveResult = useCallback(() => {
+    setSaveResult(null);
+  }, []);
 
   return (
     <div className="p-6 lg:p-8 max-w-6xl mx-auto">
@@ -367,7 +764,7 @@ export function PhasePromptViewer() {
           AI Phase Prompts
         </h1>
         <p className="text-gray-500 mt-1">
-          View the system prompts that drive each phase of motion generation
+          View and edit the system prompts that drive each phase of motion generation
         </p>
       </div>
 
@@ -441,6 +838,16 @@ export function PhasePromptViewer() {
                 phase={phase}
                 isExpanded={expandedPhase === phase.key}
                 onToggle={() => handleToggle(phase.key)}
+                isEditing={editingPhase === phase.key}
+                onStartEdit={() => handleStartEdit(phase)}
+                onCancelEdit={handleCancelEdit}
+                onSave={() => handleSave(phase.key)}
+                editContent={editingPhase === phase.key ? editContent : ''}
+                onEditContentChange={setEditContent}
+                originalContent={editingPhase === phase.key ? originalContent : phase.promptText}
+                saving={saving && editingPhase === phase.key}
+                saveResult={editingPhase === phase.key ? saveResult : null}
+                onClearSaveResult={handleClearSaveResult}
               />
             ))
           )}

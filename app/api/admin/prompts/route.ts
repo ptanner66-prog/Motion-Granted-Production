@@ -3,13 +3,22 @@
  *
  * Returns all 14 phase prompts with metadata and model routing info.
  * Used by the Phase Prompt Viewer admin page (Clay's dashboard).
+ * Reads from DB (via loadPhasePrompts) with file fallback.
  *
  * Auth: admin or clerk role required.
- * Data source: filesystem prompts (via prompts/index.ts) + phase registry.
+ *
+ * PUT /api/admin/prompts
+ *
+ * Updates a single phase prompt content. Creates a version history entry.
+ * Invalidates the prompt cache so the next workflow run uses new content.
+ *
+ * Auth: admin role required (not clerk).
+ * Body: { phase_key: string, content: string, edit_note?: string }
  */
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { PHASE_PROMPTS, PHASE_METADATA, type PhaseKey } from '@/prompts/index';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { PHASE_PROMPTS, PHASE_METADATA, loadPhasePrompts, refreshPhasePrompts, type PhaseKey } from '@/prompts/index';
 import {
   getPhaseConfig,
   PHASES,
@@ -41,6 +50,9 @@ const EXECUTION_ORDER: PhaseKey[] = [
   'PHASE_IX', 'PHASE_IX1', 'PHASE_X',
 ];
 
+/** Valid phase keys for PUT validation. */
+const VALID_PHASE_KEYS = new Set<string>(EXECUTION_ORDER);
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -64,12 +76,43 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Load latest prompts from DB (falls back to files if DB unavailable)
+    await loadPhasePrompts();
+
+    // Fetch DB metadata (version info, last editor) for each phase
+    let dbMetadata: Record<string, { editVersion: number; updatedBy: string | null; updatedAt: string | null }> = {};
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (supabaseUrl && supabaseKey) {
+        const serviceClient = createSupabaseClient(supabaseUrl, supabaseKey);
+        const { data: dbRows } = await serviceClient
+          .from('phase_prompts')
+          .select('phase, edit_version, updated_by, updated_at')
+          .eq('is_active', true);
+
+        if (dbRows) {
+          for (const row of dbRows) {
+            dbMetadata[row.phase] = {
+              editVersion: row.edit_version ?? 1,
+              updatedBy: row.updated_by ?? null,
+              updatedAt: row.updated_at ?? null,
+            };
+          }
+        }
+      }
+    } catch {
+      // Non-fatal: metadata just won't be available
+    }
+
     const phases = EXECUTION_ORDER.map((key, index) => {
       const promptText = PHASE_PROMPTS[key];
       const metadata = PHASE_METADATA[key];
       const registryKey = PROMPT_KEY_TO_PHASE[key];
       const config = getPhaseConfig(registryKey);
       const wordCount = promptText.split(/\s+/).filter(Boolean).length;
+      const dbPhase = registryKey; // DB uses 'I', 'V.1', etc.
+      const meta = dbMetadata[dbPhase];
 
       return {
         index: index + 1,
@@ -81,6 +124,9 @@ export async function GET() {
         wordCount,
         charCount: promptText.length,
         version: 'v7.5',
+        editVersion: meta?.editVersion ?? null,
+        lastEditor: meta?.updatedBy ?? null,
+        lastUpdated: meta?.updatedAt ?? null,
         routing: {
           A: {
             model: config.routing.A.model,
@@ -140,6 +186,130 @@ export async function GET() {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
     console.error('[GET /api/admin/prompts] Error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+/**
+ * PUT /api/admin/prompts
+ *
+ * Updates a phase prompt. Admin only.
+ * Body: { phase_key: string, content: string, edit_note?: string }
+ * Returns: { success: true, phase_key, edit_version, word_count }
+ */
+export async function PUT(request: Request) {
+  try {
+    // 1. Auth check — must be admin
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden - Admin only' }, { status: 403 });
+    }
+
+    // 2. Parse and validate body
+    const body = await request.json();
+    const { phase_key, content, edit_note } = body as {
+      phase_key: string;
+      content: string;
+      edit_note?: string;
+    };
+
+    if (!phase_key || typeof phase_key !== 'string') {
+      return NextResponse.json({ error: 'phase_key is required' }, { status: 400 });
+    }
+    if (!VALID_PHASE_KEYS.has(phase_key)) {
+      return NextResponse.json({ error: `Invalid phase_key: ${phase_key}` }, { status: 400 });
+    }
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return NextResponse.json({ error: 'content cannot be empty' }, { status: 400 });
+    }
+
+    // 3. Map phase_key (PHASE_I) to DB phase value (I)
+    const dbPhase = PROMPT_KEY_TO_PHASE[phase_key];
+    if (!dbPhase) {
+      return NextResponse.json({ error: `Cannot map phase_key: ${phase_key}` }, { status: 400 });
+    }
+
+    // 4. Use service role client for writes (bypasses RLS)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    }
+
+    const serviceClient = createSupabaseClient(supabaseUrl, supabaseKey);
+
+    // 5. Get current edit_version
+    const { data: current } = await serviceClient
+      .from('phase_prompts')
+      .select('edit_version')
+      .eq('phase', dbPhase)
+      .single();
+
+    const newVersion = (current?.edit_version ?? 0) + 1;
+    const trimmedContent = content.trim();
+
+    // 6. Update the prompt in phase_prompts
+    const { error: updateError } = await serviceClient
+      .from('phase_prompts')
+      .update({
+        prompt_content: trimmedContent,
+        edit_version: newVersion,
+        updated_by: user.email ?? user.id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('phase', dbPhase);
+
+    if (updateError) {
+      console.error(`[PUT /api/admin/prompts] Update failed for ${phase_key}:`, updateError);
+      return NextResponse.json({ error: 'Failed to save prompt' }, { status: 500 });
+    }
+
+    // 7. Insert version history (append-only)
+    const { error: versionError } = await serviceClient
+      .from('phase_prompt_versions')
+      .insert({
+        phase: dbPhase,
+        prompt_content: trimmedContent,
+        edit_version: newVersion,
+        edited_by: user.email ?? user.id,
+        edit_note: edit_note?.trim() || null,
+      });
+
+    if (versionError) {
+      // Non-fatal — the prompt itself was saved
+      console.warn(`[PUT /api/admin/prompts] Version history insert failed for ${phase_key}:`, versionError);
+    }
+
+    // 8. Invalidate prompt cache so next workflow run uses new content
+    await refreshPhasePrompts();
+
+    // 9. Log the edit
+    console.log(`[PUT /api/admin/prompts] ${phase_key} updated to v${newVersion} by ${user.email ?? user.id}`);
+
+    // 10. Return success
+    const wordCount = trimmedContent.split(/\s+/).filter(Boolean).length;
+    return NextResponse.json({
+      success: true,
+      phase_key,
+      edit_version: newVersion,
+      word_count: wordCount,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    console.error('[PUT /api/admin/prompts] Error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
