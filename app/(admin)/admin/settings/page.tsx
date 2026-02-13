@@ -12,7 +12,6 @@ import {
   Mail,
   Lock,
   Building,
-  CreditCard,
   ChevronRight,
   DollarSign,
 } from 'lucide-react'
@@ -20,10 +19,10 @@ import {
   ChangePasswordButton,
   Enable2FAButton,
   ConfigureEmailButton,
-  ManagePaymentButton,
   ConfigurePricingButton,
 } from '@/components/admin/settings-buttons'
 import { APIKeysSettings } from '@/components/admin/api-keys-settings'
+import { StripeStatusCard } from '@/components/admin/stripe-status-card'
 
 export const metadata: Metadata = {
   title: 'Settings - Admin',
@@ -168,6 +167,9 @@ export default async function AdminSettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Stripe Payments */}
+        <StripeStatusCard />
+
         {/* Business Settings */}
         <Card className="bg-white border-gray-200">
           <CardHeader>
@@ -182,16 +184,6 @@ export default async function AdminSettingsPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <CreditCard className="h-5 w-5 text-gray-500" />
-                <div>
-                  <p className="text-navy font-medium">Payment Settings</p>
-                  <p className="text-sm text-gray-400">Stripe configuration</p>
-                </div>
-              </div>
-              <ManagePaymentButton />
-            </div>
             <Link href="/admin/settings/pricing" className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
               <div className="flex items-center gap-3">
                 <DollarSign className="h-5 w-5 text-gray-500" />

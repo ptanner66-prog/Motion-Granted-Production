@@ -106,10 +106,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // Create Stripe PaymentIntent if Stripe is configured
+    // Create Stripe PaymentIntent if Stripe is configured and payment is required
     // SECURITY FIX: Use crypto.randomUUID() for cryptographically secure idempotency key
     let paymentIntent = null
-    if (stripe) {
+    const stripePaymentRequired = process.env.STRIPE_PAYMENT_REQUIRED?.toLowerCase().trim() !== 'false'
+    if (stripe && stripePaymentRequired && body.total_price > 0) {
       const idempotencyKey = `order_${user.id}_${Date.now()}_${crypto.randomUUID()}`
       paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(body.total_price * 100),
@@ -151,7 +152,7 @@ export async function POST(req: Request) {
         instructions: body.instructions,
         related_entities: body.related_entities || null,
         stripe_payment_intent_id: paymentIntent?.id || null,
-        stripe_payment_status: paymentIntent ? 'pending' : 'not_configured',
+        stripe_payment_status: paymentIntent ? 'pending' : (stripePaymentRequired ? 'not_configured' : 'not_required'),
       })
       .select()
       .single()
