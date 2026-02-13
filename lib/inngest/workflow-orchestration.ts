@@ -103,6 +103,9 @@ import { detectMotionType, generateAdvisories } from "@/lib/workflow/motion-advi
 // SP23: Protocol 10 — max revision loops exhausted
 import { handleProtocol10Exit } from "@/lib/workflow/protocol-10-handler";
 
+// SP24: Load DB-backed phase prompts at workflow start
+import { loadPhasePrompts } from "@/prompts";
+
 // SP23: Tiered max revision loops per XDC-004 / WF-04-A
 // Tier A (procedural) = 2, Tier B/C (substantive) = 3, Tier D (complex) = 4
 const TIERED_MAX_LOOPS: Record<string, number> = {
@@ -1053,6 +1056,13 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       console.log("[WORKFLOW] API configuration verified (key format valid, length:", apiKey.length, ")");
       console.log("[WORKFLOW] Starting workflow for order:", orderId);
+    });
+
+    // ========================================================================
+    // STEP 0.5: Load latest phase prompts from DB (file fallback if DB down)
+    // ========================================================================
+    await step.run("load-phase-prompts", async () => {
+      await loadPhasePrompts();
     });
 
     // ========================================================================
