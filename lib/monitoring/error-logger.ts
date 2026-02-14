@@ -322,7 +322,7 @@ class ErrorLogger {
         break;
       case 'ERROR':
       case 'FATAL':
-        log.error(consoleMessage, entry.metadata || '', stack || '');
+        log.error(consoleMessage, { metadata: entry.metadata || '', stack: stack || '' });
         break;
     }
 
