@@ -213,11 +213,188 @@ function sanitizeSignatureFields(input: PhaseInput): {
  */
 function isRealPartyName(
   name: string,
-  parties: PhaseInput['parties']
+  parties: PhaseInput['parties'],
+  attorneyName?: string
 ): boolean {
-  if (!parties || parties.length === 0) return false;
   const normalizedName = name.toLowerCase().trim();
-  return parties.some(p => p.name.toLowerCase().trim() === normalizedName);
+
+  // Check against party names from intake
+  if (parties && parties.length > 0) {
+    if (parties.some(p => p.name.toLowerCase().trim() === normalizedName)) {
+      return true;
+    }
+  }
+
+  // Check against attorney name
+  if (attorneyName && attorneyName.toLowerCase().trim() === normalizedName) {
+    return true;
+  }
+
+  return false;
+}
+
+// ============================================================================
+// TASK-09: AIS COMPLIANCE VALIDATION
+// ============================================================================
+
+interface AISRequirement {
+  type: 'statute' | 'document' | 'argument';
+  text: string;
+  matched: boolean;
+  location?: string;
+}
+
+interface AISComplianceReport {
+  requirements: AISRequirement[];
+  met: AISRequirement[];
+  unmet: AISRequirement[];
+  complianceRate: number;
+}
+
+/**
+ * Validate that AIS (Attorney Instruction Sheet) requirements are met in deliverables.
+ * Parses the customer's instructions for specific statute references and document
+ * requests, then cross-checks against the draft and Phase IX documents.
+ */
+function validateAISCompliance(
+  aisText: string,
+  draftText: string,
+  phaseIXDocumentTypes: string[],
+): AISComplianceReport {
+  if (!aisText || aisText.trim().length === 0) {
+    return { requirements: [], met: [], unmet: [], complianceRate: 1.0 };
+  }
+
+  const requirements: AISRequirement[] = [];
+
+  // 1. Extract statute references from AIS
+  const statutePattern = /(?:Art(?:icle)?\.?\s*\d+|(?:La\.\s*)?C\.C\.P\.?\s*Art\.?\s*\d+|(?:La\.\s*)?R\.S\.?\s*\d+[.:]\d+|Section\s+\d+)/gi;
+  const statutes = aisText.match(statutePattern) || [];
+  const draftLower = draftText.toLowerCase();
+
+  for (const statute of statutes) {
+    const trimmed = statute.trim();
+    const found = draftLower.includes(trimmed.toLowerCase());
+    requirements.push({
+      type: 'statute',
+      text: trimmed,
+      matched: found,
+      location: found ? 'motion body' : undefined,
+    });
+  }
+
+  // 2. Extract document requests from AIS
+  const docPatterns: Array<{ pattern: RegExp; name: string }> = [
+    { pattern: /proposed\s+order/gi, name: 'proposed order' },
+    { pattern: /declaration/gi, name: 'declaration' },
+    { pattern: /memorandum/gi, name: 'memorandum' },
+    { pattern: /certificate\s+of\s+service/gi, name: 'certificate of service' },
+    { pattern: /affidavit/gi, name: 'affidavit' },
+    { pattern: /exhibit/gi, name: 'exhibit' },
+  ];
+
+  for (const { pattern, name } of docPatterns) {
+    if (pattern.test(aisText)) {
+      const inDocs = phaseIXDocumentTypes.some(doc =>
+        doc.toLowerCase().includes(name)
+      );
+      const inDraft = draftLower.includes(name);
+      const found = inDocs || inDraft;
+      requirements.push({
+        type: 'document',
+        text: name,
+        matched: found,
+        location: found ? (inDocs ? 'Phase IX documents' : 'motion body') : undefined,
+      });
+    }
+  }
+
+  const met = requirements.filter(r => r.matched);
+  const unmet = requirements.filter(r => !r.matched);
+
+  return {
+    requirements,
+    met,
+    unmet,
+    complianceRate: requirements.length > 0 ? met.length / requirements.length : 1.0,
+  };
+}
+
+// ============================================================================
+// TASK-10: CITATION PLACEHOLDER ESCALATION
+// ============================================================================
+
+interface CitationPlaceholderScanResult {
+  count: number;
+  locations: Array<{
+    placeholder: string;
+    section: string;
+    context: string;
+  }>;
+  action: 'proceed' | 'research' | 'hold';
+}
+
+/**
+ * Scan filing document text for citation placeholders.
+ * Returns count, locations, and recommended escalation action.
+ *
+ * Escalation:
+ *   0 placeholders → proceed
+ *   1-2 → research (flag for targeted Phase IV research)
+ *   3+  → hold (block delivery, structured admin message)
+ */
+function scanForCitationPlaceholders(draftText: string): CitationPlaceholderScanResult {
+  if (!draftText || draftText.trim().length === 0) {
+    return { count: 0, locations: [], action: 'proceed' };
+  }
+
+  const patterns = [
+    /\[CITATION NEEDED\]/gi,
+    /\[CITE\]/gi,
+    /\[CITATION TO BE ADDED\]/gi,
+    /\[CITATION REQUIRED\]/gi,
+    /\[AUTHORITY NEEDED\]/gi,
+  ];
+
+  const locations: CitationPlaceholderScanResult['locations'] = [];
+
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(draftText)) !== null) {
+      const start = Math.max(0, match.index - 50);
+      const end = Math.min(draftText.length, match.index + match[0].length + 50);
+
+      locations.push({
+        placeholder: match[0],
+        section: inferSectionFromPosition(draftText, match.index),
+        context: `...${draftText.slice(start, end)}...`,
+      });
+    }
+  }
+
+  let action: CitationPlaceholderScanResult['action'];
+  if (locations.length === 0) {
+    action = 'proceed';
+  } else if (locations.length <= 2) {
+    action = 'research';
+  } else {
+    action = 'hold';
+  }
+
+  return { count: locations.length, locations, action };
+}
+
+/**
+ * Infer the section of a motion from a character position by looking backward
+ * for common section headings.
+ */
+function inferSectionFromPosition(text: string, position: number): string {
+  const before = text.slice(0, position);
+  const sectionMatch = before.match(
+    /(?:ARGUMENT|DISCUSSION|STATEMENT OF FACTS|PRAYER|CONCLUSION|MEMORANDUM|LEGAL STANDARD|INTRODUCTION|LAW AND ARGUMENT)[^\n]*/gi
+  );
+  return sectionMatch ? sectionMatch[sectionMatch.length - 1].trim() : 'Unknown Section';
 }
 
 // ============================================================================
@@ -3794,8 +3971,9 @@ Assemble and check. Provide as JSON.`;
     // Cross-reference generic names against actual party names from intake
     // so that a real party named "John Doe" does not block delivery.
     const realPlaceholders = placeholderValidation.placeholders || [];
+    // TASK-11: Cross-reference generic names against ALL intake data (parties + attorney)
     const genericNamesFiltered = (placeholderValidation.genericNames || []).filter(
-      (name: string) => !isRealPartyName(name, input.parties)
+      (name: string) => !isRealPartyName(name, input.parties, input.attorneyName)
     );
     const hasBlockingIssues =
       !placeholderValidation.valid &&
@@ -3831,8 +4009,76 @@ Assemble and check. Provide as JSON.`;
       };
     }
 
-    // Motion passed validation - ready for admin review
-    console.log(`[Phase X] Motion passed placeholder validation - ready for CP3 approval`);
+    // Motion passed placeholder validation - ready for additional quality gates
+    console.log(`[Phase X] Motion passed placeholder validation`);
+
+    // ========================================================================
+    // TASK-10: CITATION PLACEHOLDER SCAN (filing documents only, not AIS)
+    // ========================================================================
+    // Scan the motion text for unresolved citation placeholders.
+    // AIS text is excluded — [CITATION NEEDED] in AIS is an instruction, not a gap.
+    const motionTextForScan = typeof motionContent === 'string'
+      ? motionContent
+      : JSON.stringify(motionContent);
+
+    const citationPlaceholderScan = scanForCitationPlaceholders(motionTextForScan);
+
+    console.log(`[Phase X] Citation placeholder scan: ${citationPlaceholderScan.count} found, action: ${citationPlaceholderScan.action}`);
+
+    if (citationPlaceholderScan.count > 0) {
+      console.warn(`[Phase X] Citation gaps: ${citationPlaceholderScan.locations.map(l => `${l.placeholder} in ${l.section}`).join('; ')}`);
+    }
+
+    // ========================================================================
+    // TASK-09: AIS COMPLIANCE VALIDATION
+    // ========================================================================
+    const phaseIXDocTypes = (
+      (phaseIXOutput?.documents || phaseIXOutput?.supportingDocuments || []) as Array<Record<string, unknown>>
+    ).map(d => String(d.type || d.name || ''));
+
+    const aisCompliance = validateAISCompliance(
+      input.instructions || '',
+      motionTextForScan,
+      phaseIXDocTypes,
+    );
+
+    if (aisCompliance.unmet.length > 0) {
+      console.warn(`[Phase X] AIS compliance: ${(aisCompliance.complianceRate * 100).toFixed(0)}% — unmet: ${aisCompliance.unmet.map(r => r.text).join(', ')}`);
+    } else {
+      console.log(`[Phase X] AIS compliance: 100% (${aisCompliance.requirements.length} requirements checked)`);
+    }
+
+    phaseOutput.citationPlaceholderScan = citationPlaceholderScan;
+    phaseOutput.aisCompliance = aisCompliance;
+
+    // TASK-10: If 3+ citation placeholders, block delivery
+    if (citationPlaceholderScan.action === 'hold') {
+      console.error(`[Phase X] BLOCKING: ${citationPlaceholderScan.count} citation placeholders — delivery blocked`);
+
+      return {
+        success: true,
+        phase: 'X',
+        status: 'blocked',
+        output: {
+          ...phaseOutput,
+          ready_for_delivery: false,
+          blocking_reason: `${citationPlaceholderScan.count} legal propositions lack supporting authority`,
+          citationPlaceholderScan,
+          aisCompliance,
+          placeholderValidation,
+          adminSummary: {
+            ...(phaseOutput.adminSummary || {}),
+            notesForAdmin: `CITATION GAPS: ${citationPlaceholderScan.count} [CITATION NEEDED] placeholders in filing document. Locations: ${citationPlaceholderScan.locations.map(l => l.section).join(', ')}`,
+          },
+        },
+        requiresReview: true,
+        gapsDetected: citationPlaceholderScan.count,
+        tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+        durationMs: Date.now() - start,
+      };
+    }
+
+    console.log(`[Phase X] All quality gates passed - ready for CP3 approval`);
 
     // =========================================================================
     // ADD CITATION METADATA TO FINAL OUTPUT - Citation Viewer Feature
@@ -3969,16 +4215,33 @@ Assemble and check. Provide as JSON.`;
       console.error(`[Phase X] DOCX generation failed (non-blocking):`, docxError);
     }
 
+    // TASK-12: Single source of truth for delivery readiness.
+    // Citation placeholder scan already blocked 3+ above. For 1-2, flag for
+    // admin review at CP3 but don't auto-block — admin can approve or return.
+    const hasCitationGaps = citationPlaceholderScan.count > 0;
+
     return {
       success: true,
       phase: 'X',
-      status: 'requires_review', // Always requires admin approval
+      status: 'requires_review', // Always requires admin approval at CP3
       output: {
         ...phaseOutput,
-        ready_for_delivery: true, // BUG #6 FIX: Single field, snake_case per project convention
+        ready_for_delivery: true,  // TASK-12: Single snake_case field
+        blocking_reason: null,
         placeholderValidation,
-        citationMetadata, // Citation Viewer Feature
+        citationPlaceholderScan,   // TASK-10: Citation gap details for admin
+        aisCompliance,             // TASK-09: AIS compliance report for admin
+        citationMetadata,          // Citation Viewer Feature
         documentUrl,
+        ...(hasCitationGaps ? {
+          adminSummary: {
+            ...(phaseOutput.adminSummary || {}),
+            notesForAdmin: `NOTE: ${citationPlaceholderScan.count} citation placeholder(s) remain (below HOLD threshold). Review recommended. Locations: ${citationPlaceholderScan.locations.map(l => l.section).join(', ')}`,
+          },
+        } : {}),
+        ...(aisCompliance.unmet.length > 0 ? {
+          aisWarning: `AIS compliance ${(aisCompliance.complianceRate * 100).toFixed(0)}%: unmet requirements — ${aisCompliance.unmet.map(r => r.text).join(', ')}`,
+        } : {}),
       },
       requiresReview: true, // CP3: Blocking checkpoint
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },

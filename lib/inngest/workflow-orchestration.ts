@@ -2151,6 +2151,10 @@ export const generateOrderWorkflow = inngest.createFunction(
         })
         .eq("id", orderId);
 
+      // SP-09: Include quality gate results in CP3 checkpoint for admin review
+      const phaseXOutput = phaseXResult.output as Record<string, unknown> | null;
+      const isReadyForDelivery = phaseXOutput?.ready_for_delivery === true;
+
       await triggerCheckpoint(workflowState.workflowId, "CP3", {
         checkpoint: "CP3",
         status: "pending",
@@ -2158,6 +2162,10 @@ export const generateOrderWorkflow = inngest.createFunction(
         finalQA: phaseXResult.output,
         requiresAdminApproval: true,
         blocking: true,
+        ready_for_delivery: isReadyForDelivery,
+        blocking_reason: phaseXOutput?.blocking_reason ?? null,
+        citationPlaceholderScan: phaseXOutput?.citationPlaceholderScan ?? null,
+        aisCompliance: phaseXOutput?.aisCompliance ?? null,
       });
 
       // Queue admin notification
