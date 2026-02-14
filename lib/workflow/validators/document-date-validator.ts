@@ -12,12 +12,18 @@
  */
 
 // Date patterns that indicate LLM-generated filing dates
+// SP-15/TASK-22: Added PROPOSED ORDER sections to catch AI-hallucinated dates
 const FILING_DATE_SECTIONS = [
   'CERTIFICATE OF SERVICE',
   'DECLARATION',
   'NOTICE OF MOTION',
   'NOTICE OF HEARING',
   'PROOF OF SERVICE',
+  'PROPOSED ORDER',
+  'IT IS ORDERED',
+  'IT IS HEREBY ORDERED',
+  'IT IS SO ORDERED',
+  'THUS DONE AND SIGNED',
 ];
 
 const MONTH_NAMES = [
@@ -72,6 +78,15 @@ export function validateDocumentDates(
       let replacement = '[DATE OF SERVICE]';
       if (sectionUpper.includes('HEARING') || sectionUpper.includes('NOTICE OF MOTION')) {
         replacement = hearingDate || '[HEARING DATE]';
+      } else if (
+        sectionUpper.includes('PROPOSED ORDER') ||
+        sectionUpper.includes('IT IS ORDERED') ||
+        sectionUpper.includes('IT IS HEREBY ORDERED') ||
+        sectionUpper.includes('IT IS SO ORDERED') ||
+        sectionUpper.includes('THUS DONE AND SIGNED')
+      ) {
+        // SP-15/TASK-22: Proposed orders must use judge-fillable blanks
+        replacement = '____________________';
       }
 
       replacements.push({

@@ -15,7 +15,8 @@
     "test:e2e:chromium": "playwright test --project=chromium",
     "test:e2e:firefox": "playwright test --project=firefox",
     "test:e2e:webkit": "playwright test --project=webkit",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "validate-env": "tsx scripts/validate-env.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -53,6 +54,7 @@
     "docx": "^9.5.1",
     "dotenv": "^17.2.3",
     "inngest": "^3.49.3",
+    "isomorphic-dompurify": "3.0.0-rc.2",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
     "mammoth": "^1.11.0",
