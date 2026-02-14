@@ -102,6 +102,9 @@ import { detectMotionType, generateAdvisories } from "@/lib/workflow/motion-advi
 // SP23: Protocol 10 — max revision loops exhausted
 import { handleProtocol10Exit } from "@/lib/workflow/protocol-10-handler";
 
+// SP-11: Protocol 5 — statutory reference verification after revision
+import { runProtocol5 } from "@/lib/citation/protocol-5";
+
 // SP24: Load DB-backed phase prompts at workflow start
 import { loadPhasePrompts } from "@/prompts";
 
@@ -121,6 +124,22 @@ function getQualityThreshold(tier: string): number {
 
 function getMaxRevisionLoops(tier: string): number {
   return TIERED_MAX_LOOPS[tier] ?? MAX_REVISION_LOOPS;
+}
+
+// SP-11: Extract draft text from phase output for Protocol 5
+function extractDraftText(phaseOutput: unknown): string | null {
+  if (!phaseOutput) return null;
+  if (typeof phaseOutput === 'string') return phaseOutput;
+  if (typeof phaseOutput === 'object') {
+    const obj = phaseOutput as Record<string, unknown>;
+    // Phase VIII output may store draft in various fields
+    for (const key of ['revised_draft', 'revisedDraft', 'draft', 'content', 'motionBody']) {
+      if (typeof obj[key] === 'string' && (obj[key] as string).length > 0) {
+        return obj[key] as string;
+      }
+    }
+  }
+  return null;
 }
 
 // ============================================================================
@@ -2080,6 +2099,30 @@ export const generateOrderWorkflow = inngest.createFunction(
       workflowState.phaseOutputs["VIII.5"] = phaseVIII5Result.output;
     }
     console.log('[Orchestration] Accumulated after VIII.5:', Object.keys(workflowState.phaseOutputs));
+
+    // ========================================================================
+    // STEP 12.5: Protocol 5 — Statutory Reference Verification (SP-11)
+    // ========================================================================
+    await step.run("protocol-5-statutory-verification", async () => {
+      const revisedDraft = extractDraftText(workflowState.phaseOutputs["VIII"]);
+      if (!revisedDraft) {
+        console.log('[Protocol5] No revised draft text found — skipping');
+        return;
+      }
+
+      const result = await runProtocol5(revisedDraft, workflowState.orderId);
+
+      if (result.newStatutesFound > 0) {
+        console.log(
+          `[Protocol5] ${result.newStatutesFound} new statute(s) found, ${result.newStatutes.filter(s => s.addedToBank).length} added to bank`,
+        );
+        if (result.warnings.length > 0) {
+          console.warn(`[Protocol5] Warnings: ${result.warnings.join('; ')}`);
+        }
+      } else if (result.triggered) {
+        console.log(`[Protocol5] ${result.totalStatutesInDraft} statutes in draft, all already in bank`);
+      }
+    });
 
     // ========================================================================
     // STEP 13: Phase IX - Supporting Documents

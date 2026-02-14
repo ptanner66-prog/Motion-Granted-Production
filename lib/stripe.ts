@@ -53,3 +53,11 @@ export async function createRefund(paymentIntentId: string, amount?: number) {
   })
   return refund
 }
+
+/**
+ * Check if payment collection is enabled.
+ * Returns false only when STRIPE_PAYMENT_REQUIRED is explicitly set to 'false'.
+ */
+export function isPaymentRequired(): boolean {
+  return process.env.STRIPE_PAYMENT_REQUIRED?.toLowerCase().trim() !== 'false'
+}

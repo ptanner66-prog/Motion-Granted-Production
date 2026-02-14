@@ -68,8 +68,8 @@ const CITATION_PATTERNS = {
     /\d+\s+(U\.?S\.?|F\.\d+|Cal\.\d*|So\.\d*|S\.W\.\d*|N\.E\.\d*|A\.\d*|P\.\d*)\s+\d+/i,
     /\d+\s+(S\.?\s*Ct\.?|L\.?\s*Ed\.?)\s+\d+/i,
     /\d+\s+(Cal\.?\s*App\.?|Cal\.?\s*Rptr\.?)\s+\d+/i,
-    /\d+\s+WL\s+\d+/i, // Westlaw citations
-    /\d+\s+LEXIS\s+\d+/i, // Lexis citations
+    /\d+\s+WL\s+\d+/i, // WL-format citations (unpublished)
+    /\d+\s+LEXIS\s+\d+/i, // LEXIS-format citations (unpublished)
     /In\s+re\s+/i, // In re cases
     /Ex\s+parte\s+/i, // Ex parte cases
   ],

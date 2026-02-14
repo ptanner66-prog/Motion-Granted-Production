@@ -518,7 +518,7 @@ function isUnpublishedCitation(
 
   // Check citation format patterns for unpublished indicators
   const unpublishedPatterns = [
-    /\d+\s+WL\s+\d+/i, // Westlaw citations often indicate unpublished
+    /\d+\s+WL\s+\d+/i, // WL-format citations often indicate unpublished
     /\d+\s+U\.S\.\s*Dist\.\s*LEXIS/i,
     /\d+\s+U\.S\.\s*App\.\s*LEXIS/i,
     /Not\s+Reported/i,

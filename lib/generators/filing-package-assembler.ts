@@ -5,12 +5,20 @@
  * a complete filing package. Determines which documents are required
  * based on jurisdiction, motion type, and tier, then generates each.
  *
- * Tier requirements:
+ * Tier requirements (general):
  * - Tier A: memorandum, proof_of_service, attorney_instructions
  * - Tier B: + notice_of_motion (CA), declaration, proposed_order
  * - Tier C: + separate_statement (CA MSJ/MSA)
+ *
+ * Louisiana-specific (SP-11 TASK-13):
+ * - LA Tier A state: memorandum (with inline cert of service) + proposed_order + AIS only
+ * - LA Tier B/C state: memorandum + affidavit (not declaration) + proposed_order + proof_of_service + AIS
+ * - LA Federal: standard federal rules (letter size, declaration, separate POS)
+ * - Paper: legal size (8.5×14) for state, letter for federal
+ * - Jurat: affidavit with notarization (state), 28 USC 1746 (federal)
  */
 
+import { Paragraph, TextRun, AlignmentType } from 'docx';
 import { RuleLookupService } from '../services/formatting/rule-lookup';
 import { FormattingRules } from '../services/formatting/types';
 import { generateCaptionBlock, CaseInfo } from './caption-block';
@@ -29,6 +37,7 @@ export type DocumentType =
   | 'notice_of_motion'
   | 'memorandum'
   | 'declaration'
+  | 'affidavit'
   | 'separate_statement'
   | 'proposed_order'
   | 'proof_of_service'
@@ -89,6 +98,35 @@ export interface AssemblerInput {
 function determineRequiredDocuments(input: AssemblerInput): DocumentType[] {
   const docs: DocumentType[] = [];
   const state = input.jurisdiction.stateCode.toUpperCase();
+  const isLA = state === 'LA' && !input.jurisdiction.isFederal;
+
+  // ── Louisiana state court (SP-11 TASK-13) ──────────────────────────
+  // LA Tier A: motion (memo with inline cert) + proposed_order + AIS
+  // LA Tier B/C: memo + affidavit + proposed_order + proof_of_service + AIS
+  // No notice_of_motion, no separate_statement, no declaration (affidavit only)
+  if (isLA) {
+    docs.push('memorandum');
+
+    // Affidavit (not declaration) for Tier B/C when evidentiary support provided
+    if (input.tier !== 'A' && input.content.declarations && input.content.declarations.length > 0) {
+      docs.push('affidavit');
+    }
+
+    // Proposed Order
+    if (input.content.proposedOrderRelief && input.content.proposedOrderRelief.length > 0) {
+      docs.push('proposed_order');
+    }
+
+    // Proof of Service: separate only for Tier B/C (Tier A uses inline cert)
+    if (input.tier !== 'A') {
+      docs.push('proof_of_service');
+    }
+
+    docs.push('attorney_instructions');
+    return docs;
+  }
+
+  // ── General / non-LA logic ─────────────────────────────────────────
 
   // Notice of Motion: CA state only as separate file
   if (state === 'CA' && !input.jurisdiction.isFederal) {
@@ -113,7 +151,7 @@ function determineRequiredDocuments(input: AssemblerInput): DocumentType[] {
     }
   }
 
-  // Proposed Order: Federal, CA (CRC 3.1312), LA
+  // Proposed Order: Federal, CA (CRC 3.1312), LA (federal)
   if (input.jurisdiction.isFederal || state === 'CA' || state === 'LA') {
     if (input.content.proposedOrderRelief && input.content.proposedOrderRelief.length > 0) {
       docs.push('proposed_order');
@@ -240,12 +278,21 @@ async function generateSingleDocument(
     case 'memorandum': {
       const bodyText = input.content.memorandumBody || input.content.motionBody;
       wordCount = estimateWordCount(bodyText);
+
+      // LA Tier A: append inline certificate of service (no separate POS)
+      const isLATierA = input.jurisdiction.stateCode.toUpperCase() === 'LA'
+        && !input.jurisdiction.isFederal
+        && input.tier === 'A';
+      const inlineCert = isLATierA
+        ? generateInlineCertificateOfService(input.attorney.name, rules)
+        : [];
+
       buffer = await createFormattedDocument({
         stateCode: input.jurisdiction.stateCode,
         isFederal: input.jurisdiction.isFederal,
         county: input.jurisdiction.county,
         federalDistrict: input.jurisdiction.federalDistrict,
-        content: [...captionParagraphs, ...signatureParagraphs],
+        content: [...captionParagraphs, ...signatureParagraphs, ...inlineCert],
         includeHeader: rules.header?.required,
         includeFooter: rules.footer?.required,
         documentTitle: `Memorandum of Points and Authorities in Support of ${input.motionTypeDisplay}`,
@@ -280,6 +327,26 @@ async function generateSingleDocument(
         federalDistrict: input.jurisdiction.federalDistrict,
         content: [...captionParagraphs, ...declParagraphs],
         documentTitle: 'Declaration',
+      });
+      break;
+    }
+
+    case 'affidavit': {
+      // Louisiana affidavit — uses same generator as declaration (jurat type resolved from rules)
+      const allAffidavits = input.content.declarations || [];
+      wordCount = allAffidavits.reduce(
+        (sum, d) => sum + d.content.reduce((s, c) => s + estimateWordCount(c), 0), 0
+      );
+      const affidavitParagraphs = allAffidavits.flatMap(d =>
+        generateDeclaration({ ...d, rules, isFederal: input.jurisdiction.isFederal })
+      );
+      buffer = await createFormattedDocument({
+        stateCode: input.jurisdiction.stateCode,
+        isFederal: input.jurisdiction.isFederal,
+        county: input.jurisdiction.county,
+        federalDistrict: input.jurisdiction.federalDistrict,
+        content: [...captionParagraphs, ...affidavitParagraphs],
+        documentTitle: 'Affidavit',
       });
       break;
     }
@@ -377,6 +444,73 @@ async function generateSingleDocument(
   }
 
   return { type: docType, filename, buffer, pageCount, wordCount, isFiled };
+}
+
+/**
+ * Generate inline certificate of service paragraphs for LA Tier A motions.
+ * Per La. C.C.P. art. 1313, a certificate of service may be appended directly
+ * to the motion instead of filing a separate proof of service document.
+ */
+function generateInlineCertificateOfService(
+  attorneyName: string,
+  rules: FormattingRules,
+): Paragraph[] {
+  const fontFamily = rules.font.family;
+  const fontSize = rules.font.sizePoints * 2;
+  const dateStr = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  return [
+    new Paragraph({ spacing: { before: 480 } }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: 'CERTIFICATE OF SERVICE',
+          bold: true,
+          font: fontFamily,
+          size: fontSize,
+        }),
+      ],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 240 },
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `I hereby certify that on ${dateStr}, a copy of the foregoing was served on all counsel of record by `,
+          font: fontFamily,
+          size: fontSize,
+        }),
+        new TextRun({
+          text: '[ATTORNEY: Insert service method — e.g., electronic filing, hand delivery, certified mail]',
+          italics: true,
+          font: fontFamily,
+          size: fontSize,
+        }),
+        new TextRun({
+          text: '.',
+          font: fontFamily,
+          size: fontSize,
+        }),
+      ],
+      spacing: { after: 360, line: rules.font.lineSpacingDXA },
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: '_________________________________', font: fontFamily, size: fontSize }),
+      ],
+      spacing: { after: 0 },
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: attorneyName, font: fontFamily, size: fontSize }),
+      ],
+      spacing: { after: 0 },
+    }),
+  ];
 }
 
 /**
