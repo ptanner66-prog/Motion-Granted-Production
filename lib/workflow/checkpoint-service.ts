@@ -584,6 +584,22 @@ async function processCP3Response(
     return { success: false, error: 'Invalid CP3 action. Must confirm receipt.' };
   }
 
+  // SP-15/TASK-23: Idempotency guard — prevent duplicate completion events
+  // If order is already completed, skip to avoid duplicate delivery notifications
+  const { data: currentOrder } = await supabase
+    .from('orders')
+    .select('status')
+    .eq('id', workflow.order_id)
+    .single();
+
+  if (currentOrder?.status === 'completed') {
+    log.warn('CP3 duplicate completion prevented — order already completed', {
+      workflowId: workflow.id,
+      orderId: workflow.order_id,
+    });
+    return { success: true, data: { nextPhase: -1 } };
+  }
+
   const checkpointData = workflow.checkpoint_data as CheckpointData;
   checkpointData.status = 'confirmed';
   checkpointData.respondedAt = new Date().toISOString();
@@ -616,7 +632,7 @@ async function processCP3Response(
     return { success: false, error: error.message };
   }
 
-  // Also mark the order as completed
+  // Mark the order as completed
   await supabase
     .from('orders')
     .update({
@@ -625,7 +641,7 @@ async function processCP3Response(
     })
     .eq('id', workflow.order_id);
 
-  log.info('CP3 order completed', { workflowId: workflow.id });
+  log.info('CP3 order completed', { workflowId: workflow.id, orderId: workflow.order_id });
   return { success: true, data: { nextPhase: -1 } }; // -1 indicates complete
 }
 

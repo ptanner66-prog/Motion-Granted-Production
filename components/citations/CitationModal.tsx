@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -303,7 +304,8 @@ export function CitationModal({
               {details.opinionTextType === 'html' ? (
                 <div
                   className="prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: details.opinionText }}
+                  // SP-15: Sanitize CourtListener HTML to prevent XSS (defense-in-depth)
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(details.opinionText) }}
                 />
               ) : (
                 <pre className="text-sm text-gray-700 whitespace-pre-wrap font-serif">
