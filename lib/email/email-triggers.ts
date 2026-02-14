@@ -170,3 +170,97 @@ export async function sendPaymentConfirmation(
 
   return sendEmail(order.customerEmail, `Payment Confirmed — ${order.orderNumber}`, html, { orderId: order.orderId });
 }
+
+// ============================================================================
+// TRIGGER: Revision Loop Notification (MB-02)
+// ============================================================================
+
+export async function sendRevisionNotification(
+  order: OrderEmailData,
+  revisionDetails: {
+    loopNumber: number;
+    maxLoops: number;
+    currentGrade: string;
+    targetGrade: string;
+    revisionAreas?: string[];
+  }
+): Promise<EmailResult> {
+  const areasList = revisionDetails.revisionAreas?.length
+    ? revisionDetails.revisionAreas.map(area => `<li>${area}</li>`).join('')
+    : '<li>Quality improvements based on judge simulation feedback</li>';
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h1 style="color: #0066cc;">Revision in Progress</h1>
+      <p>Your order <strong>${order.orderNumber}</strong> is undergoing quality revisions to meet our standards.</p>
+
+      <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0066cc;">
+        <h3 style="margin-top: 0; color: #0066cc;">Revision Details</h3>
+        <p><strong>Revision Round:</strong> ${revisionDetails.loopNumber} of ${revisionDetails.maxLoops}</p>
+        <p><strong>Current Grade:</strong> ${revisionDetails.currentGrade}</p>
+        <p><strong>Target Grade:</strong> ${revisionDetails.targetGrade}</p>
+      </div>
+
+      <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h3 style="margin-top: 0;">Areas Being Improved</h3>
+        <ul>${areasList}</ul>
+      </div>
+
+      <p style="color: #666;">This is an automated quality assurance step. No action is needed from you. You'll be notified once your documents are ready for review.</p>
+
+      <p><a href="${APP_URL}/orders/${order.orderId}" style="display: inline-block; background: #0066cc; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none;">View Order Status</a></p>
+    </div>
+  `;
+
+  return sendEmail(
+    order.customerEmail,
+    `Quality Revision ${revisionDetails.loopNumber}/${revisionDetails.maxLoops} — ${order.orderNumber}`,
+    html,
+    { orderId: order.orderId }
+  );
+}
+
+// ============================================================================
+// TRIGGER: Delivery Notification (MB-02)
+// ============================================================================
+
+export async function sendDeliveryNotification(
+  order: OrderEmailData,
+  deliveryDetails: {
+    documentCount: number;
+    documentTypes: string[];
+    downloadUrl?: string;
+  }
+): Promise<EmailResult> {
+  const docsList = deliveryDetails.documentTypes.length > 0
+    ? deliveryDetails.documentTypes.map(doc => `<li>${doc}</li>`).join('')
+    : '<li>Motion Document</li>';
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h1 style="color: #00aa00;">Your Documents Are Ready</h1>
+      <p>Great news! Your filing package for order <strong>${order.orderNumber}</strong> has been completed and is ready for download.</p>
+
+      <div style="background: #e8f8e8; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #00aa00;">
+        <h3 style="margin-top: 0; color: #00aa00;">Delivered Documents (${deliveryDetails.documentCount})</h3>
+        <ul>${docsList}</ul>
+      </div>
+
+      <p><a href="${deliveryDetails.downloadUrl || `${APP_URL}/orders/${order.orderId}`}" style="display: inline-block; background: #00aa00; color: white; padding: 16px 32px; border-radius: 6px; text-decoration: none; font-weight: bold;">Download Documents</a></p>
+
+      <div style="background: #fffde7; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #ffd54f;">
+        <p style="margin: 0; color: #856404;"><strong>Important:</strong> These documents were generated with AI assistance. Attorney review is required before filing with the court.</p>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+      <p style="font-size: 12px; color: #666;">Questions? Contact ${SUPPORT_EMAIL}</p>
+    </div>
+  `;
+
+  return sendEmail(
+    order.customerEmail,
+    `Documents Ready — ${order.orderNumber}`,
+    html,
+    { orderId: order.orderId }
+  );
+}
