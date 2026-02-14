@@ -15,6 +15,9 @@
 
 import { inngest } from "./client";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('inngest-functions');
 import Anthropic from "@anthropic-ai/sdk";
 import { canMakeRequest, logRequest } from "@/lib/rate-limit";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
@@ -200,16 +203,16 @@ export const generateOrderDraft = inngest.createFunction(
         // Check if documents are already parsed
         const existingParsed = await getOrderParsedDocuments(orderId);
         if (existingParsed.success && existingParsed.data && existingParsed.data.length > 0) {
-          console.log(`[Inngest] Found ${existingParsed.data.length} pre-parsed documents for order ${orderId}`);
+          log.info('Found pre-parsed documents', { count: existingParsed.data.length, orderId });
           return { parsed: existingParsed.data.length, fromCache: true, data: existingParsed.data };
         }
 
         // Parse all documents for this order
-        console.log(`[Inngest] Parsing documents for order ${orderId}`);
+        log.info('Parsing documents for order', { orderId });
         const parseResult = await parseOrderDocuments(orderId);
 
         if (!parseResult.success) {
-          console.error(`[Inngest] Document parsing failed for order ${orderId}: ${parseResult.error}`);
+          log.error('Document parsing failed', { orderId, error: parseResult.error });
           // Fail early — unparsed documents mean the workflow can't produce quality output
           throw new Error(`DOCUMENT_PARSE_FAILURE: ${parseResult.error}. Please re-upload documents in PDF or DOCX format.`);
         }
@@ -232,7 +235,7 @@ export const generateOrderDraft = inngest.createFunction(
           data: newParsed.data || []
         };
       } catch (parseError) {
-        console.error(`[Inngest] Document parsing error for order ${orderId}:`, parseError);
+        log.error('Document parsing error', { orderId, error: parseError instanceof Error ? parseError.message : String(parseError) });
         // Fail the step — documents must be parseable for the workflow to produce quality output
         throw parseError;
       }
@@ -279,7 +282,7 @@ export const generateOrderDraft = inngest.createFunction(
           ?.map((doc) => `[${doc.document_type}] ${doc.file_name}:\n(Document uploaded but content extraction returned no results. The workflow will proceed with intake form data only.)`)
           .join("\n\n---\n\n") || "";
         if (documents && documents.length > 0) {
-          console.warn(`[Inngest] ${documents.length} document(s) uploaded but no parsed content available — falling back to intake data only`);
+          log.warn('Documents uploaded but no parsed content available, falling back to intake data only', { count: documents.length });
         }
       }
 
@@ -440,7 +443,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
 
 [NOW CONTINUE WITH THE COMPLETE MOTION DOCUMENT - Introduction, Statement of Facts, Legal Arguments, Conclusion, Prayer for Relief, Certificate of Service]`;
 
-      console.log(`[Inngest] Starting Claude generation for order ${orderId}`);
+      log.info('Starting Claude generation', { orderId });
 
       const response = await createMessageWithRetry(
         {
@@ -452,7 +455,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         {
           maxRetries: 5,
           onRetry: async (attempt, waitMs, error) => {
-            console.log(`[Inngest] Retry ${attempt} for order ${orderId}. Waiting ${Math.round(waitMs / 1000)}s. Error: ${error}`);
+            log.info('Retrying generation', { attempt, orderId, waitSeconds: Math.round(waitMs / 1000), error: String(error) });
             // Log retry to database
             await supabase.from("automation_logs").insert({
               order_id: orderId,
@@ -461,7 +464,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
             });
           },
           onSuccess: (inputTokens, outputTokens) => {
-            console.log(`[Inngest] Success for order ${orderId}. Tokens: ${inputTokens} in, ${outputTokens} out`);
+            log.info('Generation succeeded', { orderId, inputTokens, outputTokens });
           },
         }
       );
@@ -501,7 +504,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         .single();
 
       if (convError) {
-        console.error("Failed to create conversation:", convError);
+        log.error('Failed to create conversation', { error: convError.message });
       }
 
       // Save messages if conversation was created
@@ -607,7 +610,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
           criticalIssues: criticalIssues.length,
         };
       } catch (qcError) {
-        console.error("[Inngest] Quality check error:", qcError);
+        log.error('Quality check error', { error: qcError instanceof Error ? qcError.message : String(qcError) });
         // Don't fail the pipeline - quality check is informational
         return { passes: true, error: qcError instanceof Error ? qcError.message : 'Unknown' };
       }
@@ -633,14 +636,14 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
           },
         });
 
-        console.log(`[Inngest] Extracted ${citations.length} citations for order ${orderId}`);
+        log.info('Extracted citations', { count: citations.length, orderId });
 
         return {
           count: citations.length,
           citations: citations.slice(0, 10), // Keep first 10 for reference
         };
       } catch (extractError) {
-        console.error("[Inngest] Citation extraction error:", extractError);
+        log.error('Citation extraction error', { error: extractError instanceof Error ? extractError.message : String(extractError) });
         // Don't fail the pipeline - citation extraction is informational
         return { count: 0, error: extractError instanceof Error ? extractError.message : 'Unknown' };
       }
@@ -673,14 +676,14 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
 
         // If citation count is low, flag for review but don't block
         if (qualityStatus === 'warning') {
-          console.log(`[Inngest] Citation warning for order ${orderId}: ${qualityMessage}`);
+          log.warn('Citation warning', { orderId, qualityMessage });
 
           // Update order with quality warning (non-blocking)
           await supabase.from("orders").update({
             quality_notes: `Citation warning: ${qualityMessage}`,
           }).eq("id", orderId);
         } else {
-          console.log(`[Inngest] Citation verification passed for order ${orderId}: ${qualityMessage}`);
+          log.info('Citation verification passed', { orderId, qualityMessage });
         }
 
         return {
@@ -690,7 +693,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
           meetsMinimum: citationCount >= CITATION_MINIMUM,
         };
       } catch (verifyError) {
-        console.error("[Inngest] Citation verification error:", verifyError);
+        log.error('Citation verification error', { error: verifyError instanceof Error ? verifyError.message : String(verifyError) });
         // Don't fail the pipeline - verification is informational
         return {
           citationCount: citationResult.count || 0,
@@ -846,7 +849,7 @@ Admin Dashboard: ${process.env.NEXT_PUBLIC_APP_URL}/admin/orders/${orderId}
           `.trim(),
         });
       } catch (emailError) {
-        console.error("Failed to send alert email:", emailError);
+        log.error('Failed to send alert email', { error: emailError instanceof Error ? emailError.message : String(emailError) });
         // Queue for retry via notification queue
         await supabase.from("notification_queue").insert({
           notification_type: "generation_failed",
@@ -894,7 +897,7 @@ export const deadlineCheck = inngest.createFunction(
         .order("filing_deadline", { ascending: true });
 
       if (error) {
-        console.error("Failed to fetch urgent orders:", error);
+        log.error('Failed to fetch urgent orders', { error: error.message });
         return [];
       }
 
@@ -949,7 +952,7 @@ Motion Granted Automated Alert System
           },
         });
       } catch (emailError) {
-        console.error("Failed to send deadline alert:", emailError);
+        log.error('Failed to send deadline alert', { error: emailError instanceof Error ? emailError.message : String(emailError) });
       }
     });
 
@@ -987,7 +990,7 @@ export const updateQueuePositions = inngest.createFunction(
         .order("filing_deadline", { ascending: true });
 
       if (error || !orders) {
-        console.error("Failed to fetch queue orders:", error);
+        log.error('Failed to fetch queue orders', { error: error?.message });
         return;
       }
 

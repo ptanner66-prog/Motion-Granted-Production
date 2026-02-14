@@ -23,6 +23,9 @@ import {
 import { createClient } from '@/lib/supabase/server';
 import { JURISDICTION_RULES } from '@/lib/documents/formatting-engine';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-proof-of-service');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -714,7 +717,7 @@ function getJurisdictionType(jurisdiction: string): 'california' | 'federal' | '
 export async function generateProofOfService(
   data: ProofOfServiceData
 ): Promise<ProofOfServiceResult> {
-  console.log(`[ProofOfService] Generating for order ${data.orderId}, jurisdiction: ${data.jurisdiction}`);
+  log.info(`[ProofOfService] Generating for order ${data.orderId}, jurisdiction: ${data.jurisdiction}`);
 
   const jurisdictionType = getJurisdictionType(data.jurisdiction);
 
@@ -748,14 +751,14 @@ export async function generateProofOfService(
     });
 
   if (uploadError) {
-    console.error('[ProofOfService] Upload error:', uploadError);
+    log.error('[ProofOfService] Upload error:', uploadError);
     throw new Error(`Failed to upload proof of service: ${uploadError.message}`);
   }
 
   // Estimate page count (rough calculation: ~3000 chars per page)
   const estimatedPageCount = Math.max(1, Math.ceil(buffer.length / 3000));
 
-  console.log(`[ProofOfService] Generated successfully: ${storagePath}`);
+  log.info(`[ProofOfService] Generated successfully: ${storagePath}`);
 
   return {
     path: storagePath,

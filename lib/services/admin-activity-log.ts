@@ -4,6 +4,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('services-admin-activity-log');
 /**
  * Admin actions to log:
  * - View customer order
@@ -60,10 +63,10 @@ export async function logAdminActivity(entry: AdminActivityEntry): Promise<void>
       created_at: new Date().toISOString(),
     });
 
-    console.log(`[AdminLog] ${entry.action} on ${entry.targetType}:${entry.targetId} by ${entry.adminUserId}`);
+    log.info(`[AdminLog] ${entry.action} on ${entry.targetType}:${entry.targetId} by ${entry.adminUserId}`);
   } catch (error) {
     // Don't throw - logging failure shouldn't break the operation
-    console.error('[AdminLog] Failed to log activity:', error);
+    log.error('[AdminLog] Failed to log activity:', error);
   }
 }
 
@@ -101,7 +104,7 @@ export async function getAdminActivityLog(filters: {
   const { data, error, count } = await query;
 
   if (error) {
-    console.error('[AdminLog] Error fetching log:', error);
+    log.error('[AdminLog] Error fetching log:', error);
     return { entries: [], total: 0 };
   }
 

@@ -20,6 +20,9 @@
 import { createClient } from '@/lib/supabase/server';
 import type { VerificationResult } from './verification-pipeline';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-cache-manager');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -351,7 +354,7 @@ export class CacheManager {
         metadata: data.metadata,
       };
     } catch (error) {
-      console.error('[CacheManager] VPI lookup error:', error);
+      log.error('[CacheManager] VPI lookup error:', error);
       return null;
     }
   }
@@ -381,7 +384,7 @@ export class CacheManager {
         }
       );
     } catch (error) {
-      console.error('[CacheManager] VPI write error:', error);
+      log.error('[CacheManager] VPI write error:', error);
     }
   }
 
@@ -407,7 +410,7 @@ export class CacheManager {
         .delete()
         .eq('normalized_citation', normalizedCitation);
     } catch (error) {
-      console.error('[CacheManager] Invalidation error:', error);
+      log.error('[CacheManager] Invalidation error:', error);
     }
   }
 
@@ -438,7 +441,7 @@ export class CacheManager {
       }
     }
 
-    console.log(`[CacheManager] Warmed ${warmed} citations, ${failed} not in cache`);
+    log.info(`[CacheManager] Warmed ${warmed} citations, ${failed} not in cache`);
     return { warmed, failed };
   }
 
@@ -486,7 +489,7 @@ export class CacheManager {
     this.memoryCache.clear();
 
     // Note: VPI clear should be done carefully in production
-    console.log('[CacheManager] Memory cache cleared');
+    log.info('[CacheManager] Memory cache cleared');
   }
 
   /**

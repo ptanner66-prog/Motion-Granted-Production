@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { AutomationSetting, SettingCategory } from '@/types/automation';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-settings');
 
 /**
  * GET /api/automation/settings
@@ -58,7 +61,7 @@ export async function GET(request: Request) {
       grouped,
     });
   } catch (error) {
-    console.error('[API] Get settings error:', error);
+    log.error('Get settings error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -157,7 +160,7 @@ export async function PUT(request: Request) {
       results,
     });
   } catch (error) {
-    console.error('[API] Update settings error:', error);
+    log.error('Update settings error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -226,7 +229,7 @@ export async function POST(request: Request) {
       setting: data,
     });
   } catch (error) {
-    console.error('[API] Create setting error:', error);
+    log.error('Create setting error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

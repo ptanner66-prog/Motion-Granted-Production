@@ -5,6 +5,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateFile, logRejectedUpload, generateStorageFilename } from '@/lib/upload/file-validation';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-upload-validate');
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,7 +61,7 @@ export async function POST(request: NextRequest) {
       fileSize: file.size,
     });
   } catch (error) {
-    console.error('[UploadValidate] Error:', error);
+    log.error('Upload validate error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Validation failed' }, { status: 500 });
   }
 }

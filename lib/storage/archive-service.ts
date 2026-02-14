@@ -19,6 +19,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('storage-archive-service');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -67,7 +70,7 @@ const MAXIMUM_RETENTION_DAYS = 365;
  * Archive an order - move documents to cold storage and anonymize data
  */
 export async function archiveOrder(orderId: string): Promise<ArchiveResult> {
-  console.log(`[ArchiveService] Archiving order ${orderId}`);
+  log.info(`[ArchiveService] Archiving order ${orderId}`);
   const supabase = await createClient();
 
   // Get order data
@@ -108,7 +111,7 @@ export async function archiveOrder(orderId: string): Promise<ArchiveResult> {
           documentsArchived++;
         }
       } catch (error) {
-        console.warn(`[ArchiveService] Failed to archive document: ${doc.storageUrl}`, error);
+        log.warn(`[ArchiveService] Failed to archive document: ${doc.storageUrl}`, error);
       }
     }
   }
@@ -133,7 +136,7 @@ export async function archiveOrder(orderId: string): Promise<ArchiveResult> {
   // Log the archive action
   await logArchiveAction(supabase, orderId, 'archived', documentsArchived);
 
-  console.log(`[ArchiveService] Archived order ${orderId}: ${documentsArchived} documents`);
+  log.info(`[ArchiveService] Archived order ${orderId}: ${documentsArchived} documents`);
 
   return {
     orderId,
@@ -151,7 +154,7 @@ export async function extendRetention(
   orderId: string,
   additionalDays: number
 ): Promise<RetentionExtensionResult> {
-  console.log(`[ArchiveService] Extending retention for order ${orderId} by ${additionalDays} days`);
+  log.info(`[ArchiveService] Extending retention for order ${orderId} by ${additionalDays} days`);
   const supabase = await createClient();
 
   // Get current retention date
@@ -204,7 +207,7 @@ export async function extendRetention(
  * Delete all expired orders
  */
 export async function deleteExpiredOrders(): Promise<DeletionResult> {
-  console.log('[ArchiveService] Deleting expired orders');
+  log.info('[ArchiveService] Deleting expired orders');
   const supabase = await createClient();
 
   const now = new Date();
@@ -217,7 +220,7 @@ export async function deleteExpiredOrders(): Promise<DeletionResult> {
     .eq('status', 'archived');
 
   if (error) {
-    console.error('[ArchiveService] Error fetching expired orders:', error);
+    log.error('[ArchiveService] Error fetching expired orders:', error);
     return { ordersDeleted: 0, documentsDeleted: 0, errors: [] };
   }
 
@@ -257,11 +260,11 @@ export async function deleteExpiredOrders(): Promise<DeletionResult> {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       errors.push({ orderId: order.id, error: errorMessage });
-      console.error(`[ArchiveService] Error deleting order ${order.id}:`, err);
+      log.error(`[ArchiveService] Error deleting order ${order.id}:`, err);
     }
   }
 
-  console.log(`[ArchiveService] Deleted ${ordersDeleted} orders, ${documentsDeleted} documents`);
+  log.info(`[ArchiveService] Deleted ${ordersDeleted} orders, ${documentsDeleted} documents`);
 
   return {
     ordersDeleted,
@@ -290,7 +293,7 @@ export async function getOrdersNearingExpiration(
     .eq('status', 'archived');
 
   if (error) {
-    console.error('[ArchiveService] Error fetching expiring orders:', error);
+    log.error('[ArchiveService] Error fetching expiring orders:', error);
     return [];
   }
 
@@ -336,7 +339,7 @@ async function saveAnonymizedAnalytics(
       revision_count: order.revision_count || 0,
     });
   } catch (error) {
-    console.warn('[ArchiveService] Failed to save anonymized analytics:', error);
+    log.warn('[ArchiveService] Failed to save anonymized analytics:', error);
   }
 }
 
@@ -357,7 +360,7 @@ async function logArchiveAction(
       performed_at: new Date().toISOString(),
     });
   } catch (error) {
-    console.warn('[ArchiveService] Failed to log archive action:', error);
+    log.warn('[ArchiveService] Failed to log archive action:', error);
   }
 }
 

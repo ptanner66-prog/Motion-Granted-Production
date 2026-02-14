@@ -18,6 +18,9 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { OperationResult } from '@/types/automation';
 import { RuleLookupService } from '@/lib/services/formatting/rule-lookup';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-pdf-generator');
 
 // Create admin client with service role key (bypasses RLS for server-side operations)
 function getAdminClient() {
@@ -158,7 +161,7 @@ function getPageDimensions(jurisdiction?: string): PageDimensions {
     const contentHeight = pageHeight - marginTop - marginBottom;
     const lineHeight = rules.font.lineSpacingDXA >= 400 ? 24 : rules.font.lineSpacingDXA >= 300 ? 18 : 14;
 
-    console.log(`[PDF-GEN] Jurisdiction: ${jurisdiction} → paper: ${rules.paperSize.name} (${pageWidth}×${pageHeight}pt), margins: T${marginTop} B${marginBottom} L${marginLeft} R${marginRight}pt`);
+    log.info('Jurisdiction page dimensions resolved', { jurisdiction, paper: rules.paperSize.name, pageWidth, pageHeight, marginTop, marginBottom, marginLeft, marginRight });
 
     return {
       pageWidth, pageHeight,

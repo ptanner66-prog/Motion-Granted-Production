@@ -17,6 +17,9 @@
 
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('backup-backup-verifier');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -93,7 +96,7 @@ export async function listRecentBackups(limit: number = 10): Promise<Backup[]> {
   const supabase = getAdminClient();
 
   if (!supabase) {
-    console.error('[Backup] No admin client available');
+    log.error('[Backup] No admin client available');
     return [];
   }
 
@@ -104,7 +107,7 @@ export async function listRecentBackups(limit: number = 10): Promise<Backup[]> {
     .limit(limit);
 
   if (error) {
-    console.error('[Backup] List error:', error);
+    log.error('[Backup] List error:', error);
     return [];
   }
 
@@ -152,7 +155,7 @@ export async function registerBackup(
     .single();
 
   if (error || !data) {
-    console.error('[Backup] Register error:', error);
+    log.error('[Backup] Register error:', error);
     return null;
   }
 
@@ -329,7 +332,7 @@ export async function verifyBackupIntegrity(
     })
     .eq('id', backupId);
 
-  console.log(`[Backup] Verified backup ${backupId}: ${isValid ? 'VALID' : 'INVALID'}`);
+  log.info(`[Backup] Verified backup ${backupId}: ${isValid ? 'VALID' : 'INVALID'}`);
 
   return {
     backupId,
@@ -371,7 +374,7 @@ export async function scheduleBackupVerification(): Promise<{
     .limit(10);
 
   if (!unverified || unverified.length === 0) {
-    console.log('[Backup] No unverified backups to schedule');
+    log.info('[Backup] No unverified backups to schedule');
     return { scheduled: 0, backupIds: [] };
   }
 
@@ -387,11 +390,11 @@ export async function scheduleBackupVerification(): Promise<{
   );
 
   if (error) {
-    console.error('[Backup] Failed to schedule verifications:', error);
+    log.error('[Backup] Failed to schedule verifications:', error);
     return { scheduled: 0, backupIds: [] };
   }
 
-  console.log(`[Backup] Scheduled verification for ${backupIds.length} backups`);
+  log.info(`[Backup] Scheduled verification for ${backupIds.length} backups`);
 
   return {
     scheduled: backupIds.length,
@@ -661,7 +664,7 @@ export async function checkBackupAlerts(): Promise<{
   }
 
   if (alertLevel !== 'none') {
-    console.warn(`[Backup] Alert level: ${alertLevel}`, alerts);
+    log.warn(`[Backup] Alert level: ${alertLevel}`, alerts);
 
     // Log alert to database
     const supabase = getAdminClient();

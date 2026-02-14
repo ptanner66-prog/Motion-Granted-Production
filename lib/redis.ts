@@ -12,6 +12,9 @@
 
 import { Redis } from '@upstash/redis';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('redis');
 // ============================================================================
 // CLIENT INITIALIZATION
 // ============================================================================
@@ -26,17 +29,17 @@ function initRedis(): Redis | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
   if (!url || !token || url.includes('placeholder')) {
-    console.warn('[Redis] Not configured - using in-memory fallback');
+    log.warn('[Redis] Not configured - using in-memory fallback');
     return null;
   }
 
   try {
     redis = new Redis({ url, token });
     redisAvailable = true;
-    console.log('[Redis] Connected to Upstash Redis');
+    log.info('[Redis] Connected to Upstash Redis');
     return redis;
   } catch (error) {
-    console.error('[Redis] Failed to connect:', error);
+    log.error('[Redis] Failed to connect:', error);
     return null;
   }
 }
@@ -115,7 +118,7 @@ export async function checkRateLimit(
 
     return { allowed: true, remaining, resetAt };
   } catch (error) {
-    console.error('[Redis] Rate limit check failed:', error);
+    log.error('[Redis] Rate limit check failed:', error);
     // Fail open - allow request on error
     return { allowed: true, remaining: limit, resetAt: Date.now() + windowSeconds * 1000 };
   }
@@ -187,7 +190,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
     const value = await client.get<T>(`cache:${key}`);
     return value;
   } catch (error) {
-    console.error('[Redis] Cache get failed:', error);
+    log.error('[Redis] Cache get failed:', error);
     return null;
   }
 }
@@ -216,7 +219,7 @@ export async function cacheSet<T>(
 
     return true;
   } catch (error) {
-    console.error('[Redis] Cache set failed:', error);
+    log.error('[Redis] Cache set failed:', error);
     return false;
   }
 }
@@ -232,7 +235,7 @@ export async function cacheDelete(key: string): Promise<boolean> {
     await client.del(`cache:${key}`);
     return true;
   } catch (error) {
-    console.error('[Redis] Cache delete failed:', error);
+    log.error('[Redis] Cache delete failed:', error);
     return false;
   }
 }
@@ -257,7 +260,7 @@ export async function cacheInvalidateTag(tag: string): Promise<number> {
 
     return keys.length;
   } catch (error) {
-    console.error('[Redis] Cache invalidation failed:', error);
+    log.error('[Redis] Cache invalidation failed:', error);
     return 0;
   }
 }
@@ -283,7 +286,7 @@ export async function acquireLock(
     const acquired = await client.set(lockKey, lockValue, { nx: true, ex: ttlSeconds });
     return acquired ? lockValue : null;
   } catch (error) {
-    console.error('[Redis] Lock acquire failed:', error);
+    log.error('[Redis] Lock acquire failed:', error);
     return null;
   }
 }
@@ -306,7 +309,7 @@ export async function releaseLock(lockName: string, lockValue: string): Promise<
     }
     return false;
   } catch (error) {
-    console.error('[Redis] Lock release failed:', error);
+    log.error('[Redis] Lock release failed:', error);
     return false;
   }
 }
@@ -322,7 +325,7 @@ export async function withLock<T>(
   const lockValue = await acquireLock(lockName, ttlSeconds);
 
   if (!lockValue) {
-    console.warn(`[Redis] Could not acquire lock: ${lockName}`);
+    log.warn(`[Redis] Could not acquire lock: ${lockName}`);
     return null;
   }
 
@@ -348,7 +351,7 @@ export async function getQueuePosition(orderId: string): Promise<number | null> 
     const position = await client.zrank('queue:orders', orderId);
     return position !== null ? position + 1 : null;
   } catch (error) {
-    console.error('[Redis] Queue position lookup failed:', error);
+    log.error('[Redis] Queue position lookup failed:', error);
     return null;
   }
 }
@@ -375,7 +378,7 @@ export async function updateQueuePositions(
     await pipeline.exec();
     return true;
   } catch (error) {
-    console.error('[Redis] Queue update failed:', error);
+    log.error('[Redis] Queue update failed:', error);
     return false;
   }
 }
@@ -394,7 +397,7 @@ export async function incrementCounter(key: string, amount: number = 1): Promise
   try {
     return await client.incrby(`counter:${key}`, amount);
   } catch (error) {
-    console.error('[Redis] Counter increment failed:', error);
+    log.error('[Redis] Counter increment failed:', error);
     return 0;
   }
 }
@@ -410,7 +413,7 @@ export async function getCounter(key: string): Promise<number> {
     const value = await client.get<number>(`counter:${key}`);
     return value || 0;
   } catch (error) {
-    console.error('[Redis] Counter get failed:', error);
+    log.error('[Redis] Counter get failed:', error);
     return 0;
   }
 }

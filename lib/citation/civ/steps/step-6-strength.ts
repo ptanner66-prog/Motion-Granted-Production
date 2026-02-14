@@ -23,6 +23,9 @@ import type {
 } from '../types';
 import { getAuthorityLevel, type AuthorityLevel, type FilingContext } from '@/lib/config/citation-models';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-civ-steps-step-6-strength');
 /**
  * Execute Step 6: Authority Strength Assessment
  *
@@ -122,7 +125,7 @@ export async function executeAuthorityStrength(
     let authorityLevel: AuthorityLevel | undefined;
     if (courtId) {
       authorityLevel = getAuthorityLevel(courtId, filingContext);
-      console.log(
+      log.info(
         `[CIV_STEP6] citation=${citation.substring(0, 50)} court=${courtId} ` +
         `filing=${filingContext} authority=${authorityLevel}`
       );
@@ -142,7 +145,7 @@ export async function executeAuthorityStrength(
 
     return { ...result, authorityLevel };
   } catch (error) {
-    console.error('Authority strength assessment error:', error);
+    log.error('Authority strength assessment error:', error);
     result.notes = `Assessment incomplete: ${error instanceof Error ? error.message : 'Unknown error'}`;
     return result;
   }
@@ -215,7 +218,7 @@ async function getCourtListenerCitingData(opinionId: string): Promise<CitingData
 async function getCaseLawCitingData(_caseId: string): Promise<CitingData | null> {
   // Case.law API was sunset September 5, 2024
   // This function is kept for reference but always returns null
-  console.warn('[DEPRECATED] getCaseLawCitingData - Case.law API sunset September 5, 2024');
+  log.warn('[DEPRECATED] getCaseLawCitingData - Case.law API sunset September 5, 2024');
   return null;
 }
 

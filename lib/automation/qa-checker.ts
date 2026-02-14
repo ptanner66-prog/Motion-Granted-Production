@@ -6,6 +6,9 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('automation-qa-checker');
 import {
   analyzeDocumentQA,
   isClaudeConfigured,
@@ -67,7 +70,7 @@ async function getQASettings(): Promise<QASettings> {
           : [],
     };
   } catch (error) {
-    console.error('[QA Checker] Failed to load settings:', error);
+    log.error('[QA Checker] Failed to load settings:', error);
     return {
       enabled: true,
       autoDeliverThreshold: 0.95,
@@ -168,7 +171,7 @@ export async function runQACheck(
       }
     } catch (contentError) {
       // Content fetch failed - continue with basic checks
-      console.warn('[QA Checker] Could not fetch document content:', contentError);
+      log.warn('[QA Checker] Could not fetch document content:', contentError);
     }
 
     // 3. AI-powered analysis (if enabled and content available)
@@ -538,7 +541,7 @@ async function logAutomationAction(
       was_auto_approved: (details.autoDeliver as boolean) || false,
     });
   } catch (error) {
-    console.error('[Automation Log] Failed to log action:', error);
+    log.error('[Automation Log] Failed to log action:', error);
   }
 }
 

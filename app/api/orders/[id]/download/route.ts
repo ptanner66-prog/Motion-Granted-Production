@@ -6,6 +6,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateOrderDeliverableUrls } from '@/lib/storage/signed-url';
 import { logAdminActivity } from '@/lib/services/admin-activity-log';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-orders-download');
 
 export async function GET(
   request: NextRequest,
@@ -78,7 +81,7 @@ export async function GET(
       deliverables: result.urls,
     });
   } catch (error) {
-    console.error('[Download] Error:', error);
+    log.error('Download error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Download failed' }, { status: 500 });
   }
 }

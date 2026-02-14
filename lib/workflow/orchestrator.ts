@@ -28,6 +28,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude } from '@/lib/automation/claude';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-orchestrator');
 import { extractOrderDocuments, getCombinedDocumentText } from './document-extractor';
 import { parseOrderDocuments, getOrderParsedDocuments } from './document-parser';
 import { startWorkflow } from './workflow-state';
@@ -80,7 +83,7 @@ function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' {
   }
 
   // Default to B (Motion to Compel tier)
-  console.warn(`[normalizeMotionTier] Unknown tier value: ${tier}, defaulting to B`);
+  log.warn('Unknown tier value, defaulting to B', { tier });
   return 'B';
 }
 
@@ -219,8 +222,7 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
     if (!firmName) missingFields.push('firm_name');
     if (!firmAddress) missingFields.push('firm_address');
     if (missingFields.length > 0) {
-      console.warn(`[OrderContext] WARNING: Missing attorney profile fields: ${missingFields.join(', ')}`);
-      console.warn(`[OrderContext] Signature block will be incomplete. Client ID: ${order.client_id}`);
+      log.warn('Missing attorney profile fields, signature block will be incomplete', { missingFields, clientId: order.client_id });
     }
 
     // Extract document content
@@ -439,7 +441,7 @@ export async function initializeWorkflow(
 ): Promise<OperationResult<OrchestrationResult>> {
   const supabase = await createClient();
 
-  console.log(`[ORCHESTRATOR] Initializing workflow for order ${orderId}`);
+  log.info('Initializing workflow', { orderId });
 
   try {
     // Step 1: Gather all order context
@@ -553,7 +555,7 @@ export async function initializeWorkflow(
       .eq('id', orderId);
 
     // Fire-and-forget confirmation email
-    notifyWorkflowEvent('order_confirmed', orderId).catch(err => console.warn('[Workflow] Order confirmation notification failed:', err instanceof Error ? err.message : err));
+    notifyWorkflowEvent('order_confirmed', orderId).catch(err => log.warn('Order confirmation notification failed', { error: err instanceof Error ? err.message : String(err) }));
 
     return {
       success: true,
@@ -583,10 +585,7 @@ export async function orchestrateWorkflow(
     workflowPath?: WorkflowPath;
   } = {}
 ): Promise<OperationResult<OrchestrationResult>> {
-  console.error(
-    '[ORCHESTRATOR] orchestrateWorkflow() is DEPRECATED. ' +
-    'Use initializeWorkflow() + Inngest "order/submitted" event.'
-  );
+  log.error('orchestrateWorkflow() is DEPRECATED. Use initializeWorkflow() + Inngest event.');
   return {
     success: false,
     error: 'DEPRECATED: orchestrateWorkflow() has been removed. Use initializeWorkflow() + Inngest event.',
@@ -773,16 +772,16 @@ export async function notifyWorkflowEvent(
     const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!sbUrl || !sbKey) {
-      console.warn(`[orchestrator] Email trigger skipped (no Supabase creds): ${event}`);
+      log.warn('Email trigger skipped, no Supabase creds', { event });
       return;
     }
 
     const adminClient = createSbClient(sbUrl, sbKey);
     triggerEmail(adminClient, event as Parameters<typeof triggerEmail>[1], orderId).catch(err =>
-      console.error('[orchestrator] Email trigger failed:', { orderId, event, error: err instanceof Error ? err.message : err })
+      log.error('Email trigger failed', { orderId, event, error: err instanceof Error ? err.message : String(err) })
     );
   } catch (err) {
-    console.error('[orchestrator] Email trigger import failed:', { orderId, event, error: err instanceof Error ? err.message : err });
+    log.error('Email trigger import failed', { orderId, event, error: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -795,5 +794,5 @@ export async function notifyWorkflowEvent(
 export function notifyPhaseComplete(phase: string, orderId: string): void {
   const event = PHASE_EMAIL_MAP[phase];
   if (!event) return;
-  notifyWorkflowEvent(event, orderId).catch(err => console.warn(`[Workflow] Phase notification failed for ${event}:`, err instanceof Error ? err.message : err));
+  notifyWorkflowEvent(event, orderId).catch(err => log.warn('Phase notification failed', { event, error: err instanceof Error ? err.message : String(err) }));
 }

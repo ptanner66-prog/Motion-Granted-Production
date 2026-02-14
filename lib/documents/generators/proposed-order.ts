@@ -33,6 +33,9 @@ import {
 import { createClient } from '@/lib/supabase/server';
 import { JURISDICTION_RULES } from '@/lib/documents/formatting-engine';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-proposed-order');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -475,7 +478,7 @@ function generateProposedOrderDocument(data: ProposedOrderData): Document {
 export async function generateProposedOrder(
   data: ProposedOrderData
 ): Promise<ProposedOrderResult> {
-  console.log(`[ProposedOrder] Generating for order ${data.orderId}, disposition: ${data.disposition}`);
+  log.info(`[ProposedOrder] Generating for order ${data.orderId}, disposition: ${data.disposition}`);
 
   // Generate document
   const document = generateProposedOrderDocument(data);
@@ -494,14 +497,14 @@ export async function generateProposedOrder(
     });
 
   if (uploadError) {
-    console.error('[ProposedOrder] Upload error:', uploadError);
+    log.error('[ProposedOrder] Upload error:', uploadError);
     throw new Error(`Failed to upload proposed order: ${uploadError.message}`);
   }
 
   // Estimate page count (typically 1-2 pages)
   const estimatedPageCount = Math.max(1, Math.ceil(data.orderingParagraphs.length / 10));
 
-  console.log(`[ProposedOrder] Generated successfully: ${storagePath}`);
+  log.info(`[ProposedOrder] Generated successfully: ${storagePath}`);
 
   return {
     path: storagePath,

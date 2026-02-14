@@ -21,6 +21,9 @@ import {
   findLatestHandoff,
   WorkflowFile,
 } from '@/lib/workflow/file-system';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-chat-start');
 
 export async function POST(request: Request) {
   // SP-08: User-scoped client for authentication only.
@@ -111,14 +114,14 @@ export async function POST(request: Request) {
 
     const templateResult = await getSuperpromptTemplate();
     if (!templateResult.success || !templateResult.data) {
-      console.error('[SUPERPROMPT] Failed to get template:', templateResult.error);
+      log.error('Failed to get template', { error: templateResult.error });
       return NextResponse.json({
         error: templateResult.error || 'No superprompt template found. Please upload a template first.',
       }, { status: 400 });
     }
     const template = templateResult.data;
-    console.log(`[SUPERPROMPT] Using template: "${template.name}" (${template.id})`);
-    console.log(`[SUPERPROMPT] Template length: ${template.template.length} chars`);
+    log.info('Using template', { name: template.name, id: template.id });
+    log.info('Template length', { length: template.template.length });
 
     // Check for existing handoff file for this order
     let existingHandoffContent = '';
@@ -309,7 +312,7 @@ Do NOT ask for more information. START WITH THE COURT CAPTION.
       .single();
 
     if (createError || !conversation) {
-      console.error('Failed to create conversation:', createError);
+      log.error('Failed to create conversation', { error: createError });
       return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 });
     }
 
@@ -372,7 +375,7 @@ ${orderData.defendantNames || '[DEFENDANT]'},
       }
       const anthropic = new Anthropic({ apiKey });
 
-      console.log('[CHAT-START] Requesting model: claude-opus-4-5-20251101');
+      log.info('Requesting model', { model: 'claude-opus-4-5-20251101' });
 
       const response = await anthropic.messages.create({
         model: 'claude-opus-4-5-20251101',
@@ -381,7 +384,7 @@ ${orderData.defendantNames || '[DEFENDANT]'},
         messages: [{ role: 'user', content: initialPrompt }],
       });
 
-      console.log('[CHAT-START] Response model:', response.model);
+      log.info('Response model', { model: response.model });
 
       const generatedMotion = response.content
         .filter((block): block is Anthropic.TextBlock => block.type === 'text')
@@ -431,7 +434,7 @@ ${orderData.defendantNames || '[DEFENDANT]'},
         message: 'Motion generated successfully and ready for review',
       });
     } catch (claudeError) {
-      console.error('Claude generation error:', claudeError);
+      log.error('Claude generation error', { error: claudeError instanceof Error ? claudeError.message : claudeError });
 
       // Update order status to indicate generation failed
       await supabase
@@ -454,7 +457,7 @@ ${orderData.defendantNames || '[DEFENDANT]'},
       }, { status: 500 });
     }
   } catch (error) {
-    console.error('Start conversation error:', error);
+    log.error('Start conversation error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Failed to start conversation. Please try again.',
     }, { status: 500 });

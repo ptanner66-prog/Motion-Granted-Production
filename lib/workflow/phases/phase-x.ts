@@ -22,6 +22,9 @@ import { createClient } from '@/lib/supabase/server';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, AlignmentType } from 'docx';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phases-phase-x');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -461,10 +464,10 @@ export async function createZipArchive(
         const buffer = await fileData.arrayBuffer();
         zip.file(doc.filename, buffer);
       } else {
-        console.warn(`[Phase X] Could not download ${doc.filename}:`, error);
+        log.warn(`[Phase X] Could not download ${doc.filename}:`, error);
       }
     } catch (err) {
-      console.warn(`[Phase X] Error adding ${doc.filename} to zip:`, err);
+      log.warn(`[Phase X] Error adding ${doc.filename} to zip:`, err);
     }
   }
 
@@ -495,7 +498,7 @@ export async function createZipArchive(
  * Assemble complete filing package
  */
 export async function assembleFilingPackage(orderId: string): Promise<PhaseXOutput> {
-  console.log(`[Phase X] Assembling filing package for order ${orderId}`);
+  log.info(`[Phase X] Assembling filing package for order ${orderId}`);
 
   const supabase = await createClient();
 
@@ -516,11 +519,11 @@ export async function assembleFilingPackage(orderId: string): Promise<PhaseXOutp
 
   // 1. Gather all documents
   const documents = await gatherDocuments(orderId, supabase);
-  console.log(`[Phase X] Gathered ${documents.length} documents`);
+  log.info(`[Phase X] Gathered ${documents.length} documents`);
 
   // 2. Run QC checks
   const qcResult = await runFinalQC(orderId, documents, tier, jurisdiction, motionType);
-  console.log(`[Phase X] QC ${qcResult.passed ? 'PASSED' : 'FAILED'}`);
+  log.info(`[Phase X] QC ${qcResult.passed ? 'PASSED' : 'FAILED'}`);
 
   // 3. Generate instruction sheet
   const instructionBuffer = await generateInstructionSheet(
@@ -542,7 +545,7 @@ export async function assembleFilingPackage(orderId: string): Promise<PhaseXOutp
 
   // 4. Create ZIP archive
   const zipPath = await createZipArchive(orderId, documents, instructionBuffer, supabase);
-  console.log(`[Phase X] Created ZIP archive at ${zipPath}`);
+  log.info(`[Phase X] Created ZIP archive at ${zipPath}`);
 
   // 5. Trigger Checkpoint 3
   await supabase
@@ -554,7 +557,7 @@ export async function assembleFilingPackage(orderId: string): Promise<PhaseXOutp
     })
     .eq('order_id', orderId);
 
-  console.log('[Phase X] Checkpoint 3 triggered - awaiting admin approval');
+  log.info('[Phase X] Checkpoint 3 triggered - awaiting admin approval');
 
   const output: PhaseXOutput = {
     documents,
@@ -611,13 +614,13 @@ export async function completePhaseX(
       })
       .eq('order_id', orderId);
 
-    console.log(`[Phase X] Completed for order ${orderId} - awaiting Checkpoint 3 approval`);
+    log.info(`[Phase X] Completed for order ${orderId} - awaiting Checkpoint 3 approval`);
     return {
       success: true,
       nextPhase: 'DELIVERY', // Pending CP3 approval
     };
   } catch (error) {
-    console.error('[Phase X] Error completing phase:', error);
+    log.error('[Phase X] Error completing phase:', error);
     return {
       success: false,
       nextPhase: 'X',

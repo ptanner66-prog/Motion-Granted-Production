@@ -21,6 +21,9 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { batchGetCitationDetailsService } from '@/lib/services/citations/citation-service';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-citations-batch');
 
 interface BatchRequestBody {
   opinionIds: string[];
@@ -102,7 +105,7 @@ export async function POST(request: NextRequest) {
       data: result.data,
     });
   } catch (error) {
-    console.error('[API] Error in batch citation fetch:', error);
+    log.error('Error in batch citation fetch', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

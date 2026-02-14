@@ -12,6 +12,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-orders-workflow');
 
 export async function GET(
   request: NextRequest,
@@ -78,7 +81,7 @@ export async function GET(
       .order('started_at', { ascending: true });
 
     if (execError) {
-      console.error('Failed to fetch phase executions:', execError);
+      log.error('Failed to fetch phase executions', { error: execError });
     }
 
     // Get judge simulation results
@@ -119,7 +122,7 @@ export async function GET(
       citationBanks: citationBanks || [],
     });
   } catch (error) {
-    console.error('Workflow state fetch error:', error);
+    log.error('Workflow state fetch error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to fetch workflow state' },
       { status: 500 }
@@ -218,7 +221,7 @@ export async function POST(
       message: 'Workflow started successfully',
     });
   } catch (error) {
-    console.error('Workflow start error:', error);
+    log.error('Workflow start error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to start workflow' },
       { status: 500 }

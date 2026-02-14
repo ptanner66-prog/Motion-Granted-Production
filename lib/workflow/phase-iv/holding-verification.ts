@@ -38,6 +38,9 @@ import { buildElementPriorityMap } from './element-extraction';
 import { getOpinionText } from '@/lib/courtlistener/client';
 import { logger } from '@/lib/logger';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phase-iv-holding-verification');
 // ============================================================================
 // BATCH VERIFICATION
 // ============================================================================
@@ -104,7 +107,7 @@ export async function verifyHoldings(
         if (result.status === 'fulfilled' && result.value) {
           scoredCitations.push(result.value);
         } else if (result.status === 'rejected') {
-          console.warn(`[Phase IV-C] Verification failed:`, result.reason);
+          log.warn(`[Phase IV-C] Verification failed:`, result.reason);
         }
       }
     }
@@ -228,7 +231,7 @@ async function verifySingleCandidate(
       verification.relevantHolding
     );
   } catch (error) {
-    console.warn(`[Phase IV-C] Failed to verify ${candidate.caseName}:`, error);
+    log.warn(`[Phase IV-C] Failed to verify ${candidate.caseName}:`, error);
     return null;
   }
 }
@@ -326,7 +329,7 @@ MATCHING CRITERIA:
         : 'GOOD_LAW',
     };
   } catch (error) {
-    console.warn(`[Phase IV-C] Claude verification error for ${candidate.caseName}:`, error);
+    log.warn(`[Phase IV-C] Claude verification error for ${candidate.caseName}:`, error);
     // Default to WEAK on error
     return {
       propositionMatch: 'WEAK',

@@ -8,6 +8,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { generateReportSummary, isClaudeConfigured } from './claude';
 import { queueNotification } from './notification-sender';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('automation-report-generator');
 import type {
   DailyReportData,
   WeeklyReportData,
@@ -79,7 +82,7 @@ async function getReportSettings(): Promise<ReportSettings> {
       recipients: recipientsValue?.emails ?? [],
     };
   } catch (error) {
-    console.error('[Report Generator] Failed to load settings:', error);
+    log.error('[Report Generator] Failed to load settings:', error);
     return {
       dailyEnabled: true,
       dailyTime: '08:00',
@@ -571,7 +574,7 @@ async function logAutomationAction(
       action_details: details,
     });
   } catch (error) {
-    console.error('[Automation Log] Failed to log action:', error);
+    log.error('[Automation Log] Failed to log action:', error);
   }
 }
 

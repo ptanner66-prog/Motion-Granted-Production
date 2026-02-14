@@ -14,6 +14,9 @@
 
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-health');
 
 interface HealthCheck {
   name: string;
@@ -38,7 +41,7 @@ export async function GET() {
       const { error } = await supabase.from('orders').select('id').limit(1);
 
       if (error) {
-        console.error('[Health] Database check failed:', error.message);
+        log.error('Database check failed', { error: error.message });
       }
 
       checks.push({
@@ -48,7 +51,7 @@ export async function GET() {
       });
     }
   } catch (error) {
-    console.error('[Health] Database check exception:', error);
+    log.error('Database check exception', { error: error instanceof Error ? error.message : error });
     checks.push({ name: 'database', status: 'error' });
   }
 
@@ -77,7 +80,7 @@ export async function GET() {
       status: hasApiKey ? 'ok' : 'error',
     });
   } catch (error) {
-    console.error('[Health] AI service check failed:', error);
+    log.error('AI service check failed', { error: error instanceof Error ? error.message : error });
     checks.push({ name: 'ai_service', status: 'error' });
   }
 
@@ -103,7 +106,7 @@ export async function GET() {
 
   // Log details server-side for debugging
   if (hasErrors) {
-    console.error('[Health] System status:', overallStatus, 'Checks:', JSON.stringify(checks));
+    log.error('System status check', { status: overallStatus, checks });
   }
 
   return NextResponse.json({

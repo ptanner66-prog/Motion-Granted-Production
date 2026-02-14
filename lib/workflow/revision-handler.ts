@@ -6,6 +6,9 @@ import { createClient } from '@/lib/supabase/server';
 import { MAX_REVISION_LOOPS, type LetterGrade as Grade } from '@/types/workflow';
 import { FAILURE_THRESHOLDS, isProtocol10Triggered } from '@/lib/config/workflow-config';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-revision-handler');
 // Helper functions
 function shouldTriggerProtocol10(revisionCount: number): boolean {
   return isProtocol10Triggered(revisionCount);
@@ -145,7 +148,7 @@ export async function incrementRevisionCount(
         created_at: now,
       });
 
-    console.log(`[RevisionHandler] Protocol 10 triggered for order ${orderId} after ${newCount} revisions`);
+    log.info(`[RevisionHandler] Protocol 10 triggered for order ${orderId} after ${newCount} revisions`);
 
     return {
       orderId,
@@ -196,7 +199,7 @@ export async function incrementRevisionCount(
       created_at: now,
     });
 
-  console.log(`[RevisionHandler] Order ${orderId} revision ${newCount}/${MAX_REVISION_LOOPS}`);
+  log.info(`[RevisionHandler] Order ${orderId} revision ${newCount}/${MAX_REVISION_LOOPS}`);
 
   return {
     orderId,
@@ -279,7 +282,7 @@ export async function resetRevisionCount(orderId: string): Promise<boolean> {
     .eq('id', orderId);
 
   if (error) {
-    console.error(`[RevisionHandler] Failed to reset revision count: ${error.message}`);
+    log.error(`[RevisionHandler] Failed to reset revision count: ${error.message}`);
     return false;
   }
 
@@ -308,7 +311,7 @@ export async function resetRevisionCount(orderId: string): Promise<boolean> {
       created_at: now,
     });
 
-  console.log(`[RevisionHandler] Revision count reset for order ${orderId}`);
+  log.info(`[RevisionHandler] Revision count reset for order ${orderId}`);
   return true;
 }
 
@@ -400,6 +403,6 @@ export async function recordRevisionRequest(
       created_at: now,
     });
 
-  console.log(`[RevisionHandler] Revision requested for order ${orderId}`);
+  log.info(`[RevisionHandler] Revision requested for order ${orderId}`);
   return { success: true, canRevise: true };
 }

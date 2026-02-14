@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getDashboardStats, generateDailyReport } from '@/lib/automation';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-dashboard');
 
 /**
  * GET /api/automation/dashboard
@@ -124,7 +127,7 @@ export async function GET(request: Request) {
       dailyReport,
     });
   } catch (error) {
-    console.error('[API] Dashboard error:', error);
+    log.error('Dashboard error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

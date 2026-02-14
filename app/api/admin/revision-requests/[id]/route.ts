@@ -7,6 +7,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-revision-requests');
 
 export async function PATCH(
   request: Request,
@@ -108,7 +111,7 @@ export async function PATCH(
           clientEmail: orderData.profiles.email,
           adminResponse: admin_response,
         }).catch(err => {
-          console.error('Failed to queue notification:', err);
+          log.error('Failed to queue notification', { error: err instanceof Error ? err.message : err });
         });
       }
     }
@@ -118,7 +121,7 @@ export async function PATCH(
       message: status === 'completed' ? 'Revision completed and client notified' : 'Status updated',
     });
   } catch (error) {
-    console.error('Update revision request error:', error);
+    log.error('Update revision request error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Failed to update revision request. Please try again.',
     }, { status: 500 });
@@ -162,7 +165,7 @@ export async function GET(
 
     return NextResponse.json({ request: revisionRequest });
   } catch (error) {
-    console.error('Get revision request error:', error);
+    log.error('Get revision request error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Failed to get revision request. Please try again.',
     }, { status: 500 });

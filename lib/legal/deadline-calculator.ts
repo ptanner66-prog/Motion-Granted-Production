@@ -15,6 +15,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('legal-deadline-calculator');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -447,13 +450,13 @@ export async function loadHolidaysFromDatabase(
       .lte('holiday_date', endOfYear.toISOString().split('T')[0]);
 
     if (error) {
-      console.warn('[DeadlineCalculator] Error loading holidays from DB:', error);
+      log.warn('[DeadlineCalculator] Error loading holidays from DB:', error);
       return [];
     }
 
     return (data || []).map((row: { holiday_date: string }) => new Date(row.holiday_date + 'T00:00:00'));
   } catch (error) {
-    console.error('[DeadlineCalculator] Database error:', error);
+    log.error('[DeadlineCalculator] Database error:', error);
     return [];
   }
 }
@@ -534,7 +537,7 @@ export async function seedHolidaysToDatabase(): Promise<{ success: boolean; coun
     });
 
   if (error) {
-    console.error('[DeadlineCalculator] Error seeding holidays:', error);
+    log.error('[DeadlineCalculator] Error seeding holidays:', error);
     return { success: false, count: 0 };
   }
 

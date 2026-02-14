@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('email-url-validator');
+
 /**
  * URL Validation for Email Templates
  *
@@ -66,7 +70,7 @@ export function sanitizeEmailUrl(url: string | undefined, fallback: string): str
 
   // Log potential attack attempt
   if (url && process.env.NODE_ENV === 'production') {
-    console.warn(`[EMAIL SECURITY] Blocked potentially malicious URL: ${url}`);
+    log.warn(`[EMAIL SECURITY] Blocked potentially malicious URL: ${url}`);
   }
 
   return fallback;

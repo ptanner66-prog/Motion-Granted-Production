@@ -4,6 +4,9 @@
 
 import type { Citation } from "@/types/citations";
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('services-citations-shorthand-resolver');
 interface ResolutionResult {
   resolved: boolean;
   antecedent_id: string | null;
@@ -191,11 +194,11 @@ export function resolveAllShorthand(citations: Citation[]): void {
     }
 
     if (result.resolved) {
-      console.log(
+      log.info(
         `[ShorthandResolver] Resolved ${cite.citation_type} "${cite.raw}" → "${result.antecedent_raw}" (${result.confidence})`
       );
     } else {
-      console.warn(
+      log.warn(
         `[ShorthandResolver] Could not resolve ${cite.citation_type} "${cite.raw}": ${result.notes}`
       );
     }

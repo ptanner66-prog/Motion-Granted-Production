@@ -15,6 +15,9 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { inngest } from '@/lib/inngest/client';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-generate');
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -112,7 +115,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[Workflow Generate] Error:', error);
+    log.error('Workflow generate error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Failed to start workflow' },
       { status: 500 }

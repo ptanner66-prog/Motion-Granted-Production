@@ -5,6 +5,9 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { scanFile } from '@/lib/security/malware-scanner'
+import { createLogger } from '@/lib/security/logger'
+
+const log = createLogger('api-documents-upload')
 
 export async function POST(req: Request) {
   if (!isSupabaseConfigured) {
@@ -140,14 +143,16 @@ export async function POST(req: Request) {
       status: scanResult.safe ? 'completed' : 'failed',
     }
     const { error: logErr } = await supabase.from('automation_logs').insert(auditPayload)
-    if (logErr) console.error('[upload] Failed to write scan audit log:', logErr.message)
+    if (logErr) log.error('Failed to write scan audit log', { error: logErr.message })
 
     if (!scanResult.safe) {
-      console.error(
-        `[UPLOAD] Malware detected in ${file.name}: ` +
-        `${scanResult.detections}/${scanResult.totalEngines} detections, ` +
-        `threat: ${scanResult.threatName}, hash: ${scanResult.hash}`
-      )
+      log.error('Malware detected in upload', {
+        fileName: file.name,
+        detections: scanResult.detections,
+        totalEngines: scanResult.totalEngines,
+        threatName: scanResult.threatName,
+        hash: scanResult.hash,
+      })
 
       // Log to audit trail
       const supabaseForLog = await createClient()
@@ -171,7 +176,7 @@ export async function POST(req: Request) {
     }
 
     if (scanResult.scanned) {
-      console.log(`[upload] Scan passed: "${file.name}" (${scanResult.hash.substring(0, 12)}…)`)
+      log.info('Scan passed', { fileName: file.name, hash: scanResult.hash.substring(0, 12) })
     }
 
     // Check if bucket exists first

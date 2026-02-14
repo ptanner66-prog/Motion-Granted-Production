@@ -6,6 +6,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { shouldBlockLogin, recordLoginAttempt, clearFailedAttempts } from '@/lib/auth/lockout';
 import { createSession } from '@/lib/auth/session';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-auth-login');
 
 export async function POST(request: NextRequest) {
   try {
@@ -68,7 +71,7 @@ export async function POST(request: NextRequest) {
       sessionId,
     });
   } catch (error) {
-    console.error('[Login] Error:', error);
+    log.error('Login error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Login failed' }, { status: 500 });
   }
 }

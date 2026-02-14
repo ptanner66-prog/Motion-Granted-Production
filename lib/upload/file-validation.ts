@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('upload-file-validation');
+
 // /lib/upload/file-validation.ts
 // File upload security per SECURITY_IMPLEMENTATION_CHECKLIST_v1 Section 3
 // VERSION: 1.1 — SP20: Added client-side validation (CGA6-030, UPLOAD-001–005)
@@ -208,5 +212,5 @@ export async function logRejectedUpload(
     created_at: new Date().toISOString(),
   });
 
-  console.log(`[FileValidation] Rejected upload: ${filename} - ${reason}`);
+  log.info(`[FileValidation] Rejected upload: ${filename} - ${reason}`);
 }

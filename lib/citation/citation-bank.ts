@@ -18,6 +18,9 @@ import { createClient } from '@/lib/supabase/server';
 import { verifyCitation } from '@/lib/citation/verification-pipeline';
 import type { MotionTier } from '@/lib/ai/model-router';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-citation-bank');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -91,7 +94,7 @@ export async function loadCitationBank(orderId: string): Promise<CitationBank | 
       .single();
 
     if (error || !order?.phase_outputs) {
-      console.warn(`[CitationBank] No phase outputs found for order ${orderId}`);
+      log.warn(`[CitationBank] No phase outputs found for order ${orderId}`);
       return null;
     }
 
@@ -116,7 +119,7 @@ export async function loadCitationBank(orderId: string): Promise<CitationBank | 
     } | undefined;
 
     if (!phaseIV) {
-      console.warn(`[CitationBank] Phase IV not yet completed for order ${orderId}`);
+      log.warn(`[CitationBank] Phase IV not yet completed for order ${orderId}`);
       return null;
     }
 
@@ -145,10 +148,10 @@ export async function loadCitationBank(orderId: string): Promise<CitationBank | 
       lastUpdated: new Date(),
     };
 
-    console.log(`[CitationBank] Loaded ${bank.cases.length} cases, ${bank.statutes.length} statutes for order ${orderId}`);
+    log.info(`[CitationBank] Loaded ${bank.cases.length} cases, ${bank.statutes.length} statutes for order ${orderId}`);
     return bank;
   } catch (error) {
-    console.error('[CitationBank] Error loading bank:', error);
+    log.error('[CitationBank] Error loading bank:', error);
     return null;
   }
 }
@@ -223,7 +226,7 @@ export async function executeMiniPhaseIV(
   orderId: string,
   tier: MotionTier
 ): Promise<MiniPhaseIVResult> {
-  console.log(`[CitationBank] Executing Mini Phase IV for: ${citation}`);
+  log.info(`[CitationBank] Executing Mini Phase IV for: ${citation}`);
 
   try {
     // Run citation through verification pipeline
@@ -248,7 +251,7 @@ export async function executeMiniPhaseIV(
     );
 
     if (!passed || hasBlockingFlags) {
-      console.warn(`[CitationBank] Mini Phase IV FAILED for: ${citation}`);
+      log.warn(`[CitationBank] Mini Phase IV FAILED for: ${citation}`);
       return {
         success: true,
         verified: false,
@@ -271,7 +274,7 @@ export async function executeMiniPhaseIV(
       verificationResult
     );
 
-    console.log(`[CitationBank] Mini Phase IV PASSED for: ${citation}`);
+    log.info(`[CitationBank] Mini Phase IV PASSED for: ${citation}`);
     return {
       success: true,
       verified: true,
@@ -284,7 +287,7 @@ export async function executeMiniPhaseIV(
       },
     };
   } catch (error) {
-    console.error('[CitationBank] Mini Phase IV error:', error);
+    log.error('[CitationBank] Mini Phase IV error:', error);
     return {
       success: false,
       verified: false,
@@ -315,7 +318,7 @@ async function addCitationToBank(
       .single();
 
     if (fetchError || !order) {
-      console.error('[CitationBank] Failed to fetch order for bank update');
+      log.error('[CitationBank] Failed to fetch order for bank update');
       return false;
     }
 
@@ -348,14 +351,14 @@ async function addCitationToBank(
       .eq('id', orderId);
 
     if (updateError) {
-      console.error('[CitationBank] Failed to update bank:', updateError);
+      log.error('[CitationBank] Failed to update bank:', updateError);
       return false;
     }
 
-    console.log(`[CitationBank] Added citation to bank: ${citation}`);
+    log.info(`[CitationBank] Added citation to bank: ${citation}`);
     return true;
   } catch (error) {
-    console.error('[CitationBank] Error adding to bank:', error);
+    log.error('[CitationBank] Error adding to bank:', error);
     return false;
   }
 }
@@ -454,7 +457,7 @@ export async function batchCheckCitations(
 
     // If we hit a blocking flag, we can continue checking but track it
     if (result.blockingFlag) {
-      console.warn(`[CitationBank] BLOCKING flag raised for: ${citation}`);
+      log.warn(`[CitationBank] BLOCKING flag raised for: ${citation}`);
     }
   }
 

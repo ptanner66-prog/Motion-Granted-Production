@@ -19,6 +19,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phase-iv-element-extraction');
 import {
   type MotionTypeCode,
   type ElementExtractionInput,
@@ -44,16 +47,16 @@ export async function extractElements(
 ): Promise<ElementExtractionOutput> {
   const start = Date.now();
 
-  console.log(`╔══════════════════════════════════════════════════════════════╗`);
-  console.log(`║  PHASE IV-A: ELEMENT EXTRACTION                              ║`);
-  console.log(`╚══════════════════════════════════════════════════════════════╝`);
-  console.log(`[Phase IV-A] Motion Type: ${input.motionType}`);
-  console.log(`[Phase IV-A] Jurisdiction: ${input.jurisdiction}`);
+  log.info(`╔══════════════════════════════════════════════════════════════╗`);
+  log.info(`║  PHASE IV-A: ELEMENT EXTRACTION                              ║`);
+  log.info(`╚══════════════════════════════════════════════════════════════╝`);
+  log.info(`[Phase IV-A] Motion Type: ${input.motionType}`);
+  log.info(`[Phase IV-A] Jurisdiction: ${input.jurisdiction}`);
 
   try {
     // Step 1: Get template elements for this motion type
     const templateElements = getTemplateElements(input.motionType);
-    console.log(`[Phase IV-A] Template elements loaded: ${templateElements.length}`);
+    log.info(`[Phase IV-A] Template elements loaded: ${templateElements.length}`);
 
     // Step 2: Customize elements based on facts if Claude client provided
     let customizedElements: ExtractedElement[];
@@ -75,13 +78,13 @@ export async function extractElements(
 
     // Step 3: Validate we have enough elements
     if (customizedElements.length < 4) {
-      console.warn(`[Phase IV-A] Only ${customizedElements.length} elements extracted, adding fallback elements`);
+      log.warn(`[Phase IV-A] Only ${customizedElements.length} elements extracted, adding fallback elements`);
       customizedElements = addFallbackElements(customizedElements, input.motionType);
     }
 
     // Cap at 6 elements per spec
     if (customizedElements.length > 6) {
-      console.log(`[Phase IV-A] Trimming to 6 elements (had ${customizedElements.length})`);
+      log.info(`[Phase IV-A] Trimming to 6 elements (had ${customizedElements.length})`);
       customizedElements = prioritizeElements(customizedElements, 6);
     }
 
@@ -90,10 +93,10 @@ export async function extractElements(
 
     const duration = Date.now() - start;
 
-    console.log(`[Phase IV-A] Elements extracted: ${customizedElements.length}`);
-    console.log(`[Phase IV-A] Critical elements: ${criticalCount}`);
-    console.log(`[Phase IV-A] Custom elements: ${customCount}`);
-    console.log(`[Phase IV-A] Duration: ${duration}ms`);
+    log.info(`[Phase IV-A] Elements extracted: ${customizedElements.length}`);
+    log.info(`[Phase IV-A] Critical elements: ${criticalCount}`);
+    log.info(`[Phase IV-A] Custom elements: ${customCount}`);
+    log.info(`[Phase IV-A] Duration: ${duration}ms`);
 
     return {
       success: true,
@@ -104,7 +107,7 @@ export async function extractElements(
       durationMs: duration,
     };
   } catch (error) {
-    console.error('[Phase IV-A] Element extraction failed:', error);
+    log.error('[Phase IV-A] Element extraction failed:', error);
     return {
       success: false,
       elements: [],
@@ -132,7 +135,7 @@ function getTemplateElements(motionType: MotionTypeCode): LegalElement[] {
   }
 
   // Fallback for unknown motion types
-  console.warn(`[Phase IV-A] No template for motion type: ${motionType}, using generic elements`);
+  log.warn(`[Phase IV-A] No template for motion type: ${motionType}, using generic elements`);
   return getGenericElements(motionType);
 }
 
@@ -306,7 +309,7 @@ OUTPUT FORMAT (JSON only):
     // Parse JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.warn('[Phase IV-A] Could not parse Claude response, using templates');
+      log.warn('[Phase IV-A] Could not parse Claude response, using templates');
       return templateElements.map(el => ({
         ...el,
         searchQueries: optimizeSearchQueries(el.searchQueries),
@@ -323,7 +326,7 @@ OUTPUT FORMAT (JSON only):
       searchQueries: optimizeSearchQueries(el.searchQueries),
     }));
   } catch (error) {
-    console.error('[Phase IV-A] Claude customization failed:', error);
+    log.error('[Phase IV-A] Claude customization failed:', error);
     return templateElements.map(el => ({
       ...el,
       searchQueries: optimizeSearchQueries(el.searchQueries),

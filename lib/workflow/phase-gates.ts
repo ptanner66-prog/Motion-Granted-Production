@@ -12,6 +12,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phase-gates');
 // ============================================================================
 // PHASE DEFINITIONS — THE LAW
 // ============================================================================
@@ -243,7 +246,7 @@ export async function enforcePhaseTransition(
 
   if (!gateResult.canProceed) {
     // Log the violation attempt
-    console.error(`[PHASE GATE VIOLATION] Order ${orderId}: ${gateResult.error}`);
+    log.error(`[PHASE GATE VIOLATION] Order ${orderId}: ${gateResult.error}`);
 
     // Record in audit log
     await logPhaseViolation(orderId, fromPhase, toPhase, gateResult.error || 'Unknown error');
@@ -285,7 +288,7 @@ export async function markPhaseComplete(
 
   if (missingOutputs.length > 0) {
     const error = `Cannot mark Phase ${phase} complete: Missing required outputs [${missingOutputs.join(', ')}]`;
-    console.error(`[PHASE COMPLETION BLOCKED] Order ${orderId}: ${error}`);
+    log.error(`[PHASE COMPLETION BLOCKED] Order ${orderId}: ${error}`);
 
     await logPhaseViolation(orderId, phase, phase, error);
 
@@ -464,11 +467,11 @@ export async function executePhaseWithGates<T>(
   // GATE CHECK: Can we enter this phase?
   const gateCheck = await validatePhaseGate(orderId, phase);
   if (!gateCheck.canProceed) {
-    console.error(`[PHASE GATE] Blocked entry to Phase ${phase}: ${gateCheck.error}`);
+    log.error(`[PHASE GATE] Blocked entry to Phase ${phase}: ${gateCheck.error}`);
     return { success: false, error: gateCheck.error };
   }
 
-  console.log(`[PHASE GATE] ✓ Entering Phase ${phase}`);
+  log.info(`[PHASE GATE] ✓ Entering Phase ${phase}`);
 
   try {
     // Execute the phase
@@ -478,16 +481,16 @@ export async function executePhaseWithGates<T>(
     // COMPLETION CHECK: Did the phase produce required outputs?
     const completion = await markPhaseComplete(orderId, phase, outputs);
     if (!completion.success) {
-      console.error(`[PHASE GATE] Phase ${phase} output validation failed: ${completion.error}`);
+      log.error(`[PHASE GATE] Phase ${phase} output validation failed: ${completion.error}`);
       return { success: false, error: completion.error };
     }
 
-    console.log(`[PHASE GATE] ✓ Phase ${phase} complete`);
+    log.info(`[PHASE GATE] ✓ Phase ${phase} complete`);
     return { success: true, result };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[PHASE GATE] Phase ${phase} execution failed:`, errorMessage);
+    log.error(`[PHASE GATE] Phase ${phase} execution failed:`, errorMessage);
 
     await logPhaseViolation(orderId, phase, phase, `Execution failed: ${errorMessage}`);
 

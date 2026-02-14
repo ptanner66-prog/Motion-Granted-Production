@@ -26,6 +26,9 @@ import {
 import { createClient } from '@/lib/supabase/server';
 import { JURISDICTION_RULES } from '@/lib/documents/formatting-engine';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-ex-parte-generator');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -622,7 +625,7 @@ function generateExParteDocument(data: ExParteApplicationData): Document {
 export async function generateExParteApplication(
   data: ExParteApplicationData
 ): Promise<ExParteApplicationResult> {
-  console.log(`[ExParteApplication] Generating for order ${data.orderId}`);
+  log.info(`[ExParteApplication] Generating for order ${data.orderId}`);
 
   // Generate document
   const document = generateExParteDocument(data);
@@ -641,7 +644,7 @@ export async function generateExParteApplication(
     });
 
   if (uploadError) {
-    console.error('[ExParteApplication] Upload error:', uploadError);
+    log.error('[ExParteApplication] Upload error:', uploadError);
     throw new Error(`Failed to upload ex parte application: ${uploadError.message}`);
   }
 
@@ -653,8 +656,8 @@ export async function generateExParteApplication(
     (data.reliefSought.length + data.groundsForRelief.length + data.noticeGiven.length) / 5
   ) + 2);
 
-  console.log(`[ExParteApplication] Generated successfully: ${storagePath}`);
-  console.log(`[ExParteApplication] Notice methods used: ${noticeMethodsUsed.join(', ') || 'none'}`);
+  log.info(`[ExParteApplication] Generated successfully: ${storagePath}`);
+  log.info(`[ExParteApplication] Notice methods used: ${noticeMethodsUsed.join(', ') || 'none'}`);
 
   return {
     path: storagePath,

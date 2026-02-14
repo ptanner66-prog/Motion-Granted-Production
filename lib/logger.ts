@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('logger');
+
 /**
  * Structured Logging System
  *
@@ -158,17 +162,17 @@ function outputLog(entry: LogEntry): void {
 
   switch (entry.level) {
     case 'debug':
-      console.debug(jsonLog);
+      log.debug(jsonLog);
       break;
     case 'info':
-      console.info(jsonLog);
+      log.info(jsonLog);
       break;
     case 'warn':
-      console.warn(jsonLog);
+      log.warn(jsonLog);
       break;
     case 'error':
     case 'fatal':
-      console.error(jsonLog);
+      log.error(jsonLog);
       break;
   }
 }

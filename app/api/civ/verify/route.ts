@@ -7,6 +7,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { verifyCitation, type CitationToVerify } from '@/lib/civ/pipeline';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-civ-verify');
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -75,7 +78,7 @@ export async function POST(request: Request) {
       result,
     });
   } catch (error) {
-    console.error('CIV verification error:', error);
+    log.error('CIV verification error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Verification failed' },
       { status: 500 }

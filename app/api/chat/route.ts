@@ -22,6 +22,9 @@ import {
   findLatestHandoff,
   WorkflowFile,
 } from '@/lib/workflow/file-system';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-chat');
 
 interface ChatRequest {
   orderId: string;
@@ -112,7 +115,7 @@ export async function POST(request: Request) {
         });
       }
 
-      console.log(`[Chat API] Revision request for completed order ${order.order_number}`);
+      log.info('Revision request for completed order', { orderNumber: order.order_number });
     }
 
     if (!orderId) {
@@ -318,7 +321,7 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
             return;
           }
 
-          console.log('[CHAT] Using configured API key');
+          log.info('Using configured API key');
 
           const anthropic = new Anthropic({ apiKey });
 
@@ -378,7 +381,7 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
           })}\n\n`));
           controller.close();
         } catch (error) {
-          console.error('Claude streaming error:', error);
+          log.error('Claude streaming error', { error: error instanceof Error ? error.message : error });
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Failed to generate response' })}\n\n`));
           controller.close();
         }
@@ -393,7 +396,7 @@ BEGIN YOUR RESPONSE WITH THE COURT CAPTION:`;
       },
     });
   } catch (error) {
-    console.error('Chat error:', error);
+    log.error('Chat error', { error: error instanceof Error ? error.message : error });
     return new Response(JSON.stringify({
       error: 'Chat request failed. Please try again.',
     }), {
@@ -479,7 +482,7 @@ export async function GET(request: Request) {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('Get conversation error:', error);
+    log.error('Get conversation error', { error: error instanceof Error ? error.message : error });
     return new Response(JSON.stringify({
       error: 'Failed to get conversation. Please try again.',
     }), {
@@ -507,14 +510,14 @@ async function buildInitialContext(
     // Get the superprompt template
     const templateResult = await getSuperpromptTemplate();
     if (!templateResult.success || !templateResult.data) {
-      console.error('[SUPERPROMPT] Failed to get template for chat:', templateResult.error);
+      log.error('Failed to get template for chat', { error: templateResult.error });
       return {
         success: false,
         error: templateResult.error || 'No superprompt template found. Please upload a template in the admin dashboard.',
       };
     }
     const template = templateResult.data;
-    console.log(`[SUPERPROMPT] Chat using template: "${template.name}" (${template.template.length} chars)`);
+    log.info('Chat using template', { name: template.name, length: template.template.length });
 
     // Check for existing handoff file for this order
     let existingHandoffContent = '';
@@ -639,7 +642,7 @@ END OF CASE DATA
 
     return { success: true, context };
   } catch (error) {
-    console.error('Build initial context error:', error);
+    log.error('Build initial context error', { error: error instanceof Error ? error.message : error });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to build context',

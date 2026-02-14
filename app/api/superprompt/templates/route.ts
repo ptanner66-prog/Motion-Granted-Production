@@ -11,6 +11,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { AVAILABLE_PLACEHOLDERS } from '@/lib/workflow/superprompt-engine';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-superprompt-templates');
 
 /** Hard ceiling for max_tokens — Opus/Sonnet support up to 64K output tokens. */
 const MAX_TOKENS_CEILING = 64000;
@@ -112,7 +115,7 @@ export async function GET(request: Request) {
       availablePlaceholders: AVAILABLE_PLACEHOLDERS,
     });
   } catch (error) {
-    console.error('Get templates error:', error);
+    log.error('Get templates error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Failed to fetch templates. Please try again.',
     }, { status: 500 });
@@ -182,7 +185,7 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      console.error('Insert error:', error);
+      log.error('Insert error', { error });
       return NextResponse.json({ error: 'Failed to create template' }, { status: 500 });
     }
 
@@ -191,7 +194,7 @@ export async function POST(request: Request) {
       template: formatTemplate(data),
     });
   } catch (error) {
-    console.error('Create template error:', error);
+    log.error('Create template error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Failed to create template. Please try again.',
     }, { status: 500 });
@@ -272,7 +275,7 @@ export async function PUT(request: Request) {
       template: formatTemplate(data),
     });
   } catch (error) {
-    console.error('Update template error:', error);
+    log.error('Update template error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Failed to update template. Please try again.',
     }, { status: 500 });
@@ -321,7 +324,7 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Delete template error:', error);
+    log.error('Delete template error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Failed to delete template. Please try again.',
     }, { status: 500 });

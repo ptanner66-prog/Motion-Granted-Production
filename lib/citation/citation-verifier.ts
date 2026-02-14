@@ -23,6 +23,9 @@ import type {
 } from '@/types/workflow';
 import type { OperationResult } from '@/types/automation';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-citation-verifier');
 // Create admin client with service role key (bypasses RLS for server-side operations)
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -615,7 +618,7 @@ export async function verifyWorkflowCitationsBatched(
       return { success: true, data: progress };
     }
 
-    console.log(`[CITATION BATCH] Starting verification: ${totalCitations} citations in ${totalBatches} batches`);
+    log.info(`[CITATION BATCH] Starting verification: ${totalCitations} citations in ${totalBatches} batches`);
 
     // Process in batches of 4
     for (let i = 0; i < totalCitations; i += CITATION_BATCH_SIZE) {
@@ -623,7 +626,7 @@ export async function verifyWorkflowCitationsBatched(
       const batchNumber = Math.floor(i / CITATION_BATCH_SIZE) + 1;
       progress.currentBatch = batchNumber;
 
-      console.log(`[CITATION BATCH] Processing batch ${batchNumber}/${totalBatches} (${batch.length} citations)`);
+      log.info(`[CITATION BATCH] Processing batch ${batchNumber}/${totalBatches} (${batch.length} citations)`);
 
       // Verify each citation in the batch
       for (const citation of batch) {
@@ -674,7 +677,7 @@ export async function verifyWorkflowCitationsBatched(
         await onBatchComplete(progress);
       }
 
-      console.log(`[CITATION BATCH] Batch ${batchNumber} complete: ${progress.verified}/${totalCitations} verified, ${progress.failed} failed`);
+      log.info(`[CITATION BATCH] Batch ${batchNumber} complete: ${progress.verified}/${totalCitations} verified, ${progress.failed} failed`);
 
       // Small delay between batches to prevent rate limiting
       if (i + CITATION_BATCH_SIZE < totalCitations) {
@@ -683,7 +686,7 @@ export async function verifyWorkflowCitationsBatched(
     }
 
     progress.isComplete = true;
-    console.log(`[CITATION BATCH] All batches complete: ${progress.verified} verified, ${progress.failed} failed`);
+    log.info(`[CITATION BATCH] All batches complete: ${progress.verified} verified, ${progress.failed} failed`);
 
     return { success: true, data: progress };
   } catch (error) {

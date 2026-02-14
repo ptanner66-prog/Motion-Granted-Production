@@ -5,6 +5,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAdminActivityLog, type AdminAction, type TargetType } from '@/lib/services/admin-activity-log';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-activity-log');
 
 export async function GET(request: NextRequest) {
   try {
@@ -50,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('[AdminActivityLog] Error:', error);
+    log.error('Error fetching activity log', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Failed to fetch activity log' }, { status: 500 });
   }
 }

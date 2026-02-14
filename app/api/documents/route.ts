@@ -4,11 +4,14 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
+import { createLogger } from '@/lib/security/logger'
+
+const log = createLogger('api-documents')
 
 export async function POST(req: Request) {
   // Return early if Supabase is not configured
   if (!isSupabaseConfigured) {
-    console.error('Supabase not configured')
+    log.error('Supabase not configured')
     return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
   }
 
@@ -18,7 +21,7 @@ export async function POST(req: Request) {
     // Get user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
-      console.error('Auth error:', userError)
+      log.error('Auth error', { error: userError })
       return NextResponse.json({ error: 'Please log in to upload documents' }, { status: 401 })
     }
 
@@ -27,7 +30,7 @@ export async function POST(req: Request) {
     try {
       formData = await req.formData()
     } catch (e) {
-      console.error('FormData parse error:', e)
+      log.error('FormData parse error', { error: e instanceof Error ? e.message : e })
       return NextResponse.json({ error: 'Invalid form data' }, { status: 400 })
     }
 
@@ -85,7 +88,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'File is empty' }, { status: 400 })
     }
 
-    console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type)
+    log.info('Uploading file', { fileName: file.name, size: file.size, type: file.type })
 
     // Create unique file path
     const timestamp = Date.now()
@@ -98,7 +101,7 @@ export async function POST(req: Request) {
       const arrayBuffer = await file.arrayBuffer()
       fileBuffer = new Uint8Array(arrayBuffer)
     } catch (e) {
-      console.error('File read error:', e)
+      log.error('File read error', { error: e instanceof Error ? e.message : e })
       return NextResponse.json({ error: 'Failed to read file' }, { status: 500 })
     }
 
@@ -112,7 +115,7 @@ export async function POST(req: Request) {
       })
 
     if (uploadError) {
-      console.error('Storage upload error:', uploadError)
+      log.error('Storage upload error', { error: uploadError })
 
       // Return user-friendly error based on error type
       const errorMessage = uploadError.message || 'Unknown storage error'
@@ -134,12 +137,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'A file with this name already exists for this order' }, { status: 409 })
       } else {
         // Don't expose internal error details to client
-        console.error('Upload error details:', errorMessage)
+        log.error('Upload error details', { error: errorMessage })
         return NextResponse.json({ error: 'Upload failed. Please try again or contact support.' }, { status: 500 })
       }
     }
 
-    console.log('File uploaded successfully to:', filePath)
+    log.info('File uploaded successfully', { filePath })
 
     // Get signed URL (expires in 1 hour) instead of public URL for security
     const { data: urlData, error: urlError } = await supabase.storage
@@ -147,7 +150,7 @@ export async function POST(req: Request) {
       .createSignedUrl(filePath, 3600)
 
     if (urlError) {
-      console.error('Failed to create signed URL:', urlError)
+      log.error('Failed to create signed URL', { error: urlError })
       // Clean up uploaded file
       await supabase.storage.from('documents').remove([filePath]).catch(() => {})
       return NextResponse.json({ error: 'Failed to create secure file access' }, { status: 500 })
@@ -170,7 +173,7 @@ export async function POST(req: Request) {
       .single()
 
     if (dbError) {
-      console.error('Database insert error:', dbError)
+      log.error('Database insert error', { error: dbError })
 
       // Clean up uploaded file
       await supabase.storage.from('documents').remove([filePath]).catch(() => {})
@@ -186,7 +189,7 @@ export async function POST(req: Request) {
       }, { status: 500 })
     }
 
-    console.log('Document record saved:', doc.id)
+    log.info('Document record saved', { documentId: doc.id })
 
     return NextResponse.json({
       success: true,
@@ -199,7 +202,7 @@ export async function POST(req: Request) {
     })
 
   } catch (error) {
-    console.error('Unexpected error in document upload:', error)
+    log.error('Unexpected error in document upload', { error: error instanceof Error ? error.message : error })
     return NextResponse.json({
       error: 'An unexpected error occurred. Please try again.'
     }, { status: 500 })
@@ -265,14 +268,14 @@ export async function GET(req: Request) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Fetch documents error:', error)
+      log.error('Fetch documents error', { error })
       return NextResponse.json({ documents: [] })
     }
 
     return NextResponse.json({ documents: documents || [] })
 
   } catch (error) {
-    console.error('Unexpected error fetching documents:', error)
+    log.error('Unexpected error fetching documents', { error: error instanceof Error ? error.message : error })
     return NextResponse.json({ documents: [] })
   }
 }

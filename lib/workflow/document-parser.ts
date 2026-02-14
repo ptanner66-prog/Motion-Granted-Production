@@ -9,6 +9,9 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude } from '@/lib/automation/claude';
 import { extractCitations } from '@/lib/workflow/citation-verifier';
 import { extractDocumentContent } from './document-extractor';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-document-parser');
 import type {
   ParsedDocument,
   KeyFact,
@@ -417,7 +420,7 @@ export async function parseDocument(
   // unsupported format, etc.). Proceeding with empty content produces a
   // garbage motion. This must BLOCK the workflow, not silently continue.
   if (!fileContent || fileContent.trim().length === 0) {
-    console.error(`[BUG-16] Document ${documentId} for order ${orderId} parsed to EMPTY content. Blocking workflow.`);
+    log.error('Document parsed to empty content, blocking workflow', { documentId, orderId });
     return {
       success: false,
       error: `Document parsing yielded empty content (document: ${documentId}). The uploaded file may be corrupt, password-protected, or in an unsupported format. Please re-upload the document.`,
@@ -428,7 +431,7 @@ export async function parseDocument(
   // which likely indicates a parsing failure rather than a real document.
   const MINIMUM_CONTENT_LENGTH = 50;
   if (fileContent.trim().length < MINIMUM_CONTENT_LENGTH) {
-    console.warn(`[BUG-16] Document ${documentId} content suspiciously short (${fileContent.trim().length} chars). May indicate parsing failure.`);
+    log.warn('Document content suspiciously short, may indicate parsing failure', { documentId, contentLength: fileContent.trim().length });
   }
 
   const errors: ParseError[] = [];
@@ -610,7 +613,7 @@ export async function parseOrderDocuments(
         fileContent = extractResult.data.text;
       } else {
         // Log extraction failure but continue with placeholder
-        console.warn(`Failed to extract content from ${doc.file_name}: ${extractResult.error}`);
+        log.warn('Failed to extract content from document', { fileName: doc.file_name, error: extractResult.error });
         fileContent = `[Content extraction failed for ${doc.file_name}]`;
       }
 

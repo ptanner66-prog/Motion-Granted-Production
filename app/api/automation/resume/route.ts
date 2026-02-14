@@ -10,6 +10,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resumeOrderAutomation } from '@/lib/workflow';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-resume');
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +22,7 @@ export async function POST(request: Request) {
   // Verify user is authenticated
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    console.warn('[Resume API] Unauthorized access attempt');
+    log.warn('Unauthorized access attempt');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -31,7 +34,7 @@ export async function POST(request: Request) {
     .single();
 
   if (profile?.role !== 'admin' && profile?.role !== 'clerk') {
-    console.warn(`[Resume API] Forbidden access attempt by user ${user.id} with role ${profile?.role}`);
+    log.warn('Forbidden access attempt', { userId: user.id, role: profile?.role });
     return NextResponse.json({ error: 'Forbidden - requires admin or clerk role' }, { status: 403 });
   }
 
@@ -103,7 +106,7 @@ export async function POST(request: Request) {
       was_auto_approved: false,
     });
 
-    console.log(`[Resume API] Workflow resumed for order ${order.order_number} by user ${user.id}`);
+    log.info('Workflow resumed', { orderNumber: order.order_number, userId: user.id });
 
     return NextResponse.json({
       success: true,
@@ -111,7 +114,7 @@ export async function POST(request: Request) {
       data: result.data,
     });
   } catch (error) {
-    console.error('[Resume API] Error:', error);
+    log.error('Resume error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Failed to resume workflow. Please try again.' },
       { status: 500 }

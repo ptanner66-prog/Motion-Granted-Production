@@ -6,6 +6,9 @@
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-keys');
 // Get admin Supabase client (bypasses RLS)
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -49,7 +52,7 @@ function decryptKey(encryptedKey: string): string {
     const parts = encryptedKey.slice(ENCRYPTION_PREFIX.length).split(':');
 
     if (parts.length !== 3) {
-      console.error('Invalid encrypted key format');
+      log.error('Invalid encrypted key format');
       return '';
     }
 
@@ -65,7 +68,7 @@ function decryptKey(encryptedKey: string): string {
 
     return decrypted;
   } catch (error) {
-    console.error('Decryption error:', error);
+    log.error('Decryption error:', error);
     return '';
   }
 }
@@ -96,7 +99,7 @@ export async function getAPIKeys(): Promise<{
     const supabase = getAdminClient();
 
     if (!supabase) {
-      console.warn('Supabase not configured, using environment variables for API keys');
+      log.warn('Supabase not configured, using environment variables for API keys');
       return {
         anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
       };
@@ -136,7 +139,7 @@ export async function getAPIKeys(): Promise<{
       anthropic_api_key: keyCache.keys.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
     };
   } catch (error) {
-    console.error('Failed to fetch API keys from database:', error);
+    log.error('Failed to fetch API keys from database:', error);
     return {
       anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
     };

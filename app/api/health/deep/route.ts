@@ -18,6 +18,9 @@
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { getCachedCredentialStatus, verifyAllCredentials } from '@/lib/startup/credential-verifier';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-health-deep');
 
 // ============================================================================
 // TYPES
@@ -382,7 +385,7 @@ export async function GET(request: Request) {
 
   // Log if unhealthy
   if (overallStatus !== 'healthy') {
-    console.error('[Health/Deep] System degraded:', JSON.stringify(response.summary));
+    log.error('System degraded', { summary: response.summary });
   }
 
   return NextResponse.json(response, {

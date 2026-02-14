@@ -25,6 +25,9 @@ import { getFormattingRules, type FormattingRules } from './formatting-engine';
 import { buildCaptionBlock } from './caption-block';
 import { buildSignatureBlock } from './signature-block';
 import { buildCertificateOfService } from './certificate-of-service';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-docx-generator');
 import {
   sanitizePartyName,
   sanitizeForDocument,
@@ -43,7 +46,7 @@ export async function generateMotionDocx(data: MotionData): Promise<Buffer> {
   const jurisdiction = normalizeJurisdiction(sanitizedData.jurisdiction);
   const rules = getFormattingRules(jurisdiction);
 
-  console.log(`[DOCX-GEN] Jurisdiction: ${jurisdiction} → paper: ${rules.paperSize?.name ?? 'letter'} (${rules.paperSize?.widthDXA ?? 12240}×${rules.paperSize?.heightDXA ?? 15840}), margins: T${rules.margins.top}" B${rules.margins.bottom}" L${rules.margins.left}" R${rules.margins.right}"`);
+  log.info(`[DOCX-GEN] Jurisdiction: ${jurisdiction} → paper: ${rules.paperSize?.name ?? 'letter'} (${rules.paperSize?.widthDXA ?? 12240}×${rules.paperSize?.heightDXA ?? 15840}), margins: T${rules.margins.top}" B${rules.margins.bottom}" L${rules.margins.left}" R${rules.margins.right}"`);
 
   // Build all document sections using sanitized data
   const captionParagraphs = buildCaptionBlock(sanitizedData);
@@ -117,7 +120,7 @@ export async function generateMotionDocx(data: MotionData): Promise<Buffer> {
 
   // Pack to buffer
   const buffer = await Packer.toBuffer(doc);
-  console.log(`[DOCX-GEN] Generated ${buffer.length} bytes for order ${sanitizedData.orderId}`);
+  log.info(`[DOCX-GEN] Generated ${buffer.length} bytes for order ${sanitizedData.orderId}`);
   return buffer;
 }
 
