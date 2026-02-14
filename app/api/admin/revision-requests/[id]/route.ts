@@ -107,7 +107,7 @@ export async function PATCH(
           clientName: orderData.profiles.full_name || 'Client',
           clientEmail: orderData.profiles.email,
           adminResponse: admin_response,
-        }).catch(err => {
+        }).catch((err: unknown) => {
           console.error('Failed to queue notification:', err);
         });
       }

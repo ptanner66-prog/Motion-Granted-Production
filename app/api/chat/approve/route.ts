@@ -162,7 +162,7 @@ export async function POST(request: Request) {
           clientName: clientProfile.full_name || 'Client',
           clientEmail: clientProfile.email,
           deliverableReady: true,
-        }).catch(err => {
+        }).catch((err: unknown) => {
           console.error('Failed to queue notification:', err);
         });
       }
