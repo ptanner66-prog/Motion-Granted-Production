@@ -10,7 +10,8 @@ export const maxDuration = 300; // 5 minutes for Claude generation
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { gatherOrderData, getSuperpromptTemplate } from '@/lib/workflow/superprompt-engine';
 import { getAnthropicAPIKey } from '@/lib/api-keys';
@@ -21,34 +22,27 @@ import {
   WorkflowFile,
 } from '@/lib/workflow/file-system';
 
-// Create admin client with service role key (bypasses RLS for server-side operations)
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return null;
-  }
-
-  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
-}
-
 export async function POST(request: Request) {
-  // Use admin client to bypass RLS for server-side motion generation
-  const supabase = getAdminClient();
+  // SP-08: User-scoped client for authentication only.
+  // This route requires service_role for DB operations because it writes to
+  // admin-only tables (conversations, automation_logs) and updates order status.
+  const authClient = await createClient();
 
-  if (!supabase) {
-    return NextResponse.json(
-      { error: 'Database not configured. Missing SUPABASE_SERVICE_ROLE_KEY.' },
-      { status: 500 }
-    );
-  }
-
-  // Verify authentication
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  // Verify authentication via user-scoped client
+  const { data: { user }, error: authError } = await authClient.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  // SP-08: Service_role scoped to DB operations after auth is verified.
+  // This route writes to admin-only tables (conversations, automation_logs)
+  // and updates order status — operations RLS blocks for regular users.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+  }
+  const supabase = createServiceClient(supabaseUrl, supabaseServiceKey);
 
   try {
     const { orderId } = await request.json();

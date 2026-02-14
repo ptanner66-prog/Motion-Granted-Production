@@ -8,7 +8,6 @@
  */
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { WorkflowPhase } from '@/lib/config/phase-registry';
 
 /** Maps PHASE_PROMPTS keys (PHASE_I) to DB phase column values (I). */
@@ -64,17 +63,9 @@ export async function GET(
     const url = new URL(request.url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 50);
 
-    // Fetch from DB with service role
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-    }
-
-    const serviceClient = createSupabaseClient(supabaseUrl, supabaseKey);
-
-    const { data, error } = await serviceClient
+    // SP-08: Use user-scoped client instead of service_role.
+    // Requires admin RLS policies on phase_prompt_versions (see Task 10 migration).
+    const { data, error } = await supabase
       .from('phase_prompt_versions')
       .select('id, phase, prompt_content, edit_version, edited_by, edit_note, created_at')
       .eq('phase', dbPhase)
