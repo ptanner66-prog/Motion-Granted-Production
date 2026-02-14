@@ -2996,8 +2996,21 @@ Provide your judicial evaluation as JSON.`;
     // DO NOT use evaluation.passes — Claude can set it to true on any grade.
     const tierThreshold = input.tier === 'A' ? 3.0 : 3.3;
     const numericGrade = (evaluation.numericGrade ?? evaluation.numeric_grade ?? 0) as number;
-    const passes = numericGrade >= tierThreshold;
-    console.log(`[Phase VII] Grade check: ${numericGrade} >= ${tierThreshold} (Tier ${input.tier}) = ${passes}`);
+    const passesThreshold = numericGrade >= tierThreshold;
+
+    // BUG-04 / CGA6-076: Log evaluation.passes for diagnostics but NEVER gate on it.
+    // The grade numeric comparison (passesThreshold) is the SOLE quality determinant.
+    console.log(
+      `[Phase VII] [DIAGNOSTIC] evaluation.passes=${evaluation.passes}, ` +
+      `numericGrade=${numericGrade}, threshold=${tierThreshold}, ` +
+      `tier=${input.tier}, passes_threshold=${passesThreshold}`
+    );
+    if (evaluation.passes === true && !passesThreshold) {
+      console.warn(
+        `[Phase VII] BACKDOOR BLOCKED: evaluation.passes=true but grade ${numericGrade} < threshold ${tierThreshold}. ` +
+        `Grade-based check (passes_threshold=${passesThreshold}) controls.`
+      );
+    }
 
     return {
       success: true,
@@ -3005,12 +3018,13 @@ Provide your judicial evaluation as JSON.`;
       status: 'completed',
       output: {
         ...phaseOutput,
-        passes,
+        passes_threshold: passesThreshold,  // Grade-computed, NOT Claude's evaluation.passes
+        numeric_score: numericGrade,         // GPA value for threshold comparison
         grade: evaluation.grade,
         numericGrade: evaluation.numericGrade,
         loopNumber,
       },
-      nextPhase: passes ? 'VIII.5' : 'VIII',
+      nextPhase: passesThreshold ? 'VIII.5' : 'VIII',
       requiresReview: true, // CP2: Notify admin of grade
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
@@ -3115,12 +3129,18 @@ async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
     const phaseVIIOutput = (input.previousPhaseOutputs?.['VII'] ?? {}) as Record<string, unknown>;
     const thinkingBudget = getThinkingBudget('VIII', input.tier);
 
-    // BUG-1 FIX: Use latest Phase VIII revision if available (loop 2+ gets the revised draft)
+    // BUG-02 FIX: Use latest Phase VIII revision if available (loop 2+ gets the revised draft).
+    // CRITICAL: On loop 2+, NEVER revert to Phase V. If previousRevision exists but has no
+    // revisedMotion, use the full Phase VIII output (not Phase V original).
     const previousRevision = (input.previousPhaseOutputs?.['VIII'] ?? null) as Record<string, unknown> | null;
-    const currentDraft = previousRevision?.revisedMotion
-      ? previousRevision  // Use Phase VIII Loop N-1 output
+    const isSubsequentLoop = previousRevision !== null;
+    const currentDraft = isSubsequentLoop
+      ? previousRevision  // Loop 2+: always use previous Phase VIII output
       : phaseVOutput;     // First loop: use Phase V original
-    const isSubsequentLoop = !!previousRevision?.revisedMotion;
+
+    if (isSubsequentLoop && !previousRevision?.revisedMotion) {
+      console.warn('[Phase VIII] Previous revision exists but has no revisedMotion field — using full Phase VIII output as draft');
+    }
 
     console.log(`[Phase VIII] Draft source: ${isSubsequentLoop ? 'Phase VIII (previous revision)' : 'Phase V (original)'}`);
     console.log(`[Phase VIII] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
@@ -3256,7 +3276,7 @@ Attorney for ${getRepresentedPartyName()}
 
 ═══════════════════════════════════════════════════════════════
 ${isSubsequentLoop ? 'CURRENT DRAFT (from previous revision loop — improve THIS version):' : 'ORIGINAL DRAFT (Phase V):'}
-${JSON.stringify(isSubsequentLoop ? currentDraft.revisedMotion : phaseVOutput, null, 2)}
+${JSON.stringify(isSubsequentLoop ? (currentDraft.revisedMotion ?? currentDraft) : phaseVOutput, null, 2)}
 
 JUDGE EVALUATION (Phase VII):
 ${JSON.stringify(phaseVIIOutput, null, 2)}
