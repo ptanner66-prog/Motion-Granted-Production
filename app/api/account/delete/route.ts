@@ -54,7 +54,7 @@ export async function DELETE(request: NextRequest) {
       .select('id')
       .eq('client_id', userId);
 
-    const orderIds = (orders || []).map(o => o.id);
+    const orderIds = (orders || []).map((o: { id: string }) => o.id);
 
     // 2. Delete user's documents from storage
     if (orderIds.length > 0) {
@@ -64,13 +64,13 @@ export async function DELETE(request: NextRequest) {
         .in('order_id', orderIds);
 
       if (docs && docs.length > 0) {
-        const paths = docs.map(d => d.storage_path).filter(Boolean);
+        const paths = docs.map((d: { storage_path: string }) => d.storage_path).filter(Boolean);
         if (paths.length > 0) {
           // NOTE: Storage operations need admin client for cross-bucket access
           await authAdminClient.storage
             .from('documents')
             .remove(paths as string[])
-            .catch(err => console.warn('[account/delete] Storage cleanup partial:', err));
+            .catch((err: unknown) => console.warn('[account/delete] Storage cleanup partial:', err));
         }
       }
     }
@@ -142,7 +142,7 @@ export async function DELETE(request: NextRequest) {
         .from('refunds')
         .delete()
         .in('order_id', orderIds)
-        .then(({ error }) => {
+        .then(({ error }: { error: { code?: string; message: string } | null }) => {
           if (error && !error.code?.includes('42P01')) {
             console.warn('[account/delete] Error deleting refunds:', error.message);
           }
