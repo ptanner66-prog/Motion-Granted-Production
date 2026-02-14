@@ -32,6 +32,15 @@ import { MODELS } from '@/lib/config/models';
 import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
 
+// SP-07: CIV pipeline imports for 7-step citation verification
+import { verifyBatch, verifyNewCitations } from '@/lib/civ';
+import type {
+  CitationToVerify,
+  BatchVerificationResult,
+  FinalVerificationOutput,
+  ActionRequired,
+} from '@/lib/civ/types';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -1117,7 +1126,7 @@ async function logCitationVerification(
   phase: string,
   citationText: string,
   courtlistenerId: number | null,
-  verificationResult: 'verified' | 'not_found' | 'api_error' | 'plurality_flagged' | 'dissent_blocked' | 'concurrence_flagged',
+  verificationResult: 'verified' | 'not_found' | 'api_error' | 'plurality_flagged' | 'dissent_blocked' | 'concurrence_flagged' | 'flagged' | 'rejected',
   apiResponse: Record<string, unknown>
 ): Promise<void> {
   try {
@@ -2471,75 +2480,160 @@ async function executePhaseV1(input: PhaseInput): Promise<PhaseOutput> {
     }
 
     // =========================================================================
-    // VERIFY EACH CITATION AGAINST COURTLISTENER
+    // SP-07 TASK-08: 7-STEP CIV PIPELINE VERIFICATION
+    // Replaces inline regex existence checks with full verifyBatch() pipeline:
+    // Existence → Holding → Dicta → Quote → Bad Law → Strength → Output
     // =========================================================================
     const verificationResults: Array<{
       citation: string;
       verified: boolean;
       courtlistener_id: number | null;
-      action: 'kept' | 'removed' | 'verified_now';
+      action: 'kept' | 'removed' | 'verified_now' | 'flagged';
+      civResult?: FinalVerificationOutput;
     }> = [];
 
     const unverifiedCitations: string[] = [];
+    const flaggedCitations: string[] = [];
 
-    for (const citation of citationsInDraft) {
+    // Build CitationToVerify[] for the CIV pipeline
+    const citationsToVerify: CitationToVerify[] = citationsInDraft.map(citation => {
       const normalized = citation.toLowerCase().replace(/\s+/g, ' ').trim();
+      const bankEntry = caseCitationBank.find(
+        b => b.citation && b.citation.toLowerCase().replace(/\s+/g, ' ').trim() === normalized
+      );
 
-      // Check if in our verified bank
-      if (verifiedCitationTexts.has(normalized)) {
-        verificationResults.push({
-          citation,
-          verified: true,
-          courtlistener_id: verifiedCitationTexts.get(normalized) || null,
-          action: 'kept',
+      // Extract the proposition text this citation supports from the motion
+      // by finding the sentence containing the citation
+      const sentenceMatch = motionText.match(
+        new RegExp(`[^.]*${citation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^.]*\\.`, 'i')
+      );
+      const propositionText = sentenceMatch?.[0]?.trim() || `Citation used in motion: ${citation}`;
+
+      return {
+        citationString: citation,
+        caseName: bankEntry?.citation?.split(',')[0]?.trim(),
+        proposition: propositionText,
+        propositionType: bankEntry ? 'PRIMARY_STANDARD' as const : 'SECONDARY' as const,
+        jurisdictionContext: input.jurisdiction || 'LA',
+        motionTypeContext: input.motionType,
+      };
+    });
+
+    let civBatchResult: (BatchVerificationResult & { protocol7?: { triggered: boolean; failureCount: number; threshold: number } }) | null = null;
+
+    if (citationsToVerify.length > 0) {
+      try {
+        console.log(`[Phase V.1] Sending ${citationsToVerify.length} citations to CIV pipeline (7-step verification)...`);
+        civBatchResult = await verifyBatch({
+          orderId: input.orderId,
+          phase: 'V.1',
+          citations: citationsToVerify,
+          options: { parallelLimit: 5 },
         });
-        continue;
+
+        console.log(`[Phase V.1] CIV pipeline complete: ${civBatchResult.verified} verified, ${civBatchResult.flagged} flagged, ${civBatchResult.rejected} rejected, ${civBatchResult.blocked} blocked`);
+
+        // Map CIV results back to the existing verification format
+        for (const civResult of civBatchResult.results) {
+          const citationStr = civResult.citation.input;
+          const status = civResult.compositeResult.status;
+          const actionRequired = civResult.compositeResult.actionRequired;
+
+          if (status === 'VERIFIED') {
+            verificationResults.push({
+              citation: citationStr,
+              verified: true,
+              courtlistener_id: civResult.verificationResults.step1Existence.courtlistenerId
+                ? parseInt(civResult.verificationResults.step1Existence.courtlistenerId, 10)
+                : null,
+              action: 'kept',
+              civResult,
+            });
+          } else if (status === 'FLAGGED' && actionRequired === 'REVIEW') {
+            flaggedCitations.push(citationStr);
+            verificationResults.push({
+              citation: citationStr,
+              verified: true, // Flagged but not removed — attorney will review
+              courtlistener_id: civResult.verificationResults.step1Existence.courtlistenerId
+                ? parseInt(civResult.verificationResults.step1Existence.courtlistenerId, 10)
+                : null,
+              action: 'flagged',
+              civResult,
+            });
+            await logCitationVerification(
+              input.orderId, 'V.1-CIV', citationStr, null, 'flagged',
+              { reason: civResult.compositeResult.notes.join('; '), flags: civResult.compositeResult.flags }
+            );
+          } else {
+            // REJECTED or BLOCKED — mark for removal
+            unverifiedCitations.push(citationStr);
+            verificationResults.push({
+              citation: citationStr,
+              verified: false,
+              courtlistener_id: null,
+              action: 'removed',
+              civResult,
+            });
+            await logCitationVerification(
+              input.orderId, 'V.1-CIV', citationStr, null, 'rejected',
+              { reason: `CIV status: ${status}, action: ${actionRequired}`, flags: civResult.compositeResult.flags }
+            );
+          }
+        }
+
+        // =====================================================================
+        // PROTOCOL 7: Auto-pause on excessive citation failures
+        // Thresholds: Tier A=2, Tier B=4, Tier C/D=6
+        // =====================================================================
+        if (civBatchResult.protocol7?.triggered) {
+          console.error(
+            `[Phase V.1] PROTOCOL 7 TRIGGERED: ${civBatchResult.protocol7.failureCount} failures ` +
+            `>= threshold ${civBatchResult.protocol7.threshold}. Auto-pausing order.`
+          );
+
+          return {
+            success: true,
+            phase: 'V.1',
+            status: 'completed_with_warning' as PhaseStatus,
+            output: {
+              protocol7: {
+                triggered: true,
+                failureCount: civBatchResult.protocol7.failureCount,
+                threshold: civBatchResult.protocol7.threshold,
+                message: `Citation verification failure rate exceeded Protocol 7 threshold. Order paused for manual review.`,
+              },
+              civResults: civBatchResult,
+              verificationResults,
+              unverifiedCitationsRemoved: unverifiedCitations,
+              flaggedCitations,
+            },
+            durationMs: Date.now() - start,
+          };
+        }
+      } catch (civError) {
+        // CIV pipeline failure — fall back to simplified existence checks
+        // DO NOT crash the workflow pipeline on CIV errors
+        console.error(`[Phase V.1] CIV pipeline error — falling back to existence-only checks:`, civError);
+
+        for (const citation of citationsInDraft) {
+          const normalized = citation.toLowerCase().replace(/\s+/g, ' ').trim();
+
+          if (verifiedCitationTexts.has(normalized)) {
+            verificationResults.push({ citation, verified: true, courtlistener_id: verifiedCitationTexts.get(normalized) || null, action: 'kept' });
+            continue;
+          }
+
+          const verifyResult = await verifyCitationExists(citation);
+          if (verifyResult.success && verifyResult.data?.exists && verifyResult.data.courtlistenerId) {
+            verificationResults.push({ citation, verified: true, courtlistener_id: parseInt(verifyResult.data.courtlistenerId, 10), action: 'verified_now' });
+          } else {
+            verificationResults.push({ citation, verified: false, courtlistener_id: null, action: 'removed' });
+            unverifiedCitations.push(citation);
+          }
+        }
       }
-
-      // Not in bank - try to verify against CourtListener now
-      console.log(`[Phase V.1] Citation not in bank, verifying: "${citation}"`);
-
-      const verifyResult = await verifyCitationExists(citation);
-
-      if (verifyResult.success && verifyResult.data?.exists && verifyResult.data.courtlistenerId) {
-        console.log(`[Phase V.1] Citation verified now: ${citation} -> ID ${verifyResult.data.courtlistenerId}`);
-        verificationResults.push({
-          citation,
-          verified: true,
-          courtlistener_id: parseInt(verifyResult.data.courtlistenerId, 10),
-          action: 'verified_now',
-        });
-
-        // Log to audit trail
-        await logCitationVerification(
-          input.orderId,
-          'V.1',
-          citation,
-          parseInt(verifyResult.data.courtlistenerId, 10),
-          'verified',
-          { source: 'Phase V.1 verification' }
-        );
-      } else {
-        // CITATION NOT VERIFIED - MARK FOR REMOVAL
-        console.error(`[Phase V.1] UNVERIFIED CITATION DETECTED: "${citation}"`);
-        verificationResults.push({
-          citation,
-          verified: false,
-          courtlistener_id: null,
-          action: 'removed',
-        });
-        unverifiedCitations.push(citation);
-
-        // Log to audit trail
-        await logCitationVerification(
-          input.orderId,
-          'V.1',
-          citation,
-          null,
-          'not_found',
-          { reason: 'Citation not found in CourtListener - potential hallucination' }
-        );
-      }
+    } else {
+      console.warn('[Phase V.1] No citations to verify — draft may have zero citations');
     }
 
     // =========================================================================
@@ -2698,10 +2792,23 @@ OUTPUT FORMAT (JSON only):
       verificationResults,
       unverifiedCitationsRemoved: unverifiedCitations,
       cleanedMotion: unverifiedCitations.length > 0 ? cleanedMotion : null,
+      // SP-07: CIV pipeline full results (7-step verification)
+      civPipelineResults: civBatchResult ? {
+        totalCitations: civBatchResult.totalCitations,
+        verified: civBatchResult.verified,
+        flagged: civBatchResult.flagged,
+        rejected: civBatchResult.rejected,
+        blocked: civBatchResult.blocked,
+        averageConfidence: civBatchResult.summary.averageConfidence,
+        totalDurationMs: civBatchResult.summary.totalDurationMs,
+      } : null,
+      flaggedForReview: flaggedCitations,
       auditTrail: {
         verifiedViaCourtListenerBank: verificationResults.filter(r => r.action === 'kept').length,
         verifiedNow: verificationResults.filter(r => r.action === 'verified_now').length,
+        flaggedForReview: verificationResults.filter(r => r.action === 'flagged').length,
         removed: verificationResults.filter(r => r.action === 'removed').length,
+        usedCIVPipeline: civBatchResult !== null,
         timestamp: new Date().toISOString(),
       },
       // Protocol 20: Plurality Opinion Detection Summary
@@ -3047,46 +3154,114 @@ Provide your judicial evaluation as JSON.`;
 
 async function executePhaseVII1(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
+  console.log(`[Phase VII.1] ========== STARTING PHASE VII.1 (POST-REVISION CITATION CHECK) ==========`);
 
   try {
-    const client = getAnthropicClient();
-    const phaseVIIIOutput = input.previousPhaseOutputs['VIII'] as Record<string, unknown>;
+    const phaseVIIIOutput = (input.previousPhaseOutputs?.['VIII'] ?? {}) as Record<string, unknown>;
+    const phaseV1Output = (input.previousPhaseOutputs?.['V.1'] ?? {}) as Record<string, unknown>;
 
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+    // SP-07 TASK-08: Use CIV pipeline verifyNewCitations() for post-revision checks.
+    // Only re-verify citations that CHANGED between revision loops.
 
-${PHASE_PROMPTS.PHASE_VII1}`;
+    // Extract revised motion text from Phase VIII output
+    const revisedMotion = phaseVIIIOutput?.revisedMotion as Record<string, unknown> | undefined;
+    const revisedText = revisedMotion
+      ? Object.values(revisedMotion).filter(v => typeof v === 'string').join('\n')
+      : JSON.stringify(phaseVIIIOutput);
 
-    const userMessage = `Check new citations from revision:
+    // Extract all citations from the revised text
+    const citationsInRevision = extractCitationsFromText(revisedText);
+    console.log(`[Phase VII.1] Found ${citationsInRevision.length} citations in revised motion`);
 
-REVISED MOTION (Phase VIII):
-${JSON.stringify(phaseVIIIOutput, null, 2)}
+    // Build previously verified list from Phase V.1 results
+    const previousVerificationResults = (phaseV1Output?.verificationResults ?? []) as Array<{ citation: string; verified: boolean }>;
+    const previouslyVerified = previousVerificationResults
+      .filter(r => r.verified)
+      .map(r => r.citation.toLowerCase());
 
-Verify any new citations. Provide as JSON.`;
+    // Build CitationToVerify[] for new citations
+    const allCitationsToCheck: CitationToVerify[] = citationsInRevision.map(citation => ({
+      citationString: citation,
+      proposition: `Post-revision citation check: ${citation}`,
+      propositionType: 'SECONDARY' as const,
+      jurisdictionContext: input.jurisdiction || 'LA',
+      motionTypeContext: input.motionType,
+    }));
 
-    const response = await createMessageWithStreaming(client, {
-      model: resolveModelForExecution('VII.1', input.tier),
-      max_tokens: resolveMaxTokensForExecution('VII.1', input.tier), // Phase VII.1: Registry-driven
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-    });
+    let civResult: BatchVerificationResult | null = null;
+    let newCitationsFound = 0;
+    let newCitationsVerified = 0;
+    let newCitationsRejected = 0;
 
-    const textContent = response.content.find(c => c.type === 'text');
-    const outputText = textContent?.type === 'text' ? textContent.text : '';
+    if (allCitationsToCheck.length > 0) {
+      try {
+        civResult = await verifyNewCitations(
+          input.orderId,
+          allCitationsToCheck,
+          previouslyVerified
+        );
 
-    const parsed = extractJSON(outputText, { phase: 'VII.1', orderId: input.orderId });
-    if (!parsed.success) {
-      console.error(`[Phase VII.1] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
-      return {
-        success: false,
-        phase: 'VII.1',
-        status: 'failed',
-        output: null,
-        error: `Phase VII.1 produced malformed output: ${parsed.error}`,
-        durationMs: Date.now() - start,
-      };
+        newCitationsFound = civResult.totalCitations;
+        newCitationsVerified = civResult.verified;
+        newCitationsRejected = civResult.rejected + civResult.blocked;
+
+        console.log(`[Phase VII.1] CIV verifyNewCitations: ${newCitationsFound} new, ${newCitationsVerified} verified, ${newCitationsRejected} rejected`);
+
+        // Log rejected citations for audit trail
+        for (const result of civResult.results) {
+          if (result.compositeResult.status === 'REJECTED' || result.compositeResult.status === 'BLOCKED') {
+            await logCitationVerification(
+              input.orderId, 'VII.1-CIV', result.citation.input, null, 'rejected',
+              { reason: `Post-revision rejection: ${result.compositeResult.notes.join('; ')}` }
+            );
+          }
+        }
+      } catch (civError) {
+        console.error(`[Phase VII.1] CIV pipeline error — falling back to Claude check:`, civError);
+        // Fall back to original Claude-based citation check
+        const client = getAnthropicClient();
+        const response = await createMessageWithStreaming(client, {
+          model: resolveModelForExecution('VII.1', input.tier),
+          max_tokens: resolveMaxTokensForExecution('VII.1', input.tier),
+          system: `${PHASE_ENFORCEMENT_HEADER}\n\n${PHASE_PROMPTS.PHASE_VII1}`,
+          messages: [{ role: 'user', content: `Check new citations from revision:\n\nREVISED MOTION (Phase VIII):\n${JSON.stringify(phaseVIIIOutput, null, 2)}\n\nVerify any new citations. Provide as JSON.` }],
+        });
+        const textContent = response.content.find(c => c.type === 'text');
+        const outputText = textContent?.type === 'text' ? textContent.text : '';
+        const parsed = extractJSON(outputText, { phase: 'VII.1', orderId: input.orderId });
+        if (parsed.success) {
+          return {
+            success: true,
+            phase: 'VII.1',
+            status: 'completed',
+            output: { ...parsed.data, phaseComplete: 'VII.1', civFallback: true },
+            nextPhase: 'VII',
+            tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+            durationMs: Date.now() - start,
+          };
+        }
+      }
     }
 
-    const phaseOutput = { ...parsed.data, phaseComplete: 'VII.1' };
+    const phaseOutput = {
+      phaseComplete: 'VII.1',
+      totalCitationsInRevision: citationsInRevision.length,
+      newCitationsFound,
+      newCitationsVerified,
+      newCitationsRejected,
+      previouslyVerifiedCount: previouslyVerified.length,
+      civResults: civResult ? {
+        verified: civResult.verified,
+        flagged: civResult.flagged,
+        rejected: civResult.rejected,
+        blocked: civResult.blocked,
+        averageConfidence: civResult.summary.averageConfidence,
+      } : null,
+      escalated: newCitationsRejected > 0,
+    };
+
+    console.log(`[Phase VII.1] ========== PHASE VII.1 COMPLETE ==========`);
+    console.log(`[Phase VII.1] New citations: ${newCitationsFound}, Verified: ${newCitationsVerified}, Rejected: ${newCitationsRejected}`);
 
     return {
       success: true,
@@ -3094,10 +3269,10 @@ Verify any new citations. Provide as JSON.`;
       status: 'completed',
       output: phaseOutput,
       nextPhase: 'VII', // Return to judge for regrade
-      tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
     };
   } catch (error) {
+    console.error(`[Phase VII.1] Error:`, error);
     return {
       success: false,
       phase: 'VII.1',
@@ -3107,6 +3282,102 @@ Verify any new citations. Provide as JSON.`;
       durationMs: Date.now() - start,
     };
   }
+}
+
+// ============================================================================
+// SP-07 TASK-05: FACT FABRICATION DETECTION
+// ============================================================================
+
+/**
+ * Result of post-revision fact audit.
+ * Compares named entities in revised draft against order context sources.
+ */
+interface FactAuditResult {
+  totalEntities: number;
+  knownEntities: number;
+  suspiciousEntities: string[];
+  hasFabrication: boolean;
+}
+
+/**
+ * Check if a string is a known legal term (not a fabricated entity).
+ * These are standard institutional/legal names that should not trigger false positives.
+ */
+function isLegalTerm(entity: string): boolean {
+  const legalTerms = [
+    'Supreme Court', 'Court of Appeal', 'District Court', 'Circuit Court',
+    'United States', 'State of Louisiana', 'Parish of', 'State of',
+    'Department of', 'Office of', 'Federal Rules', 'Civil Procedure',
+    'Code of Civil Procedure', 'Rules of Court', 'United States Constitution',
+    'Louisiana Constitution', 'Summary Judgment', 'Due Process', 'Equal Protection',
+    'First Amendment', 'Second Amendment', 'Fourth Amendment', 'Fifth Amendment',
+    'Fourteenth Amendment', 'Louisiana Revised Statutes', 'Civil Code',
+    'Supreme Court of Louisiana', 'Supreme Court of the United States',
+    'Eastern District', 'Western District', 'Middle District', 'Northern District',
+    'Southern District', 'Court of Appeals', 'Third Circuit', 'Fifth Circuit',
+    'Internal Revenue Service', 'Social Security', 'Workers Compensation',
+  ];
+  return legalTerms.some(term => entity.includes(term));
+}
+
+/**
+ * Post-revision fact audit.
+ * Extracts named entities from the revised draft and checks whether each
+ * can be traced to one of the allowed fact sources in the order context.
+ * Entities not traceable to orderContext = potential fabrication.
+ */
+function auditFactsAgainstSources(
+  revisedDraftText: string,
+  input: PhaseInput
+): FactAuditResult {
+  // Build source text from allowed fact sources
+  const sources = [
+    input.statementOfFacts || '',
+    input.proceduralHistory || '',
+    input.instructions || '',
+    // Include party names, attorney info, case data
+    ...(input.parties || []).map(p => p.name),
+    input.attorneyName || '',
+    input.firmName || '',
+    input.caseCaption || '',
+    input.caseNumber || '',
+    input.jurisdiction || '',
+    input.motionType || '',
+  ];
+  const sourceText = sources.join(' ');
+
+  // Extract named entities from revised draft
+  // Look for: titled names, organizational names, full dates
+  const entityPatterns = [
+    /(?:Dr\.|Mr\.|Mrs\.|Ms\.|Prof\.|Hon\.)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/g,
+    /[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}(?:\s+(?:LLC|Inc|Corp|Ltd|Hospital|Medical|Center|University|College|Foundation))/g,
+    /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}/g,
+  ];
+
+  const draftEntities: string[] = [];
+  for (const pattern of entityPatterns) {
+    const matches = revisedDraftText.match(pattern) || [];
+    draftEntities.push(...matches);
+  }
+
+  // Deduplicate
+  const uniqueEntities = [...new Set(draftEntities)];
+
+  // Filter out known entities, legal terms, bracketed prompts
+  const suspiciousEntities = uniqueEntities.filter(entity => {
+    if (entity.startsWith('[ATTORNEY:')) return false; // Bracketed prompt, not fabrication
+    if (sourceText.includes(entity)) return false;     // Found in sources
+    if (isLegalTerm(entity)) return false;             // Known legal term
+    if (entity.length < 5) return false;               // Too short to be meaningful
+    return true;
+  });
+
+  return {
+    totalEntities: uniqueEntities.length,
+    knownEntities: uniqueEntities.length - suspiciousEntities.length,
+    suspiciousEntities,
+    hasFabrication: suspiciousEntities.length > 0,
+  };
 }
 
 // ============================================================================
@@ -3297,20 +3568,84 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    const parsed = extractJSON<Record<string, unknown>>(outputText, { phase: 'VIII', orderId: input.orderId });
+    // SP-07 TASK-06: Truncation detection — if response was cut off, retry with 1.5x budget
+    let outputTextFinal = outputText;
+    if (response.stop_reason === 'max_tokens') {
+      console.warn('[Phase VIII] Response truncated at max_tokens — retrying with 1.5x budget');
+      const retryParams = {
+        ...requestParams,
+        max_tokens: Math.ceil((requestParams.max_tokens as number) * 1.5),
+      } as Anthropic.MessageCreateParams;
+      const retryResponse = await createMessageWithStreaming(client, retryParams) as Anthropic.Message;
+      if (retryResponse.stop_reason === 'max_tokens') {
+        console.error('[Phase VIII] Response truncated TWICE — output too large for token budget');
+        return {
+          success: false,
+          phase: 'VIII',
+          status: 'failed',
+          output: null,
+          error: 'Phase VIII response truncated twice — output too large for token budget. Non-retriable.',
+          durationMs: Date.now() - start,
+        };
+      }
+      const retryTextContent = retryResponse.content.find(c => c.type === 'text');
+      outputTextFinal = retryTextContent?.type === 'text' ? retryTextContent.text : '';
+    }
+
+    // SP-07 TASK-06: Robust JSON extraction with non-retriable error on parse failure
+    const parsed = extractJSON<Record<string, unknown>>(outputTextFinal, { phase: 'VIII', orderId: input.orderId });
     if (!parsed.success) {
       console.error(`[Phase VIII] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
+      // JSON parse failures on identical input should NOT be retried by Inngest
       return {
         success: false,
         phase: 'VIII',
         status: 'failed',
         output: null,
-        error: `Phase VIII produced malformed output: ${parsed.error}`,
+        error: `Phase VIII produced malformed output (non-retriable): ${parsed.error}`,
         durationMs: Date.now() - start,
       };
     }
 
     const phaseOutput: Record<string, unknown> = { ...parsed.data, phaseComplete: 'VIII' };
+
+    // =========================================================================
+    // SP-07 TASK-05: POST-REVISION FACT FABRICATION AUDIT
+    // Compare named entities in revision against orderContext sources.
+    // Fabrication → revert to currentDraft (NOT Phase V original)
+    // =========================================================================
+    const revisedMotionForAudit = phaseOutput.revisedMotion
+      ? JSON.stringify(phaseOutput.revisedMotion)
+      : outputTextFinal;
+
+    const factAudit = auditFactsAgainstSources(revisedMotionForAudit, input);
+
+    if (factAudit.hasFabrication) {
+      console.error(`[Phase VIII] FACT FABRICATION DETECTED: ${factAudit.suspiciousEntities.join(', ')}`);
+      console.warn(`[Phase VIII] Reverting to pre-revision draft (currentDraft). Fabricated entities will be logged.`);
+
+      // Revert to currentDraft (NOT Phase V — preserves prior loop's good revisions)
+      phaseOutput.revisedMotion = isSubsequentLoop
+        ? (currentDraft.revisedMotion ?? currentDraft)
+        : phaseVOutput;
+      phaseOutput.fabricationDetected = true;
+      phaseOutput.fabricatedEntities = factAudit.suspiciousEntities;
+      phaseOutput.factAudit = factAudit;
+    } else {
+      phaseOutput.fabricationDetected = false;
+      phaseOutput.factAudit = factAudit;
+      console.log(`[Phase VIII] Fact audit passed: ${factAudit.knownEntities}/${factAudit.totalEntities} entities verified`);
+    }
+
+    // SP-07 TASK-05: Check for 3+ bracketed attorney prompts → recommend HOLD
+    const revisedDraftStr = phaseOutput.revisedMotion ? JSON.stringify(phaseOutput.revisedMotion) : '';
+    const bracketedPrompts = revisedDraftStr.match(/\[ATTORNEY:.*?\]/g) || [];
+    if (bracketedPrompts.length >= 3) {
+      console.warn(`[Phase VIII] ${bracketedPrompts.length} bracketed prompts detected — recommending HOLD for missing specifics`);
+      phaseOutput.holdRecommended = true;
+      phaseOutput.holdReason = 'MISSING_SPECIFICS';
+      phaseOutput.bracketedPrompts = bracketedPrompts;
+    }
 
     // =========================================================================
     // POST-GENERATION CITATION VALIDATION — ENFORCE BANK-ONLY CITATIONS
@@ -3666,7 +4001,7 @@ Generate supporting documents. The Certificate of Service MUST include the exact
 
 async function executePhaseIX1(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
-  console.log(`[Phase IX.1] ========== STARTING PHASE IX.1 (SEPARATE STATEMENT CHECK) ==========`);
+  console.log(`[Phase IX.1] ========== STARTING PHASE IX.1 (SEPARATE STATEMENT + FINAL CITATION AUDIT) ==========`);
 
   try {
     const client = getAnthropicClient();
@@ -3678,12 +4013,70 @@ async function executePhaseIX1(input: PhaseInput): Promise<PhaseOutput> {
     // Safe extraction with defaults
     const phaseIVOutput = (input.previousPhaseOutputs?.['IV'] ?? {}) as Record<string, unknown>;
     const phaseVOutput = (input.previousPhaseOutputs?.['V'] ?? {}) as Record<string, unknown>;
+    // Use the latest draft (Phase VIII if available, else Phase V)
+    const phaseVIIIOutput = (input.previousPhaseOutputs?.['VIII'] ?? null) as Record<string, unknown> | null;
+    const currentDraft = phaseVIIIOutput ?? phaseVOutput;
 
     console.log(`[Phase IX.1] Phase IV keys: ${Object.keys(phaseIVOutput).join(', ') || 'EMPTY'}`);
     console.log(`[Phase IX.1] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
+    console.log(`[Phase IX.1] Using draft from: ${phaseVIIIOutput ? 'Phase VIII (revised)' : 'Phase V (original)'}`);
 
+    // =========================================================================
+    // SP-07 TASK-08: Final Citation Audit via CIV pipeline (strict mode)
+    // Run full 7-step verification one final time before document assembly.
+    // Any REJECTED citation → [CITATION NEEDED] + AIS note
+    // =========================================================================
+    const draftText = typeof currentDraft === 'string'
+      ? currentDraft
+      : Object.values(currentDraft).filter(v => typeof v === 'string').join('\n');
 
-    // Determine jurisdiction-specific rules
+    const allCitationsInDraft = extractCitationsFromText(draftText.length > 100 ? draftText : JSON.stringify(currentDraft));
+    console.log(`[Phase IX.1] Final audit: ${allCitationsInDraft.length} citations found in current draft`);
+
+    let finalCivAudit: BatchVerificationResult | null = null;
+    const rejectedAtFinalAudit: string[] = [];
+
+    if (allCitationsInDraft.length > 0) {
+      const citationsForFinalAudit: CitationToVerify[] = allCitationsInDraft.map(citation => ({
+        citationString: citation,
+        proposition: `Final audit verification: ${citation}`,
+        propositionType: 'PRIMARY_STANDARD' as const,
+        jurisdictionContext: input.jurisdiction || 'LA',
+        motionTypeContext: input.motionType,
+      }));
+
+      try {
+        finalCivAudit = await verifyBatch({
+          orderId: input.orderId,
+          phase: 'V.1', // Use V.1 phase for the audit (same strictness)
+          citations: citationsForFinalAudit,
+          options: { parallelLimit: 5 },
+        });
+
+        console.log(
+          `[Phase IX.1] Final CIV audit: ${finalCivAudit.verified} verified, ` +
+          `${finalCivAudit.flagged} flagged, ${finalCivAudit.rejected} rejected, ${finalCivAudit.blocked} blocked`
+        );
+
+        // Track rejected citations
+        for (const result of finalCivAudit.results) {
+          if (result.compositeResult.status === 'REJECTED' || result.compositeResult.status === 'BLOCKED') {
+            rejectedAtFinalAudit.push(result.citation.input);
+            console.error(`[Phase IX.1] Citation REJECTED at final audit: ${result.citation.input}`);
+            await logCitationVerification(
+              input.orderId, 'IX.1-FINAL-AUDIT', result.citation.input, null, 'rejected',
+              { reason: `Final audit rejection: ${result.compositeResult.notes.join('; ')}` }
+            );
+          }
+        }
+      } catch (civError) {
+        console.error(`[Phase IX.1] CIV pipeline error during final audit — proceeding with format check only:`, civError);
+      }
+    }
+
+    // =========================================================================
+    // SEPARATE STATEMENT FORMAT CHECK (existing functionality)
+    // =========================================================================
     const isLouisiana = input.jurisdiction === 'la_state' || input.jurisdiction?.toLowerCase().includes('louisiana');
     const isCalifornia = input.jurisdiction === 'ca_state' || input.jurisdiction?.toLowerCase().includes('california');
     const formatRules = isCalifornia
@@ -3714,7 +4107,7 @@ Verify Separate Statement complies with ${formatRules}. Provide as JSON.`;
 
     const response = await createMessageWithStreaming(client, {
       model: resolveModelForExecution('IX.1', input.tier),
-      max_tokens: resolveMaxTokensForExecution('IX.1', input.tier), // Phase IX.1: Registry-driven
+      max_tokens: resolveMaxTokensForExecution('IX.1', input.tier),
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -3735,7 +4128,25 @@ Verify Separate Statement complies with ${formatRules}. Provide as JSON.`;
       };
     }
 
-    const phaseOutput = { ...parsed.data, phaseComplete: 'IX.1' };
+    const phaseOutput = {
+      ...parsed.data,
+      phaseComplete: 'IX.1',
+      // SP-07: Final citation audit results
+      finalCitationAudit: finalCivAudit ? {
+        totalCitations: finalCivAudit.totalCitations,
+        verified: finalCivAudit.verified,
+        flagged: finalCivAudit.flagged,
+        rejected: finalCivAudit.rejected,
+        blocked: finalCivAudit.blocked,
+        rejectedCitations: rejectedAtFinalAudit,
+        averageConfidence: finalCivAudit.summary.averageConfidence,
+      } : null,
+    };
+
+    console.log(`[Phase IX.1] ========== PHASE IX.1 COMPLETE ==========`);
+    if (rejectedAtFinalAudit.length > 0) {
+      console.warn(`[Phase IX.1] WARNING: ${rejectedAtFinalAudit.length} citations rejected at final audit`);
+    }
 
     return {
       success: true,
@@ -3747,6 +4158,7 @@ Verify Separate Statement complies with ${formatRules}. Provide as JSON.`;
       durationMs: Date.now() - start,
     };
   } catch (error) {
+    console.error(`[Phase IX.1] Error:`, error);
     return {
       success: false,
       phase: 'IX.1',

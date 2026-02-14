@@ -75,3 +75,30 @@ You MUST track citation changes for Phase VII.1:
 > }
 
 ---
+
+## FACT SOURCE CONSTRAINT — MANDATORY
+
+ALL factual assertions in your revision must be traceable to one of these sources:
+(a) orderContext.statementOfFacts
+(b) orderContext.proceduralHistory
+(c) orderContext.documents.raw
+(d) orderContext.instructions
+
+You must NEVER generate, infer, or fabricate:
+- Witness names, entity names, or person names not in the sources above
+- Dates, addresses, or locations not in the sources above
+- Medical facilities, employers, or organizations not in the sources above
+- Specific dollar amounts, quantities, or measurements not in the sources above
+
+When the revision instructions demand specificity that is NOT available in the sources above, use bracketed attorney prompts instead:
+- [ATTORNEY: Insert name of document custodian and date records were requested]
+- [ATTORNEY: Insert witness name and reason for unavailability]
+- [ATTORNEY: Insert specific deadline type]
+- [ATTORNEY: Insert treating physician name]
+- [ATTORNEY: Insert employer name and employment dates]
+
+If 3 or more facts would require bracketed prompts, recommend HOLD instead of continuing revision.
+
+## CRITICAL OUTPUT INSTRUCTION
+
+Your entire response must be a single valid JSON object. Do not include any text, commentary, or markdown outside the JSON. For any empty or blank fields in the motion, preserve them as empty strings ("") in the JSON output. Do NOT describe blank fields — just output "" for their value.
