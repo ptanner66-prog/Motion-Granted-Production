@@ -43,9 +43,9 @@ export const metadata: Metadata = {
     creator: "@motiongranted",
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
-    apple: "/favicon.svg",
+    icon: "/logo-icon.png",
+    shortcut: "/logo-icon.png",
+    apple: "/logo-icon.png",
   },
   manifest: "/site.webmanifest",
 };
