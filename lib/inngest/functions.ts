@@ -1098,7 +1098,7 @@ export const handleCheckpointApproval = inngest.createFunction(
 export const functions = [
   handleGenerationFailure,
   // New 14-phase workflow - PRIMARY HANDLER for order/submitted
-  ...workflowFunctions,    // Includes: generateOrderWorkflow, handleWorkflowFailure
+  ...workflowFunctions,    // Includes: generateOrderWorkflow, handleWorkflowFailure, handleWorkflowTimeout
   // Supporting functions
   deadlineCheck,
   updateQueuePositions,

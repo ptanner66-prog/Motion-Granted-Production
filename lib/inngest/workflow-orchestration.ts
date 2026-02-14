@@ -82,6 +82,8 @@ import {
   sendHoldNotification,
   sendCP3ReviewNotification,
   sendPaymentConfirmation,
+  sendRevisionNotification,
+  sendDeliveryNotification,
 } from "@/lib/email/email-triggers";
 
 // Feature flags for testing bypass
@@ -1038,10 +1040,12 @@ export const generateOrderWorkflow = inngest.createFunction(
       { limit: 1, key: "event.data.orderId" },  // Per-order lock — prevents duplicate phase runs
     ],
     retries: 3,
-    // CRITICAL: Increase timeout for PDF generation and finalization steps
-    // Default is 10min, but deliverables + finalization can take longer
+    // TASK-25: Timeout tuning for full 14-phase pipeline
+    // finish: Total accumulated runtime across all steps
+    // start: Max time from scheduling to first step invocation
     timeouts: {
-      finish: "15m",  // Total workflow timeout - increase if needed
+      finish: "30m",
+      start: "5m",
     },
   },
   { event: "order/submitted" },
@@ -1940,6 +1944,31 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.log(`[Orchestration] Loop ${loopNum} Phase VIII output persisted for crash recovery`);
       });
 
+      // MB-02: Send revision notification to customer (inside step.run for Inngest durability)
+      await step.run(`send-revision-email-${loopNum}`, async () => {
+        const customerEmail = workflowState.orderContext.firmEmail;
+        if (customerEmail) {
+          try {
+            await sendRevisionNotification(
+              {
+                orderId,
+                orderNumber: workflowState.orderContext.orderNumber,
+                customerEmail,
+                motionType: workflowState.orderContext.motionType,
+              },
+              {
+                loopNumber: loopNum,
+                maxLoops: maxLoopsForTier,
+                currentGrade: String(workflowState.currentGrade || 'Evaluating'),
+                targetGrade: workflowState.tier === 'A' ? 'B (3.0)' : 'B+ (3.3)',
+              }
+            );
+          } catch (emailErr) {
+            console.error(`[Revision Loop ${loopNum}] Email notification failed (non-fatal):`, emailErr);
+          }
+        }
+      });
+
       // SP-07 TASK-05: Check for fabrication detection and hold recommendation
       if (phaseVIIIOutput?.fabricationDetected) {
         console.warn(`[Orchestration] Loop ${loopNum}: FACT FABRICATION detected — revision was reverted. Entities: ${JSON.stringify(phaseVIIIOutput.fabricatedEntities)}`);
@@ -2327,6 +2356,38 @@ export const generateOrderWorkflow = inngest.createFunction(
     });
 
     // ========================================================================
+    // STEP 16.5: MB-02 — Send delivery notification to customer
+    // ========================================================================
+    await step.run("send-delivery-notification", async () => {
+      const customerEmail = workflowState.orderContext.firmEmail;
+      if (customerEmail) {
+        try {
+          const deliverableTypes = deliverables
+            ? Object.keys(deliverables as Record<string, unknown>).filter(k => k !== 'success')
+            : ['Motion Document'];
+
+          await sendDeliveryNotification(
+            {
+              orderId,
+              orderNumber: workflowState.orderContext.orderNumber,
+              customerEmail,
+              motionType: workflowState.orderContext.motionType,
+            },
+            {
+              documentCount: deliverableTypes.length,
+              documentTypes: deliverableTypes.map(t =>
+                t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              ),
+              downloadUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://motiongranted.com"}/orders/${orderId}`,
+            }
+          );
+        } catch (emailErr) {
+          console.error('[Delivery] Email notification failed (non-fatal):', emailErr);
+        }
+      }
+    });
+
+    // ========================================================================
     // STEP 17: Finalize Workflow
     // ========================================================================
     const finalResult = await step.run("finalize-workflow", async () => {
@@ -2610,7 +2671,105 @@ Admin Dashboard: ${process.env.NEXT_PUBLIC_APP_URL}/admin/orders/${orderId}
 );
 
 // ============================================================================
+// WORKFLOW TIMEOUT/CANCELLATION HANDLER (TASK-25)
+// ============================================================================
+
+export const handleWorkflowTimeout = inngest.createFunction(
+  {
+    id: "handle-workflow-timeout",
+  },
+  { event: "inngest/function.cancelled" },
+  async ({ event, step }) => {
+    // Only handle cancellations from our workflow function
+    if (event.data.function_id !== "generate-order-workflow") {
+      return { skipped: true };
+    }
+
+    const { orderId } = event.data.event.data as { orderId: string };
+    const supabase = getSupabase();
+
+    await step.run("log-workflow-timeout", async () => {
+      // Transition order to failed state
+      await supabase
+        .from("orders")
+        .update({
+          status: "generation_failed",
+          generation_error: "Workflow timed out after 30 minutes",
+          needs_manual_review: true,
+        })
+        .eq("id", orderId);
+
+      // Log the timeout
+      await supabase.from("automation_logs").insert({
+        order_id: orderId,
+        action_type: "workflow_timeout",
+        action_details: {
+          reason: "inngest/function.cancelled",
+          functionId: event.data.function_id,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    });
+
+    // Send admin alert
+    await step.run("send-timeout-alert", async () => {
+      const { data: order } = await supabase
+        .from("orders")
+        .select("order_number, case_caption, motion_type, filing_deadline")
+        .eq("id", orderId)
+        .single();
+
+      try {
+        const { Resend } = await import("resend");
+        const resend = new Resend(process.env.RESEND_API_KEY);
+
+        await resend.emails.send({
+          from: EMAIL_FROM.alerts,
+          to: ALERT_EMAIL,
+          subject: `[WORKFLOW TIMEOUT] Order ${order?.order_number || orderId}`,
+          text: `
+Workflow Timed Out - Requires Manual Intervention
+
+Order Details:
+- Order Number: ${order?.order_number || "N/A"}
+- Case: ${order?.case_caption || "N/A"}
+- Motion Type: ${order?.motion_type || "N/A"}
+- Filing Deadline: ${order?.filing_deadline || "N/A"}
+
+The workflow exceeded the 30-minute timeout limit and was cancelled by Inngest.
+
+Action Required:
+1. Check the admin dashboard for this order
+2. Review the automation logs to see which phase was running
+3. Consider manually retrying or processing the order
+
+Admin Dashboard: ${process.env.NEXT_PUBLIC_APP_URL || "https://motiongranted.com"}/admin/orders/${orderId}
+          `.trim(),
+        });
+      } catch (emailError) {
+        console.error("Failed to send workflow timeout email:", emailError);
+
+        // Queue for retry
+        await supabase.from("notification_queue").insert({
+          notification_type: "workflow_timeout",
+          recipient_email: ALERT_EMAIL,
+          order_id: orderId,
+          template_data: {
+            orderNumber: order?.order_number,
+            reason: "Workflow exceeded 30-minute timeout",
+          },
+          priority: 10,
+          status: "pending",
+        });
+      }
+    });
+
+    return { orderId, timedOut: true };
+  }
+);
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
-export const workflowFunctions = [generateOrderWorkflow, handleWorkflowFailure];
+export const workflowFunctions = [generateOrderWorkflow, handleWorkflowFailure, handleWorkflowTimeout];
