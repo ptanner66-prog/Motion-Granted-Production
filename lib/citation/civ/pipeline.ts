@@ -41,7 +41,7 @@ import {
   type CitationVerificationStatus,
 } from '@/lib/config/citation-models';
 import { getTierFromMotionType } from '@/lib/ai/model-router';
-import { deduplicateCitations } from '@/lib/citation/deduplication';
+import { deduplicateCitations } from '@/lib/civ/deduplication';
 
 /**
  * Verify a single citation through all 7 steps

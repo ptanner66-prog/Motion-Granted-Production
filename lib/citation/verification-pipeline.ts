@@ -1,4 +1,8 @@
 /**
+ * @deprecated LEGACY PATH B — Use lib/civ/ (Path A) instead.
+ * This file is retained for reference only. Do not import in new code.
+ * See CIV Pipeline Master Plan, Part 11: Dual Code Path Audit.
+ *
  * Citation Verification Pipeline Orchestrator
  *
  * Orchestrates all 7 steps of the CIV pipeline:

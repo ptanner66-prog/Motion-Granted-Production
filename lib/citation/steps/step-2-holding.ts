@@ -1,4 +1,8 @@
 /**
+ * @deprecated LEGACY PATH B — Use lib/civ/ (Path A) instead.
+ * This file is retained for reference only. Do not import in new code.
+ * See CIV Pipeline Master Plan, Part 11: Dual Code Path Audit.
+ *
  * Step 2: Two-Stage Holding Verification
  *
  * CIV Spec Section 5, API Architecture Spec Section 3.1

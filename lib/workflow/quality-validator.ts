@@ -6,7 +6,7 @@
  */
 
 import { askClaude } from '@/lib/automation/claude';
-import { extractCitations } from '@/lib/citation/citation-verifier';
+import { extractCitations } from '@/lib/workflow/citation-verifier';
 import { getMotionTemplate, validateAgainstTemplate } from './motion-templates';
 import type { MotionType } from '@/types/workflow';
 import type { OperationResult } from '@/types/automation';

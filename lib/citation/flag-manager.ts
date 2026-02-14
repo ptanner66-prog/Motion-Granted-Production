@@ -1,4 +1,8 @@
 /**
+ * @deprecated LEGACY PATH B — Use lib/civ/ (Path A) instead.
+ * This file is retained for reference only. Do not import in new code.
+ * See CIV Pipeline Master Plan, Part 11: Dual Code Path Audit.
+ *
  * Flag Manager (Task 37)
  *
  * Centralized flag management for citation verification pipeline.

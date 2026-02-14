@@ -14,7 +14,7 @@ import type {
 import { extractLouisianaCitations, type LACitation } from "./la-statute-parser";
 import { fullPreprocess } from "./citation-preprocessor";
 import { resolveAllShorthand } from "./shorthand-resolver";
-import { deduplicateCitationsStrict } from "@/lib/citation/deduplication";
+import { deduplicateCitationsStrict } from "@/lib/civ/deduplication";
 
 const EYECITE_SCRIPT = path.join(process.cwd(), "scripts", "eyecite_extract.py");
 const CONTEXT_CHARS = 500; // Characters before/after citation for context

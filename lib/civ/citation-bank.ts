@@ -1,8 +1,4 @@
 /**
- * @deprecated LEGACY PATH B — Use lib/civ/ (Path A) instead.
- * This file is retained for reference only. Do not import in new code.
- * See CIV Pipeline Master Plan, Part 11: Dual Code Path Audit.
- *
  * Citation Bank Module (Task 32)
  *
  * Bank-Only Citation Enforcement - Decision 1 from Stress Testing

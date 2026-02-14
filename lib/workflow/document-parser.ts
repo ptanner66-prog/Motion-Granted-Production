@@ -7,7 +7,7 @@
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude } from '@/lib/automation/claude';
-import { extractCitations } from '@/lib/citation/citation-verifier';
+import { extractCitations } from '@/lib/workflow/citation-verifier';
 import { extractDocumentContent } from './document-extractor';
 import type {
   ParsedDocument,

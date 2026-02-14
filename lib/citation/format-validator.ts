@@ -1,4 +1,8 @@
 /**
+ * @deprecated LEGACY PATH B — Use lib/civ/ (Path A) instead.
+ * This file is retained for reference only. Do not import in new code.
+ * See CIV Pipeline Master Plan, Part 11: Dual Code Path Audit.
+ *
  * Citation Format Validator (Task 33)
  *
  * Citation Format Rules - Decisions 2-3 from Stress Testing

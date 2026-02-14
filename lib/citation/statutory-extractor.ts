@@ -1,4 +1,8 @@
 /**
+ * @deprecated LEGACY PATH B — Use lib/civ/ (Path A) instead.
+ * This file is retained for reference only. Do not import in new code.
+ * See CIV Pipeline Master Plan, Part 11: Dual Code Path Audit.
+ *
  * Statutory Citation Extractor — BUG-08 Production Fix
  *
  * Extracts statutory citations (La. C.C.P., U.S.C., Cal. Code, etc.)

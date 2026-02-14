@@ -1,5 +1,6 @@
 /**
- * @deprecated Re-export shim. Canonical location: lib/citation/civ/ (CGA6-031, CGA6-033).
- * New code should import from '@/lib/citation/civ'.
+ * CIV Pipeline — Canonical Import Path (SP-03).
+ * All new code should import from '@/lib/civ'.
+ * Implementation lives in lib/citation/civ/ (re-exported here).
  */
 export * from '@/lib/citation/civ/index';
