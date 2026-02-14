@@ -65,8 +65,8 @@ export interface AttorneyApproval {
 
 // Citation format indicators of unpublished opinions
 const UNPUBLISHED_CITATION_PATTERNS = [
-  /\bWL\s+\d+/i, // Westlaw citation (often unpublished)
-  /\bLEXIS\s+\d+/i, // LexisNexis citation (often unpublished)
+  /\bWL\s+\d+/i, // WL-format citation (often unpublished)
+  /\bLEXIS\s+\d+/i, // LEXIS-format citation (often unpublished)
   /\d{4}\s+U\.?S\.?\s+Dist\.?\s+LEXIS/i, // U.S. Dist. LEXIS
   /\d{4}\s+U\.?S\.?\s+App\.?\s+LEXIS/i, // U.S. App. LEXIS
   /\bFed\.?\s*Appx\.?\b/i, // Federal Appendix (unpublished)
