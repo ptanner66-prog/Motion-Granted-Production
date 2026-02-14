@@ -16,6 +16,9 @@
 import { createClient } from '@/lib/supabase/client';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('feedback-feedback-service');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -88,7 +91,7 @@ export async function submitFeedback(
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    console.error('[Feedback] No authenticated user');
+    log.error('[Feedback] No authenticated user');
     return null;
   }
 
@@ -100,7 +103,7 @@ export async function submitFeedback(
     .single();
 
   if (!order || order.user_id !== user.id) {
-    console.error('[Feedback] User does not own order');
+    log.error('[Feedback] User does not own order');
     return null;
   }
 
@@ -112,7 +115,7 @@ export async function submitFeedback(
     .single();
 
   if (existing) {
-    console.error('[Feedback] Feedback already submitted for this order');
+    log.error('[Feedback] Feedback already submitted for this order');
     return null;
   }
 
@@ -131,7 +134,7 @@ export async function submitFeedback(
     .single();
 
   if (error || !data) {
-    console.error('[Feedback] Submit error:', error);
+    log.error('[Feedback] Submit error:', error);
     return null;
   }
 
@@ -287,7 +290,7 @@ export async function scheduleFeedbackRequest(
   const supabase = getAdminSupabase();
 
   if (!supabase) {
-    console.error('[Feedback] No admin client available');
+    log.error('[Feedback] No admin client available');
     return null;
   }
 
@@ -299,13 +302,13 @@ export async function scheduleFeedbackRequest(
     .single();
 
   if (!order) {
-    console.error('[Feedback] Order not found');
+    log.error('[Feedback] Order not found');
     return null;
   }
 
   // Only schedule for completed/delivered orders
   if (order.status !== 'completed' && order.status !== 'delivered') {
-    console.error('[Feedback] Order not in completed/delivered status');
+    log.error('[Feedback] Order not in completed/delivered status');
     return null;
   }
 
@@ -317,7 +320,7 @@ export async function scheduleFeedbackRequest(
     .single();
 
   if (existingFeedback) {
-    console.log('[Feedback] Feedback already submitted, skipping request');
+    log.info('[Feedback] Feedback already submitted, skipping request');
     return null;
   }
 
@@ -356,11 +359,11 @@ export async function scheduleFeedbackRequest(
     .single();
 
   if (error || !data) {
-    console.error('[Feedback] Schedule error:', error);
+    log.error('[Feedback] Schedule error:', error);
     return null;
   }
 
-  console.log(`[Feedback] Scheduled feedback request for order ${orderId} at ${scheduledFor}`);
+  log.info(`[Feedback] Scheduled feedback request for order ${orderId} at ${scheduledFor}`);
 
   return {
     id: data.id,

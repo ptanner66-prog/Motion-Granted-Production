@@ -3,6 +3,9 @@ import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { sendEmail } from '@/lib/resend'
 import { DraftReadyEmail } from '@/emails/draft-ready'
 import { formatMotionType } from '@/config/motion-types'
+import { createLogger } from '@/lib/security/logger'
+
+const log = createLogger('api-orders-notify-delivery')
 
 // POST /api/orders/[id]/notify-delivery
 // Sends draft delivery notification email to the client
@@ -79,13 +82,13 @@ export async function POST(
     })
 
     if (!result.success) {
-      console.error('Failed to send draft ready email:', result.error)
+      log.error('Failed to send draft ready email', { error: result.error })
       return NextResponse.json({ error: 'Failed to send email' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, message: 'Delivery notification sent' })
   } catch (error) {
-    console.error('Error sending delivery notification:', error)
+    log.error('Error sending delivery notification', { error: error instanceof Error ? error.message : error })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

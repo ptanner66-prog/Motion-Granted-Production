@@ -43,6 +43,9 @@ import {
 import { getTierFromMotionType } from '@/lib/ai/model-router';
 import { deduplicateCitations } from '@/lib/civ/deduplication';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-civ-pipeline');
 /**
  * Verify a single citation through all 7 steps
  *
@@ -66,7 +69,7 @@ export async function verifyCitation(
       // Cache hit - but still need to run bad law check (validity expires)
       // For now, log and continue with full verification
       // In future, implement partial cache usage
-      console.log('VPI cache hit, but continuing with full verification for freshness');
+      log.info('VPI cache hit, but continuing with full verification for freshness');
     }
   }
 
@@ -365,7 +368,7 @@ export async function verifyBatch(
   const dedupResult = deduplicateCitations(rawCitationStrings);
 
   if (dedupResult.stats.duplicatesRemoved > 0 || dedupResult.stats.incompleteRemoved > 0) {
-    console.log(
+    log.info(
       `[CIV_PIPELINE] Deduplication: input=${dedupResult.stats.inputCount} ` +
       `unique=${dedupResult.stats.uniqueCount} ` +
       `duplicates_removed=${dedupResult.stats.duplicatesRemoved} ` +
@@ -400,7 +403,7 @@ export async function verifyBatch(
     if (failureCount >= failureThreshold) {
       protocol7Paused = true;
       pausedAtCitation = i;
-      console.log(
+      log.info(
         `[CIV_PIPELINE] PROTOCOL_7_PAUSE order=${orderId} tier=${tier} ` +
         `failures=${failureCount} threshold=${failureThreshold} ` +
         `paused_at_citation=${i}/${dedupedCitations.length}`
@@ -464,7 +467,7 @@ export async function verifyBatch(
     : undefined;
 
   if (protocol7Paused) {
-    console.log(
+    log.info(
       `[CIV_PIPELINE] Protocol 7 summary: ${protocol7!.message}`
     );
   }

@@ -14,6 +14,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phases-phase-i');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -377,7 +380,7 @@ export async function detectPathFromDocuments(
   const hasOpponentMotion = documents.some(doc => doc.type === 'opponent_motion');
 
   if (hasOpponentMotion) {
-    console.log('[Phase I] Detected opponent motion - switching to PATH B');
+    log.info('[Phase I] Detected opponent motion - switching to PATH B');
     return 'path_b';
   }
 
@@ -600,10 +603,10 @@ export async function saveIntakeData(
       throw updateError;
     }
 
-    console.log(`[Phase I] Saved intake data for order ${orderId}`);
+    log.info(`[Phase I] Saved intake data for order ${orderId}`);
     return { success: true };
   } catch (error) {
-    console.error('[Phase I] Error saving intake data:', error);
+    log.error('[Phase I] Error saving intake data:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -651,13 +654,13 @@ export async function completePhaseI(
       })
       .eq('order_id', orderId);
 
-    console.log(`[Phase I] Completed for order ${orderId}, advancing to Phase II`);
+    log.info(`[Phase I] Completed for order ${orderId}, advancing to Phase II`);
     return {
       success: true,
       nextPhase: 'II',
     };
   } catch (error) {
-    console.error('[Phase I] Error completing phase:', error);
+    log.error('[Phase I] Error completing phase:', error);
     return {
       success: false,
       nextPhase: 'I',

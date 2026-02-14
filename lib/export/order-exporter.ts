@@ -19,6 +19,9 @@
 
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('export-order-exporter');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -145,7 +148,7 @@ async function fetchOrders(
   const supabase = getAdminClient();
 
   if (!supabase) {
-    console.error('[Export] No admin client available');
+    log.error('[Export] No admin client available');
     return [];
   }
 
@@ -200,7 +203,7 @@ async function fetchOrders(
   const { data, error } = await query.limit(10000);
 
   if (error) {
-    console.error('[Export] Query error:', error);
+    log.error('[Export] Query error:', error);
     return [];
   }
 
@@ -436,7 +439,7 @@ export async function scheduleExport(
   const supabase = getAdminClient();
 
   if (!supabase) {
-    console.error('[Export] No admin client available');
+    log.error('[Export] No admin client available');
     return null;
   }
 
@@ -461,11 +464,11 @@ export async function scheduleExport(
     .single();
 
   if (error || !data) {
-    console.error('[Export] Schedule error:', error);
+    log.error('[Export] Schedule error:', error);
     return null;
   }
 
-  console.log(`[Export] Scheduled ${type} export for ${recipientEmail}`);
+  log.info(`[Export] Scheduled ${type} export for ${recipientEmail}`);
 
   return {
     id: data.id,
@@ -497,7 +500,7 @@ export async function processScheduledExport(
     .single();
 
   if (!exportRecord) {
-    console.error('[Export] Export record not found');
+    log.error('[Export] Export record not found');
     return false;
   }
 
@@ -563,7 +566,7 @@ export async function processScheduledExport(
       })
       .eq('id', exportId);
 
-    console.log(`[Export] Completed export ${exportId} with ${result.recordCount} records`);
+    log.info(`[Export] Completed export ${exportId} with ${result.recordCount} records`);
 
     // Send email to recipient with download link
     if (exportRecord.recipient_email && urlData?.signedUrl) {
@@ -584,13 +587,13 @@ export async function processScheduledExport(
           </div>`
         );
       } catch (emailError) {
-        console.warn('[Export] Failed to send export email:', emailError);
+        log.warn('[Export] Failed to send export email:', emailError);
       }
     }
 
     return true;
   } catch (error) {
-    console.error('[Export] Processing error:', error);
+    log.error('[Export] Processing error:', error);
 
     // Mark as failed
     await supabase

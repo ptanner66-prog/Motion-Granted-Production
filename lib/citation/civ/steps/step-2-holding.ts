@@ -24,6 +24,9 @@ import {
   type MotionTier,
 } from '@/lib/ai/model-router';
 import type { Step2Result, PropositionType, VerificationResult } from '../types';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-civ-steps-step-2-holding');
 import {
   getCitationModelWithLogging,
   isHighStakes,
@@ -239,7 +242,7 @@ export async function step2HoldingVerification(
 
   if (highStakesCheck.isHighStakes) {
     flags = [...flags, 'HIGH_STAKES'];
-    console.log(
+    log.info(
       `[CIV_STEP2] citation=${citation.substring(0, 50)} HIGH_STAKES=true ` +
       `rules=[${highStakesCheck.triggeredRules.join(',')}] ` +
       `reasons=[${highStakesCheck.reasons.join('; ')}]`
@@ -257,7 +260,7 @@ export async function step2HoldingVerification(
   );
 
   // Log Stage 1 result
-  console.log(
+  log.info(
     `[CIV_STEP2] citation=${citation.substring(0, 50)} stage=1 ` +
     `confidence=${stage1.confidence} classification=${stage1.classification} ` +
     `result=${stage1.result} is_majority=${stage1.isFromMajority} ` +
@@ -292,7 +295,7 @@ export async function step2HoldingVerification(
     );
 
     // Log Stage 2 result
-    console.log(
+    log.info(
       `[CIV_STEP2] citation=${citation.substring(0, 50)} stage=2 ` +
       `result=${stage2Result.result} strength=${stage2Result.strength} ` +
       `agrees=${stage2Result.agreesWithStage1} classification=${stage2Result.classification}`
@@ -306,7 +309,7 @@ export async function step2HoldingVerification(
       highStakesCheck.isHighStakes
     );
 
-    console.log(
+    log.info(
       `[CIV_STEP2] citation=${citation.substring(0, 50)} tiebreaker=${tiebreakerResult.result} ` +
       `reason="${tiebreakerResult.reason}"`
     );

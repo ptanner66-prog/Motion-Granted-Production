@@ -323,18 +323,18 @@ export default function NewOrderPage() {
         })
       }
 
-      // Start Claude conversation with superprompt + order data
-      // This ensures AI has access to all uploaded documents
+      // BP-005: Route to Inngest workflow pipeline (not chat/start bypass)
+      // This triggers the full 14-phase workflow via automation/start → Inngest
       if (orderId) {
         try {
-          await fetch('/api/chat/start', {
+          await fetch('/api/automation/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ orderId }),
           })
         } catch (automationErr) {
-          // Non-fatal - admin can start manually from Claude Chat tab
-          console.error('Failed to start Claude conversation:', automationErr)
+          // Non-fatal - admin can start manually from admin dashboard
+          console.error('Failed to start workflow automation:', automationErr)
         }
       }
 

@@ -11,6 +11,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getWorkflowProgress } from '@/lib/workflow';
 import { inngest } from '@/lib/inngest/client';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-execute');
 
 export async function POST(
   request: Request,
@@ -76,7 +79,7 @@ export async function POST(
       progress: progress.success ? progress.data : null,
     });
   } catch (error) {
-    console.error('Workflow execute error:', error);
+    log.error('Workflow execute error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Workflow execution failed. Please try again.' },
       { status: 500 }

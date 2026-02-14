@@ -31,6 +31,9 @@ import {
 import { createClient } from '@/lib/supabase/server';
 import { extractTextFromPDF, extractTextFromDOCX } from '@/lib/workflow/phases/phase-ii';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-table-of-authorities');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -68,8 +71,8 @@ const CITATION_PATTERNS = {
     /\d+\s+(U\.?S\.?|F\.\d+|Cal\.\d*|So\.\d*|S\.W\.\d*|N\.E\.\d*|A\.\d*|P\.\d*)\s+\d+/i,
     /\d+\s+(S\.?\s*Ct\.?|L\.?\s*Ed\.?)\s+\d+/i,
     /\d+\s+(Cal\.?\s*App\.?|Cal\.?\s*Rptr\.?)\s+\d+/i,
-    /\d+\s+WL\s+\d+/i, // Westlaw citations
-    /\d+\s+LEXIS\s+\d+/i, // Lexis citations
+    /\d+\s+WL\s+\d+/i, // WL-format citations (unpublished)
+    /\d+\s+LEXIS\s+\d+/i, // LEXIS-format citations (unpublished)
     /In\s+re\s+/i, // In re cases
     /Ex\s+parte\s+/i, // Ex parte cases
   ],
@@ -285,7 +288,7 @@ export async function findCitationPages(
       .download(documentPath);
 
     if (error || !fileData) {
-      console.warn(`[TOA] Could not download document: ${documentPath}`);
+      log.warn(`[TOA] Could not download document: ${documentPath}`);
       return [];
     }
 
@@ -320,7 +323,7 @@ export async function findCitationPages(
 
     return pageNumbers;
   } catch (error) {
-    console.error(`[TOA] Error finding citation pages:`, error);
+    log.error(`[TOA] Error finding citation pages:`, error);
     return [];
   }
 }
@@ -496,7 +499,7 @@ function generateTOADocument(entries: TOAEntry[]): Document {
 export async function generateTableOfAuthorities(
   data: TableOfAuthoritiesData
 ): Promise<TableOfAuthoritiesResult> {
-  console.log(`[TOA] Generating for order ${data.orderId}, ${data.citations.length} citations`);
+  log.info(`[TOA] Generating for order ${data.orderId}, ${data.citations.length} citations`);
 
   const entries: TOAEntry[] = [];
 
@@ -538,14 +541,14 @@ export async function generateTableOfAuthorities(
     });
 
   if (uploadError) {
-    console.error('[TOA] Upload error:', uploadError);
+    log.error('[TOA] Upload error:', uploadError);
     throw new Error(`Failed to upload table of authorities: ${uploadError.message}`);
   }
 
   // Estimate page count
   const estimatedPageCount = Math.max(1, Math.ceil(uniqueEntries.length / 25)); // ~25 entries per page
 
-  console.log(`[TOA] Generated successfully: ${storagePath}, ${uniqueEntries.length} unique entries`);
+  log.info(`[TOA] Generated successfully: ${storagePath}, ${uniqueEntries.length} unique entries`);
 
   return {
     path: storagePath,

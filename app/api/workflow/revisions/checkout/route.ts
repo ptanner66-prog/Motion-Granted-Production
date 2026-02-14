@@ -16,6 +16,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-revisions-checkout');
 
 // Initialize Stripe only if configured
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -159,7 +162,7 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', revision.id);
 
-    console.log(`[REVISION CHECKOUT] Created session ${session.id} for workflow ${workflowId}, revision ${revision.id}, amount $${revision.charge_amount}`);
+    log.info('Created checkout session', { sessionId: session.id, workflowId, revisionId: revision.id, amount: revision.charge_amount });
 
     return NextResponse.json({
       success: true,
@@ -168,7 +171,7 @@ export async function POST(request: NextRequest) {
       amount: revision.charge_amount,
     });
   } catch (error) {
-    console.error('[REVISION CHECKOUT] Stripe error:', error);
+    log.error('Stripe error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Failed to create checkout session' },
       { status: 500 }

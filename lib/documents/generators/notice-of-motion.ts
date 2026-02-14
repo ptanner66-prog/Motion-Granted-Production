@@ -30,6 +30,9 @@ import {
 import { createClient } from '@/lib/supabase/server';
 import { JURISDICTION_RULES } from '@/lib/documents/formatting-engine';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-notice-of-motion');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -533,7 +536,7 @@ function generateNoticeOfMotionDocument(data: NoticeOfMotionData): Document {
 export async function generateNoticeOfMotion(
   data: NoticeOfMotionData
 ): Promise<NoticeOfMotionResult> {
-  console.log(`[NoticeOfMotion] Generating for order ${data.orderId}, motion: ${data.motionType}`);
+  log.info(`[NoticeOfMotion] Generating for order ${data.orderId}, motion: ${data.motionType}`);
 
   // Generate document
   const document = generateNoticeOfMotionDocument(data);
@@ -552,14 +555,14 @@ export async function generateNoticeOfMotion(
     });
 
   if (uploadError) {
-    console.error('[NoticeOfMotion] Upload error:', uploadError);
+    log.error('[NoticeOfMotion] Upload error:', uploadError);
     throw new Error(`Failed to upload notice of motion: ${uploadError.message}`);
   }
 
   // Estimate page count (typically 2-3 pages)
   const estimatedPageCount = Math.max(2, Math.ceil((data.reliefSought.length + data.supportingDocuments.length) / 5));
 
-  console.log(`[NoticeOfMotion] Generated successfully: ${storagePath}`);
+  log.info(`[NoticeOfMotion] Generated successfully: ${storagePath}`);
 
   return {
     path: storagePath,

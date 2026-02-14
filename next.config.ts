@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   // Increase body size limit for large document uploads (legal briefs can be 50MB+)
@@ -75,4 +76,24 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// SP-12: Wrap with Sentry for error tracking with PII sanitization.
+// Sentry config files (sentry.server.config.ts, sentry.client.config.ts, sentry.edge.config.ts)
+// contain beforeSend/beforeBreadcrumb hooks that strip PII before transmission.
+export default withSentryConfig(nextConfig, {
+  // Suppress source map upload warnings when SENTRY_AUTH_TOKEN is not set
+  silent: !process.env.SENTRY_AUTH_TOKEN,
+
+  // Upload source maps for better stack traces in production
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+
+  // Route browser requests to avoid ad-blockers
+  tunnelRoute: '/monitoring-tunnel',
+
+  // Disable Sentry logger to avoid polluting function logs
+  disableLogger: true,
+
+  // Automatically instrument API routes and server components
+  autoInstrumentServerFunctions: true,
+  autoInstrumentMiddleware: true,
+});

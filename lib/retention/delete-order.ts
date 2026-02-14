@@ -6,6 +6,9 @@ import { createClient } from '@/lib/supabase/server';
 import { anonymizeOrderForAnalytics } from './anonymize';
 import { logActivity } from '@/lib/activity/activity-logger';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('retention-delete-order');
 export type DeletionType = 'AUTO' | 'CUSTOMER_REQUESTED' | 'ADMIN';
 
 export interface DeleteResult {
@@ -31,7 +34,7 @@ export async function deleteOrderData(
   const supabase = await createClient();
   const deletedAt = new Date().toISOString();
 
-  console.log(`[Delete] Starting deletion for order ${orderId} (type: ${deletionType})`);
+  log.info(`[Delete] Starting deletion for order ${orderId} (type: ${deletionType})`);
 
   try {
     // Step 1: Verify order exists and isn't already deleted
@@ -52,9 +55,9 @@ export async function deleteOrderData(
     // Step 2: Anonymize analytics data BEFORE deletion
     try {
       await anonymizeOrderForAnalytics(orderId);
-      console.log(`[Delete] Anonymized analytics for order ${orderId}`);
+      log.info(`[Delete] Anonymized analytics for order ${orderId}`);
     } catch (anonError) {
-      console.error(`[Delete] Anonymization failed for ${orderId}:`, anonError);
+      log.error(`[Delete] Anonymization failed for ${orderId}:`, anonError);
       // Continue with deletion even if anonymization fails
     }
 
@@ -69,7 +72,7 @@ export async function deleteOrderData(
         await supabase.storage.from('order-documents').remove(filePaths);
       }
     } catch (storageError) {
-      console.warn(`[Delete] Could not delete uploads for ${orderId}:`, storageError);
+      log.warn(`[Delete] Could not delete uploads for ${orderId}:`, storageError);
     }
 
     // Step 4: Delete deliverables from storage
@@ -83,7 +86,7 @@ export async function deleteOrderData(
         await supabase.storage.from('deliverables').remove(deliverablePaths);
       }
     } catch (storageError) {
-      console.warn(`[Delete] Could not delete deliverables for ${orderId}:`, storageError);
+      log.warn(`[Delete] Could not delete deliverables for ${orderId}:`, storageError);
     }
 
     // Step 5: Delete related database records
@@ -96,7 +99,7 @@ export async function deleteOrderData(
     ];
 
     await Promise.allSettled(deletePromises);
-    console.log(`[Delete] Deleted related records for order ${orderId}`);
+    log.info(`[Delete] Deleted related records for order ${orderId}`);
 
     // Step 6: Soft-delete the order (clear PII, retain metadata)
     const { error: updateError } = await supabase
@@ -117,7 +120,7 @@ export async function deleteOrderData(
       .eq('id', orderId);
 
     if (updateError) {
-      console.error(`[Delete] Failed to soft-delete order ${orderId}:`, updateError);
+      log.error(`[Delete] Failed to soft-delete order ${orderId}:`, updateError);
       return { success: false, error: 'Failed to delete order' };
     }
 
@@ -130,11 +133,11 @@ export async function deleteOrderData(
       details: { deletion_type: deletionType },
     });
 
-    console.log(`[Delete] Successfully deleted order ${orderId}`);
+    log.info(`[Delete] Successfully deleted order ${orderId}`);
 
     return { success: true, deleted_at: deletedAt };
   } catch (error) {
-    console.error(`[Delete] Unexpected error deleting order ${orderId}:`, error);
+    log.error(`[Delete] Unexpected error deleting order ${orderId}:`, error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

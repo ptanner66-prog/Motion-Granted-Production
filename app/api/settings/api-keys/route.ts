@@ -17,6 +17,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import crypto from 'crypto';
 import { clearAPIKeysCache } from '@/lib/api-keys';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-settings-api-keys');
 
 // Encryption configuration
 const ENCRYPTION_PREFIX = 'enc_v2_'; // v2 for AES-GCM
@@ -52,7 +55,7 @@ function encryptKey(plaintext: string): string {
     // Format: prefix + iv (base64) + : + authTag (base64) + : + ciphertext (base64)
     return ENCRYPTION_PREFIX + iv.toString('base64') + ':' + authTag.toString('base64') + ':' + encrypted;
   } catch (error) {
-    console.error('Encryption error:', error);
+    log.error('Encryption error', { error: error instanceof Error ? error.message : error });
     // Fall back to base64 encoding if encryption fails (better than storing plaintext)
     return 'enc_v1_' + Buffer.from(plaintext).toString('base64');
   }
@@ -77,7 +80,7 @@ function decryptKey(encryptedKey: string): string {
     const parts = encryptedKey.slice(ENCRYPTION_PREFIX.length).split(':');
 
     if (parts.length !== 3) {
-      console.error('Invalid encrypted key format');
+      log.error('Invalid encrypted key format');
       return '';
     }
 
@@ -93,7 +96,7 @@ function decryptKey(encryptedKey: string): string {
 
     return decrypted;
   } catch (error) {
-    console.error('Decryption error:', error);
+    log.error('Decryption error', { error: error instanceof Error ? error.message : error });
     return '';
   }
 }
@@ -196,7 +199,7 @@ export async function GET() {
       resend_configured: !!(resendKey || envResendKey),
     });
   } catch (error) {
-    console.error('Error fetching API key settings:', error);
+    log.error('Error fetching API key settings', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Failed to fetch settings' },
       { status: 500 }
@@ -336,7 +339,7 @@ export async function POST(request: NextRequest) {
 
     // Log which settings will be saved
     const keysBeingSaved = settingsToSave.map(s => s.setting_key);
-    console.log(`[API-KEYS SAVE] Saving ${settingsToSave.length} settings: ${keysBeingSaved.join(', ')}`);
+    log.info('Saving settings', { count: settingsToSave.length, keys: keysBeingSaved });
 
     // Save settings (user-scoped; admin verified above)
     const { error: saveError } = await supabase
@@ -346,15 +349,15 @@ export async function POST(request: NextRequest) {
       });
 
     if (saveError) {
-      console.error('Failed to save API key settings:', saveError);
+      log.error('Failed to save API key settings', { error: saveError });
       return NextResponse.json({ error: 'Failed to save settings: ' + saveError.message }, { status: 500 });
     }
 
-    console.log(`[API-KEYS SAVE] Successfully saved settings to database`);
+    log.info('Successfully saved settings to database');
 
     // Clear the API keys cache so new keys are used immediately
     clearAPIKeysCache();
-    console.log(`[API-KEYS SAVE] Cache cleared`);
+    log.info('Cache cleared');
 
     // Log the change — don't let logging failure break the save
     const { error: logError } = await supabase.from('automation_logs').insert({
@@ -368,7 +371,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (logError) {
-      console.error('Failed to log API key change (non-fatal):', logError);
+      log.error('Failed to log API key change (non-fatal)', { error: logError });
     }
 
     return NextResponse.json({
@@ -376,7 +379,7 @@ export async function POST(request: NextRequest) {
       message: 'API keys saved successfully',
     });
   } catch (error) {
-    console.error('Error saving API key settings:', error);
+    log.error('Error saving API key settings', { error: error instanceof Error ? error.message : error });
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { error: 'Failed to save settings: ' + message },

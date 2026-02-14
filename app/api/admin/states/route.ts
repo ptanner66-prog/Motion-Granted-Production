@@ -10,6 +10,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getStateToggles, toggleState } from '@/lib/admin/state-toggle';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-states');
 
 export async function GET() {
   try {
@@ -33,7 +36,7 @@ export async function GET() {
     const toggles = await getStateToggles(supabase);
     return NextResponse.json({ states: toggles });
   } catch (error) {
-    console.error('[api/admin/states] GET error:', error);
+    log.error('GET error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -72,7 +75,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true, stateCode, enabled });
   } catch (error) {
-    console.error('[api/admin/states] PATCH error:', error);
+    log.error('PATCH error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

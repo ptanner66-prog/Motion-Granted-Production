@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import mammoth from 'mammoth';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-superprompt-parse-docx');
 
 export async function POST(request: NextRequest) {
   // Verify authentication - admin only
@@ -51,7 +54,7 @@ export async function POST(request: NextRequest) {
       messages: result.messages,
     });
   } catch (error) {
-    console.error('Error parsing DOCX:', error);
+    log.error('Error parsing DOCX', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Failed to parse DOCX file' },
       { status: 500 }

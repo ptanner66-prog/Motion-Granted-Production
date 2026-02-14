@@ -9,6 +9,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('services-citations-citation-service');
 import {
   getCitationDetailsForViewer,
   batchGetCitationDetails,
@@ -115,7 +118,7 @@ export async function getOrderCitations(orderId: string): Promise<{
       .order('display_order', { ascending: true });
 
     if (error) {
-      console.error('[CitationService] Error fetching order citations:', error);
+      log.error('[CitationService] Error fetching order citations:', error);
       return { success: false, error: error.message };
     }
 
@@ -157,7 +160,7 @@ export async function getOrderCitations(orderId: string): Promise<{
       },
     };
   } catch (error) {
-    console.error('[CitationService] Unexpected error:', error);
+    log.error('[CitationService] Unexpected error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -193,7 +196,7 @@ export async function getCitationDetails(
         .single();
 
       if (cached) {
-        console.log(`[CitationService] Cache hit for opinion ${opinionId}`);
+        log.info(`[CitationService] Cache hit for opinion ${opinionId}`);
 
         // Transform cached data to CitationDetails
         const details: CitationDetails = {
@@ -233,7 +236,7 @@ export async function getCitationDetails(
     }
 
     // Cache miss - fetch from CourtListener
-    console.log(`[CitationService] Cache miss for opinion ${opinionId}, fetching from CourtListener`);
+    log.info(`[CitationService] Cache miss for opinion ${opinionId}, fetching from CourtListener`);
     const result = await getCitationDetailsForViewer(opinionId, { includeText });
 
     if (!result.success || !result.data) {
@@ -291,13 +294,13 @@ export async function getCitationDetails(
       );
 
     if (cacheError) {
-      console.warn('[CitationService] Failed to cache citation:', cacheError);
+      log.warn('[CitationService] Failed to cache citation:', cacheError);
       // Don't fail the request if caching fails
     }
 
     return { success: true, data: result.data };
   } catch (error) {
-    console.error('[CitationService] Error getting citation details:', error);
+    log.error('[CitationService] Error getting citation details:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -409,7 +412,7 @@ export async function batchGetCitationDetailsService(
                 fetched_at: new Date().toISOString(),
                 expires_at: new Date(Date.now() + CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString(),
               }, { onConflict: 'courtlistener_opinion_id' })
-          ).catch((err: unknown) => console.warn('[CitationService] Failed to cache:', err));
+          ).catch((err: unknown) => log.warn('[CitationService] Failed to cache:', err));
         }
       }
 
@@ -428,7 +431,7 @@ export async function batchGetCitationDetailsService(
       },
     };
   } catch (error) {
-    console.error('[CitationService] Batch error:', error);
+    log.error('[CitationService] Batch error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -498,7 +501,7 @@ export async function saveOrderCitations(
       });
 
     if (error) {
-      console.error('[CitationService] Error saving citations:', error);
+      log.error('[CitationService] Error saving citations:', error);
       return { success: false, error: error.message };
     }
 
@@ -508,7 +511,7 @@ export async function saveOrderCitations(
       c => c.citationType === 'statute' || c.citationType === 'regulation'
     ).length;
 
-    console.log(`[CitationService] Saved ${citations.length} citations for order ${orderId}`);
+    log.info(`[CitationService] Saved ${citations.length} citations for order ${orderId}`);
 
     return {
       success: true,
@@ -519,7 +522,7 @@ export async function saveOrderCitations(
       },
     };
   } catch (error) {
-    console.error('[CitationService] Error saving citations:', error);
+    log.error('[CitationService] Error saving citations:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -564,7 +567,7 @@ export async function flagCitation(
 
     return { success: true };
   } catch (error) {
-    console.error('[CitationService] Error flagging citation:', error);
+    log.error('[CitationService] Error flagging citation:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -599,7 +602,7 @@ export async function verifyCitation(
 
     return { success: true };
   } catch (error) {
-    console.error('[CitationService] Error verifying citation:', error);
+    log.error('[CitationService] Error verifying citation:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -641,7 +644,7 @@ export async function getCitationCount(orderId: string): Promise<{
       data: { total, verified, flagged },
     };
   } catch (error) {
-    console.error('[CitationService] Error getting citation count:', error);
+    log.error('[CitationService] Error getting citation count:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

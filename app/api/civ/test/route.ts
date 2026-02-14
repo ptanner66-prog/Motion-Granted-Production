@@ -9,6 +9,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { verifyCitation } from '@/lib/civ/pipeline';
 import type { CitationToVerify, PropositionType } from '@/lib/civ/types';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-civ-test');
 
 export const maxDuration = 60; // 60 seconds for full CIV pipeline
 
@@ -49,7 +52,7 @@ export async function POST(request: Request) {
       motionTypeContext: body.motion_type || 'motion_for_summary_judgment',
     };
 
-    console.log('[CIV Test] Starting test with:', {
+    log.info('Starting test', {
       citation: testInput.citationString,
       proposition: testInput.proposition.substring(0, 50) + '...',
       motionType: testInput.motionTypeContext,
@@ -64,9 +67,7 @@ export async function POST(request: Request) {
 
     const duration = Date.now() - startTime;
 
-    console.log('[CIV Test] Completed in', duration, 'ms');
-    console.log('[CIV Test] Result status:', result.compositeResult.status);
-    console.log('[CIV Test] Confidence:', result.compositeResult.confidenceScore);
+    log.info('Test completed', { durationMs: duration, status: result.compositeResult.status, confidence: result.compositeResult.confidenceScore });
 
     return NextResponse.json({
       success: true,
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('[CIV Test] Error:', error);
+    log.error('CIV test error', { error: error instanceof Error ? error.message : error });
 
     return NextResponse.json(
       {

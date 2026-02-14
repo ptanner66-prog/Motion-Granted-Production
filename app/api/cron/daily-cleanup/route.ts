@@ -15,6 +15,9 @@ import { withCronAuth } from '@/lib/security/cron-auth';
 import { cleanupEmailDedup } from '@/lib/email/client';
 import { cleanupRateLimits } from '@/lib/security/rate-limiter';
 import { createClient } from '@supabase/supabase-js';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-cron-daily-cleanup');
 
 const STALE_WORKFLOW_HOURS = 48;
 
@@ -74,9 +77,7 @@ export const GET = withCronAuth(async (_request: NextRequest) => {
           (Date.now() - new Date(order.updated_at).getTime()) / (1000 * 60 * 60)
         );
 
-        console.warn(
-          `[daily-cleanup] STALE WORKFLOW: ${order.order_number} stuck in '${order.status}' for ${hoursSinceUpdate}h`
-        );
+        log.warn('STALE WORKFLOW detected', { orderNumber: order.order_number, status: order.status, staleHours: hoursSinceUpdate });
 
         // Log warning to automation_logs (non-fatal)
         try {
@@ -130,10 +131,10 @@ export const GET = withCronAuth(async (_request: NextRequest) => {
       },
     });
   } catch {
-    console.error('[daily-cleanup] Failed to log to automation_logs');
+    log.error('Failed to log to automation_logs');
   }
 
-  console.log(`[daily-cleanup] Complete: ${errors.length} errors, ${duration}ms`);
+  log.info('Daily cleanup complete', { errorCount: errors.length, durationMs: duration });
 
   return NextResponse.json({
     success: errors.length === 0,

@@ -7,6 +7,9 @@
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-violation-alerts');
 // ============================================================================
 // ADMIN CLIENT
 // ============================================================================
@@ -65,7 +68,7 @@ export async function alertPhaseViolation(
   }
 
   // Console alert with visual emphasis
-  console.error(`
+  log.error(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                    PHASE VIOLATION ALERT                      ║
 ╠══════════════════════════════════════════════════════════════╣
@@ -109,7 +112,7 @@ export async function alertCitationViolation(
     });
   }
 
-  console.warn(`
+  log.warn(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                   CITATION VIOLATION ALERT                    ║
 ╠══════════════════════════════════════════════════════════════╣
@@ -150,7 +153,7 @@ export async function alertOutputViolation(
     });
   }
 
-  console.warn(`
+  log.warn(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                   OUTPUT VIOLATION ALERT                      ║
 ╠══════════════════════════════════════════════════════════════╣
@@ -181,7 +184,7 @@ export async function alertBypassAttempt(
     });
   }
 
-  console.error(`
+  log.error(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                   WORKFLOW BYPASS ALERT                       ║
 ╠══════════════════════════════════════════════════════════════╣
@@ -230,7 +233,7 @@ async function sendAdminNotification(payload: NotificationPayload): Promise<void
         metadata: payload,
       });
     } catch (emailError) {
-      console.error('[ViolationAlerts] Failed to send admin alert email:', emailError);
+      log.error('[ViolationAlerts] Failed to send admin alert email:', emailError);
     }
 
     // For critical violations, also pause the workflow
@@ -258,7 +261,7 @@ async function pauseWorkflowForReview(orderId: string): Promise<void> {
     })
     .eq('order_id', orderId);
 
-  console.error(`[VIOLATION ALERT] Workflow paused for order ${orderId} due to critical violation`);
+  log.error(`[VIOLATION ALERT] Workflow paused for order ${orderId} due to critical violation`);
 }
 
 // ============================================================================

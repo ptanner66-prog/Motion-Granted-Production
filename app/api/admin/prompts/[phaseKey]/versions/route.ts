@@ -9,6 +9,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { WorkflowPhase } from '@/lib/config/phase-registry';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-prompts-versions');
 
 /** Maps PHASE_PROMPTS keys (PHASE_I) to DB phase column values (I). */
 const PROMPT_KEY_TO_DB: Record<string, WorkflowPhase> = {
@@ -73,7 +76,7 @@ export async function GET(
       .limit(limit);
 
     if (error) {
-      console.error(`[GET /api/admin/prompts/${phaseKey}/versions] Error:`, error);
+      log.error('Error loading versions', { phaseKey, error });
       return NextResponse.json({ error: 'Failed to load versions' }, { status: 500 });
     }
 
@@ -97,7 +100,7 @@ export async function GET(
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[GET /api/admin/prompts/versions] Error:', message);
+    log.error('Error in versions endpoint', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

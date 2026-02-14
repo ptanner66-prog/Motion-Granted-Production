@@ -20,6 +20,9 @@
 import { callCIVAnthropic as callAnthropic, getTierFromMotionType, type MotionTier } from '@/lib/ai/model-router';
 import { getCitationTreatment } from '@/lib/courtlistener/client';
 import { checkCuratedOverruledList, recordGoodLawCheck } from '../database';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-civ-steps-step-5-bad-law');
 import {
   DEFAULT_CIV_CONFIG,
   BAD_LAW_ANALYSIS_PROMPT,
@@ -251,7 +254,7 @@ export async function executeBadLawCheck(
 
     return result;
   } catch (error) {
-    console.error('[CIV_STEP5] Bad law check error:', error);
+    log.error('[CIV_STEP5] Bad law check error:', error);
 
     // On error, return cautious result
     result.compositeStatus = 'CAUTION';
@@ -315,7 +318,7 @@ async function runAIPatternDetection(
 
     return parseLayer2Response(responseText, searchPatterns.length);
   } catch (error) {
-    console.error('[CIV_STEP5] Layer 2 AI analysis error:', error);
+    log.error('[CIV_STEP5] Layer 2 AI analysis error:', error);
     return {
       searchesRun: searchPatterns.length,
       status: 'CAUTION',
@@ -366,14 +369,14 @@ async function runProtocols(
     if (settledResult.status === 'fulfilled') {
       results.push(settledResult.value);
     } else {
-      console.error('[CIV_STEP5] Protocol error:', settledResult.reason);
+      log.error('[CIV_STEP5] Protocol error:', settledResult.reason);
     }
   }
 
   // Log triggered protocols
   const triggered = results.filter(r => r.triggered);
   if (triggered.length > 0) {
-    console.log(
+    log.info(
       `[CIV_STEP5] citation=${citation.substring(0, 50)} ` +
       `protocols_triggered=[${triggered.map(r => `P${r.protocol}:${r.flag}`).join(', ')}]`
     );
@@ -729,7 +732,7 @@ function parseLayer2Response(
       concerns: parsed.REASONING ? [parsed.REASONING] : [],
     };
   } catch (error) {
-    console.error('[CIV_STEP5] Failed to parse Layer 2 response:', error);
+    log.error('[CIV_STEP5] Failed to parse Layer 2 response:', error);
     return {
       searchesRun,
       status: 'CAUTION',

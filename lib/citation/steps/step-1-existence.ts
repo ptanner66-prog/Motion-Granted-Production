@@ -17,6 +17,9 @@ import { verifyCitationWithPACER, isFederalCitation } from '@/lib/citation/pacer
 import { courtlistenerCircuit } from '@/lib/circuit-breaker';
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-steps-step-1-existence');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -189,7 +192,7 @@ export async function checkCitationExistence(
           result.opinion_text = opinionResult.plainText;
         }
       } catch (opinionError) {
-        console.warn(`[Step1] Could not retrieve opinion text: ${opinionError}`);
+        log.warn(`[Step1] Could not retrieve opinion text: ${opinionError}`);
         // Not fatal - we still have existence confirmed
       }
 
@@ -198,13 +201,13 @@ export async function checkCitationExistence(
         result.result = 'UNPUBLISHED';
       }
     } else if (clResult.error) {
-      console.warn(`[Step1] CourtListener error: ${clResult.error}`);
+      log.warn(`[Step1] CourtListener error: ${clResult.error}`);
       // Continue to PACER fallback if federal
     }
 
     // Stage 2: PACER fallback for federal citations not found in CourtListener
     if (result.result === 'NOT_FOUND' && isFederal && !options?.skipPacer) {
-      console.log(`[Step1] Citation not in CourtListener, trying PACER: ${normalizedCitation}`);
+      log.info(`[Step1] Citation not in CourtListener, trying PACER: ${normalizedCitation}`);
       result.pacer_used = true;
 
       try {
@@ -232,7 +235,7 @@ export async function checkCitationExistence(
           // It would need to be fetched separately via documentUrl if available
         }
       } catch (pacerError) {
-        console.error(`[Step1] PACER lookup failed: ${pacerError}`);
+        log.error(`[Step1] PACER lookup failed: ${pacerError}`);
         result.error = `PACER lookup failed: ${pacerError instanceof Error ? pacerError.message : 'Unknown error'}`;
         // Don't fail the whole step - just mark as not found
       }
@@ -245,7 +248,7 @@ export async function checkCitationExistence(
       await logStep1Result(orderId, citation, result);
     }
 
-    console.log(`[Step1] ${normalizedCitation}: ${result.result} (${result.source}, ${result.duration_ms}ms)`);
+    log.info(`[Step1] ${normalizedCitation}: ${result.result} (${result.source}, ${result.duration_ms}ms)`);
     return result;
 
   } catch (error) {
@@ -253,7 +256,7 @@ export async function checkCitationExistence(
     result.error = error instanceof Error ? error.message : 'Unknown error';
     result.duration_ms = Date.now() - startTime;
 
-    console.error(`[Step1] Error checking citation existence: ${result.error}`);
+    log.error(`[Step1] Error checking citation existence: ${result.error}`);
 
     if (options?.logToDb) {
       await logStep1Result(orderId, citation, result);
@@ -346,7 +349,7 @@ async function logStep1Result(
       },
     });
   } catch (error) {
-    console.error('[Step1] Failed to log result to database:', error);
+    log.error('[Step1] Failed to log result to database:', error);
     // Don't throw - logging failure shouldn't break the pipeline
   }
 }
@@ -426,7 +429,7 @@ export async function cacheExistenceResult(
       ignoreDuplicates: false,
     });
   } catch (error) {
-    console.error('[Step1] Failed to cache result:', error);
+    log.error('[Step1] Failed to cache result:', error);
     // Don't throw - caching failure shouldn't break the pipeline
   }
 }

@@ -13,6 +13,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-protocol-10-handler');
 /** Generate the disclosure text injected into the Attorney Instruction Sheet. */
 export function generateProtocol10Disclosure(
   revisionCount: number,
@@ -60,7 +63,7 @@ export async function handleProtocol10Exit(
 
   const now = new Date().toISOString();
 
-  console.warn(
+  log.warn(
     `[${orderId}] PROTOCOL 10: Max loops exhausted (${loopsCompleted}/${maxLoops}). ` +
     `Last score: ${numericGrade.toFixed(1)}, Threshold: ${threshold.toFixed(1)}, Tier: ${tier}. ` +
     `Proceeding with Enhanced Disclosure.`

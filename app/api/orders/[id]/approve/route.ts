@@ -12,6 +12,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { inngest } from '@/lib/inngest/client';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-orders-approve');
 
 // ---------------------------------------------------------------------------
 // Customer CP3 Approval
@@ -285,7 +288,7 @@ export async function POST(
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error) {
-    console.error('Approval error:', error);
+    log.error('Approval error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to process approval' },
       { status: 500 }
@@ -343,7 +346,7 @@ export async function GET(
       phaseStatus: workflow.phase_status,
     });
   } catch (error) {
-    console.error('Checkpoint status error:', error);
+    log.error('Checkpoint status error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to get checkpoint status' },
       { status: 500 }

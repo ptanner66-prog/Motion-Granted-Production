@@ -6,6 +6,9 @@
 import { createClient } from '@/lib/supabase/server';
 import crypto from 'crypto';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('email-action-tokens');
 export type ActionType =
   | 'resume_hold'
   | 'approve_conflict'
@@ -58,11 +61,11 @@ export async function generateActionToken(
   });
 
   if (error) {
-    console.error('[ActionToken] Error creating token:', error);
+    log.error('[ActionToken] Error creating token:', error);
     throw new Error('Failed to create action token');
   }
 
-  console.log(`[ActionToken] Created ${action} token for order ${orderId}`);
+  log.info(`[ActionToken] Created ${action} token for order ${orderId}`);
 
   return token;
 }
@@ -80,17 +83,17 @@ export async function validateActionToken(token: string): Promise<ActionTokenRes
     .single();
 
   if (error || !data) {
-    console.warn('[ActionToken] Invalid token attempted');
+    log.warn('[ActionToken] Invalid token attempted');
     return { valid: false, error: 'Invalid token' };
   }
 
   if (data.used) {
-    console.warn('[ActionToken] Token already used:', token.substring(0, 8));
+    log.warn('[ActionToken] Token already used:', token.substring(0, 8));
     return { valid: false, error: 'This link has already been used' };
   }
 
   if (new Date(data.expires_at) < new Date()) {
-    console.warn('[ActionToken] Token expired:', token.substring(0, 8));
+    log.warn('[ActionToken] Token expired:', token.substring(0, 8));
     return { valid: false, error: 'This link has expired' };
   }
 
@@ -103,7 +106,7 @@ export async function validateActionToken(token: string): Promise<ActionTokenRes
     })
     .eq('token', token);
 
-  console.log(`[ActionToken] Token consumed: ${data.action} for order ${data.order_id}`);
+  log.info(`[ActionToken] Token consumed: ${data.action} for order ${data.order_id}`);
 
   return {
     valid: true,
@@ -157,12 +160,12 @@ export async function revokeOrderTokens(orderId: string): Promise<number> {
     .select();
 
   if (error) {
-    console.error('[ActionToken] Error revoking tokens:', error);
+    log.error('[ActionToken] Error revoking tokens:', error);
     return 0;
   }
 
   const count = data?.length || 0;
-  console.log(`[ActionToken] Revoked ${count} tokens for order ${orderId}`);
+  log.info(`[ActionToken] Revoked ${count} tokens for order ${orderId}`);
 
   return count;
 }

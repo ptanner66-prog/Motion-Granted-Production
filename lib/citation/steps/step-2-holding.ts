@@ -25,6 +25,9 @@ import { askClaude } from '@/lib/automation/claude';
 import { createClient } from '@/lib/supabase/server';
 import type { MotionTier } from '@/types/workflow';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-steps-step-2-holding');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -204,7 +207,7 @@ Respond with ONLY a JSON object:
       duration_ms: Date.now() - startTime,
     };
   } catch (error) {
-    console.error('[Step2] Stage 1 error:', error);
+    log.error('[Step2] Stage 1 error:', error);
     return {
       model,
       verified: false,
@@ -291,7 +294,7 @@ Respond with ONLY a JSON object:
       duration_ms: Date.now() - startTime,
     };
   } catch (error) {
-    console.error('[Step2] Stage 2 error:', error);
+    log.error('[Step2] Stage 2 error:', error);
     return {
       model,
       verified: stage1Result.verified, // Fall back to Stage 1 result
@@ -362,7 +365,7 @@ Respond with ONLY a JSON object:
       cost: response.cost || 0,
     };
   } catch (error) {
-    console.error('[Step2] Tiebreaker error:', error);
+    log.error('[Step2] Tiebreaker error:', error);
     // If tiebreaker fails, go with the more conservative (lower confidence) result
     return {
       model,
@@ -429,7 +432,7 @@ export async function verifyHolding(
 
   try {
     // STAGE 1: Initial verification
-    console.log(`[Step2] Running Stage 1 verification for: ${citationText.slice(0, 50)}...`);
+    log.info(`[Step2] Running Stage 1 verification for: ${citationText.slice(0, 50)}...`);
     const stage1 = await runStage1(citationText, proposition, opinionText, tier);
 
     result.stage_1_result = stage1;
@@ -453,7 +456,7 @@ export async function verifyHolding(
         stage1.confidence < STAGE_2_CONFIDENCE_LOW_THRESHOLD ? 'low_confidence' :
         'medium_confidence';
 
-      console.log(`[Step2] Stage 2 triggered (${result.stage_2_reason}): ${citationText.slice(0, 50)}...`);
+      log.info(`[Step2] Stage 2 triggered (${result.stage_2_reason}): ${citationText.slice(0, 50)}...`);
 
       // STAGE 2: Adversarial verification
       const stage2 = await runStage2(citationText, proposition, opinionText, stage1);
@@ -467,7 +470,7 @@ export async function verifyHolding(
       const stagesAgree = stage1.verified === stage2.verified;
 
       if (!stagesAgree) {
-        console.log(`[Step2] Stages disagree, running tiebreaker: ${citationText.slice(0, 50)}...`);
+        log.info(`[Step2] Stages disagree, running tiebreaker: ${citationText.slice(0, 50)}...`);
 
         // TIEBREAKER
         const tiebreaker = await runTiebreaker(citationText, proposition, opinionText, stage1, stage2);
@@ -515,7 +518,7 @@ export async function verifyHolding(
       await logStep2Result(orderId, citationText, proposition, result);
     }
 
-    console.log(`[Step2] ${citationText.slice(0, 40)}...: ${result.result} (${Math.round(result.confidence * 100)}%, ${result.duration_ms}ms, $${result.total_cost.toFixed(4)})`);
+    log.info(`[Step2] ${citationText.slice(0, 40)}...: ${result.result} (${Math.round(result.confidence * 100)}%, ${result.duration_ms}ms, $${result.total_cost.toFixed(4)})`);
 
     return result;
 
@@ -526,7 +529,7 @@ export async function verifyHolding(
     result.total_cost = totalCost;
     result.total_tokens = totalTokens;
 
-    console.error('[Step2] Holding verification error:', result.error);
+    log.error('[Step2] Holding verification error:', result.error);
 
     if (options?.logToDb) {
       await logStep2Result(orderId, citationText, proposition, result);
@@ -581,7 +584,7 @@ async function logStep2Result(
       },
     });
   } catch (error) {
-    console.error('[Step2] Failed to log result to database:', error);
+    log.error('[Step2] Failed to log result to database:', error);
   }
 }
 

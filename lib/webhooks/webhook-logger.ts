@@ -19,6 +19,9 @@ import { createHash } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('webhooks-webhook-logger');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -110,7 +113,7 @@ export async function logWebhookReceived(
   const supabase = getAdminClient();
 
   if (!supabase) {
-    console.error('[WebhookLogger] Database not configured');
+    log.error('[WebhookLogger] Database not configured');
     return `local_${Date.now()}`;
   }
 
@@ -137,13 +140,13 @@ export async function logWebhookReceived(
       .single();
 
     if (error) {
-      console.error('[WebhookLogger] Failed to log webhook:', error);
+      log.error('[WebhookLogger] Failed to log webhook:', error);
       return `error_${Date.now()}`;
     }
 
     return data.id;
   } catch (error) {
-    console.error('[WebhookLogger] Error:', error);
+    log.error('[WebhookLogger] Error:', error);
     return `error_${Date.now()}`;
   }
 }
@@ -179,7 +182,7 @@ export async function logWebhookProcessed(
       })
       .eq('id', logId);
   } catch (error) {
-    console.error('[WebhookLogger] Failed to update log:', error);
+    log.error('[WebhookLogger] Failed to update log:', error);
   }
 }
 
@@ -203,7 +206,7 @@ export async function logWebhookProcessing(logId: string): Promise<void> {
       .update({ status: 'processing' })
       .eq('id', logId);
   } catch (error) {
-    console.error('[WebhookLogger] Failed to update status:', error);
+    log.error('[WebhookLogger] Failed to update status:', error);
   }
 }
 
@@ -261,7 +264,7 @@ export async function getWebhookLogs(
       processedAt: row.processed_at ? new Date(row.processed_at) : undefined,
     }));
   } catch (error) {
-    console.error('[WebhookLogger] Failed to fetch logs:', error);
+    log.error('[WebhookLogger] Failed to fetch logs:', error);
     return [];
   }
 }
@@ -340,7 +343,7 @@ export async function getWebhookStats(since?: Date): Promise<{
       failureRate: data.length > 0 ? failedCount / data.length : 0,
     };
   } catch (error) {
-    console.error('[WebhookLogger] Failed to get stats:', error);
+    log.error('[WebhookLogger] Failed to get stats:', error);
     return {
       total: 0,
       bySource: {},

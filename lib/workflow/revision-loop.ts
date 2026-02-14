@@ -11,6 +11,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { FAILURE_THRESHOLDS, isProtocol10Triggered } from '@/lib/config/workflow-config';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-revision-loop');
 export interface RevisionResult {
   revisionCount: number;
   protocol10Triggered: boolean;
@@ -45,15 +48,15 @@ export async function incrementRevisionLoop(orderId: string, judgeGrade?: string
 
     if (!rpcError && rpcResult !== null && rpcResult !== undefined) {
       newCount = typeof rpcResult === 'number' ? rpcResult : Number(rpcResult);
-      console.log(`[RevisionLoop] Atomic increment for order ${orderId}: count=${newCount}`);
+      log.info(`[RevisionLoop] Atomic increment for order ${orderId}: count=${newCount}`);
     } else {
       // RPC not available — fall back to optimistic concurrency
-      console.warn(`[RevisionLoop] RPC unavailable (${rpcError?.message}), using optimistic update`);
+      log.warn(`[RevisionLoop] RPC unavailable (${rpcError?.message}), using optimistic update`);
       newCount = await optimisticIncrement(supabase, orderId);
     }
   } catch {
     // RPC function doesn't exist yet — fall back
-    console.warn('[RevisionLoop] RPC function not deployed, using optimistic update');
+    log.warn('[RevisionLoop] RPC function not deployed, using optimistic update');
     newCount = await optimisticIncrement(supabase, orderId);
   }
 
@@ -74,7 +77,7 @@ export async function incrementRevisionLoop(orderId: string, judgeGrade?: string
       created_at: new Date().toISOString(),
     });
 
-    console.log(`[Protocol 10] Order ${orderId} reached ${newCount} revision loops`);
+    log.info(`[Protocol 10] Order ${orderId} reached ${newCount} revision loops`);
     return { revisionCount: newCount, protocol10Triggered: true, disclosure, shouldContinue: false };
   }
 
@@ -118,7 +121,7 @@ async function optimisticIncrement(
 
     if (updateError || !updated) {
       // Conflict — another request incremented first. Retry.
-      console.warn(`[RevisionLoop] Optimistic conflict on attempt ${attempt + 1}, retrying...`);
+      log.warn(`[RevisionLoop] Optimistic conflict on attempt ${attempt + 1}, retrying...`);
       await new Promise(resolve => setTimeout(resolve, 50 * (attempt + 1)));
       continue;
     }

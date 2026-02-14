@@ -12,6 +12,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-settings-api-keys-test');
 
 // Vercel serverless function configuration
 export const maxDuration = 30; // 30 seconds for API tests
@@ -62,7 +65,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, message: 'Unknown key type' }, { status: 400 });
     }
   } catch (error) {
-    console.error('API key test error:', error);
+    log.error('API key test error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       success: false,
       message: error instanceof Error ? error.message : 'Test failed',

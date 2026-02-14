@@ -16,6 +16,9 @@ import Stripe from 'stripe';
 import { createClient } from '@/lib/supabase/server';
 import type { OperationResult } from '@/types/automation';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('payments-refund-service');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -178,7 +181,7 @@ export async function processRefund(request: RefundRequest): Promise<OperationRe
         })
         .eq('id', refundRecord.id);
 
-      console.warn(`[Refund] Stripe not configured. Refund ${refundRecord.id} requires manual processing.`);
+      log.warn(`[Refund] Stripe not configured. Refund ${refundRecord.id} requires manual processing.`);
 
       return {
         success: true,
@@ -248,7 +251,7 @@ export async function processRefund(request: RefundRequest): Promise<OperationRe
       // Send notification email
       await sendRefundNotification(order, refundAmountCents, request.reason);
 
-      console.log(`[Refund] Processed: order=${order.order_number}, amount=$${(refundAmountCents / 100).toFixed(2)}, stripe=${stripeRefund.id}`);
+      log.info(`[Refund] Processed: order=${order.order_number}, amount=$${(refundAmountCents / 100).toFixed(2)}, stripe=${stripeRefund.id}`);
 
       return {
         success: true,
@@ -271,7 +274,7 @@ export async function processRefund(request: RefundRequest): Promise<OperationRe
         })
         .eq('id', refundRecord.id);
 
-      console.error(`[Refund] Stripe error for order ${order.order_number}:`, errorMessage);
+      log.error(`[Refund] Stripe error for order ${order.order_number}:`, errorMessage);
 
       return {
         success: false,
@@ -311,7 +314,7 @@ async function sendRefundNotification(
   try {
     const profile = order.profiles;
     if (!profile?.email) {
-      console.warn(`[Refund] No email for customer, skipping notification`);
+      log.warn(`[Refund] No email for customer, skipping notification`);
       return;
     }
 
@@ -351,9 +354,9 @@ Refund Notification
       `.trim(),
     });
 
-    console.log(`[Refund] Notification sent to ${profile.email} for order ${order.order_number}`);
+    log.info(`[Refund] Notification sent to ${profile.email} for order ${order.order_number}`);
   } catch (emailError) {
-    console.error(`[Refund] Failed to send notification email:`, emailError);
+    log.error(`[Refund] Failed to send notification email:`, emailError);
     // Don't fail the refund if email fails
   }
 }

@@ -27,6 +27,9 @@ import {
 } from 'docx';
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-case-appendix');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -119,7 +122,7 @@ export async function fetchUnpublishedOpinionText(
       },
     };
   } catch (error) {
-    console.error(`[CaseAppendix] Error fetching from CourtListener:`, error);
+    log.error(`[CaseAppendix] Error fetching from CourtListener:`, error);
 
     // Return placeholder if API fails
     return {
@@ -402,13 +405,13 @@ function generateCaseAppendixDocument(
 export async function generateCaseAppendix(
   data: CaseAppendixData
 ): Promise<CaseAppendixResult> {
-  console.log(`[CaseAppendix] Generating for order ${data.orderId}, ${data.unpublishedCases.length} cases`);
+  log.info(`[CaseAppendix] Generating for order ${data.orderId}, ${data.unpublishedCases.length} cases`);
 
   const cases: UnpublishedCase[] = [];
 
   // Fetch each unpublished opinion
   for (const caseRef of data.unpublishedCases) {
-    console.log(`[CaseAppendix] Fetching: ${caseRef.citation}`);
+    log.info(`[CaseAppendix] Fetching: ${caseRef.citation}`);
 
     const { text, metadata } = await fetchUnpublishedOpinionText(caseRef.courtListenerId);
 
@@ -446,11 +449,11 @@ export async function generateCaseAppendix(
     });
 
   if (uploadError) {
-    console.error('[CaseAppendix] Upload error:', uploadError);
+    log.error('[CaseAppendix] Upload error:', uploadError);
     throw new Error(`Failed to upload case appendix: ${uploadError.message}`);
   }
 
-  console.log(`[CaseAppendix] Generated successfully: ${storagePath}, ${cases.length} cases, ${totalPages} pages`);
+  log.info(`[CaseAppendix] Generated successfully: ${storagePath}, ${cases.length} cases, ${totalPages} pages`);
 
   return {
     path: storagePath,
@@ -518,7 +521,7 @@ function isUnpublishedCitation(
 
   // Check citation format patterns for unpublished indicators
   const unpublishedPatterns = [
-    /\d+\s+WL\s+\d+/i, // Westlaw citations often indicate unpublished
+    /\d+\s+WL\s+\d+/i, // WL-format citations often indicate unpublished
     /\d+\s+U\.S\.\s*Dist\.\s*LEXIS/i,
     /\d+\s+U\.S\.\s*App\.\s*LEXIS/i,
     /Not\s+Reported/i,

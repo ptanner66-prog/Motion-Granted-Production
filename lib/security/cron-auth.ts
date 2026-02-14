@@ -8,11 +8,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('security-cron-auth');
 export function validateCronAuth(request: NextRequest): { valid: boolean; error?: string } {
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
-    console.error('[cron-auth] CRON_SECRET not configured');
+    log.error('[cron-auth] CRON_SECRET not configured');
     return { valid: false, error: 'CRON_SECRET not configured' };
   }
 
@@ -51,7 +54,7 @@ export function withCronAuth(
     const auth = validateCronAuth(request);
 
     if (!auth.valid) {
-      console.warn('[cron-auth] Rejected request:', {
+      log.warn('[cron-auth] Rejected request:', {
         path: request.nextUrl.pathname,
         ip: request.headers.get('x-vercel-forwarded-for'),
         error: auth.error,

@@ -35,6 +35,9 @@ import type { MotionTier } from '@/types/workflow';
 import FlagManager from './flag-manager';
 import { handleUnverifiable } from './decision-handlers';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-verification-pipeline');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -142,19 +145,19 @@ async function withRetry<T>(
     try {
       const result = await fn();
       if (attempt > 0) {
-        console.log(`[Pipeline] ${context} succeeded on attempt ${attempt + 1}`);
+        log.info(`[Pipeline] ${context} succeeded on attempt ${attempt + 1}`);
       }
       return { result, attempts: attempt + 1 };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
       if (!isRetryableError(error) || attempt >= config.maxRetries) {
-        console.error(`[Pipeline] ${context} failed after ${attempt + 1} attempts:`, lastError.message);
+        log.error(`[Pipeline] ${context} failed after ${attempt + 1} attempts:`, lastError.message);
         return { result: null, error: lastError, attempts: attempt + 1 };
       }
 
       const delay = calculateRetryDelay(attempt, config);
-      console.warn(`[Pipeline] ${context} failed (attempt ${attempt + 1}/${config.maxRetries + 1}), retrying in ${delay}ms...`);
+      log.warn(`[Pipeline] ${context} failed (attempt ${attempt + 1}/${config.maxRetries + 1}), retrying in ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -203,7 +206,7 @@ export async function verifyCitation(
   // Check for in-flight duplicate request
   const inFlight = inFlightRequests.get(requestKey);
   if (inFlight) {
-    console.log(`[Pipeline] Deduplicating request for: ${citation.slice(0, 40)}...`);
+    log.info(`[Pipeline] Deduplicating request for: ${citation.slice(0, 40)}...`);
     return inFlight;
   }
 
@@ -234,7 +237,7 @@ async function runVerificationPipeline(
   const retryConfig = options?.retryConfig || DEFAULT_RETRY_CONFIG;
   const flagManager = options?.flagManager || await FlagManager.load(orderId);
 
-  console.log(`[Pipeline] Starting verification for: ${citation.slice(0, 50)}...`);
+  log.info(`[Pipeline] Starting verification for: ${citation.slice(0, 50)}...`);
 
   // Initialize step results with defaults
   let step1Result: Step1Result = {
@@ -311,7 +314,7 @@ async function runVerificationPipeline(
     if (!options?.skipCache && options?.enableCaching !== false) {
       const cached = await getCachedExistenceResult(citation);
       if (cached) {
-        console.log(`[Pipeline] Cache hit for: ${citation.slice(0, 40)}...`);
+        log.info(`[Pipeline] Cache hit for: ${citation.slice(0, 40)}...`);
         step1Result = cached;
       } else {
         // Execute with retry logic
@@ -366,7 +369,7 @@ async function runVerificationPipeline(
 
     // Early termination if citation not found
     if (step1Result.result === 'NOT_FOUND' || step1Result.result === 'ERROR') {
-      console.log(`[Pipeline] Early termination - citation not found: ${citation.slice(0, 40)}...`);
+      log.info(`[Pipeline] Early termination - citation not found: ${citation.slice(0, 40)}...`);
 
       const steps: VerificationSteps = {
         step_1: step1Result,
@@ -408,7 +411,7 @@ async function runVerificationPipeline(
     if (step2WithRetry) {
       step2Result = step2WithRetry;
     } else if (step2Error) {
-      console.warn(`[Pipeline] Step 2 failed for ${citation.slice(0, 40)}..., continuing with defaults`);
+      log.warn(`[Pipeline] Step 2 failed for ${citation.slice(0, 40)}..., continuing with defaults`);
       flagManager.addFlag('VERIFICATION_FAILED', {
         citation,
         step: 2,
@@ -475,7 +478,7 @@ async function runVerificationPipeline(
     if (step5WithRetry) {
       step5Result = step5WithRetry;
     } else if (step5Error) {
-      console.warn(`[Pipeline] Step 5 failed for ${citation.slice(0, 40)}..., marking for review`);
+      log.warn(`[Pipeline] Step 5 failed for ${citation.slice(0, 40)}..., marking for review`);
       flagManager.addFlag('VERIFICATION_FAILED', {
         citation,
         step: 5,
@@ -485,7 +488,7 @@ async function runVerificationPipeline(
 
     // Early termination if overruled
     if (step5Result.status === 'OVERRULED') {
-      console.log(`[Pipeline] Early termination - case overruled: ${citation.slice(0, 40)}...`);
+      log.info(`[Pipeline] Early termination - case overruled: ${citation.slice(0, 40)}...`);
     }
 
     // ========================================================================
@@ -530,7 +533,7 @@ async function runVerificationPipeline(
     }
 
     const totalDuration = Date.now() - startTime;
-    console.log(`[Pipeline] Completed in ${totalDuration}ms: ${citation.slice(0, 40)}... → ${compiled.composite_status}`);
+    log.info(`[Pipeline] Completed in ${totalDuration}ms: ${citation.slice(0, 40)}... → ${compiled.composite_status}`);
 
     return {
       ...compiled,
@@ -539,7 +542,7 @@ async function runVerificationPipeline(
     };
 
   } catch (error) {
-    console.error(`[Pipeline] Error verifying citation: ${error}`);
+    log.error(`[Pipeline] Error verifying citation: ${error}`);
 
     // Return error result
     const steps: VerificationSteps = {
@@ -594,7 +597,7 @@ export async function verifyCitationBatch(
   const concurrency = options?.concurrency ?? 5;
   const results: VerificationResult[] = [];
 
-  console.log(`[Pipeline] Starting batch verification: ${citations.length} citations, concurrency ${concurrency}`);
+  log.info(`[Pipeline] Starting batch verification: ${citations.length} citations, concurrency ${concurrency}`);
 
   for (let i = 0; i < citations.length; i += concurrency) {
     const batch = citations.slice(i, i + concurrency);
@@ -629,8 +632,8 @@ export async function verifyCitationBatch(
   const blocked = results.filter(r => r.composite_status === 'BLOCKED').length;
   const totalCost = results.reduce((sum, r) => sum + r.estimated_cost, 0);
 
-  console.log(`[Pipeline] Batch complete: ${verified} verified, ${flagged} flagged, ${rejected} rejected, ${blocked} blocked`);
-  console.log(`[Pipeline] Total cost: $${totalCost.toFixed(4)}`);
+  log.info(`[Pipeline] Batch complete: ${verified} verified, ${flagged} flagged, ${rejected} rejected, ${blocked} blocked`);
+  log.info(`[Pipeline] Total cost: $${totalCost.toFixed(4)}`);
 
   return results;
 }

@@ -8,6 +8,9 @@
 
 import { Resend } from 'resend';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('email-client');
 let resendClient: Resend | null = null;
 
 function getResendClient(): Resend {
@@ -47,7 +50,7 @@ export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
     if (options.idempotencyKey) {
       const existing = sentEmails.get(options.idempotencyKey);
       if (existing && Date.now() - existing.sentAt.getTime() < DEDUP_WINDOW_MS) {
-        console.log(`[email] Duplicate suppressed: ${options.idempotencyKey}`);
+        log.info(`[email] Duplicate suppressed: ${options.idempotencyKey}`);
         return { success: true, messageId: existing.messageId };
       }
     }
@@ -65,7 +68,7 @@ export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
     });
 
     if (result.error) {
-      console.error(`[email] Send failed:`, {
+      log.error(`[email] Send failed:`, {
         to: options.to,
         subject: options.subject,
         error: result.error,
@@ -79,7 +82,7 @@ export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
       sentEmails.set(options.idempotencyKey, { sentAt: new Date(), messageId });
     }
 
-    console.log(`[email] Sent successfully:`, {
+    log.info(`[email] Sent successfully:`, {
       to: options.to,
       subject: options.subject,
       messageId,
@@ -88,7 +91,7 @@ export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
     return { success: true, messageId };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown email error';
-    console.error(`[email] Exception:`, {
+    log.error(`[email] Exception:`, {
       to: options.to,
       subject: options.subject,
       error: message,

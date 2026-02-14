@@ -5,6 +5,9 @@
 import { createClient } from '@/lib/supabase/server';
 import type { ConflictMatch } from './types';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('conflicts-resolve');
 /**
  * Mark a conflict as resolved
  */
@@ -28,7 +31,7 @@ export async function resolveConflict(
     .single();
 
   if (error) {
-    console.error('Failed to resolve conflict:', error);
+    log.error('Failed to resolve conflict:', error);
     return null;
   }
 
@@ -49,7 +52,7 @@ export async function getUnresolvedConflicts(orderId: string): Promise<ConflictM
     .order('severity', { ascending: true });  // BLOCKING first
 
   if (error) {
-    console.error('Failed to fetch conflicts:', error);
+    log.error('Failed to fetch conflicts:', error);
     return [];
   }
 
@@ -73,7 +76,7 @@ export async function getAttorneyConflictHistory(
     .limit(limit);
 
   if (error) {
-    console.error('Failed to fetch attorney conflict history:', error);
+    log.error('Failed to fetch attorney conflict history:', error);
     return [];
   }
 
@@ -94,7 +97,7 @@ export async function hasBlockingConflicts(orderId: string): Promise<boolean> {
     .eq('resolved', false);
 
   if (error) {
-    console.error('Failed to check blocking conflicts:', error);
+    log.error('Failed to check blocking conflicts:', error);
     return false;  // Fail open - don't block on error
   }
 

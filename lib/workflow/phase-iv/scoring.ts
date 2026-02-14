@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phase-iv-scoring');
+
 /**
  * Citation Scoring Module
  *
@@ -367,7 +371,7 @@ export function selectTopCitations(
 
   // Check minimum
   if (selected.length < minCitations) {
-    console.warn(`[Scoring] Only ${selected.length} citations selected, below minimum of ${minCitations}`);
+    log.warn(`[Scoring] Only ${selected.length} citations selected, below minimum of ${minCitations}`);
   }
 
   return selected;

@@ -13,6 +13,9 @@
 
 import { readdir, readFile } from 'fs/promises';
 import { join } from 'path';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('services-formatting-rule-lookup');
 import {
   JurisdictionConfig,
   FederalDistrictOverride,
@@ -94,15 +97,15 @@ export class RuleLookupService {
             this.configs.set(key, config);
           }
         } catch (err) {
-          console.error(`[RuleLookup] Failed to load config ${file}:`, err instanceof Error ? err.message : err);
+          log.error(`[RuleLookup] Failed to load config ${file}:`, err instanceof Error ? err.message : err);
         }
       });
 
       await Promise.all(loadPromises);
       this.initialized = true;
-      console.log(`[RuleLookup] Loaded ${this.configs.size} state configs: ${Array.from(this.configs.keys()).join(', ')}`);
+      log.info(`[RuleLookup] Loaded ${this.configs.size} state configs: ${Array.from(this.configs.keys()).join(', ')}`);
     } catch (err) {
-      console.error('[RuleLookup] Failed to read configs directory:', err instanceof Error ? err.message : err);
+      log.error('[RuleLookup] Failed to read configs directory:', err instanceof Error ? err.message : err);
       this.initialized = true;
     }
   }
@@ -330,7 +333,7 @@ export class RuleLookupService {
         countyOverrides: rawCountyOverrides as JurisdictionConfig['countyOverrides'],
       };
     } catch (err) {
-      console.error(`[RuleLookup] Error normalizing config ${filename}:`, err instanceof Error ? err.message : err);
+      log.error(`[RuleLookup] Error normalizing config ${filename}:`, err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -341,7 +344,7 @@ export class RuleLookupService {
 
     const stateCode = md?.stateCode ?? jur?.stateCode;
     if (!stateCode) {
-      console.error(`[RuleLookup] No stateCode found in ${filename}`);
+      log.error(`[RuleLookup] No stateCode found in ${filename}`);
       return null;
     }
 
@@ -421,7 +424,7 @@ export class RuleLookupService {
    * Build default formatting rules when no config is loaded for a state.
    */
   private getDefaultRules(stateCode: string, isFederal: boolean): FormattingRules {
-    console.warn(`[RuleLookup] No config loaded for ${stateCode}, using defaults`);
+    log.warn(`[RuleLookup] No config loaded for ${stateCode}, using defaults`);
     return {
       paperSize: { ...LETTER_PAPER },
       margins: { ...DEFAULT_MARGINS },

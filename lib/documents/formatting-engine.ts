@@ -19,6 +19,9 @@ import { RuleLookupService } from '@/lib/services/formatting/rule-lookup';
 import type { FormattingRules as NewFormattingRules } from '@/lib/services/formatting/types';
 import { sanitizePartyName, sanitizeForDocument } from '@/lib/utils/text-sanitizer';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-formatting-engine');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -178,7 +181,7 @@ function ensureRuleLookupInitialized(): void {
     try {
       const service = RuleLookupService.getInstance();
       _initPromise = service.initialize().catch(err => {
-        console.warn('[FormattingEngine] RuleLookupService async init failed:', err);
+        log.warn('[FormattingEngine] RuleLookupService async init failed:', err);
       });
     } catch {
       // getInstance() itself failed — serverless cold start edge case
@@ -317,7 +320,7 @@ export function getFormattingRules(jurisdiction: string): FormattingRules {
     return legacy;
   } catch (error) {
     // Fallback to hardcoded rules if service fails
-    console.warn(`[FormattingEngine] RuleLookupService failed for ${jurisdiction}, using fallback:`, error);
+    log.warn(`[FormattingEngine] RuleLookupService failed for ${jurisdiction}, using fallback:`, error);
     return JURISDICTION_RULES[jurisdiction] || JURISDICTION_RULES['la_state'];
   }
 }
@@ -386,7 +389,7 @@ export async function applyFormatting(
     caseName?: string;
   }
 ): Promise<string> {
-  console.log(`[FormatEngine] Applying ${jurisdiction} formatting to ${documentPath}`);
+  log.info(`[FormatEngine] Applying ${jurisdiction} formatting to ${documentPath}`);
 
   const rules = getFormattingRules(jurisdiction);
   const supabase = await createClient();
@@ -479,7 +482,7 @@ export async function applyFormatting(
     throw new Error(`Failed to upload formatted document: ${uploadError.message}`);
   }
 
-  console.log(`[FormatEngine] Formatted document saved to ${formattedPath}`);
+  log.info(`[FormatEngine] Formatted document saved to ${formattedPath}`);
   return formattedPath;
 }
 
@@ -533,7 +536,7 @@ export async function validatePageCount(
  * Add line numbers to a document (California Superior Court requirement)
  */
 export async function addLineNumbers(documentPath: string): Promise<string> {
-  console.log(`[FormatEngine] Adding line numbers to ${documentPath}`);
+  log.info(`[FormatEngine] Adding line numbers to ${documentPath}`);
 
   // Line numbers are added via the section properties
   // This function would modify an existing document to add line numbers
@@ -545,7 +548,7 @@ export async function addLineNumbers(documentPath: string): Promise<string> {
 
   // The actual implementation would use docx manipulation
   // For now, return the original path
-  console.log('[FormatEngine] Line numbers feature - using document section properties');
+  log.info('[FormatEngine] Line numbers feature - using document section properties');
 
   return documentPath;
 }
@@ -741,7 +744,7 @@ export async function formatFilingPackage(
       );
       validations.push(validation);
     } catch (error) {
-      console.error(`[FormatEngine] Error formatting ${path}:`, error);
+      log.error(`[FormatEngine] Error formatting ${path}:`, error);
       validations.push({
         valid: false,
         pageCount: 0,

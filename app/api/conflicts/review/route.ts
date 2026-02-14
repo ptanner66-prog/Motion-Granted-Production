@@ -10,6 +10,9 @@ import {
   reviewConflict,
   getConflictStats,
 } from '@/lib/services/conflict/conflict-admin-service';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-conflicts-review');
 
 export async function GET(request: NextRequest) {
   try {
@@ -49,7 +52,7 @@ export async function GET(request: NextRequest) {
     const conflicts = await getPendingConflicts();
     return NextResponse.json({ conflicts });
   } catch (error) {
-    console.error('[ConflictReview API] Error:', error);
+    log.error('Conflict review error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -102,7 +105,7 @@ export async function POST(request: NextRequest) {
       message: `Conflict ${action === 'approve' ? 'approved' : 'rejected'} successfully`,
     });
   } catch (error) {
-    console.error('[ConflictReview API] Error:', error);
+    log.error('Conflict review error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

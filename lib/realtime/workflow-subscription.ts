@@ -9,6 +9,9 @@
 import { createClient } from '@/lib/supabase/client';
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('realtime-workflow-subscription');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -179,7 +182,7 @@ export class WorkflowSubscriptionManager {
       )
       .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
-          console.log('[Realtime] Workflow channel subscribed');
+          log.info('[Realtime] Workflow channel subscribed');
         } else if (status === 'CHANNEL_ERROR') {
           this.callbacks.onError?.(new Error('Workflow channel error'));
         }
@@ -212,7 +215,7 @@ export class WorkflowSubscriptionManager {
       )
       .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
-          console.log('[Realtime] Revision channel subscribed');
+          log.info('[Realtime] Revision channel subscribed');
         }
       });
   }
@@ -361,7 +364,7 @@ export class WorkflowSubscriptionManager {
     this.subscribedWorkflowIds.clear();
     this.callbacks = {};
 
-    console.log('[Realtime] Workflow subscriptions cleaned up');
+    log.info('[Realtime] Workflow subscriptions cleaned up');
   }
 }
 

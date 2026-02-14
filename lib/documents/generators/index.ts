@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-index');
+
 /**
  * Document Generator Registry (Chunk 7)
  *
@@ -170,7 +174,7 @@ export async function generateDocument<T extends DocumentType>(
   orderId: string,
   data: Omit<GeneratorDataMap[T], 'orderId'>
 ): Promise<GeneratorResult> {
-  console.log(`[GeneratorRegistry] Generating ${type} for order ${orderId}`);
+  log.info(`[GeneratorRegistry] Generating ${type} for order ${orderId}`);
 
   const fullData = { ...data, orderId } as GeneratorDataMap[T];
   let path: string;
@@ -352,7 +356,7 @@ export async function generateAllRequired(
   motionType: string,
   dataProvider: DocumentDataProvider
 ): Promise<GeneratorResult[]> {
-  console.log(`[GeneratorRegistry] Generating all required documents for order ${orderId}`);
+  log.info(`[GeneratorRegistry] Generating all required documents for order ${orderId}`);
 
   const requiredDocs = getRequiredDocuments(tier, jurisdiction, motionType);
   const results: GeneratorResult[] = [];
@@ -363,14 +367,14 @@ export async function generateAllRequired(
       const data = await dataProvider.getDataForDocument(docType, orderId);
 
       if (!data) {
-        console.warn(`[GeneratorRegistry] No data available for ${docType}, skipping`);
+        log.warn(`[GeneratorRegistry] No data available for ${docType}, skipping`);
         continue;
       }
 
       const result = await generateDocument(docType, orderId, data);
       results.push(result);
     } catch (error) {
-      console.error(`[GeneratorRegistry] Error generating ${docType}:`, error);
+      log.error(`[GeneratorRegistry] Error generating ${docType}:`, error);
       errors.push({
         type: docType,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -379,10 +383,10 @@ export async function generateAllRequired(
   }
 
   if (errors.length > 0) {
-    console.warn(`[GeneratorRegistry] ${errors.length} documents failed to generate:`, errors);
+    log.warn(`[GeneratorRegistry] ${errors.length} documents failed to generate:`, errors);
   }
 
-  console.log(`[GeneratorRegistry] Generated ${results.length}/${requiredDocs.length} documents`);
+  log.info(`[GeneratorRegistry] Generated ${results.length}/${requiredDocs.length} documents`);
   return results;
 }
 
@@ -420,7 +424,7 @@ export class DefaultDocumentDataProvider implements DocumentDataProvider {
       .single();
 
     if (error || !order) {
-      console.error(`[DataProvider] Order not found: ${orderId}`);
+      log.error(`[DataProvider] Order not found: ${orderId}`);
       return null;
     }
 

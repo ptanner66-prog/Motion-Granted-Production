@@ -10,6 +10,9 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('admin-state-toggle');
 export interface StateToggleConfig {
   stateCode: string;
   stateName: string;
@@ -93,7 +96,7 @@ export async function getStateToggles(
     .order('state_code');
 
   if (error) {
-    console.error('[state-toggle] Failed to fetch toggles:', error);
+    log.error('[state-toggle] Failed to fetch toggles:', error);
     return Object.entries(STATE_METADATA).map(([code, meta]) => ({
       stateCode: code,
       stateName: meta.name,
@@ -152,7 +155,7 @@ export async function toggleState(
     });
 
   if (error) {
-    console.error('[state-toggle] Toggle failed:', { stateCode, enabled, error });
+    log.error('[state-toggle] Toggle failed:', { stateCode, enabled, error });
     return { success: false, error: error.message };
   }
 
@@ -165,10 +168,10 @@ export async function toggleState(
     created_at: now,
   });
   if (auditResult.error) {
-    console.warn('[state-toggle] Audit log insert failed:', auditResult.error.message);
+    log.warn('[state-toggle] Audit log insert failed:', auditResult.error.message);
   }
 
-  console.log(`[state-toggle] ${stateCode} ${enabled ? 'ENABLED' : 'DISABLED'} by ${userId}`);
+  log.info(`[state-toggle] ${stateCode} ${enabled ? 'ENABLED' : 'DISABLED'} by ${userId}`);
   return { success: true };
 }
 

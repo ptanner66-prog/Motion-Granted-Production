@@ -7,6 +7,9 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-states-metadata');
 
 export async function GET() {
   try {
@@ -20,7 +23,7 @@ export async function GET() {
       .order('state_name');
 
     if (error) {
-      console.error('[api/states/metadata] Error:', error);
+      log.error('Error fetching state metadata', { error });
       return NextResponse.json({
         states: [{
           stateCode: 'LA',
@@ -38,7 +41,7 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    console.error('[api/states/metadata] Exception:', error);
+    log.error('Exception in state metadata', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       states: [{ stateCode: 'LA', stateName: 'Louisiana', motionTypes: ['MCOMPEL', 'MTD_12B6', 'MTC', 'MSJ'] }],
     });

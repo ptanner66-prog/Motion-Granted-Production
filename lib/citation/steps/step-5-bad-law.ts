@@ -20,6 +20,9 @@ import { createClient } from '@/lib/supabase/server';
 import { courtlistenerCircuit } from '@/lib/circuit-breaker';
 import type { MotionTier } from '@/types/workflow';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-steps-step-5-bad-law');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -182,7 +185,7 @@ async function checkLayer1(
 
   } catch (error) {
     result.error = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Step5] Layer 1 error:', result.error);
+    log.error('[Step5] Layer 1 error:', result.error);
   }
 
   return result;
@@ -215,7 +218,7 @@ async function checkLayer2(
       .or(`original_citation.ilike.%${normalizedCitation}%,case_name.ilike.%${normalizedCaseName || ''}%`);
 
     if (error) {
-      console.error('[Step5] Layer 2 database error:', error);
+      log.error('[Step5] Layer 2 database error:', error);
       return result;
     }
 
@@ -229,7 +232,7 @@ async function checkLayer2(
     }
 
   } catch (error) {
-    console.error('[Step5] Layer 2 error:', error);
+    log.error('[Step5] Layer 2 error:', error);
   }
 
   return result;
@@ -315,7 +318,7 @@ Respond with ONLY a JSON object:
     };
 
   } catch (error) {
-    console.error('[Step5] Layer 3 error:', error);
+    log.error('[Step5] Layer 3 error:', error);
     return null;
   }
 }
@@ -501,7 +504,7 @@ export async function checkBadLaw(
     result.confidence = 0;
     result.recommendation = `Error during bad law check: ${result.error}. Manual review recommended.`;
 
-    console.error('[Step5] Bad law check error:', result.error);
+    log.error('[Step5] Bad law check error:', result.error);
   }
 
   result.duration_ms = Date.now() - startTime;
@@ -511,7 +514,7 @@ export async function checkBadLaw(
     await logStep5Result(orderId, citationText, result);
   }
 
-  console.log(`[Step5] ${citationText.slice(0, 40)}...: ${result.status} (${Math.round(result.confidence * 100)}%, ${result.duration_ms}ms)`);
+  log.info(`[Step5] ${citationText.slice(0, 40)}...: ${result.status} (${Math.round(result.confidence * 100)}%, ${result.duration_ms}ms)`);
 
   return result;
 }
@@ -550,7 +553,7 @@ async function logStep5Result(
       },
     });
   } catch (error) {
-    console.error('[Step5] Failed to log result to database:', error);
+    log.error('[Step5] Failed to log result to database:', error);
   }
 }
 

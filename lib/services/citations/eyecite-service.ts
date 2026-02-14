@@ -16,6 +16,9 @@ import { fullPreprocess } from "./citation-preprocessor";
 import { resolveAllShorthand } from "./shorthand-resolver";
 import { deduplicateCitationsStrict } from "@/lib/civ/deduplication";
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('services-citations-eyecite-service');
 const EYECITE_SCRIPT = path.join(process.cwd(), "scripts", "eyecite_extract.py");
 const CONTEXT_CHARS = 500; // Characters before/after citation for context
 
@@ -39,7 +42,7 @@ async function runEyeciteScript(text: string): Promise<EyeciteOutput> {
 
     python.on("close", (code) => {
       if (code !== 0) {
-        console.error("[Eyecite] Script error:", stderr);
+        log.error("[Eyecite] Script error:", stderr);
         reject(new Error(`Eyecite script exited with code ${code}: ${stderr}`));
         return;
       }
@@ -209,24 +212,24 @@ export async function extractCitations(text: string): Promise<Citation[]> {
   const preprocessedText = fullPreprocess(text);
 
   // 1. Extract Louisiana citations FIRST (Eyecite doesn't recognize them)
-  console.log("[Citation] Running Louisiana statute parser...");
+  log.info("[Citation] Running Louisiana statute parser...");
   const laCitations = extractLouisianaCitations(preprocessedText);
-  console.log(`[Citation] Found ${laCitations.length} Louisiana citations`);
+  log.info(`[Citation] Found ${laCitations.length} Louisiana citations`);
 
   for (const la of laCitations) {
     citations.push(mapLACitation(la, preprocessedText));
   }
 
   // 2. Extract remaining citations with Eyecite
-  console.log("[Citation] Running Eyecite extraction...");
+  log.info("[Citation] Running Eyecite extraction...");
   try {
     const eyeciteOutput = await runEyeciteScript(preprocessedText);
 
     if (eyeciteOutput.error) {
-      console.error("[Citation] Eyecite error:", eyeciteOutput.error);
+      log.error("[Citation] Eyecite error:", eyeciteOutput.error);
       // Don't throw - return what we have from LA parser
     } else {
-      console.log(`[Citation] Eyecite found ${eyeciteOutput.count} citations`);
+      log.info(`[Citation] Eyecite found ${eyeciteOutput.count} citations`);
 
       // 3. Map Eyecite citations and deduplicate
       const seenRaw = new Set(citations.map((c) => c.raw));
@@ -242,7 +245,7 @@ export async function extractCitations(text: string): Promise<Citation[]> {
       }
     }
   } catch (error) {
-    console.error("[Citation] Eyecite execution failed:", error);
+    log.error("[Citation] Eyecite execution failed:", error);
     // Continue with LA citations only
   }
 
@@ -257,7 +260,7 @@ export async function extractCitations(text: string): Promise<Citation[]> {
       caseLawCitations,
       (c: Citation) => c.raw
     );
-    console.log(
+    log.info(
       `[Citation] Dedup: ${dedupResult.stats.inputCount} case law in → ` +
       `${dedupResult.stats.uniqueCount} unique (removed ${dedupResult.removed.length}: ` +
       `${dedupResult.stats.seriesTruncations} series, ` +
@@ -275,10 +278,10 @@ export async function extractCitations(text: string): Promise<Citation[]> {
   dedupedCitations.sort((a, b) => a.start_index - b.start_index);
 
   // 6. Resolve shorthand citations (Id., supra, etc.)
-  console.log("[Citation] Resolving shorthand citations...");
+  log.info("[Citation] Resolving shorthand citations...");
   resolveAllShorthand(dedupedCitations);
 
-  console.log(`[Citation] Total citations extracted: ${dedupedCitations.length}`);
+  log.info(`[Citation] Total citations extracted: ${dedupedCitations.length}`);
   return dedupedCitations;
 }
 

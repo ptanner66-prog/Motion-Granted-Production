@@ -3,6 +3,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { HOLD_TIMEOUTS, getHoldStageAndNextAction, type Phase } from '@/lib/config/workflow-config';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-hold-service');
 
 export interface HoldResult { success: boolean; holdId?: string; error?: string; }
 
@@ -26,7 +29,7 @@ export async function triggerHold(orderId: string, phase: Phase, reason: string)
 
     await supabase.from('email_queue').insert({ order_id: orderId, template: HOLD_TIMEOUTS.EMAIL_TEMPLATES.initial, data: { reason }, status: 'pending', created_at: now });
 
-    console.log(`[Hold] Order ${orderId} placed on HOLD at phase ${phase}`);
+    log.info('Order placed on HOLD', { orderId, phase });
     return { success: true, holdId: event?.id };
   } catch (error) {
     return { success: false, error: String(error) };
@@ -53,7 +56,7 @@ export async function resumeFromHold(orderId: string): Promise<HoldResult> {
     await supabase.from('orders').update({ status: 'in_progress', hold_resolved_at: now, updated_at: now }).eq('id', orderId);
     await supabase.from('checkpoint_events').insert({ order_id: orderId, event_type: 'HOLD_RESOLVED', phase: order.hold_phase, data: { resolved_at: now }, created_at: now });
 
-    console.log(`[Hold] Order ${orderId} resumed from HOLD`);
+    log.info('Order resumed from HOLD', { orderId });
     return { success: true };
   } catch (error) {
     return { success: false, error: String(error) };
@@ -69,7 +72,7 @@ export async function processHoldAutoRefund(orderId: string): Promise<HoldResult
     await supabase.from('checkpoint_events').insert({ order_id: orderId, event_type: 'HOLD_AUTO_REFUND', data: { refunded_at: now }, created_at: now });
     await supabase.from('email_queue').insert({ order_id: orderId, template: HOLD_TIMEOUTS.EMAIL_TEMPLATES.auto_refund, data: { reason: 'hold_timeout_7_days' }, status: 'pending', created_at: now });
 
-    console.log(`[Hold] Order ${orderId} auto-refunded after HOLD timeout`);
+    log.info('Order auto-refunded after HOLD timeout', { orderId });
     return { success: true };
   } catch (error) {
     return { success: false, error: String(error) };

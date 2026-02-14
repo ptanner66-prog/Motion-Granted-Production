@@ -5,6 +5,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('storage-signed-url');
 export interface SignedUrlOptions {
   /** Expiration in seconds. Default: 7 days (604800) */
   expiresIn?: number;
@@ -40,7 +43,7 @@ export async function generateSignedUrl(
     });
 
   if (error) {
-    console.error('[SignedUrl] Error generating URL:', error);
+    log.error('[SignedUrl] Error generating URL:', error);
     return { error: error.message };
   }
 
@@ -108,7 +111,7 @@ export async function generateOrderDeliverableUrls(
     created_at: new Date().toISOString(),
   });
 
-  console.log(`[SignedUrl] Generated ${urls.length} URLs for order ${orderId}`);
+  log.info(`[SignedUrl] Generated ${urls.length} URLs for order ${orderId}`);
 
   return { urls };
 }

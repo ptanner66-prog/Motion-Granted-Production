@@ -19,6 +19,9 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCitationDetails } from '@/lib/services/citations/citation-service';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-citations-detail');
 
 export async function GET(
   request: NextRequest,
@@ -84,7 +87,7 @@ export async function GET(
       data: result.data,
     });
   } catch (error) {
-    console.error('[API] Error fetching citation:', error);
+    log.error('Error fetching citation', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

@@ -5,6 +5,9 @@
 import { inngest } from './client';
 import { checkForConflicts } from '@/lib/conflicts';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('inngest-conflict-check');
 
 /**
  * Conflict check job - runs when new order is created
@@ -60,8 +63,7 @@ export const conflictCheckJob = inngest.createFunction(
           .eq('id', orderId);
 
         // Log blocking conflict
-        console.log(`BLOCKING CONFLICT detected for order ${orderId}`);
-        console.log(`Conflicts: ${JSON.stringify(result.summary)}`);
+        log.warn('Blocking conflict detected', { orderId, conflicts: result.summary });
       });
     }
 

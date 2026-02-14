@@ -85,7 +85,7 @@ export async function GET() {
     });
   } catch (error) {
     // Log detailed error internally but don't expose to client
-    console.error('Health check error:', error);
+    log.error('Health check error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       {
         status: 'unhealthy',

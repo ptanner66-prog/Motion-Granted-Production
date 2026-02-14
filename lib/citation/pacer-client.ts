@@ -18,6 +18,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-pacer-client');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -90,7 +93,7 @@ class PACERRateLimiter {
       const oldestRequest = this.requestTimestamps[0];
       const waitTime = oldestRequest + 60000 - now;
       if (waitTime > 0) {
-        console.log(`[PACER] Rate limit: waiting ${waitTime}ms`);
+        log.info(`[PACER] Rate limit: waiting ${waitTime}ms`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
@@ -129,7 +132,7 @@ class PACERClient {
     const password = process.env.PACER_PASSWORD;
 
     if (!username || !password) {
-      console.warn('[PACER] Credentials not configured');
+      log.warn('[PACER] Credentials not configured');
       return null;
     }
 
@@ -162,7 +165,7 @@ class PACERClient {
       });
 
       if (!response.ok) {
-        console.error('[PACER] Authentication failed:', response.status);
+        log.error('[PACER] Authentication failed:', response.status);
         await this.logAuthFailure('HTTP error: ' + response.status);
         return false;
       }
@@ -177,17 +180,17 @@ class PACERClient {
             token: tokenMatch[1],
             expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
           };
-          console.log('[PACER] Authentication successful');
+          log.info('[PACER] Authentication successful');
           return true;
         }
       }
 
-      console.error('[PACER] No session token in response');
+      log.error('[PACER] No session token in response');
       await this.logAuthFailure('No session token received');
       return false;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[PACER] Authentication error:', errorMessage);
+      log.error('[PACER] Authentication error:', errorMessage);
       await this.logAuthFailure(errorMessage);
       return false;
     }
@@ -258,7 +261,7 @@ class PACERClient {
     this.costTracking.budgetRemaining = this.costTracking.monthlyBudgetCents - this.costTracking.totalCostCents;
 
     if (this.costTracking.budgetRemaining < MONTHLY_BUDGET_CENTS * 0.1) {
-      console.warn(`[PACER] Budget warning: only $${(this.costTracking.budgetRemaining / 100).toFixed(2)} remaining`);
+      log.warn(`[PACER] Budget warning: only $${(this.costTracking.budgetRemaining / 100).toFixed(2)} remaining`);
     }
   }
 
@@ -321,7 +324,7 @@ class PACERClient {
   async queryPACER(citation: string): Promise<PACERSearchResult> {
     // Check budget first
     if (!this.hasBudget()) {
-      console.warn('[PACER] Monthly budget exhausted');
+      log.warn('[PACER] Monthly budget exhausted');
       return {
         found: false,
         source: 'NONE',
@@ -576,7 +579,7 @@ export async function getPACERMonthlySpend(): Promise<number> {
     const { data, error } = await supabase.rpc('get_pacer_monthly_spend');
 
     if (error) {
-      console.error('[PACER] Error getting monthly spend:', error);
+      log.error('[PACER] Error getting monthly spend:', error);
       // Fall back to in-memory tracking
       return pacerClient.getCostTracking().totalCostCents / 100;
     }
@@ -587,7 +590,7 @@ export async function getPACERMonthlySpend(): Promise<number> {
 
     return 0;
   } catch (error) {
-    console.error('[PACER] Error getting monthly spend:', error);
+    log.error('[PACER] Error getting monthly spend:', error);
     return pacerClient.getCostTracking().totalCostCents / 100;
   }
 }
@@ -603,14 +606,14 @@ export async function canUsePACER(): Promise<boolean> {
     const { data, error } = await supabase.rpc('can_use_pacer');
 
     if (error) {
-      console.error('[PACER] Error checking budget:', error);
+      log.error('[PACER] Error checking budget:', error);
       // Fall back to in-memory tracking
       return pacerClient.getCostTracking().budgetRemaining > 10;
     }
 
     return data === true;
   } catch (error) {
-    console.error('[PACER] Error checking budget:', error);
+    log.error('[PACER] Error checking budget:', error);
     return pacerClient.getCostTracking().budgetRemaining > 10;
   }
 }
@@ -646,7 +649,7 @@ export async function logPACERUsage(
       error_message: options?.error,
     });
   } catch (error) {
-    console.error('[PACER] Error logging usage:', error);
+    log.error('[PACER] Error logging usage:', error);
     // Don't throw - logging failure shouldn't break the pipeline
   }
 }
@@ -692,7 +695,7 @@ export async function getPACERBudgetStatus(): Promise<{
       percentUsed: ((row.total_cost_cents || 0) / 5000) * 100,
     };
   } catch (error) {
-    console.error('[PACER] Error getting budget status:', error);
+    log.error('[PACER] Error getting budget status:', error);
     return {
       totalSpentCents: 0,
       totalSpentDollars: 0,

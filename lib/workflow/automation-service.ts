@@ -16,6 +16,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-automation-service');
 import { getWorkflowProgress } from './workflow-state';
 import { generatePDFFromWorkflow, savePDFAsDeliverable } from './pdf-generator';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
@@ -262,7 +265,7 @@ async function finalizeOrder(
         });
       } catch {
         // Non-fatal - log but continue
-        console.error('Failed to queue notification for order:', orderId);
+        log.error('Failed to queue notification for order', { orderId });
       }
     }
 
@@ -575,7 +578,7 @@ async function logAutomationEvent(
     });
   } catch {
     // Non-fatal - just log to console
-    console.error('Failed to log automation event:', eventType, details);
+    log.error('Failed to log automation event', { eventType, details });
   }
 }
 

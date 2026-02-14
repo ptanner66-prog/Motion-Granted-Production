@@ -6,6 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-cancel');
 
 export async function POST(request: NextRequest) {
   try {
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest) {
       workflowId,
     });
   } catch (error) {
-    console.error('[Workflow Cancel] Error:', error);
+    log.error('Workflow cancel error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }

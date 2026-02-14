@@ -21,6 +21,9 @@ import { createClient } from '@/lib/supabase/server';
 import { loadCitationBank, checkCitationInBank } from '@/lib/civ/citation-bank';
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, BorderStyle, AlignmentType, HeadingLevel } from 'docx';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phases-phase-ix');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -385,7 +388,7 @@ export async function generateSeparateStatement(
   orderId: string,
   path: 'path_a' | 'path_b'
 ): Promise<PhaseIXOutput> {
-  console.log(`[Phase IX] Generating separate statement for order ${orderId} (${path})`);
+  log.info(`[Phase IX] Generating separate statement for order ${orderId} (${path})`);
 
   const supabase = await createClient();
 
@@ -402,7 +405,7 @@ export async function generateSeparateStatement(
 
   // Check if separate statement is required
   if (!requiresSeparateStatement(order.motion_type, order.jurisdiction)) {
-    console.log(`[Phase IX] Separate statement not required for ${order.motion_type} in ${order.jurisdiction}`);
+    log.info(`[Phase IX] Separate statement not required for ${order.motion_type} in ${order.jurisdiction}`);
     return {
       separateStatementPath: '',
       format: path === 'path_a' ? 'PATH_A' : 'PATH_B',
@@ -419,7 +422,7 @@ export async function generateSeparateStatement(
   const facts = extractMaterialFacts(phaseIIIOutput, phaseIVOutput);
 
   if (facts.length === 0) {
-    console.warn('[Phase IX] No material facts found - generating placeholder');
+    log.warn('[Phase IX] No material facts found - generating placeholder');
     facts.push({
       number: 1,
       statement: '[Material fact to be added]',
@@ -452,7 +455,7 @@ export async function generateSeparateStatement(
     });
 
   if (uploadError) {
-    console.error('[Phase IX] Upload error:', uploadError);
+    log.error('[Phase IX] Upload error:', uploadError);
     throw new Error(`Failed to upload separate statement: ${uploadError.message}`);
   }
 
@@ -476,7 +479,7 @@ export async function generateSeparateStatement(
     .update({ phase_outputs: phaseOutputs })
     .eq('id', orderId);
 
-  console.log(`[Phase IX] Generated separate statement: ${facts.length} facts, ${citationCount} citations`);
+  log.info(`[Phase IX] Generated separate statement: ${facts.length} facts, ${citationCount} citations`);
 
   return output;
 }
@@ -489,7 +492,7 @@ export async function generateSeparateStatement(
  * Verify all citations in the separate statement against the citation bank
  */
 export async function verifySSCitations(orderId: string): Promise<SSVerificationResult> {
-  console.log(`[Phase IX.1] Starting citation cross-check for order ${orderId}`);
+  log.info(`[Phase IX.1] Starting citation cross-check for order ${orderId}`);
 
   const supabase = await createClient();
 
@@ -522,7 +525,7 @@ export async function verifySSCitations(orderId: string): Promise<SSVerification
   const uniqueCitations = [...new Set(allCitations)];
 
   if (uniqueCitations.length === 0) {
-    console.log('[Phase IX.1] No citations to verify');
+    log.info('[Phase IX.1] No citations to verify');
     return {
       status: 'PASSED',
       verifiedCount: 0,
@@ -594,7 +597,7 @@ export async function verifySSCitations(orderId: string): Promise<SSVerification
     .update({ phase_outputs: phaseOutputs })
     .eq('id', orderId);
 
-  console.log(`[Phase IX.1] Complete: ${verifiedCount}/${uniqueCitations.length} verified, status: ${status}`);
+  log.info(`[Phase IX.1] Complete: ${verifiedCount}/${uniqueCitations.length} verified, status: ${status}`);
 
   return {
     status,
@@ -633,7 +636,7 @@ export async function completePhaseIX(
       const verificationResult = await verifySSCitations(orderId);
 
       if (verificationResult.status === 'FAILED') {
-        console.warn(`[Phase IX] ${verificationResult.missingCitations.length} citations need verification`);
+        log.warn(`[Phase IX] ${verificationResult.missingCitations.length} citations need verification`);
         // Continue anyway but flag for review
       }
     }
@@ -648,13 +651,13 @@ export async function completePhaseIX(
       })
       .eq('order_id', orderId);
 
-    console.log(`[Phase IX] Completed for order ${orderId}, advancing to Phase X`);
+    log.info(`[Phase IX] Completed for order ${orderId}, advancing to Phase X`);
     return {
       success: true,
       nextPhase: 'X',
     };
   } catch (error) {
-    console.error('[Phase IX] Error completing phase:', error);
+    log.error('[Phase IX] Error completing phase:', error);
     return {
       success: false,
       nextPhase: 'IX',
