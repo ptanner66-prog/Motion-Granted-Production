@@ -1861,6 +1861,15 @@ export const generateOrderWorkflow = inngest.createFunction(
     // SP-05: Score regression monitoring — track previous score to detect degradation
     let previousScore: number = currentNumericGrade;
 
+    // SP-14 TASK-19: Track letter grades across loops for stall detection.
+    // 3 consecutive identical letter grades = stall → Protocol 10 exit.
+    const STALL_THRESHOLD = 3;
+    const loopGrades: string[] = [];
+    // Include initial Phase VII grade in stall tracking
+    if (workflowState.currentGrade) {
+      loopGrades.push(workflowState.currentGrade);
+    }
+
     while (
       currentNumericGrade < qualityThreshold &&
       workflowState.revisionLoopCount < maxLoopsForTier
@@ -2021,8 +2030,36 @@ export const generateOrderWorkflow = inngest.createFunction(
           );
         }
         previousScore = currentNumericGrade;
+
+        // SP-14 TASK-19: Stall detection — track letter grade and check for consecutive same grades
+        if (workflowState.currentGrade) {
+          loopGrades.push(workflowState.currentGrade);
+        }
+        if (loopGrades.length >= STALL_THRESHOLD) {
+          const lastN = loopGrades.slice(-STALL_THRESHOLD);
+          const allSame = lastN.every(g => g === lastN[0]);
+          if (allSame) {
+            console.warn(
+              `[Orchestration] STALL DETECTED: ${STALL_THRESHOLD} consecutive "${lastN[0]}" grades. ` +
+              `Further revisions unlikely to improve quality. Triggering Protocol 10 exit.`
+            );
+            // Mark stall in Phase VII output for AIS limitations disclosure
+            const stallMetadata = {
+              stall_detected: true,
+              stall_grade: lastN[0],
+              stall_loop_count: loopGrades.length,
+              protocol_10_triggered: true,
+              protocol_10_reason: `Motion stalled at grade ${lastN[0]} after ${STALL_THRESHOLD} consecutive identical grades. Delivered with limitations disclosure per Protocol 10.`,
+            };
+            workflowState.phaseOutputs["VII"] = {
+              ...(workflowState.phaseOutputs["VII"] as Record<string, unknown> ?? {}),
+              ...stallMetadata,
+            };
+            break;
+          }
+        }
       }
-      console.log(`[Orchestration] Loop ${loopNum} complete. Grade: ${workflowState.currentGrade}, numericGrade: ${currentNumericGrade}, threshold: ${qualityThreshold}`);
+      console.log(`[Orchestration] Loop ${loopNum} complete. Grade: ${workflowState.currentGrade}, numericGrade: ${currentNumericGrade}, threshold: ${qualityThreshold}, gradeHistory: [${loopGrades.join(', ')}]`);
     }
 
     // SP23: Revision loop summary
@@ -2034,8 +2071,11 @@ export const generateOrderWorkflow = inngest.createFunction(
       `passed: ${loopPassed}`
     );
 
-    // SP23 Protocol 10: Max loops exhausted without reaching threshold
-    if (!loopPassed && workflowState.revisionLoopCount >= maxLoopsForTier) {
+    // SP-14 TASK-19: Check if stall was detected (exits loop early via break)
+    const stallDetected = (workflowState.phaseOutputs["VII"] as Record<string, unknown> | undefined)?.stall_detected === true;
+
+    // SP23 Protocol 10: Max loops exhausted OR stall detected without reaching threshold
+    if (!loopPassed && (workflowState.revisionLoopCount >= maxLoopsForTier || stallDetected)) {
       await step.run("protocol-10-enhanced-disclosure", async () => {
         await handleProtocol10Exit(
           supabase,
@@ -2049,6 +2089,9 @@ export const generateOrderWorkflow = inngest.createFunction(
           workflowState.currentGrade,
         );
       });
+      if (stallDetected) {
+        console.log(`[Orchestration] Protocol 10 triggered by STALL DETECTION (${STALL_THRESHOLD} consecutive identical grades)`);
+      }
     }
 
     // If Phase VII passed on first try (no revision loop entered),
