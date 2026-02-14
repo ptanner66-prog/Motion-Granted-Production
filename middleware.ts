@@ -53,6 +53,14 @@ function generateRequestId(): string {
 }
 
 // ============================================================================
+// STATIC FILE EXTENSIONS ALLOWLIST (CGA7-001)
+// Only these extensions bypass auth. Everything else goes through the full
+// security pipeline — including paths like /api/admin/users.csv
+// ============================================================================
+
+const STATIC_EXTENSIONS = /\.(svg|png|jpe?g|gif|webp|ico|css|js|woff2?|map|txt)$/i;
+
+// ============================================================================
 // MAIN MIDDLEWARE
 // ============================================================================
 
@@ -71,7 +79,7 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
-    pathname.includes('.')
+    STATIC_EXTENSIONS.test(pathname)
   ) {
     return response;
   }
@@ -108,9 +116,10 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  // Validate user token server-side (getUser makes a network call to Supabase,
-  // which is slower than getSession but validates the token rather than trusting the cookie)
-  const { data: { user } } = await supabase.auth.getUser();
+  // AUD-035: Validate user token server-side. getUser() makes a Supabase network
+  // call (~50-100ms) that cryptographically verifies the JWT, unlike getSession()
+  // which only reads the cookie without verification.
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
 
   // Get client identifier for rate limiting
   // Prefer Vercel's platform-injected header (not spoofable) over standard x-forwarded-for
@@ -174,7 +183,14 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith('/admin') ||
                        pathname.startsWith('/api/admin');
 
-  if (isProtectedRoute && !user) {
+  if (isProtectedRoute && (authError || !user)) {
+    // API routes get JSON 401; page routes get redirected to login
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401, headers: { 'X-Request-Id': requestId } }
+      );
+    }
     const redirectUrl = new URL('/login', request.url);
     redirectUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(redirectUrl);
@@ -199,7 +215,9 @@ export async function middleware(request: NextRequest) {
                        pathname === '/admin/verify-mfa' ||
                        pathname.startsWith('/api/auth/mfa');
 
-    if (mfaMode !== 'off' && !isMFARoute && !pathname.startsWith('/api/admin')) {
+    // CGA7-002: MFA enforcement applies to ALL admin routes (pages + API)
+    // Only MFA setup/verify/enrollment endpoints are excluded
+    if (mfaMode !== 'off' && !isMFARoute) {
       const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       const { data: factorsData } = await supabase.auth.mfa.listFactors();
 
@@ -208,6 +226,13 @@ export async function middleware(request: NextRequest) {
       );
 
       if (aalData?.currentLevel !== 'aal2') {
+        // API routes get JSON 403; page routes get redirected
+        if (pathname.startsWith('/api/')) {
+          return NextResponse.json(
+            { error: 'MFA required for admin access' },
+            { status: 403, headers: { 'X-Request-Id': requestId } }
+          );
+        }
         if (hasVerifiedFactor) {
           // Factor enrolled but session is AAL1 — need to verify
           return NextResponse.redirect(new URL('/admin/verify-mfa', request.url));
