@@ -17,6 +17,8 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { formatMotionType } from '@/config/motion-types'
+import { getQueueStats } from '@/lib/queue-status'
+import type { QueueStatsResult } from '@/lib/queue-status'
 import { QueueRefreshButton } from './queue-refresh-button'
 
 export const metadata: Metadata = {
@@ -51,13 +53,32 @@ interface CompletedOrder {
   generation_completed_at: string | null
 }
 
-interface QueueStats {
-  queue_depth: number
-  processing_count: number
-  completed_today: number
-  failed_count: number
-  avg_generation_seconds: number
-  oldest_pending_minutes: number
+// Helper to format a duration in minutes to a human-readable string (e.g., "23d 16h", "4h 12m", "7m")
+function formatDurationMinutes(totalMinutes: number): string {
+  if (totalMinutes < 1) return 'Just now'
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = Math.round(totalMinutes % 60)
+  const days = Math.floor(hours / 24)
+  const remainingHours = hours % 24
+  if (days > 0) return `${days}d ${remainingHours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
+// Helper to format generation time in seconds to "Xm Ys" format
+function formatGenerationTime(seconds: number): string {
+  if (seconds <= 0) return 'N/A'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return s > 0 ? `${m}m ${s}s` : `${m}m`
+}
+
+// Helper to render a stat value, showing "Error" if the query failed (null)
+function renderStat(value: number | null, formatter?: (v: number) => string): string {
+  if (value === null) return 'Error'
+  if (formatter) return formatter(value)
+  return String(value)
 }
 
 // Helper to format relative time
@@ -119,9 +140,8 @@ function estimateCompletion(queuePosition: number, avgMinutesPerOrder: number = 
 export default async function QueuePage() {
   const supabase = await createClient()
 
-  // Fetch queue statistics
-  const { data: queueStatsData } = await supabase.rpc('get_queue_stats')
-  const queueStats = queueStatsData as QueueStats[] | null
+  // Fetch queue statistics via direct queries (not RPC — stored function may not be deployed)
+  const queueStats: QueueStatsResult = await getQueueStats(supabase)
 
   // Fetch orders in queue (submitted, under_review, in_progress)
   const { data: queuedOrdersData } = await supabase
@@ -163,13 +183,12 @@ export default async function QueuePage() {
     .limit(10)
   const completedOrders = completedOrdersData as CompletedOrder[] | null
 
-  // Calculate average generation time
-  const avgGenerationSeconds = queueStats?.[0]?.avg_generation_seconds || 0
-  const avgMinutes = Math.round(avgGenerationSeconds / 60)
-
-  // Estimate time to clear queue
-  const queueDepth = (queueStats?.[0]?.queue_depth || 0) + (queueStats?.[0]?.processing_count || 0)
-  const estimatedClearTime = queueDepth * (avgMinutes || 2)
+  // Derive display values from stats (null-safe — null means query error)
+  const avgGenSec = queueStats.avg_generation_seconds
+  const avgMinutesPerOrder = avgGenSec !== null && avgGenSec > 0 ? avgGenSec / 60 : 2
+  const totalQueueSize =
+    (queueStats.queue_depth ?? 0) + (queueStats.processing_count ?? 0)
+  const estimatedClearMinutes = totalQueueSize * avgMinutesPerOrder
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -194,8 +213,8 @@ export default async function QueuePage() {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Queue Depth</p>
-                <p className="text-2xl font-bold text-navy">
-                  {queueStats?.[0]?.queue_depth || 0}
+                <p className={`text-2xl font-bold ${queueStats.queue_depth === null ? 'text-red-500' : 'text-navy'}`}>
+                  {renderStat(queueStats.queue_depth)}
                 </p>
               </div>
             </div>
@@ -210,8 +229,8 @@ export default async function QueuePage() {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Processing</p>
-                <p className="text-2xl font-bold text-navy">
-                  {queueStats?.[0]?.processing_count || 0}
+                <p className={`text-2xl font-bold ${queueStats.processing_count === null ? 'text-red-500' : 'text-navy'}`}>
+                  {renderStat(queueStats.processing_count)}
                 </p>
               </div>
             </div>
@@ -226,8 +245,8 @@ export default async function QueuePage() {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Completed Today</p>
-                <p className="text-2xl font-bold text-navy">
-                  {queueStats?.[0]?.completed_today || 0}
+                <p className={`text-2xl font-bold ${queueStats.completed_today === null ? 'text-red-500' : 'text-navy'}`}>
+                  {renderStat(queueStats.completed_today)}
                 </p>
               </div>
             </div>
@@ -237,13 +256,13 @@ export default async function QueuePage() {
         <Card className="border-0 shadow-sm">
           <CardContent className="p-5">
             <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${(queueStats?.[0]?.failed_count || 0) > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
-                <XCircle className={`h-6 w-6 ${(queueStats?.[0]?.failed_count || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+              <div className={`p-3 rounded-xl ${queueStats.failed_count !== null && queueStats.failed_count > 0 ? 'bg-red-100' : queueStats.failed_count === null ? 'bg-red-100' : 'bg-gray-100'}`}>
+                <XCircle className={`h-6 w-6 ${queueStats.failed_count !== null && queueStats.failed_count > 0 ? 'text-red-600' : queueStats.failed_count === null ? 'text-red-600' : 'text-gray-400'}`} />
               </div>
               <div>
                 <p className="text-sm text-gray-500">Failed</p>
-                <p className={`text-2xl font-bold ${(queueStats?.[0]?.failed_count || 0) > 0 ? 'text-red-600' : 'text-navy'}`}>
-                  {queueStats?.[0]?.failed_count || 0}
+                <p className={`text-2xl font-bold ${queueStats.failed_count === null ? 'text-red-500' : queueStats.failed_count > 0 ? 'text-red-600' : 'text-navy'}`}>
+                  {renderStat(queueStats.failed_count)}
                 </p>
               </div>
             </div>
@@ -259,8 +278,8 @@ export default async function QueuePage() {
               <Timer className="h-5 w-5 text-gray-400" />
               <div>
                 <p className="text-sm text-gray-500">Avg Generation Time</p>
-                <p className="text-lg font-semibold text-navy">
-                  {avgMinutes > 0 ? `${avgMinutes} min` : 'N/A'}
+                <p className={`text-lg font-semibold ${avgGenSec === null ? 'text-red-500' : 'text-navy'}`}>
+                  {renderStat(avgGenSec, (v) => v > 0 ? formatGenerationTime(v) : 'N/A')}
                 </p>
               </div>
             </div>
@@ -273,8 +292,12 @@ export default async function QueuePage() {
               <TrendingUp className="h-5 w-5 text-gray-400" />
               <div>
                 <p className="text-sm text-gray-500">Est. Queue Clear</p>
-                <p className="text-lg font-semibold text-navy">
-                  {queueDepth > 0 ? (estimatedClearTime < 60 ? `~${estimatedClearTime} min` : `~${(estimatedClearTime / 60).toFixed(1)} hr`) : 'Empty'}
+                <p className={`text-lg font-semibold ${queueStats.queue_depth === null ? 'text-red-500' : 'text-navy'}`}>
+                  {queueStats.queue_depth === null
+                    ? 'Error'
+                    : totalQueueSize > 0
+                      ? `~${formatDurationMinutes(estimatedClearMinutes)}`
+                      : 'Empty'}
                 </p>
               </div>
             </div>
@@ -287,10 +310,12 @@ export default async function QueuePage() {
               <Zap className="h-5 w-5 text-gray-400" />
               <div>
                 <p className="text-sm text-gray-500">Oldest Pending</p>
-                <p className="text-lg font-semibold text-navy">
-                  {queueStats?.[0]?.oldest_pending_minutes
-                    ? `${Math.round(queueStats[0].oldest_pending_minutes)} min`
-                    : 'None'}
+                <p className={`text-lg font-semibold ${queueStats.oldest_pending_minutes === null ? 'text-red-500' : 'text-navy'}`}>
+                  {queueStats.oldest_pending_minutes === null
+                    ? 'Error'
+                    : queueStats.oldest_pending_minutes > 0
+                      ? formatDurationMinutes(queueStats.oldest_pending_minutes)
+                      : 'None'}
                 </p>
               </div>
             </div>

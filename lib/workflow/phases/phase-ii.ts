@@ -141,7 +141,7 @@ export function extractCitationsFromText(text: string): string[] {
     /\d+\s+F\.?\s*Supp\.?\s*(?:2d|3d)?\s+\d+/gi,
     // Federal Appendix
     /\d+\s+Fed\.?\s*Appx\.?\s+\d+/gi,
-    // WestLaw citations
+    // WL-format citations
     /\d{4}\s+WL\s+\d+/gi,
     // U.S.C. citations
     /\d+\s+U\.?\s*S\.?\s*C\.?\s+§?\s*\d+/gi,

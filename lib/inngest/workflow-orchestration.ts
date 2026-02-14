@@ -23,6 +23,7 @@
  */
 
 import { inngest } from "./client";
+import { NonRetriableError } from "inngest";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -34,12 +35,10 @@ import {
   type PhaseInput,
   type PhaseOutput,
 } from "@/lib/workflow/phase-executors";
-import {
-  getModelConfig,
-  getModelId,
-  createMessageParams,
-  shouldUseOpus,
-} from "@/lib/workflow/model-router";
+// Model routing imports removed — getModelConfig/getModelId/createMessageParams/shouldUseOpus
+// were imported from the deprecated model-router shim but never used in this file.
+// All model routing flows through phase-registry.ts (the canonical source).
+// Import from @/lib/config/phase-registry if needed in the future.
 import { triggerCheckpoint, type CheckpointType } from "@/lib/workflow/checkpoint-service";
 import {
   checkCitationRequirements,
@@ -103,6 +102,9 @@ import { detectMotionType, generateAdvisories } from "@/lib/workflow/motion-advi
 // SP23: Protocol 10 — max revision loops exhausted
 import { handleProtocol10Exit } from "@/lib/workflow/protocol-10-handler";
 
+// SP-11: Protocol 5 — statutory reference verification after revision
+import { runProtocol5 } from "@/lib/citation/protocol-5";
+
 // SP24: Load DB-backed phase prompts at workflow start
 import { loadPhasePrompts } from "@/prompts";
 
@@ -114,6 +116,31 @@ const TIERED_MAX_LOOPS: Record<string, number> = {
   C: 3,
   D: 4,
 };
+
+// SP-05: Helper functions for revision loop thresholds
+function getQualityThreshold(tier: string): number {
+  return tier === 'A' ? TIER_A_PASSING_VALUE : MINIMUM_PASSING_VALUE;
+}
+
+function getMaxRevisionLoops(tier: string): number {
+  return TIERED_MAX_LOOPS[tier] ?? MAX_REVISION_LOOPS;
+}
+
+// SP-11: Extract draft text from phase output for Protocol 5
+function extractDraftText(phaseOutput: unknown): string | null {
+  if (!phaseOutput) return null;
+  if (typeof phaseOutput === 'string') return phaseOutput;
+  if (typeof phaseOutput === 'object') {
+    const obj = phaseOutput as Record<string, unknown>;
+    // Phase VIII output may store draft in various fields
+    for (const key of ['revised_draft', 'revisedDraft', 'draft', 'content', 'motionBody']) {
+      if (typeof obj[key] === 'string' && (obj[key] as string).length > 0) {
+        return obj[key] as string;
+      }
+    }
+  }
+  return null;
+}
 
 // ============================================================================
 // SUPABASE CLIENT
@@ -1830,17 +1857,28 @@ export const generateOrderWorkflow = inngest.createFunction(
     // SP23 BUG-2 / SC-002: Extract numericGrade from initial Phase VII.
     // This is the SOLE quality determinant — NOT evaluation.passes.
     const initialVIIOutput = phaseVIIResult.output as Record<string, unknown> | null;
+    // SP-05: Prefer numeric_score (new field from Bug 04 fix), fall back to numericGrade (legacy)
     let currentNumericGrade: number = (
+      (initialVIIOutput?.numeric_score as number | undefined) ??
       (initialVIIOutput?.numericGrade as number | undefined) ??
       ((initialVIIOutput?.evaluation as Record<string, unknown> | undefined)?.numericGrade as number | undefined) ??
       0
     );
 
+    // SP-05 Bug 03: Check if initial Phase VII already passed — skip loop entirely
+    const initialPassesThreshold = initialVIIOutput?.passes_threshold as boolean | undefined;
+    if (initialPassesThreshold === true && currentNumericGrade >= (workflowState.tier === 'A' ? TIER_A_PASSING_VALUE : MINIMUM_PASSING_VALUE)) {
+      console.log(`[Orchestration] Initial Phase VII passes_threshold=true (grade ${currentNumericGrade}). Skipping revision loop.`);
+    }
+
     // SP23 SC-001: Tiered quality threshold (GPA scale)
-    const qualityThreshold = workflowState.tier === 'A' ? TIER_A_PASSING_VALUE : MINIMUM_PASSING_VALUE;
+    const qualityThreshold = getQualityThreshold(workflowState.tier);
 
     // SP23: Tiered max loops — Tier A=2, B/C=3, D=4
-    const maxLoopsForTier = TIERED_MAX_LOOPS[workflowState.tier] ?? MAX_REVISION_LOOPS;
+    const maxLoopsForTier = getMaxRevisionLoops(workflowState.tier);
+
+    // SP-05: Score regression monitoring — track previous score to detect degradation
+    let previousScore: number = currentNumericGrade;
 
     while (
       currentNumericGrade < qualityThreshold &&
@@ -1859,8 +1897,13 @@ export const generateOrderWorkflow = inngest.createFunction(
         const result = await executePhase("VIII", input);
 
         if (!result.success || !result.output) {
-          console.error(`[Phase VIII Loop ${loopNum}] FAILED: ${result.error || 'No output'}`);
-          throw new Error(`Phase VIII revision failed: ${result.error || 'No output returned'}`);
+          const errorMsg = result.error || 'No output returned';
+          console.error(`[Phase VIII Loop ${loopNum}] FAILED: ${errorMsg}`);
+          // SP-07 TASK-06: JSON parse failures and truncation are non-retriable
+          if (errorMsg.includes('non-retriable') || errorMsg.includes('Non-retriable') || errorMsg.includes('malformed output')) {
+            throw new NonRetriableError(`Phase VIII revision failed (non-retriable): ${errorMsg}`);
+          }
+          throw new Error(`Phase VIII revision failed: ${errorMsg}`);
         }
 
         await logPhaseExecution(supabase, workflowState, "VIII", result, result.tokensUsed);
@@ -1882,6 +1925,28 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.warn(`[${orderId}] Phase VIII loop ${loopNum} returned no revisedMotion — keeping previous draft`);
       }
       console.log(`[Orchestration] Phase VIII output stored. currentDraft updated. Keys: ${Object.keys(workflowState.phaseOutputs)}`);
+
+      // SP-05: Crash recovery — persist Phase VIII output to DB so Inngest replay
+      // can recover the latest revision if the function crashes mid-loop
+      await step.run(`persist-revision-${loopNum}`, async () => {
+        await supabase
+          .from("workflow_state")
+          .upsert({
+            order_id: orderId,
+            phase_viii_output: phaseVIIIRevisionResult.output,
+            revision_loop_count: loopNum,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "order_id" });
+        console.log(`[Orchestration] Loop ${loopNum} Phase VIII output persisted for crash recovery`);
+      });
+
+      // SP-07 TASK-05: Check for fabrication detection and hold recommendation
+      if (phaseVIIIOutput?.fabricationDetected) {
+        console.warn(`[Orchestration] Loop ${loopNum}: FACT FABRICATION detected — revision was reverted. Entities: ${JSON.stringify(phaseVIIIOutput.fabricatedEntities)}`);
+      }
+      if (phaseVIIIOutput?.holdRecommended) {
+        console.warn(`[Orchestration] Loop ${loopNum}: Phase VIII recommends HOLD (${phaseVIIIOutput.holdReason}). ${(phaseVIIIOutput.bracketedPrompts as string[])?.length || 0} missing specifics.`);
+      }
 
       // STEP B: Phase VII.1 — Citation re-verification on the REVISED text
       const phaseVII1Result = await step.run(`phase-vii1-citation-check-loop-${loopNum}`, async () => {
@@ -1944,13 +2009,37 @@ export const generateOrderWorkflow = inngest.createFunction(
         const grade = (judgeOutput?.evaluation as Record<string, unknown> | undefined)?.grade || judgeOutput?.grade;
         workflowState.currentGrade = grade as LetterGrade;
 
-        // SP23 BUG-2: Update numericGrade for threshold comparison.
+        // SP-05: Update numericGrade — prefer numeric_score (new field from Bug 04 fix),
+        // fall back to numericGrade (legacy), then evaluation.numericGrade (nested).
         // The numeric grade is the SOLE quality determinant (SC-002).
         currentNumericGrade = (
+          (judgeOutput?.numeric_score as number | undefined) ??
           (judgeOutput?.numericGrade as number | undefined) ??
           ((judgeOutput?.evaluation as Record<string, unknown> | undefined)?.numericGrade as number | undefined) ??
           0
         );
+
+        // SP-05 Bug 03 FIX: Explicit passes_threshold check.
+        // If Phase VII output says passes_threshold=true, break immediately.
+        // This is a belt-and-suspenders check — the while condition also checks numericGrade,
+        // but this ensures we honor the executor's grade-based determination directly.
+        const passesThreshold = judgeOutput?.passes_threshold as boolean | undefined;
+        if (passesThreshold === true) {
+          console.log(
+            `[Orchestration] Loop ${loopNum}: passes_threshold=true (grade ${currentNumericGrade} >= ${qualityThreshold}). ` +
+            `Exiting revision loop.`
+          );
+          break;
+        }
+
+        // SP-05: Score regression monitoring — warn if grade dropped after revision
+        if (currentNumericGrade < previousScore) {
+          console.warn(
+            `[Orchestration] SCORE REGRESSION: Loop ${loopNum} grade ${currentNumericGrade.toFixed(1)} < ` +
+            `previous ${previousScore.toFixed(1)}. Revision may have degraded quality.`
+          );
+        }
+        previousScore = currentNumericGrade;
       }
       console.log(`[Orchestration] Loop ${loopNum} complete. Grade: ${workflowState.currentGrade}, numericGrade: ${currentNumericGrade}, threshold: ${qualityThreshold}`);
     }
@@ -2010,6 +2099,30 @@ export const generateOrderWorkflow = inngest.createFunction(
       workflowState.phaseOutputs["VIII.5"] = phaseVIII5Result.output;
     }
     console.log('[Orchestration] Accumulated after VIII.5:', Object.keys(workflowState.phaseOutputs));
+
+    // ========================================================================
+    // STEP 12.5: Protocol 5 — Statutory Reference Verification (SP-11)
+    // ========================================================================
+    await step.run("protocol-5-statutory-verification", async () => {
+      const revisedDraft = extractDraftText(workflowState.phaseOutputs["VIII"]);
+      if (!revisedDraft) {
+        console.log('[Protocol5] No revised draft text found — skipping');
+        return;
+      }
+
+      const result = await runProtocol5(revisedDraft, workflowState.orderId);
+
+      if (result.newStatutesFound > 0) {
+        console.log(
+          `[Protocol5] ${result.newStatutesFound} new statute(s) found, ${result.newStatutes.filter(s => s.addedToBank).length} added to bank`,
+        );
+        if (result.warnings.length > 0) {
+          console.warn(`[Protocol5] Warnings: ${result.warnings.join('; ')}`);
+        }
+      } else if (result.triggered) {
+        console.log(`[Protocol5] ${result.totalStatutesInDraft} statutes in draft, all already in bank`);
+      }
+    });
 
     // ========================================================================
     // STEP 13: Phase IX - Supporting Documents
@@ -2151,6 +2264,10 @@ export const generateOrderWorkflow = inngest.createFunction(
         })
         .eq("id", orderId);
 
+      // SP-09: Include quality gate results in CP3 checkpoint for admin review
+      const phaseXOutput = phaseXResult.output as Record<string, unknown> | null;
+      const isReadyForDelivery = phaseXOutput?.ready_for_delivery === true;
+
       await triggerCheckpoint(workflowState.workflowId, "CP3", {
         checkpoint: "CP3",
         status: "pending",
@@ -2158,6 +2275,10 @@ export const generateOrderWorkflow = inngest.createFunction(
         finalQA: phaseXResult.output,
         requiresAdminApproval: true,
         blocking: true,
+        ready_for_delivery: isReadyForDelivery,
+        blocking_reason: phaseXOutput?.blocking_reason ?? null,
+        citationPlaceholderScan: phaseXOutput?.citationPlaceholderScan ?? null,
+        aisCompliance: phaseXOutput?.aisCompliance ?? null,
       });
 
       // Queue admin notification

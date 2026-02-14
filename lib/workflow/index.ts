@@ -83,13 +83,6 @@ export {
   retryFailedWorkflows,
 } from './automation-service';
 
-// Superprompt System (production-grade motion generation)
-export {
-  generateSuperprompt,
-  generateMotion,
-  generateMotionFromOrder,
-} from './superprompt';
-
 // Superprompt Engine (merge lawyer's superprompt with order data)
 export {
   generateMotionWithSuperprompt,
@@ -154,13 +147,6 @@ export type {
   AutomationResult,
   OrderProgress,
 } from './automation-service';
-
-export type {
-  CaseContext,
-  MotionRequest,
-  GeneratedMotion,
-  MotionType as SuperpromptMotionType,
-} from './superprompt';
 
 export type {
   SuperpromptTemplate,

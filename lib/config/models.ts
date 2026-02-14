@@ -1,12 +1,15 @@
 /**
- * @deprecated This file is superseded by lib/config/phase-registry.ts.
- * Active imports still exist — DO NOT DELETE until imports are migrated.
- * See: CGA6-037, CGA6-038 in Clay's audit.
+ * Centralized model string constants for Motion Granted.
  *
- * Remaining imports:
+ * This file defines the MODELS constant (canonical model strings),
+ * validation, and cost data. Routing logic lives in phase-registry.ts,
+ * which imports MODELS from here.
+ *
+ * Imported by:
+ * - lib/config/phase-registry.ts (MODELS, validateModelString, ModelId)
  * - lib/workflow/phase-executors.ts (MODELS)
+ * - lib/inngest/functions.ts (MODELS)
  * - lib/civ/model-router.ts (MODELS)
- * - lib/workflow/model-router.ts (MODELS)
  * - __tests__/citations/citation-models.test.ts (MODELS)
  */
 

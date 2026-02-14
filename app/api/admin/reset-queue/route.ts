@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const orderIds = stuckOrders.map(o => o.id);
+    const orderIds = stuckOrders.map((o: { id: string }) => o.id);
 
     // Count by status before update
     const statusCounts: Record<string, number> = {};
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `Reset ${updatedOrders?.length || 0} stuck orders - workflows cleared, ready to regenerate`,
       previous_statuses: statusCounts,
-      orders_updated: updatedOrders?.map(o => o.order_number) || [],
+      orders_updated: updatedOrders?.map((o: { order_number: string }) => o.order_number) || [],
       workflows_cleared: workflowIds.length,
     });
   } catch (error) {

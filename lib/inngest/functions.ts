@@ -25,7 +25,8 @@ import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications
 import { createMessageWithRetry } from "@/lib/ai/claude-client";
 import { parseOrderDocuments, getOrderParsedDocuments } from "@/lib/workflow/document-parser";
 import { quickValidate } from "@/lib/workflow/quality-validator";
-import { extractCitations } from "@/lib/workflow/citation-verifier";
+import { extractCitations } from "@/lib/citation/citation-verifier";
+import { MODELS } from "@/lib/config/models";
 
 // Import the new 14-phase workflow orchestration
 import { generateOrderWorkflow, handleWorkflowFailure, workflowFunctions } from "./workflow-orchestration";
@@ -446,8 +447,8 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
 
       const response = await createMessageWithRetry(
         {
-          model: "claude-opus-4-5-20251101",
-          max_tokens: 64000,
+          model: MODELS.OPUS,
+          max_tokens: 64000, // Opus extended output
           system: context,
           messages: [{ role: "user", content: userMessage }],
         },
