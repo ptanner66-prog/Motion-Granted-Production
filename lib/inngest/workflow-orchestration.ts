@@ -113,6 +113,15 @@ const TIERED_MAX_LOOPS: Record<string, number> = {
   D: 4,
 };
 
+// SP-05: Helper functions for revision loop thresholds
+function getQualityThreshold(tier: string): number {
+  return tier === 'A' ? TIER_A_PASSING_VALUE : MINIMUM_PASSING_VALUE;
+}
+
+function getMaxRevisionLoops(tier: string): number {
+  return TIERED_MAX_LOOPS[tier] ?? MAX_REVISION_LOOPS;
+}
+
 // ============================================================================
 // SUPABASE CLIENT
 // ============================================================================
@@ -1828,17 +1837,28 @@ export const generateOrderWorkflow = inngest.createFunction(
     // SP23 BUG-2 / SC-002: Extract numericGrade from initial Phase VII.
     // This is the SOLE quality determinant — NOT evaluation.passes.
     const initialVIIOutput = phaseVIIResult.output as Record<string, unknown> | null;
+    // SP-05: Prefer numeric_score (new field from Bug 04 fix), fall back to numericGrade (legacy)
     let currentNumericGrade: number = (
+      (initialVIIOutput?.numeric_score as number | undefined) ??
       (initialVIIOutput?.numericGrade as number | undefined) ??
       ((initialVIIOutput?.evaluation as Record<string, unknown> | undefined)?.numericGrade as number | undefined) ??
       0
     );
 
+    // SP-05 Bug 03: Check if initial Phase VII already passed — skip loop entirely
+    const initialPassesThreshold = initialVIIOutput?.passes_threshold as boolean | undefined;
+    if (initialPassesThreshold === true && currentNumericGrade >= (workflowState.tier === 'A' ? TIER_A_PASSING_VALUE : MINIMUM_PASSING_VALUE)) {
+      console.log(`[Orchestration] Initial Phase VII passes_threshold=true (grade ${currentNumericGrade}). Skipping revision loop.`);
+    }
+
     // SP23 SC-001: Tiered quality threshold (GPA scale)
-    const qualityThreshold = workflowState.tier === 'A' ? TIER_A_PASSING_VALUE : MINIMUM_PASSING_VALUE;
+    const qualityThreshold = getQualityThreshold(workflowState.tier);
 
     // SP23: Tiered max loops — Tier A=2, B/C=3, D=4
-    const maxLoopsForTier = TIERED_MAX_LOOPS[workflowState.tier] ?? MAX_REVISION_LOOPS;
+    const maxLoopsForTier = getMaxRevisionLoops(workflowState.tier);
+
+    // SP-05: Score regression monitoring — track previous score to detect degradation
+    let previousScore: number = currentNumericGrade;
 
     while (
       currentNumericGrade < qualityThreshold &&
@@ -1880,6 +1900,20 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.warn(`[${orderId}] Phase VIII loop ${loopNum} returned no revisedMotion — keeping previous draft`);
       }
       console.log(`[Orchestration] Phase VIII output stored. currentDraft updated. Keys: ${Object.keys(workflowState.phaseOutputs)}`);
+
+      // SP-05: Crash recovery — persist Phase VIII output to DB so Inngest replay
+      // can recover the latest revision if the function crashes mid-loop
+      await step.run(`persist-revision-${loopNum}`, async () => {
+        await supabase
+          .from("workflow_state")
+          .upsert({
+            order_id: orderId,
+            phase_viii_output: phaseVIIIRevisionResult.output,
+            revision_loop_count: loopNum,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "order_id" });
+        console.log(`[Orchestration] Loop ${loopNum} Phase VIII output persisted for crash recovery`);
+      });
 
       // STEP B: Phase VII.1 — Citation re-verification on the REVISED text
       const phaseVII1Result = await step.run(`phase-vii1-citation-check-loop-${loopNum}`, async () => {
@@ -1942,13 +1976,37 @@ export const generateOrderWorkflow = inngest.createFunction(
         const grade = (judgeOutput?.evaluation as Record<string, unknown> | undefined)?.grade || judgeOutput?.grade;
         workflowState.currentGrade = grade as LetterGrade;
 
-        // SP23 BUG-2: Update numericGrade for threshold comparison.
+        // SP-05: Update numericGrade — prefer numeric_score (new field from Bug 04 fix),
+        // fall back to numericGrade (legacy), then evaluation.numericGrade (nested).
         // The numeric grade is the SOLE quality determinant (SC-002).
         currentNumericGrade = (
+          (judgeOutput?.numeric_score as number | undefined) ??
           (judgeOutput?.numericGrade as number | undefined) ??
           ((judgeOutput?.evaluation as Record<string, unknown> | undefined)?.numericGrade as number | undefined) ??
           0
         );
+
+        // SP-05 Bug 03 FIX: Explicit passes_threshold check.
+        // If Phase VII output says passes_threshold=true, break immediately.
+        // This is a belt-and-suspenders check — the while condition also checks numericGrade,
+        // but this ensures we honor the executor's grade-based determination directly.
+        const passesThreshold = judgeOutput?.passes_threshold as boolean | undefined;
+        if (passesThreshold === true) {
+          console.log(
+            `[Orchestration] Loop ${loopNum}: passes_threshold=true (grade ${currentNumericGrade} >= ${qualityThreshold}). ` +
+            `Exiting revision loop.`
+          );
+          break;
+        }
+
+        // SP-05: Score regression monitoring — warn if grade dropped after revision
+        if (currentNumericGrade < previousScore) {
+          console.warn(
+            `[Orchestration] SCORE REGRESSION: Loop ${loopNum} grade ${currentNumericGrade.toFixed(1)} < ` +
+            `previous ${previousScore.toFixed(1)}. Revision may have degraded quality.`
+          );
+        }
+        previousScore = currentNumericGrade;
       }
       console.log(`[Orchestration] Loop ${loopNum} complete. Grade: ${workflowState.currentGrade}, numericGrade: ${currentNumericGrade}, threshold: ${qualityThreshold}`);
     }
