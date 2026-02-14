@@ -339,11 +339,106 @@ export function buildQueryFromResearchData(researchQuery: {
 }
 
 // ============================================================================
+// SP-06 CIV-005: STATUTORY-ANCHORED SEARCH BUILDER
+// ============================================================================
+
+/**
+ * Builds a CourtListener-optimized search query.
+ *
+ * CRITICAL: Statutory references (Art. 1601, C.C.P., R.S.)
+ * must be PRESERVED — they are the highest-signal terms.
+ *
+ * @param rawQuery - The research query from Phase III
+ * @param options - Optional query parameters
+ */
+export function buildSearchQuery(
+  rawQuery: string,
+  options?: {
+    jurisdiction?: string;
+    statutoryBasis?: string;
+    courtType?: 'state' | 'federal';
+  }
+): string {
+  // DO NOT strip statutory references
+  let query = rawQuery.trim();
+
+  // Add statutory basis if provided and not already in query
+  if (options?.statutoryBasis && !query.includes(options.statutoryBasis)) {
+    query = `${options.statutoryBasis} ${query}`;
+  }
+
+  // Add jurisdiction context if not already present
+  if (options?.jurisdiction === 'LA' && !query.toLowerCase().includes('louisiana')) {
+    query = `${query} Louisiana`;
+  }
+
+  // Clean up excessive whitespace but DO NOT remove legal terms
+  query = query.replace(/\s+/g, ' ').trim();
+
+  // Enforce 15-word limit for CourtListener query efficiency
+  const words = query.split(/\s+/).filter(w => w.length > 0);
+  if (words.length > 15) {
+    query = words.slice(0, 15).join(' ');
+  }
+
+  return query;
+}
+
+/**
+ * Builds a statutory-anchored search query for CourtListener.
+ *
+ * Strategy: Include the statute/article number as primary anchor,
+ * then add context terms for relevance.
+ *
+ * Example input: { primary_query: "Art. 1601 extension time good cause", statutory_basis: "La. C.C.P. Art. 1601" }
+ * Example output: "La. C.C.P. Art. 1601 extension time good cause Louisiana"
+ */
+export function buildStatutorySearch(
+  researchQuery: {
+    primary_query: string;
+    statutory_basis?: string;
+    required_topic?: string;
+  },
+  jurisdiction: string
+): string {
+  const parts: string[] = [];
+
+  // 1. Statutory basis is the PRIMARY anchor
+  if (researchQuery.statutory_basis) {
+    parts.push(researchQuery.statutory_basis);
+  }
+
+  // 2. Add the research query terms (may already contain the article ref)
+  const queryWithoutDuplicateStatute = researchQuery.primary_query
+    .replace(researchQuery.statutory_basis || '', '')
+    .trim();
+  if (queryWithoutDuplicateStatute) {
+    parts.push(queryWithoutDuplicateStatute);
+  }
+
+  // 3. Add jurisdiction if not already present
+  const combined = parts.join(' ');
+  if (jurisdiction === 'LA' && !combined.toLowerCase().includes('louisiana')) {
+    parts.push('Louisiana');
+  }
+
+  let query = parts.join(' ').replace(/\s+/g, ' ').trim();
+
+  // Enforce 15-word limit
+  const words = query.split(/\s+/).filter(w => w.length > 0);
+  if (words.length > 15) {
+    query = words.slice(0, 15).join(' ');
+  }
+
+  return query;
+}
+
+// ============================================================================
 // EXPORTS FOR BACKWARD COMPATIBILITY
 // ============================================================================
 
 /**
- * @deprecated Use buildPropositionQuery() instead.
+ * @deprecated Use buildPropositionQuery() or buildSearchQuery() instead.
  * This is a compatibility shim that wraps the new proposition-aware builder.
  */
 export function simplifyQueryV2(query: string, statutoryBasis?: string[]): string {
