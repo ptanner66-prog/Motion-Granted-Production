@@ -41,6 +41,9 @@ import type {
   ActionRequired,
 } from '@/lib/civ/types';
 
+// SP-14 TASK-16: Louisiana article selection for Phase II
+import { getArticlesForMotion } from '@/lib/workflow/article-selection';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -95,6 +98,27 @@ export interface PhaseOutput {
   tokensUsed?: { input: number; output: number };
   durationMs?: number;
   error?: string;
+}
+
+// ============================================================================
+// SP-14 TASK-17: Consent/Unopposed Motion Detection
+// ============================================================================
+
+type ConsentStatus = 'contested' | 'unopposed' | 'consent' | 'unknown';
+
+const CONSENT_INDICATORS = ['by consent', 'stipulated', 'agreed motion', 'joint motion', 'consent motion'];
+const UNOPPOSED_INDICATORS = ['unopposed', 'no opposition', 'without opposition', 'uncontested'];
+
+/**
+ * Detect whether a motion is filed by consent or is unopposed.
+ * Default is 'contested' — false negatives are safe.
+ */
+function detectConsentStatus(caseDetails: string, instructions: string): ConsentStatus {
+  const combined = `${caseDetails} ${instructions}`.toLowerCase();
+
+  if (CONSENT_INDICATORS.some(i => combined.includes(i))) return 'consent';
+  if (UNOPPOSED_INDICATORS.some(i => combined.includes(i))) return 'unopposed';
+  return 'contested';
 }
 
 // ============================================================================
@@ -958,6 +982,15 @@ Provide your Phase I analysis as JSON.`;
       phaseOutput.caseIdentifiers.caseCaption = input.caseCaption;
     }
 
+    // SP-14 TASK-17: Detect consent/unopposed motion status from case details
+    if (!phaseOutput.consent_status) {
+      phaseOutput.consent_status = detectConsentStatus(
+        input.statementOfFacts || '',
+        input.instructions || ''
+      );
+      console.log(`[Phase I] Consent status detected: ${phaseOutput.consent_status}`);
+    }
+
     console.log(`[Phase I] ========== PHASE I COMPLETE ==========`);
     console.log(`[Phase I] Total duration: ${Date.now() - start}ms`);
 
@@ -1035,7 +1068,16 @@ Provide your Phase II legal framework analysis as JSON.`;
       };
     }
 
-    const phaseOutput = { ...parsed.data, phaseComplete: 'II' };
+    const phaseOutput: Record<string, unknown> = { ...parsed.data, phaseComplete: 'II' };
+
+    // SP-14 TASK-16: Append relevant Louisiana articles for Phase III research guidance
+    const articles = getArticlesForMotion(input.motionType, input.jurisdiction);
+    if (articles.primary.length > 0 || articles.secondary.length > 0) {
+      phaseOutput.relevant_articles = articles;
+      console.log(`[Phase II] Appended ${articles.primary.length} primary + ${articles.secondary.length} secondary articles for ${input.motionType}`);
+    } else {
+      console.log(`[Phase II] No article mapping for motionType="${input.motionType}" jurisdiction="${input.jurisdiction}"`);
+    }
 
     return {
       success: true,
@@ -3083,6 +3125,30 @@ async function executePhaseVI(input: PhaseInput): Promise<PhaseOutput> {
     };
   }
 
+  // =========================================================================
+  // SP-14 TASK-17: Consent/Unopposed Skip — no adversarial analysis needed
+  // =========================================================================
+  const phaseIOutput = (input.previousPhaseOutputs?.['I'] ?? {}) as Record<string, unknown>;
+  const consentStatus = phaseIOutput.consent_status as string | undefined;
+  if (consentStatus === 'consent' || consentStatus === 'unopposed') {
+    console.log(`[Phase VI] SKIPPED - Motion is ${consentStatus}. Adversarial analysis not applicable.`);
+    return {
+      success: true,
+      phase: 'VI',
+      status: 'skipped' as PhaseStatus,
+      output: {
+        phaseComplete: 'VI',
+        skipped: true,
+        skipReason: consentStatus === 'consent' ? 'CONSENT_MOTION' : 'UNOPPOSED_MOTION',
+        consent_status: consentStatus,
+        oppositionAnalysis: null,
+        notes: `Phase VI skipped: motion is ${consentStatus}. No adversarial analysis needed.`,
+      },
+      nextPhase: 'VII',
+      durationMs: 0,
+    };
+  }
+
   try {
     const client = getAnthropicClient();
 
@@ -3189,10 +3255,18 @@ async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
     const phaseVIIIOutput = (input.previousPhaseOutputs?.['VIII'] ?? null) as Record<string, unknown> | null;
     const loopNumber = input.revisionLoop || 1;
 
-    // Check if Phase VI was skipped (Tier A procedural motion)
+    // Check if Phase VI was skipped (Tier A procedural motion or consent/unopposed)
     const phaseVISkipped = phaseVIOutput?.skipped === true;
+    const phaseVISkipReason = phaseVIOutput?.skipReason as string | undefined;
+    // SP-14 TASK-17: Check for consent/unopposed status from Phase I
+    const phaseIOutputForVII = (input.previousPhaseOutputs?.['I'] ?? {}) as Record<string, unknown>;
+    const consentStatusVII = phaseIOutputForVII.consent_status as string | undefined;
+    const isConsentOrUnopposed = consentStatusVII === 'consent' || consentStatusVII === 'unopposed';
     if (phaseVISkipped) {
-      console.log('[Phase VII] Phase VI was skipped (Tier A procedural motion)');
+      console.log(`[Phase VII] Phase VI was skipped (reason: ${phaseVISkipReason || 'unknown'})`);
+    }
+    if (isConsentOrUnopposed) {
+      console.log(`[Phase VII] Motion is ${consentStatusVII} — using simplified evaluation (focus on legal sufficiency)`);
     }
 
     console.log(`[Phase VII] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
@@ -3227,7 +3301,8 @@ ${PHASE_PROMPTS.PHASE_VII}
 **Phase VI Skipped:** ${phaseVISkipped ? 'YES - Tier A procedural motion (DO NOT penalize for missing opposition analysis)' : 'NO'}
 
 Use extended thinking to thoroughly analyze before grading.
-${phaseVISkipped ? '\nIMPORTANT: Phase VI (Opposition Anticipation) was skipped because this is a Tier A procedural motion. DO NOT penalize the grade for missing opposition analysis.' : ''}`;
+${phaseVISkipped ? '\nIMPORTANT: Phase VI (Opposition Anticipation) was skipped because this is a Tier A procedural motion. DO NOT penalize the grade for missing opposition analysis.' : ''}
+${isConsentOrUnopposed ? `\nIMPORTANT: This is a ${consentStatusVII} motion. Use SIMPLIFIED evaluation — focus on legal sufficiency and proper formatting rather than adversarial strength. ${consentStatusVII === 'consent' ? 'Consent motions are almost always granted if properly formatted.' : 'Unopposed motions face a lower adversarial bar.'} DO NOT penalize for missing opposition analysis.` : ''}`;
 
     // Build opposition analysis section based on whether Phase VI was skipped
     const oppositionSection = phaseVISkipped
@@ -3273,6 +3348,18 @@ Provide your judicial evaluation as JSON.`;
     }
 
     const phaseOutput: Record<string, unknown> = { ...parsed.data, phaseComplete: 'VII' };
+
+    // SP-14 TASK-24: Validate optional output fields (tentative_ruling, argument_assessment, checkpoint_event)
+    // These are optional — log warnings if missing, never fail the workflow.
+    if (!phaseOutput.tentative_ruling) {
+      console.warn(`[Phase VII] tentative_ruling missing from output for order ${input.orderId} — workflow continues`);
+    }
+    if (!phaseOutput.argument_assessment || !Array.isArray(phaseOutput.argument_assessment)) {
+      console.warn(`[Phase VII] argument_assessment missing or not an array for order ${input.orderId} — Phase VIII falls back to aggregate grade feedback`);
+    }
+    if (!phaseOutput.checkpoint_event) {
+      console.warn(`[Phase VII] checkpoint_event missing from output for order ${input.orderId} — CP2 emission will use default values`);
+    }
 
     // Extract pass/fail
     const evaluation = (phaseOutput.evaluation as Record<string, unknown>) || phaseOutput;
@@ -4053,9 +4140,49 @@ async function executePhaseIX(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase IX] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
     console.log(`[Phase IX] Phase VIII keys: ${Object.keys(phaseVIIIOutput).join(', ') || 'EMPTY'}`);
 
+    // =========================================================================
+    // SP-14 TASK-21: Explicit input source validation
+    // Prefer currentDraft (Phase VIII post-revision) over original Phase V draft.
+    // =========================================================================
+    const hasRevisedDraft = !!phaseVIIIOutput?.revisedMotion;
+    const hasOriginalDraft = !!phaseVOutput?.draftMotion || Object.keys(phaseVOutput).length > 0;
+
+    if (!hasRevisedDraft && !hasOriginalDraft) {
+      console.error('[Phase IX] CRITICAL: No draft available — neither Phase VIII nor Phase V produced usable output');
+      return {
+        success: false,
+        phase: 'IX',
+        status: 'failed',
+        output: null,
+        error: 'Phase IX: No draft provided. Cannot assemble documents without a draft.',
+        durationMs: Date.now() - start,
+      };
+    }
+
+    if (hasRevisedDraft) {
+      console.log('[Phase IX] Using currentDraft from Phase VIII (post-revision)');
+    } else {
+      console.warn('[Phase IX] WARNING: Using original draft from Phase V — no revision data available');
+    }
+
     // Safe motion extraction with multiple fallback paths
     const finalMotion = phaseVIIIOutput?.revisedMotion ?? phaseVOutput?.draftMotion ?? phaseVOutput ?? {};
-    console.log(`[Phase IX] Final motion source: ${phaseVIIIOutput?.revisedMotion ? 'Phase VIII (revised)' : 'Phase V (original)'}`);
+
+    // Validate draft is not suspiciously short (possible data loss)
+    const draftStr = typeof finalMotion === 'string' ? finalMotion : JSON.stringify(finalMotion);
+    if (draftStr.length < 100) {
+      console.error(`[Phase IX] Draft is suspiciously short (${draftStr.length} chars). Possible data loss.`);
+      return {
+        success: false,
+        phase: 'IX',
+        status: 'failed',
+        output: null,
+        error: `Phase IX: Draft is suspiciously short (${draftStr.length} chars). Possible data loss.`,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    console.log(`[Phase IX] Final motion source: ${hasRevisedDraft ? 'Phase VIII (revised)' : 'Phase V (original)'}`);
     console.log(`[Phase IX] Final motion keys: ${Object.keys(finalMotion as Record<string, unknown>).join(', ') || 'EMPTY'}`);
 
 
