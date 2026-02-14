@@ -93,7 +93,7 @@ export async function POST(request: Request) {
       .select('id')
       .eq('order_id', orderId);
 
-    const workflowIds = workflows?.map(w => w.id) || [];
+    const workflowIds = workflows?.map((w: { id: string }) => w.id) || [];
 
     if (workflowIds.length > 0) {
       // Delete workflow phase executions
