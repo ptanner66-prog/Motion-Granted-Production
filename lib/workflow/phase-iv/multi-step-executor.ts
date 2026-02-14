@@ -23,6 +23,8 @@ import { searchOpinions } from '@/lib/courtlistener/client';
 import { PER_REQUEST_TIMEOUT_MS } from '@/lib/courtlistener/batched-search';
 import type { PhaseInput } from '@/lib/workflow/phase-executors';
 import { scoreRelevance, TOPICAL_RELEVANCE_THRESHOLD, type PropositionContext } from '@/lib/courtlistener/relevance-scorer';
+import { scoreSearchResults, filterByMinimumScore, type SearchScoringContext } from '@/lib/courtlistener/relevance-scorer';
+import { buildSearchQuery } from '@/lib/courtlistener/query-builder';
 
 // ============================================================================
 // TYPES
@@ -362,6 +364,8 @@ export interface SearchTask {
   elementId: string;
   elementName: string;
   tier: 'tier1' | 'tier2' | 'tier3';
+  fallbackQueries?: string[];
+  statutoryBasis?: string;
 }
 
 export interface SearchResult {
@@ -666,14 +670,6 @@ export async function executePhaseIVInit(
   const jurisdictionType = detectJurisdictionType(jurisdiction || 'Louisiana');
   console.log(`[Phase IV-Init] Jurisdiction TYPE: ${jurisdictionType.toUpperCase()}`);
 
-  // Extract elements from previous phases or use defaults
-  const elements = extractLegalElements(input);
-  console.log(`[Phase IV-Init] Extracted ${elements.length} legal elements`);
-
-  // Generate search tasks for each element
-  const searchTasks: SearchTask[] = [];
-  let taskCounter = 0;
-
   // CHEN JURISDICTION FIX: Select tiers based on jurisdiction type
   const tiersToUse: Array<'tier1' | 'tier2' | 'tier3'> = jurisdictionType === 'state'
     ? ['tier1', 'tier2']  // STATE: only state court tiers
@@ -681,22 +677,106 @@ export async function executePhaseIVInit(
 
   console.log(`[Phase IV-Init] Tiers for ${jurisdictionType.toUpperCase()} jurisdiction: ${tiersToUse.join(', ')}`);
 
-  for (const element of elements) {
-    // Limit queries per element
-    const queries = element.searchQueries.slice(0, MAX_QUERIES_PER_ELEMENT);
+  // ═══════════════════════════════════════════════════════════════════════
+  // SP-06 TASK-07 FIX: Check Phase III research_queries FIRST
+  // Phase III generates targeted, proposition-specific queries with
+  // statutory_basis and fallback_queries. Use them instead of generic
+  // element-level searchQueries from Phase II.
+  // ═══════════════════════════════════════════════════════════════════════
+  const phaseIIIOutput = input.previousPhaseOutputs?.['III'] as Record<string, unknown> | undefined;
+  const researchQueries = (phaseIIIOutput?.research_queries || []) as Array<{
+    proposition_id?: string;
+    proposition?: string;
+    primary_query?: string;
+    fallback_queries?: string[];
+    element_id?: string;
+    element_name?: string;
+    required_topic?: string;
+    statutory_basis?: string[] | string;
+  }>;
 
-    for (let i = 0; i < queries.length; i++) {
-      const query = queries[i];
-      // CHEN FIX: Assign tier from jurisdiction-appropriate tiers only
+  let searchTasks: SearchTask[];
+  let elements: ExtractedElement[];
+  let taskCounter = 0;
+
+  if (researchQueries.length > 0) {
+    // ═══ PREFERRED PATH: Use Phase III proposition-specific queries ═══
+    console.log(`[Phase IV-Init] ✅ Using ${researchQueries.length} research queries from Phase III`);
+    researchQueries.forEach((q, i) => {
+      console.log(`[Phase IV-Init]   Q${i + 1}: "${q.primary_query}" (${q.proposition_id || q.element_id || 'unknown'})`);
+    });
+
+    // Build elements list from research queries for downstream compatibility
+    elements = researchQueries.map((rq, idx) => ({
+      id: rq.element_id || rq.proposition_id || `proposition-${idx}`,
+      name: rq.element_name || rq.required_topic || `Proposition ${idx + 1}`,
+      description: rq.proposition || '',
+      isCritical: idx < Math.ceil(researchQueries.length / 2), // First half = critical
+      searchQueries: [
+        rq.primary_query || '',
+        ...(rq.fallback_queries || []),
+      ].filter(q => q.length > 0),
+    }));
+
+    // Deduplicate queries before generating tasks (avoid wasting API calls)
+    const seenQueries = new Set<string>();
+    const halfPoint = Math.ceil(researchQueries.length / 2);
+
+    searchTasks = [];
+    for (let i = 0; i < researchQueries.length; i++) {
+      const rq = researchQueries[i];
+      const primaryQuery = rq.primary_query || '';
+      if (!primaryQuery || seenQueries.has(primaryQuery.toLowerCase())) continue;
+      seenQueries.add(primaryQuery.toLowerCase());
+
+      // Resolve statutory basis (may be string or string[])
+      const rawBasis = rq.statutory_basis;
+      const statutoryBasis = Array.isArray(rawBasis) ? rawBasis[0] : rawBasis;
+
+      // Build optimized query with statutory anchor
+      const optimizedQuery = buildSearchQuery(primaryQuery, {
+        jurisdiction: 'LA',
+        statutoryBasis,
+      });
+
       const tier = tiersToUse[i % tiersToUse.length];
 
       searchTasks.push({
         taskId: `task-${++taskCounter}`,
-        query,
-        elementId: element.id,
-        elementName: element.name,
+        query: optimizedQuery,
+        elementId: rq.element_id || rq.proposition_id || `proposition-${i}`,
+        elementName: rq.element_name || rq.required_topic || `Proposition ${i + 1}`,
         tier,
+        fallbackQueries: rq.fallback_queries || [],
+        statutoryBasis,
       });
+    }
+
+    console.log(`[Phase IV-Init] Generated ${searchTasks.length} search tasks from Phase III (${researchQueries.length - searchTasks.length} duplicates removed)`);
+
+  } else {
+    // ═══ FALLBACK PATH: Extract from Phase II elements (current behavior) ═══
+    console.warn('[Phase IV-Init] ⚠️ Phase III research_queries missing or empty — falling back to Phase II generic queries');
+
+    elements = extractLegalElements(input);
+    console.log(`[Phase IV-Init] Extracted ${elements.length} legal elements`);
+
+    searchTasks = [];
+    for (const element of elements) {
+      const queries = element.searchQueries.slice(0, MAX_QUERIES_PER_ELEMENT);
+
+      for (let i = 0; i < queries.length; i++) {
+        const query = queries[i];
+        const tier = tiersToUse[i % tiersToUse.length];
+
+        searchTasks.push({
+          taskId: `task-${++taskCounter}`,
+          query,
+          elementId: element.id,
+          elementName: element.name,
+          tier,
+        });
+      }
     }
   }
 
@@ -755,7 +835,31 @@ export async function executePhaseIVBatch(
     try {
       console.log(`[Phase IV-Batch ${batchIndex + 1}] Executing task ${task.taskId}: "${task.query}"`);
 
-      const searchResult = await executeSearchWithTimeout(task, jurisdiction);
+      let searchResult = await executeSearchWithTimeout(task, jurisdiction);
+
+      // SP-06: Try fallback queries if primary returned 0 results
+      if ((!searchResult.success || searchResult.candidates.length === 0) && task.fallbackQueries && task.fallbackQueries.length > 0) {
+        console.log(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} primary returned 0 results — trying ${task.fallbackQueries.length} fallback queries`);
+
+        for (const fallbackQuery of task.fallbackQueries) {
+          if (!fallbackQuery || fallbackQuery.length < 3) continue;
+
+          // Small delay before fallback attempt
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          const fallbackTask: SearchTask = {
+            ...task,
+            query: buildSearchQuery(fallbackQuery, { jurisdiction: 'LA', statutoryBasis: task.statutoryBasis }),
+          };
+          const fallbackResult = await executeSearchWithTimeout(fallbackTask, jurisdiction);
+
+          if (fallbackResult.success && fallbackResult.candidates.length > 0) {
+            console.log(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} fallback "${fallbackQuery.substring(0, 40)}..." returned ${fallbackResult.candidates.length} candidates`);
+            searchResult = fallbackResult;
+            break;
+          }
+        }
+      }
 
       results.push(searchResult);
 
@@ -915,8 +1019,27 @@ export async function executePhaseIVAggregate(
   }
   console.log(`[Phase IV-Aggregate] Candidates after relevance scoring: ${relevanceScoredCandidates.length}`);
 
-  // Score and rank candidates
-  const scoredCandidates = scoreCandidates(relevanceScoredCandidates, initResult.jurisdiction);
+  // ═══════════════════════════════════════════════════════════════════════
+  // SP-06 CIV-006: Three-axis relevance scoring (keyword 40%, court 30%, recency 30%)
+  // Replaces crude scoreCandidates() with weighted composite scoring
+  // ═══════════════════════════════════════════════════════════════════════
+  const jurisdictionCode = initResult.jurisdiction?.toLowerCase().includes('louisiana') ? 'LA' : initResult.jurisdiction;
+  const scoringContext: SearchScoringContext = {
+    queryTerms: initResult.searchTasks.flatMap(t => t.query.split(/\s+/).filter(w => w.length > 2)),
+    statutoryBasis: initResult.searchTasks.find(t => t.statutoryBasis)?.statutoryBasis,
+    jurisdiction: jurisdictionCode,
+    filingCourt: jurisdictionType,
+  };
+
+  const scoredResults = scoreSearchResults(relevanceScoredCandidates, scoringContext);
+  const filteredScored = filterByMinimumScore(scoredResults, 0.3);
+  console.log(`[Phase IV-Aggregate] Three-axis scoring: ${filteredScored.length} passed (${scoredResults.length - filteredScored.length} below 0.3 threshold)`);
+
+  // Map scored results back to CitationCandidate format with updated scores
+  const scoredCandidates = filteredScored.map(s => ({
+    ...s.candidate,
+    relevanceScore: Math.round(s.relevanceScore * 100),
+  }));
 
   // Select top citations
   const selectedCitations = selectTopCitations(

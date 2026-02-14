@@ -645,3 +645,197 @@ export function filterByRelevance(
 
   return results;
 }
+
+// ============================================================================
+// SP-06 CIV-006: THREE-AXIS RELEVANCE SCORING
+// ============================================================================
+//
+// Scores CourtListener search results on three weighted axes:
+//   Keyword match: 40%  |  Court level: 30%  |  Recency: 30%
+//
+// BINDING WEIGHTS — do not modify these ratios.
+// ============================================================================
+
+/** Minimum fields required for three-axis scoring */
+export interface SearchResultCandidate {
+  id: number;
+  clusterId: number;
+  caseName: string;
+  citation: string;
+  court: string;
+  dateFiled: string;
+  snippet?: string;
+  forElement: string;
+  relevanceScore?: number;
+}
+
+/** A search result scored by the three-axis model */
+export interface ScoredSearchResult {
+  /** The original candidate data */
+  candidate: SearchResultCandidate;
+  /** Composite relevance score (0-1) */
+  relevanceScore: number;
+  /** Per-axis breakdown */
+  breakdown: {
+    keywordScore: number;     // 0-1
+    courtLevelScore: number;  // 0-1
+    recencyScore: number;     // 0-1
+  };
+}
+
+export interface SearchScoringContext {
+  /** Terms to match against case text */
+  queryTerms: string[];
+  /** Statutory basis reference (double-weighted in keyword scoring) */
+  statutoryBasis?: string;
+  /** Jurisdiction (e.g., 'LA') */
+  jurisdiction: string;
+  /** Filing court type */
+  filingCourt: 'state' | 'federal';
+  /** Filing circuit for same-circuit binding analysis */
+  filingCircuit?: string;
+}
+
+/**
+ * Score CourtListener search results for relevance.
+ *
+ * Weights (BINDING — do not modify):
+ * - Keyword match: 40%
+ * - Court level: 30%
+ * - Recency: 30%
+ *
+ * @param candidates - CourtListener search result candidates
+ * @param context - The search context (query terms, jurisdiction, filing court)
+ * @returns Scored and sorted results (highest relevance first)
+ */
+export function scoreSearchResults(
+  candidates: SearchResultCandidate[],
+  context: SearchScoringContext
+): ScoredSearchResult[] {
+  const scored = candidates.map(candidate => {
+    const keywordScore = calculateKeywordScore(candidate, context);
+    const courtLevelScore = calculateCourtLevelScore(candidate, context);
+    const recencyScore = calculateRecencyScore(candidate);
+
+    const relevanceScore =
+      (keywordScore * 0.40) +
+      (courtLevelScore * 0.30) +
+      (recencyScore * 0.30);
+
+    return {
+      candidate,
+      relevanceScore: Math.round(relevanceScore * 1000) / 1000,
+      breakdown: { keywordScore, courtLevelScore, recencyScore },
+    };
+  });
+
+  // Sort by relevance score descending
+  return scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
+}
+
+/**
+ * Filter scored results below a minimum relevance threshold.
+ *
+ * @param scored - Scored results from scoreSearchResults()
+ * @param minScore - Minimum relevance score (0-1). Default 0.3
+ * @returns Filtered results above threshold
+ */
+export function filterByMinimumScore(
+  scored: ScoredSearchResult[],
+  minScore: number = 0.3
+): ScoredSearchResult[] {
+  const filtered = scored.filter(s => s.relevanceScore >= minScore);
+  const rejected = scored.length - filtered.length;
+  if (rejected > 0) {
+    console.log(`[SearchScorer] Filtered out ${rejected} results below ${minScore} threshold`);
+  }
+  return filtered;
+}
+
+// ============================================================================
+// THREE-AXIS SCORING COMPONENTS
+// ============================================================================
+
+function calculateKeywordScore(
+  candidate: { caseName: string; snippet?: string; court: string },
+  context: SearchScoringContext
+): number {
+  const text = [
+    candidate.caseName || '',
+    candidate.snippet || '',
+  ].join(' ').toLowerCase();
+
+  let matchCount = 0;
+  let totalTerms = context.queryTerms.length;
+
+  for (const term of context.queryTerms) {
+    if (text.includes(term.toLowerCase())) {
+      matchCount++;
+    }
+  }
+
+  // Statutory basis match is worth double
+  if (context.statutoryBasis) {
+    totalTerms++;
+    if (text.includes(context.statutoryBasis.toLowerCase())) {
+      matchCount += 2; // Double weight for statute match
+    }
+  }
+
+  return totalTerms > 0 ? Math.min(matchCount / totalTerms, 1.0) : 0;
+}
+
+function calculateCourtLevelScore(
+  candidate: { court: string },
+  context: SearchScoringContext
+): number {
+  const court = (candidate.court || '').toLowerCase();
+
+  // U.S. Supreme Court — binding everywhere
+  if (court.includes('u.s. supreme') || court.includes('united states supreme') || court === 'scotus') {
+    return 1.0;
+  }
+
+  // Louisiana authority matrix (state court filing)
+  if (context.jurisdiction === 'LA' && context.filingCourt === 'state') {
+    if (court.includes('supreme') && court.includes('louisiana')) return 1.0;
+    if ((court.includes('court of appeal') || court === 'lactapp') && court.includes('louisiana')) {
+      return 0.80; // Without circuit info, use middle ground
+    }
+    if (court.includes('fifth circuit') || court.includes('5th circuit') || court === 'ca5') return 0.75;
+    if (court.includes('supreme') && !court.includes('louisiana')) return 0.40;
+    return 0.30;
+  }
+
+  // Louisiana authority matrix (federal court filing)
+  if (context.jurisdiction === 'LA' && context.filingCourt === 'federal') {
+    if (court.includes('fifth circuit') || court.includes('5th circuit') || court === 'ca5') return 0.95;
+    if (court.includes('supreme') && court.includes('louisiana')) return 0.85;
+    if ((court.includes('court of appeal') || court === 'lactapp') && court.includes('louisiana')) return 0.65;
+    return 0.30;
+  }
+
+  // Generic fallback for other jurisdictions
+  if (court.includes('supreme')) return 0.80;
+  if (court.includes('court of appeal') || court.includes('circuit')) return 0.60;
+  return 0.30;
+}
+
+function calculateRecencyScore(
+  candidate: { dateFiled: string }
+): number {
+  const dateFiled = candidate.dateFiled;
+  if (!dateFiled) return 0.30; // Unknown date = low score
+
+  const filedDate = new Date(dateFiled);
+  if (isNaN(filedDate.getTime())) return 0.30;
+
+  const now = new Date();
+  const yearsAgo = (now.getTime() - filedDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+
+  if (yearsAgo <= 5) return 1.0;
+  if (yearsAgo <= 10) return 0.85;
+  if (yearsAgo <= 20) return 0.70;
+  if (yearsAgo <= 30) return 0.50;
+  return 0.30;
+}
