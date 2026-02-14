@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { getRateLimitStatus } from '@/lib/rate-limit';
+import { getQueueStats } from '@/lib/queue-status';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -39,79 +40,46 @@ export async function GET() {
 
     const supabase = createSupabaseClient(supabaseUrl, supabaseServiceKey);
 
-    // Get queue statistics using the stored function
-    const { data: statsData, error: statsError } = await supabase.rpc('get_queue_stats');
+    // Get queue statistics via direct queries (does not rely on stored function)
+    const stats = await getQueueStats(supabase);
 
-    if (statsError) {
-      console.error('Failed to get queue stats:', statsError);
-      // Try to get basic stats directly
-      const { count: queueCount } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['submitted', 'under_review']);
-
-      const { count: processingCount } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'in_progress');
-
-      const { count: failedCount } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'generation_failed');
-
-      return NextResponse.json({
-        status: (failedCount || 0) > 5 ? 'degraded' : 'healthy',
-        queue_depth: queueCount || 0,
-        processing: processingCount || 0,
-        oldest_pending_minutes: null,
-        failed_last_24h: failedCount || 0,
-        avg_generation_seconds: null,
-        rate_limit: getRateLimitStatus(),
-        timestamp: new Date().toISOString(),
-        note: 'Basic stats (stored function unavailable)',
-      });
-    }
-
-    const stats = statsData?.[0] || {
-      queue_depth: 0,
-      processing_count: 0,
-      completed_today: 0,
-      failed_count: 0,
-      avg_generation_seconds: 0,
-      oldest_pending_minutes: 0,
-    };
+    // Map null (query error) to 0 for the health endpoint — monitoring tools expect numbers
+    const queueDepth = stats.queue_depth ?? 0;
+    const failedCount = stats.failed_count ?? 0;
+    const oldestPendingMinutes = stats.oldest_pending_minutes ?? 0;
 
     // Determine health status
     let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
+
+    // Flag as degraded if any stat query failed
+    const hasQueryErrors = Object.values(stats).some((v) => v === null);
+    if (hasQueryErrors) {
+      status = 'degraded';
+    }
 
     // Degraded if:
     // - More than 5 failed orders
     // - Oldest pending order is over 30 minutes old
     // - Queue depth is over 20
-    if (stats.failed_count > 5) {
-      status = 'degraded';
-    } else if (stats.oldest_pending_minutes > 30) {
-      status = 'degraded';
-    } else if (stats.queue_depth > 20) {
+    if (failedCount > 5 || oldestPendingMinutes > 30 || queueDepth > 20) {
       status = 'degraded';
     }
 
     // Unhealthy if:
     // - More than 10 failed orders
     // - Oldest pending order is over 60 minutes old
-    if (stats.failed_count > 10 || stats.oldest_pending_minutes > 60) {
+    if (failedCount > 10 || oldestPendingMinutes > 60) {
       status = 'unhealthy';
     }
 
     return NextResponse.json({
       status,
-      queue_depth: stats.queue_depth || 0,
-      processing: stats.processing_count || 0,
-      completed_today: stats.completed_today || 0,
-      oldest_pending_minutes: Math.round(stats.oldest_pending_minutes || 0),
-      failed_last_24h: stats.failed_count || 0,
-      avg_generation_seconds: Math.round(stats.avg_generation_seconds || 0),
+      queue_depth: queueDepth,
+      processing: stats.processing_count ?? 0,
+      completed_today: stats.completed_today ?? 0,
+      oldest_pending_minutes: Math.round(oldestPendingMinutes),
+      failed_last_24h: failedCount,
+      avg_generation_seconds: Math.round(stats.avg_generation_seconds ?? 0),
       rate_limit: getRateLimitStatus(),
       timestamp: new Date().toISOString(),
     });
