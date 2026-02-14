@@ -14,6 +14,9 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('integration-storage-manager');
 const BUCKET_NAME = 'filing-packages';
 const SIGNED_URL_EXPIRY = 60 * 60 * 24; // 24 hours
 const MAX_UPLOAD_RETRIES = 1;
@@ -60,14 +63,14 @@ export async function ensureBucketExists(
 ): Promise<void> {
   const client = supabase || getAdminClient();
   if (!client) {
-    console.warn('[storage-manager] No Supabase client available — skipping bucket check');
+    log.warn('[storage-manager] No Supabase client available — skipping bucket check');
     return;
   }
 
   try {
     const { data: buckets, error: listError } = await client.storage.listBuckets();
     if (listError) {
-      console.error('[storage-manager] Failed to list buckets:', listError.message);
+      log.error('[storage-manager] Failed to list buckets:', listError.message);
       return;
     }
 
@@ -82,12 +85,12 @@ export async function ensureBucketExists(
     if (createError) {
       // Bucket may have been created concurrently — check for "already exists"
       if (createError.message?.includes('already exists')) return;
-      console.error('[storage-manager] Failed to create bucket:', createError.message);
+      log.error('[storage-manager] Failed to create bucket:', createError.message);
     } else {
-      console.log(`[storage-manager] Created bucket: ${BUCKET_NAME}`);
+      log.info(`[storage-manager] Created bucket: ${BUCKET_NAME}`);
     }
   } catch (err) {
-    console.error('[storage-manager] ensureBucketExists error:', err instanceof Error ? err.message : err);
+    log.error('[storage-manager] ensureBucketExists error:', err instanceof Error ? err.message : err);
   }
 }
 
@@ -124,7 +127,7 @@ export async function uploadDocument(
 
       if (uploadError) {
         if (attempt < MAX_UPLOAD_RETRIES) {
-          console.warn(`[storage-manager] Upload attempt ${attempt + 1} failed, retrying:`, uploadError.message);
+          log.warn(`[storage-manager] Upload attempt ${attempt + 1} failed, retrying:`, uploadError.message);
           await new Promise(resolve => setTimeout(resolve, 1000));
           continue;
         }
@@ -137,12 +140,12 @@ export async function uploadDocument(
         .createSignedUrl(filePath, SIGNED_URL_EXPIRY);
 
       if (signedError || !signedData?.signedUrl) {
-        console.warn('[storage-manager] Signed URL generation failed:', signedError?.message);
+        log.warn('[storage-manager] Signed URL generation failed:', signedError?.message);
         // Upload succeeded even if signed URL fails — return path
         return { success: true, path: filePath };
       }
 
-      console.log(`[storage-manager] Uploaded ${filename} for order ${orderId}`);
+      log.info(`[storage-manager] Uploaded ${filename} for order ${orderId}`);
       return {
         success: true,
         path: filePath,
@@ -150,7 +153,7 @@ export async function uploadDocument(
       };
     } catch (err) {
       if (attempt < MAX_UPLOAD_RETRIES) {
-        console.warn(`[storage-manager] Upload attempt ${attempt + 1} threw, retrying:`, err instanceof Error ? err.message : err);
+        log.warn(`[storage-manager] Upload attempt ${attempt + 1} threw, retrying:`, err instanceof Error ? err.message : err);
         await new Promise(resolve => setTimeout(resolve, 1000));
         continue;
       }
@@ -219,7 +222,7 @@ export async function listOrderDocuments(
       .list(orderId, { sortBy: { column: 'created_at', order: 'desc' } });
 
     if (error || !data) {
-      console.error('[storage-manager] List failed:', error?.message);
+      log.error('[storage-manager] List failed:', error?.message);
       return [];
     }
 
@@ -230,7 +233,7 @@ export async function listOrderDocuments(
       createdAt: file.created_at ?? new Date().toISOString(),
     }));
   } catch (err) {
-    console.error('[storage-manager] List exception:', err instanceof Error ? err.message : err);
+    log.error('[storage-manager] List exception:', err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -259,14 +262,14 @@ export async function deleteOrderDocuments(
       .remove(paths);
 
     if (error) {
-      console.error('[storage-manager] Delete failed:', error.message);
+      log.error('[storage-manager] Delete failed:', error.message);
       return { success: false, deletedCount: 0 };
     }
 
-    console.log(`[storage-manager] Deleted ${paths.length} documents for order ${orderId}`);
+    log.info(`[storage-manager] Deleted ${paths.length} documents for order ${orderId}`);
     return { success: true, deletedCount: paths.length };
   } catch (err) {
-    console.error('[storage-manager] Delete exception:', err instanceof Error ? err.message : err);
+    log.error('[storage-manager] Delete exception:', err instanceof Error ? err.message : err);
     return { success: false, deletedCount: 0 };
   }
 }

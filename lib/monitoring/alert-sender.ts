@@ -9,6 +9,9 @@
 import { Resend } from 'resend';
 import type { LogLevel, ErrorCategory } from './error-logger';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('monitoring-alert-sender');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -33,7 +36,7 @@ export async function sendAlertEmail(input: AlertEmailInput): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
-    console.error('[AlertSender] RESEND_API_KEY not configured');
+    log.error('[AlertSender] RESEND_API_KEY not configured');
     return false;
   }
 
@@ -53,13 +56,13 @@ export async function sendAlertEmail(input: AlertEmailInput): Promise<boolean> {
     });
 
     if (error) {
-      console.error('[AlertSender] Failed to send alert:', error);
+      log.error('[AlertSender] Failed to send alert:', error);
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error('[AlertSender] Error sending alert:', error);
+    log.error('[AlertSender] Error sending alert:', error);
     return false;
   }
 }

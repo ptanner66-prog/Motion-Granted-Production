@@ -14,6 +14,9 @@
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { sendOrderEmail, type EmailEvent } from '../email';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('integration-email-triggers');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -105,13 +108,13 @@ async function fetchOrderContext(
       .single();
 
     if (error || !order) {
-      console.error('[email-triggers] Failed to fetch order context:', error?.message || 'Order not found');
+      log.error('[email-triggers] Failed to fetch order context:', error?.message || 'Order not found');
       return null;
     }
 
     const profile = order.profiles as unknown as Record<string, string | null> | null;
     if (!profile?.email) {
-      console.error('[email-triggers] No customer email found for order:', orderId);
+      log.error('[email-triggers] No customer email found for order:', orderId);
       return null;
     }
 
@@ -143,7 +146,7 @@ async function fetchOrderContext(
       revisionNotes: (order.revision_notes as string) || undefined,
     };
   } catch (err) {
-    console.error('[email-triggers] Context fetch exception:', err instanceof Error ? err.message : err);
+    log.error('[email-triggers] Context fetch exception:', err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -293,7 +296,7 @@ function buildEmailEvent(
       };
 
     default: {
-      console.error(`[email-triggers] Unknown workflow event: ${event}`);
+      log.error(`[email-triggers] Unknown workflow event: ${event}`);
       return null;
     }
   }
@@ -315,13 +318,13 @@ export async function triggerEmail(
   orderId: string
 ): Promise<{ sent: boolean; error?: string }> {
   try {
-    console.log(`[email-triggers] Triggering email:`, { event, orderId });
+    log.info(`[email-triggers] Triggering email:`, { event, orderId });
 
     // Fetch order context
     const ctx = await fetchOrderContext(supabase, orderId);
     if (!ctx) {
       const msg = `Cannot send ${event} email — order context unavailable`;
-      console.error(`[email-triggers] ${msg}`, { orderId });
+      log.error(`[email-triggers] ${msg}`, { orderId });
       return { sent: false, error: msg };
     }
 
@@ -329,7 +332,7 @@ export async function triggerEmail(
     const emailEvent = buildEmailEvent(event, ctx);
     if (!emailEvent) {
       const msg = `No email template mapped for event: ${event}`;
-      console.error(`[email-triggers] ${msg}`, { orderId });
+      log.error(`[email-triggers] ${msg}`, { orderId });
       return { sent: false, error: msg };
     }
 
@@ -337,15 +340,15 @@ export async function triggerEmail(
     const result = await sendOrderEmail(ctx.customerEmail, emailEvent, orderId);
 
     if (result.success) {
-      console.log(`[email-triggers] Email sent:`, { event, orderId, to: ctx.customerEmail });
+      log.info(`[email-triggers] Email sent:`, { event, orderId, to: ctx.customerEmail });
     } else {
-      console.error(`[email-triggers] Email send failed:`, { event, orderId, error: result.error });
+      log.error(`[email-triggers] Email send failed:`, { event, orderId, error: result.error });
     }
 
     return { sent: result.success, error: result.error };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown email trigger error';
-    console.error(`[email-triggers] Exception:`, { event, orderId, error: msg });
+    log.error(`[email-triggers] Exception:`, { event, orderId, error: msg });
     return { sent: false, error: msg };
   }
 }

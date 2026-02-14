@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import archiver from 'archiver'
+import { createLogger } from '@/lib/security/logger'
+
+const log = createLogger('api-orders-download-all')
 
 // GET /api/orders/[id]/documents/download-all
 // Download all documents for an order as a ZIP file
@@ -54,7 +57,7 @@ export async function GET(
       .eq('order_id', orderId)
 
     if (docsError) {
-      console.error('Error fetching documents:', docsError)
+      log.error('Error fetching documents', { error: docsError })
       return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 })
     }
 
@@ -91,7 +94,7 @@ export async function GET(
               .download(doc.file_url)
 
             if (downloadError || !fileData) {
-              console.error(`Failed to download ${doc.file_name}:`, downloadError)
+              log.error('Failed to download document', { fileName: doc.file_name, error: downloadError })
               continue
             }
 
@@ -99,7 +102,7 @@ export async function GET(
             const folder = doc.document_type === 'deliverable' ? 'deliverables' : 'uploads'
             archive.append(buffer, { name: `${folder}/${doc.file_name}` })
           } catch (err) {
-            console.error(`Error processing ${doc.file_name}:`, err)
+            log.error('Error processing document', { fileName: doc.file_name, error: err instanceof Error ? err.message : err })
           }
         }
 
@@ -120,7 +123,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Error creating document archive:', error)
+    log.error('Error creating document archive', { error: error instanceof Error ? error.message : error })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

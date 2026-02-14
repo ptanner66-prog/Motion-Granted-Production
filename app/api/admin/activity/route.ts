@@ -4,6 +4,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-activity');
 
 /**
  * GET /api/admin/activity
@@ -74,7 +77,7 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
 
     if (error) {
-      console.error('[API] Activity log query error:', error);
+      log.error('Activity log query error', { error });
       return NextResponse.json({ error: 'Query failed' }, { status: 500 });
     }
 
@@ -85,7 +88,7 @@ export async function GET(request: NextRequest) {
       offset,
     });
   } catch (error) {
-    console.error('[API] Activity log error:', error);
+    log.error('Activity log error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

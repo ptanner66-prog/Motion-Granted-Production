@@ -15,6 +15,9 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phases-phase-ii');
 // Note: pdf-parse and mammoth are already in package.json
 
 // ============================================================================
@@ -70,7 +73,7 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
     const data = await new PDFParse().parse(buffer);
     return data.text;
   } catch (error) {
-    console.error('[Phase II] PDF extraction error:', error);
+    log.error('[Phase II] PDF extraction error:', error);
     throw new Error(`PDF extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -86,7 +89,7 @@ export async function getPDFPageCount(buffer: Buffer): Promise<number> {
     const data = await new PDFParse().parse(buffer);
     return data.numpages;
   } catch (error) {
-    console.error('[Phase II] PDF page count error:', error);
+    log.error('[Phase II] PDF page count error:', error);
     return 0;
   }
 }
@@ -105,7 +108,7 @@ export async function extractTextFromDOCX(buffer: Buffer): Promise<string> {
     const result = await mammoth.extractRawText({ buffer });
     return result.value;
   } catch (error) {
-    console.error('[Phase II] DOCX extraction error:', error);
+    log.error('[Phase II] DOCX extraction error:', error);
     throw new Error(`DOCX extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -421,7 +424,7 @@ export async function processDocuments(
   orderId: string,
   documents: Array<{ id: string; storageUrl: string; filename: string }>
 ): Promise<PhaseIIOutput> {
-  console.log(`[Phase II] Processing ${documents.length} documents for order ${orderId}`);
+  log.info(`[Phase II] Processing ${documents.length} documents for order ${orderId}`);
 
   const supabase = await createClient();
   const parsedDocuments: ParsedDocument[] = [];
@@ -445,7 +448,7 @@ export async function processDocuments(
         .download(doc.storageUrl);
 
       if (downloadError || !fileData) {
-        console.error(`[Phase II] Failed to download ${doc.filename}:`, downloadError);
+        log.error(`[Phase II] Failed to download ${doc.filename}:`, downloadError);
         continue;
       }
 
@@ -460,9 +463,9 @@ export async function processDocuments(
       const citations = extractCitationsFromText(parsed.extractedText);
       allCitations = [...allCitations, ...citations];
 
-      console.log(`[Phase II] Processed ${doc.filename}: ${parsed.pageCount} pages, ${citations.length} citations`);
+      log.info(`[Phase II] Processed ${doc.filename}: ${parsed.pageCount} pages, ${citations.length} citations`);
     } catch (error) {
-      console.error(`[Phase II] Error processing ${doc.filename}:`, error);
+      log.error(`[Phase II] Error processing ${doc.filename}:`, error);
     }
   }
 
@@ -505,7 +508,7 @@ export async function processDocuments(
     .update({ phase_outputs: phaseOutputs })
     .eq('id', orderId);
 
-  console.log(`[Phase II] Complete: ${parsedDocuments.length} documents, ${allCitations.length} citations, ${evidenceInventory.length} evidence items`);
+  log.info(`[Phase II] Complete: ${parsedDocuments.length} documents, ${allCitations.length} citations, ${evidenceInventory.length} evidence items`);
 
   return output;
 }
@@ -551,13 +554,13 @@ export async function completePhaseII(
       })
       .eq('order_id', orderId);
 
-    console.log(`[Phase II] Completed for order ${orderId}, advancing to Phase III`);
+    log.info(`[Phase II] Completed for order ${orderId}, advancing to Phase III`);
     return {
       success: true,
       nextPhase: 'III',
     };
   } catch (error) {
-    console.error('[Phase II] Error completing phase:', error);
+    log.error('[Phase II] Error completing phase:', error);
     return {
       success: false,
       nextPhase: 'II',

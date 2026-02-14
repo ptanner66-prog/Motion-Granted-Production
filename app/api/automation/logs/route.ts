@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { AutomationActionType } from '@/types/automation';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-logs');
 
 /**
  * GET /api/automation/logs
@@ -105,7 +108,7 @@ export async function GET(request: Request) {
       hasMore: (count || 0) > offset + limit,
     });
   } catch (error) {
-    console.error('[API] Get logs error:', error);
+    log.error('Get logs error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -162,7 +165,7 @@ export async function DELETE(request: Request) {
       cutoffDate: cutoffDate.toISOString(),
     });
   } catch (error) {
-    console.error('[API] Delete logs error:', error);
+    log.error('Delete logs error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

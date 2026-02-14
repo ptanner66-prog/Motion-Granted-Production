@@ -8,6 +8,9 @@
 import { sendEmail } from './client';
 import * as templates from './templates';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('email-sender');
 export type EmailEvent =
   | { type: 'order_confirmed'; data: templates.OrderConfirmationData }
   | { type: 'hold_created'; data: templates.HoldNotificationData }
@@ -38,7 +41,7 @@ export async function sendOrderEmail(
 ): Promise<{ success: boolean; error?: string }> {
   const buildTemplate = templateMap[event.type];
   if (!buildTemplate) {
-    console.error(`[email] Unknown email event type: ${event.type}`);
+    log.error(`[email] Unknown email event type: ${event.type}`);
     return { success: false, error: `Unknown event type: ${event.type}` };
   }
 

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { getRateLimitStatus } from '@/lib/rate-limit';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-health-queue');
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -43,7 +46,7 @@ export async function GET() {
     const { data: statsData, error: statsError } = await supabase.rpc('get_queue_stats');
 
     if (statsError) {
-      console.error('Failed to get queue stats:', statsError);
+      log.error('Failed to get queue stats', { error: statsError });
       // Try to get basic stats directly
       const { count: queueCount } = await supabase
         .from('orders')
@@ -117,7 +120,7 @@ export async function GET() {
     });
   } catch (error) {
     // Log detailed error internally but don't expose to client
-    console.error('Health check error:', error);
+    log.error('Health check error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       {
         status: 'unhealthy',

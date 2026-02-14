@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('courtlistener-query-builder');
+
 /**
  * Proposition-Aware Query Builder for CourtListener
  *
@@ -216,9 +220,9 @@ export function buildPropositionQuery(proposition: LegalProposition): string {
     query = words.slice(0, 15).join(' ');
   }
 
-  console.log(`[QueryBuilder] Proposition: "${proposition.proposition.substring(0, 60)}..."`);
-  console.log(`[QueryBuilder] Statutory basis: ${proposition.statutory_basis.join(', ') || 'none'}`);
-  console.log(`[QueryBuilder] Built query: "${query}"`);
+  log.info(`[QueryBuilder] Proposition: "${proposition.proposition.substring(0, 60)}..."`);
+  log.info(`[QueryBuilder] Statutory basis: ${proposition.statutory_basis.join(', ') || 'none'}`);
+  log.info(`[QueryBuilder] Built query: "${query}"`);
 
   return query;
 }

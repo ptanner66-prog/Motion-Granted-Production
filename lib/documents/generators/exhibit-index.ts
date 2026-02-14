@@ -31,6 +31,9 @@ import {
 } from 'docx';
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-exhibit-index');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -382,7 +385,7 @@ function createExhibitTable(entries: ExhibitEntry[]): Table {
 export async function generateExhibitIndex(
   data: ExhibitIndexData
 ): Promise<ExhibitIndexResult> {
-  console.log(`[ExhibitIndex] Generating for order ${data.orderId}, ${data.exhibits.length} exhibits`);
+  log.info(`[ExhibitIndex] Generating for order ${data.orderId}, ${data.exhibits.length} exhibits`);
 
   // Assign exhibit numbers based on jurisdiction
   const exhibitNumbers = assignExhibitNumbers(data.exhibits.length, data.jurisdiction);
@@ -419,11 +422,11 @@ export async function generateExhibitIndex(
     });
 
   if (uploadError) {
-    console.error('[ExhibitIndex] Upload error:', uploadError);
+    log.error('[ExhibitIndex] Upload error:', uploadError);
     throw new Error(`Failed to upload exhibit index: ${uploadError.message}`);
   }
 
-  console.log(`[ExhibitIndex] Generated successfully: ${storagePath}, ${entries.length} exhibits, ${totalPages} total pages`);
+  log.info(`[ExhibitIndex] Generated successfully: ${storagePath}, ${entries.length} exhibits, ${totalPages} total pages`);
 
   return {
     path: storagePath,

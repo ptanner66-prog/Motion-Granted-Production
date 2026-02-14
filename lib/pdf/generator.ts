@@ -17,6 +17,9 @@ import { exec } from 'child_process';
 import { writeFile, readFile, unlink, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('pdf-generator');
 
 export interface PDFGenerationOptions {
   filename: string;
@@ -93,7 +96,7 @@ export async function generatePDF(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown PDF generation error';
-    console.error(`[pdf] Generation failed:`, { filename: options.filename, error: message });
+    log.error('Generation failed', { filename: options.filename, error: message });
     return {
       success: false,
       filename: options.filename,

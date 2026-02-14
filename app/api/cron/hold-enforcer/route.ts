@@ -15,6 +15,9 @@ import { withCronAuth } from '@/lib/security/cron-auth';
 import { processHoldTimeouts } from '@/lib/workflow/hold-service';
 import { processHoldTimeoutRefund } from '@/lib/payments/refund-service';
 import { createClient } from '@supabase/supabase-js';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-cron-hold-enforcer');
 
 function getServiceSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -70,7 +73,7 @@ export const GET = withCronAuth(async (_request: NextRequest) => {
 
         if (refundResult.success) {
           stripeRefundsProcessed++;
-          console.log(`[hold-enforcer] Stripe refund processed for ${order.order_number}`);
+          log.info('Stripe refund processed', { orderNumber: order.order_number });
         } else {
           cronErrors.push(`Stripe refund failed for ${order.order_number}: ${refundResult.error}`);
         }
@@ -96,10 +99,10 @@ export const GET = withCronAuth(async (_request: NextRequest) => {
         },
       });
     } catch (err) {
-      console.error('[hold-enforcer] Failed to log to automation_logs:', err);
+      log.error('Failed to log to automation_logs', { error: err instanceof Error ? err.message : err });
     }
 
-    console.log(`[hold-enforcer] Complete: ${holdResult.processed} hold actions, ${stripeRefundsProcessed} refunds, ${cronErrors.length} errors, ${duration}ms`);
+    log.info('Hold enforcer complete', { holdActions: holdResult.processed, refunds: stripeRefundsProcessed, errorCount: cronErrors.length, durationMs: duration });
 
     return NextResponse.json({
       success: cronErrors.length === 0,
@@ -110,7 +113,7 @@ export const GET = withCronAuth(async (_request: NextRequest) => {
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[hold-enforcer] CRON failed:', msg);
+    log.error('CRON failed', { error: msg });
     return NextResponse.json(
       { success: false, error: msg },
       { status: 500 }

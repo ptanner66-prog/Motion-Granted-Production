@@ -13,6 +13,9 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('cron-deadline-check');
 // Initialize Supabase client for background jobs
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -68,7 +71,7 @@ export async function findUrgentOrders(
     .order("filing_deadline", { ascending: true });
 
   if (error) {
-    console.error("Failed to fetch urgent orders:", error);
+    log.error("Failed to fetch urgent orders:", error);
     throw error;
   }
 
@@ -170,7 +173,7 @@ Report generated: ${new Date().toLocaleString()}
 
     return true;
   } catch (error) {
-    console.error("Failed to send deadline alert:", error);
+    log.error("Failed to send deadline alert:", error);
     return false;
   }
 }

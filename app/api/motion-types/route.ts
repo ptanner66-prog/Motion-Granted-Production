@@ -6,6 +6,9 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-motion-types');
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -62,7 +65,7 @@ export async function GET(request: Request) {
     const { data: motionTypes, error } = await query;
 
     if (error) {
-      console.error('[MotionTypes] Database error:', error);
+      log.error('Database error', { error });
       return NextResponse.json({ error: 'Failed to fetch motion types' }, { status: 500 });
     }
 
@@ -88,7 +91,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    console.error('[MotionTypes] Unexpected error:', error);
+    log.error('Unexpected error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'An unexpected error occurred. Please try again.' },
       { status: 500 }

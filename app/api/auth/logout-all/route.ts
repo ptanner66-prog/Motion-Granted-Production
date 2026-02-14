@@ -5,6 +5,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { invalidateAllSessions } from '@/lib/auth/session';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-auth-logout-all');
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +34,7 @@ export async function POST(request: NextRequest) {
       message: `Logged out of ${invalidatedCount} device(s)`,
     });
   } catch (error) {
-    console.error('[LogoutAll] Error:', error);
+    log.error('Logout all error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Failed to logout all devices' }, { status: 500 });
   }
 }

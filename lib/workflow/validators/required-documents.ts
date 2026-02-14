@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-validators-required-documents');
+
 /**
  * Required Documents Validator — BUG-07 Production Fix
  *
@@ -195,7 +199,7 @@ export function validateRequiredDocuments(
     // BUG-07 FIX: Missing required documents are now ERRORS, not warnings.
     // The workflow MUST NOT proceed without these documents.
     const errorMessage = `BLOCKED: ${requirements.description}. Missing required documents: ${missing.join(', ')}. Upload these documents before proceeding.`;
-    console.error(`[BUG-07] Document validation BLOCKED for ${code}: missing ${missing.join(', ')}`);
+    log.error(`[BUG-07] Document validation BLOCKED for ${code}: missing ${missing.join(', ')}`);
 
     return {
       complete: false,

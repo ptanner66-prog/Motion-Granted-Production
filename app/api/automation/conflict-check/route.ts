@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { runConflictCheck, clearConflicts, flagConflict } from '@/lib/automation';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-conflict-check');
 
 /**
  * POST /api/automation/conflict-check
@@ -62,7 +65,7 @@ export async function POST(request: Request) {
       approvalRequired: result.data?.recommendation !== 'clear',
     });
   } catch (error) {
-    console.error('[API] Conflict check error:', error);
+    log.error('Conflict check error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

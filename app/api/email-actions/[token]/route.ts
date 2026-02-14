@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateActionToken, type ActionType } from '@/lib/email/action-tokens';
 import { resumeFromHold } from '@/lib/workflow/hold-service';
 import { submitConflictDecision } from '@/lib/services/conflict/conflict-admin-service';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-email-actions');
 
 const BASE_URL = process.env.NEXT_PUBLIC_URL || 'https://motiongranted.com';
 
@@ -33,7 +36,7 @@ export async function GET(
     const redirectUrl = await handleAction(data.action, data.orderId, data.userId, data.metadata);
     return NextResponse.redirect(redirectUrl);
   } catch (error) {
-    console.error('[EmailAction] Error handling action:', error);
+    log.error('Error handling email action', { error: error instanceof Error ? error.message : error });
     const encodedError = encodeURIComponent('Action failed. Please try again or contact support.');
     return NextResponse.redirect(`${BASE_URL}/error?message=${encodedError}`);
   }

@@ -6,6 +6,9 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-civ-report');
 
 export async function GET(
   request: Request,
@@ -68,7 +71,7 @@ export async function GET(
       report,
     });
   } catch (error) {
-    console.error('CIV report generation error:', error);
+    log.error('CIV report generation error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Report generation failed' },
       { status: 500 }

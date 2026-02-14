@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { runClerkAssignment, assignClerk, getAssignmentCandidates } from '@/lib/automation';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-clerk-assignment');
 
 /**
  * POST /api/automation/clerk-assignment
@@ -58,7 +61,7 @@ export async function POST(request: Request) {
       approvalRequired: !result.data?.autoAssigned,
     });
   } catch (error) {
-    console.error('[API] Clerk assignment error:', error);
+    log.error('Clerk assignment error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -111,7 +114,7 @@ export async function GET(request: Request) {
       candidates: result.data,
     });
   } catch (error) {
-    console.error('[API] Get candidates error:', error);
+    log.error('Get candidates error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

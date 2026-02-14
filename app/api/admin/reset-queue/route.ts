@@ -8,6 +8,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-reset-queue');
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -164,7 +167,7 @@ export async function POST(request: NextRequest) {
       workflows_cleared: workflowIds.length,
     });
   } catch (error) {
-    console.error('Reset queue error:', error);
+    log.error('Reset queue error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Failed to reset queue',
     }, { status: 500 });
@@ -218,7 +221,7 @@ export async function GET(request: NextRequest) {
       orders: ordersList,
     });
   } catch (error) {
-    console.error('Get queue status error:', error);
+    log.error('Get queue status error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Failed to get queue status',
     }, { status: 500 });

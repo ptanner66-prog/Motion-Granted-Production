@@ -7,6 +7,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { approvePhase, getWorkflowProgress } from '@/lib/workflow';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-approve-phase');
 
 export async function POST(
   request: Request,
@@ -56,7 +59,7 @@ export async function POST(
       progress: progress.success ? progress.data : null,
     });
   } catch (error) {
-    console.error('Workflow approve error:', error);
+    log.error('Workflow approve error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Workflow approval failed. Please try again.' },
       { status: 500 }

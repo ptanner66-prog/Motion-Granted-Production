@@ -40,6 +40,9 @@ import {
 import { scoreRelevance, TOPICAL_RELEVANCE_THRESHOLD, type PropositionContext } from '@/lib/courtlistener/relevance-scorer';
 import { logger } from '@/lib/logger';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phase-iv-parallel-search');
 // ============================================================================
 // JURISDICTION TYPE DETECTION
 // ============================================================================
@@ -218,10 +221,10 @@ export async function executeParallelSearch(
 
     logger.info(`[Phase IV-B] Successful searches: ${successfulSearches}/${searchTasks.length}`);
     if (failedSearches > 0) {
-      console.warn(`[Phase IV-B] Failed searches: ${failedSearches} (${batchSummary.timedOut} timeouts)`);
+      log.warn(`[Phase IV-B] Failed searches: ${failedSearches} (${batchSummary.timedOut} timeouts)`);
     }
     if (batchSummary.partialResults) {
-      console.warn(`[Phase IV-B] PARTIAL RESULTS: ${batchSummary.abortReason}`);
+      log.warn(`[Phase IV-B] PARTIAL RESULTS: ${batchSummary.abortReason}`);
     }
     logger.info(`[Phase IV-B] Unique candidates found: ${allCandidates.length}`);
 

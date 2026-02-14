@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { resend } from '@/lib/resend'
+import { createLogger } from '@/lib/security/logger'
+
+const log = createLogger('api-contact')
 
 interface ContactFormData {
   firstName: string
@@ -121,7 +124,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Contact form error:', error)
+    log.error('Contact form error', { error: error instanceof Error ? error.message : error })
     return NextResponse.json(
       { error: 'Failed to send message. Please try again or email us directly.' },
       { status: 500 }

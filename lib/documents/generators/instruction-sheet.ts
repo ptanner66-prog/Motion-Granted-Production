@@ -35,6 +35,9 @@ import { createClient } from '@/lib/supabase/server';
 import type { DeadlineResult } from '@/lib/legal/deadline-calculator';
 import type { Disclosure } from '@/lib/compliance/customer-disclosures';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-instruction-sheet');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -534,7 +537,7 @@ function generateInstructionSheetDocument(data: InstructionSheetData): Document 
 export async function generateInstructionSheet(
   data: InstructionSheetData
 ): Promise<InstructionSheetResult> {
-  console.log(`[InstructionSheet] Generating for order ${data.orderId}`);
+  log.info(`[InstructionSheet] Generating for order ${data.orderId}`);
 
   // Generate document
   const document = generateInstructionSheetDocument(data);
@@ -553,14 +556,14 @@ export async function generateInstructionSheet(
     });
 
   if (uploadError) {
-    console.error('[InstructionSheet] Upload error:', uploadError);
+    log.error('[InstructionSheet] Upload error:', uploadError);
     throw new Error(`Failed to upload instruction sheet: ${uploadError.message}`);
   }
 
   // Estimate page count (typically 2-4 pages)
   const estimatedPageCount = Math.max(2, Math.ceil(data.documentsIncluded.length / 10) + 2);
 
-  console.log(`[InstructionSheet] Generated successfully: ${storagePath}`);
+  log.info(`[InstructionSheet] Generated successfully: ${storagePath}`);
 
   return {
     path: storagePath,

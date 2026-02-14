@@ -14,6 +14,9 @@ import { withRateLimit, getStatus, recordFailure } from './rate-limiter';
 import { searchOpinions } from './client';
 import type { CourtTier, RawCandidate } from '@/types/citation-research';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('courtlistener-batched-search');
 // Batch configuration
 // CRITICAL FIX: CourtListener is SLOW - takes 60-97 seconds per request
 // Multi-step architecture allows each batch to run as its own Inngest step
@@ -108,7 +111,7 @@ async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSea
       // Validate citation - reject if it's just a bare number (opinion ID)
       let citation = op.citation || '';
       if (citation && /^\d+$/.test(citation.trim())) {
-        console.warn(`[executeSearchWithTimeout] ⚠️ INVALID CITATION: "${citation}" is a bare number (opinion ID), not a legal citation. Case: ${op.case_name}`);
+        log.warn(`[executeSearchWithTimeout] ⚠️ INVALID CITATION: "${citation}" is a bare number (opinion ID), not a legal citation. Case: ${op.case_name}`);
         citation = ''; // Clear invalid citation
       }
 
@@ -136,9 +139,9 @@ async function executeSearchWithTimeout(task: BatchSearchTask): Promise<BatchSea
     logger.info(`  - With valid ID: ${candidatesWithId.length}`);
     logger.info(`  - WITHOUT ID (will be dropped): ${candidatesWithoutId.length}`);
     if (candidatesWithoutId.length > 0) {
-      console.warn(`[executeSearchWithTimeout] ⚠️ DROPPING ${candidatesWithoutId.length} candidates without ID!`);
+      log.warn(`[executeSearchWithTimeout] ⚠️ DROPPING ${candidatesWithoutId.length} candidates without ID!`);
       candidatesWithoutId.slice(0, 3).forEach((c, i) => {
-        console.warn(`  [${i}] caseName="${c.caseName}", clusterId=${c.clusterId}`);
+        log.warn(`  [${i}] caseName="${c.caseName}", clusterId=${c.clusterId}`);
       });
     }
 
@@ -366,7 +369,7 @@ export function collectUniqueCandidates(results: BatchSearchResult[]): RawCandid
         // FIX: Use typeof check instead of falsy check - ID 0 is valid!
         if (candidate.id === undefined || candidate.id === null) {
           candidatesWithoutId++;
-          console.warn(`[collectUniqueCandidates] ⚠️ Candidate without ID: ${candidate.caseName || 'unknown'}, clusterId=${candidate.clusterId}`);
+          log.warn(`[collectUniqueCandidates] ⚠️ Candidate without ID: ${candidate.caseName || 'unknown'}, clusterId=${candidate.clusterId}`);
         } else if (seenIds.has(candidate.id)) {
           duplicateCandidates++;
         } else {

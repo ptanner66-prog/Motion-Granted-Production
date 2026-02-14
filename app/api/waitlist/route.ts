@@ -10,6 +10,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { headers } from 'next/headers';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-waitlist');
 
 // Rate limiting in-memory store (would use Redis in production)
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
@@ -121,7 +124,7 @@ export async function POST(request: NextRequest) {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
-      console.error('[Waitlist] Missing Supabase credentials');
+      log.error('Missing Supabase credentials');
       return NextResponse.json(
         { error: 'Service configuration error' },
         { status: 500 }
@@ -163,14 +166,14 @@ export async function POST(request: NextRequest) {
       });
 
     if (insertError) {
-      console.error('[Waitlist] Insert error:', insertError);
+      log.error('Insert error', { error: insertError });
       return NextResponse.json(
         { error: 'Failed to add to waitlist' },
         { status: 500 }
       );
     }
 
-    console.log(`[Waitlist] New signup for state ${normalizedStateCode}`);
+    log.info('New waitlist signup', { stateCode: normalizedStateCode });
 
     return NextResponse.json(
       {
@@ -185,7 +188,7 @@ export async function POST(request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error('[Waitlist] Unexpected error:', error);
+    log.error('Unexpected error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -230,7 +233,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ counts });
   } catch (error) {
-    console.error('[Waitlist] GET error:', error);
+    log.error('GET error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

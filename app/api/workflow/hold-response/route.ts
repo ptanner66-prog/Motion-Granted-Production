@@ -13,6 +13,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { processHoldResponse, type HoldResponse } from '@/lib/workflow/checkpoint-service';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-hold-response');
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +25,7 @@ export async function POST(request: Request) {
   // Verify user is authenticated
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    console.warn('[Hold Response API] Unauthorized access attempt');
+    log.warn('Unauthorized access attempt');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -160,7 +163,7 @@ export async function POST(request: Request) {
       data: result.data,
     });
   } catch (error) {
-    console.error('[Hold Response API] Error:', error);
+    log.error('Hold response error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Failed to process HOLD response. Please try again.' },
       { status: 500 }
@@ -255,7 +258,7 @@ export async function GET(request: Request) {
       } : null,
     });
   } catch (error) {
-    console.error('[Hold Response API] GET Error:', error);
+    log.error('Hold response GET error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Failed to get HOLD status' },
       { status: 500 }

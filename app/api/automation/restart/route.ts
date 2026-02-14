@@ -14,6 +14,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-restart');
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -216,7 +219,7 @@ export async function POST(request: Request) {
       message: `Workflow completely restarted from Phase 1. Previous data cleared.`,
     });
   } catch (error) {
-    console.error('Restart automation error:', error);
+    log.error('Restart automation error', { error: error instanceof Error ? error.message : error });
 
     // Log error
     await supabase.from('automation_logs').insert({

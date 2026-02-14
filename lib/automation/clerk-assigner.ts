@@ -6,6 +6,9 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('automation-clerk-assigner');
 import {
   recommendClerkAssignment,
   isClaudeConfigured,
@@ -92,7 +95,7 @@ async function getAssignmentSettings(): Promise<{
       weights: weightsValue || { capacity: 0.3, expertise: 0.4, deadline: 0.2, balance: 0.1 },
     };
   } catch (error) {
-    console.error('[Clerk Assigner] Failed to load settings:', error);
+    log.error('[Clerk Assigner] Failed to load settings:', error);
     return {
       enabled: true,
       autoAssignThreshold: 0.85,
@@ -765,7 +768,7 @@ async function logAutomationAction(
       was_auto_approved: (details.autoAssigned as boolean) || false,
     });
   } catch (error) {
-    console.error('[Automation Log] Failed to log action:', error);
+    log.error('[Automation Log] Failed to log action:', error);
   }
 }
 

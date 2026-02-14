@@ -13,6 +13,9 @@ import { runQACheck } from './qa-checker';
 import { sendDailyReport, sendWeeklyReport } from './report-generator';
 import type { TaskType, TaskStatus, OperationResult } from '@/types/automation';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('automation-task-processor');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -122,7 +125,7 @@ export async function processTasks(
     // Process each task
     for (const task of tasks) {
       if (options.dryRun) {
-        console.log(`[Dry Run] Would process task: ${task.task_type} (${task.id})`);
+        log.info(`[Dry Run] Would process task: ${task.task_type} (${task.id})`);
         continue;
       }
 
@@ -564,7 +567,7 @@ async function logAutomationAction(
       action_details: details,
     });
   } catch (error) {
-    console.error('[Automation Log] Failed to log action:', error);
+    log.error('[Automation Log] Failed to log action:', error);
   }
 }
 

@@ -26,6 +26,9 @@ import { scoreRelevance, TOPICAL_RELEVANCE_THRESHOLD, type PropositionContext } 
 import { scoreSearchResults, filterByMinimumScore, type SearchScoringContext } from '@/lib/courtlistener/relevance-scorer';
 import { buildSearchQuery } from '@/lib/courtlistener/query-builder';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phase-iv-multi-step-executor');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -66,7 +69,7 @@ function detectJurisdictionType(jurisdiction: string): 'state' | 'federal' {
 
   for (const pattern of federalPatterns) {
     if (pattern.test(normalized)) {
-      console.log(`[JurisdictionDetect] FEDERAL: "${jurisdiction}" matched ${pattern}`);
+      log.info(`[JurisdictionDetect] FEDERAL: "${jurisdiction}" matched ${pattern}`);
       return 'federal';
     }
   }
@@ -82,18 +85,18 @@ function detectJurisdictionType(jurisdiction: string): 'state' | 'federal' {
 
   for (const pattern of statePatterns) {
     if (pattern.test(normalized)) {
-      console.log(`[JurisdictionDetect] STATE: "${jurisdiction}" matched ${pattern}`);
+      log.info(`[JurisdictionDetect] STATE: "${jurisdiction}" matched ${pattern}`);
       return 'state';
     }
   }
 
   // Default to state for Louisiana
   if (normalized.includes('louisiana')) {
-    console.log(`[JurisdictionDetect] STATE (default): "${jurisdiction}"`);
+    log.info(`[JurisdictionDetect] STATE (default): "${jurisdiction}"`);
     return 'state';
   }
 
-  console.log(`[JurisdictionDetect] STATE (fallback): "${jurisdiction}"`);
+  log.info(`[JurisdictionDetect] STATE (fallback): "${jurisdiction}"`);
   return 'state';
 }
 
@@ -134,13 +137,13 @@ function filterByJurisdiction(
 
     if (expectedType === 'state') {
       if (isFederal) {
-        console.log(`[JurisdictionFilter] ⛔ EXCLUDED federal case from STATE search: "${candidate.caseName?.substring(0, 40)}..." (${candidate.court})`);
+        log.info(`[JurisdictionFilter] ⛔ EXCLUDED federal case from STATE search: "${candidate.caseName?.substring(0, 40)}..." (${candidate.court})`);
         return false;
       }
       return true;
     } else {
       if (isState) {
-        console.log(`[JurisdictionFilter] ⛔ EXCLUDED state case from FEDERAL search: "${candidate.caseName?.substring(0, 40)}..." (${candidate.court})`);
+        log.info(`[JurisdictionFilter] ⛔ EXCLUDED state case from FEDERAL search: "${candidate.caseName?.substring(0, 40)}..." (${candidate.court})`);
         return false;
       }
       return true;
@@ -340,7 +343,7 @@ function filterByCitationQuality<T extends {
       validCandidates.push(candidate);
     } else {
       // Log rejection for audit trail
-      console.log(`${logPrefix} REJECTED: ${validation.reason}`);
+      log.info(`${logPrefix} REJECTED: ${validation.reason}`);
 
       // Track rejection reasons
       if (validation.reason?.includes('CRIMINAL')) rejectedCount.criminal++;
@@ -351,8 +354,8 @@ function filterByCitationQuality<T extends {
   }
 
   if (candidates.length > 0 && validCandidates.length < candidates.length) {
-    console.log(`${logPrefix} Citation quality filter: ${validCandidates.length}/${candidates.length} passed`);
-    console.log(`${logPrefix} Rejections: criminal=${rejectedCount.criminal}, future=${rejectedCount.future}, format=${rejectedCount.format}, numeric=${rejectedCount.numeric}`);
+    log.info(`${logPrefix} Citation quality filter: ${validCandidates.length}/${candidates.length} passed`);
+    log.info(`${logPrefix} Rejections: criminal=${rejectedCount.criminal}, future=${rejectedCount.future}, format=${rejectedCount.format}, numeric=${rejectedCount.numeric}`);
   }
 
   return validCandidates;
@@ -650,17 +653,17 @@ export async function executePhaseIVInit(
 ): Promise<PhaseIVInitResult> {
   const executionId = `p4-init-${Date.now()}-${createId().slice(0, 6)}`;
 
-  console.log('╔════════════════════════════════════════════════════════════════════════╗');
-  console.log('║  PHASE IV-INIT: PLANNING MULTI-STEP SEARCH                            ║');
-  console.log('║  VERSION: 2026-01-30-CHEN-MULTI-STEP                                   ║');
-  console.log(`║  EXECUTION ID: ${executionId.padEnd(52)}║`);
-  console.log('╚════════════════════════════════════════════════════════════════════════╝');
+  log.info('╔════════════════════════════════════════════════════════════════════════╗');
+  log.info('║  PHASE IV-INIT: PLANNING MULTI-STEP SEARCH                            ║');
+  log.info('║  VERSION: 2026-01-30-CHEN-MULTI-STEP                                   ║');
+  log.info(`║  EXECUTION ID: ${executionId.padEnd(52)}║`);
+  log.info('╚════════════════════════════════════════════════════════════════════════╝');
 
   const { orderId, jurisdiction, motionType } = input;
 
-  console.log(`[Phase IV-Init] Order ID: ${orderId}`);
-  console.log(`[Phase IV-Init] Jurisdiction: ${jurisdiction}`);
-  console.log(`[Phase IV-Init] Motion Type: ${motionType}`);
+  log.info(`[Phase IV-Init] Order ID: ${orderId}`);
+  log.info(`[Phase IV-Init] Jurisdiction: ${jurisdiction}`);
+  log.info(`[Phase IV-Init] Motion Type: ${motionType}`);
 
   // ═══════════════════════════════════════════════════════════════════════
   // CHEN JURISDICTION FIX (2026-02-03): Detect jurisdiction type
@@ -668,14 +671,14 @@ export async function executePhaseIVInit(
   // For FEDERAL court cases, only use tier3 (federal courts only)
   // ═══════════════════════════════════════════════════════════════════════
   const jurisdictionType = detectJurisdictionType(jurisdiction || 'Louisiana');
-  console.log(`[Phase IV-Init] Jurisdiction TYPE: ${jurisdictionType.toUpperCase()}`);
+  log.info(`[Phase IV-Init] Jurisdiction TYPE: ${jurisdictionType.toUpperCase()}`);
 
   // CHEN JURISDICTION FIX: Select tiers based on jurisdiction type
   const tiersToUse: Array<'tier1' | 'tier2' | 'tier3'> = jurisdictionType === 'state'
     ? ['tier1', 'tier2']  // STATE: only state court tiers
     : ['tier3'];          // FEDERAL: only federal court tier
 
-  console.log(`[Phase IV-Init] Tiers for ${jurisdictionType.toUpperCase()} jurisdiction: ${tiersToUse.join(', ')}`);
+  log.info(`[Phase IV-Init] Tiers for ${jurisdictionType.toUpperCase()} jurisdiction: ${tiersToUse.join(', ')}`);
 
   // ═══════════════════════════════════════════════════════════════════════
   // SP-06 TASK-07 FIX: Check Phase III research_queries FIRST
@@ -701,9 +704,9 @@ export async function executePhaseIVInit(
 
   if (researchQueries.length > 0) {
     // ═══ PREFERRED PATH: Use Phase III proposition-specific queries ═══
-    console.log(`[Phase IV-Init] ✅ Using ${researchQueries.length} research queries from Phase III`);
+    log.info(`[Phase IV-Init] ✅ Using ${researchQueries.length} research queries from Phase III`);
     researchQueries.forEach((q, i) => {
-      console.log(`[Phase IV-Init]   Q${i + 1}: "${q.primary_query}" (${q.proposition_id || q.element_id || 'unknown'})`);
+      log.info(`[Phase IV-Init]   Q${i + 1}: "${q.primary_query}" (${q.proposition_id || q.element_id || 'unknown'})`);
     });
 
     // Build elements list from research queries for downstream compatibility
@@ -752,14 +755,14 @@ export async function executePhaseIVInit(
       });
     }
 
-    console.log(`[Phase IV-Init] Generated ${searchTasks.length} search tasks from Phase III (${researchQueries.length - searchTasks.length} duplicates removed)`);
+    log.info(`[Phase IV-Init] Generated ${searchTasks.length} search tasks from Phase III (${researchQueries.length - searchTasks.length} duplicates removed)`);
 
   } else {
     // ═══ FALLBACK PATH: Extract from Phase II elements (current behavior) ═══
-    console.warn('[Phase IV-Init] ⚠️ Phase III research_queries missing or empty — falling back to Phase II generic queries');
+    log.warn('[Phase IV-Init] ⚠️ Phase III research_queries missing or empty — falling back to Phase II generic queries');
 
     elements = extractLegalElements(input);
-    console.log(`[Phase IV-Init] Extracted ${elements.length} legal elements`);
+    log.info(`[Phase IV-Init] Extracted ${elements.length} legal elements`);
 
     searchTasks = [];
     for (const element of elements) {
@@ -782,9 +785,9 @@ export async function executePhaseIVInit(
 
   const totalBatches = Math.ceil(searchTasks.length / SEARCHES_PER_BATCH);
 
-  console.log(`[Phase IV-Init] Generated ${searchTasks.length} search tasks`);
-  console.log(`[Phase IV-Init] Will execute in ${totalBatches} batches`);
-  console.log(`[Phase IV-Init] Searches per batch: ${SEARCHES_PER_BATCH}`);
+  log.info(`[Phase IV-Init] Generated ${searchTasks.length} search tasks`);
+  log.info(`[Phase IV-Init] Will execute in ${totalBatches} batches`);
+  log.info(`[Phase IV-Init] Searches per batch: ${SEARCHES_PER_BATCH}`);
 
   return {
     executionId,
@@ -812,17 +815,17 @@ export async function executePhaseIVBatch(
 ): Promise<PhaseIVBatchResult> {
   const startTime = Date.now();
 
-  console.log(`╔════════════════════════════════════════════════════════════════════════╗`);
-  console.log(`║  PHASE IV-BATCH ${String(batchIndex + 1).padStart(2, '0')}: EXECUTING SEARCHES                         ║`);
-  console.log(`╚════════════════════════════════════════════════════════════════════════╝`);
+  log.info(`╔════════════════════════════════════════════════════════════════════════╗`);
+  log.info(`║  PHASE IV-BATCH ${String(batchIndex + 1).padStart(2, '0')}: EXECUTING SEARCHES                         ║`);
+  log.info(`╚════════════════════════════════════════════════════════════════════════╝`);
 
   // Get the tasks for this batch
   const startIdx = batchIndex * SEARCHES_PER_BATCH;
   const endIdx = Math.min(startIdx + SEARCHES_PER_BATCH, searchTasks.length);
   const batchTasks = searchTasks.slice(startIdx, endIdx);
 
-  console.log(`[Phase IV-Batch ${batchIndex + 1}] Processing tasks ${startIdx + 1}-${endIdx} of ${searchTasks.length}`);
-  console.log(`[Phase IV-Batch ${batchIndex + 1}] Tasks in this batch: ${batchTasks.length}`);
+  log.info(`[Phase IV-Batch ${batchIndex + 1}] Processing tasks ${startIdx + 1}-${endIdx} of ${searchTasks.length}`);
+  log.info(`[Phase IV-Batch ${batchIndex + 1}] Tasks in this batch: ${batchTasks.length}`);
 
   const results: SearchResult[] = [];
   let successCount = 0;
@@ -833,13 +836,13 @@ export async function executePhaseIVBatch(
     const taskStart = Date.now();
 
     try {
-      console.log(`[Phase IV-Batch ${batchIndex + 1}] Executing task ${task.taskId}: "${task.query}"`);
+      log.info(`[Phase IV-Batch ${batchIndex + 1}] Executing task ${task.taskId}: "${task.query}"`);
 
       let searchResult = await executeSearchWithTimeout(task, jurisdiction);
 
       // SP-06: Try fallback queries if primary returned 0 results
       if ((!searchResult.success || searchResult.candidates.length === 0) && task.fallbackQueries && task.fallbackQueries.length > 0) {
-        console.log(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} primary returned 0 results — trying ${task.fallbackQueries.length} fallback queries`);
+        log.info(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} primary returned 0 results — trying ${task.fallbackQueries.length} fallback queries`);
 
         for (const fallbackQuery of task.fallbackQueries) {
           if (!fallbackQuery || fallbackQuery.length < 3) continue;
@@ -854,7 +857,7 @@ export async function executePhaseIVBatch(
           const fallbackResult = await executeSearchWithTimeout(fallbackTask, jurisdiction);
 
           if (fallbackResult.success && fallbackResult.candidates.length > 0) {
-            console.log(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} fallback "${fallbackQuery.substring(0, 40)}..." returned ${fallbackResult.candidates.length} candidates`);
+            log.info(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} fallback "${fallbackQuery.substring(0, 40)}..." returned ${fallbackResult.candidates.length} candidates`);
             searchResult = fallbackResult;
             break;
           }
@@ -865,10 +868,10 @@ export async function executePhaseIVBatch(
 
       if (searchResult.success && searchResult.candidates.length > 0) {
         successCount++;
-        console.log(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} SUCCESS: ${searchResult.candidates.length} candidates`);
+        log.info(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} SUCCESS: ${searchResult.candidates.length} candidates`);
       } else {
         failureCount++;
-        console.warn(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} FAILED: ${searchResult.error || 'No results'}`);
+        log.warn(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} FAILED: ${searchResult.error || 'No results'}`);
       }
 
       // Small delay between requests to be nice to CourtListener
@@ -885,14 +888,14 @@ export async function executePhaseIVBatch(
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - taskStart,
       });
-      console.error(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} EXCEPTION: ${error}`);
+      log.error(`[Phase IV-Batch ${batchIndex + 1}] Task ${task.taskId} EXCEPTION: ${error}`);
     }
   }
 
   const durationMs = Date.now() - startTime;
 
-  console.log(`[Phase IV-Batch ${batchIndex + 1}] Complete: ${successCount} succeeded, ${failureCount} failed`);
-  console.log(`[Phase IV-Batch ${batchIndex + 1}] Duration: ${durationMs}ms`);
+  log.info(`[Phase IV-Batch ${batchIndex + 1}] Complete: ${successCount} succeeded, ${failureCount} failed`);
+  log.info(`[Phase IV-Batch ${batchIndex + 1}] Duration: ${durationMs}ms`);
 
   return {
     batchIndex,
@@ -916,9 +919,9 @@ export async function executePhaseIVAggregate(
   initResult: PhaseIVInitResult,
   batchResults: PhaseIVBatchResult[]
 ): Promise<PhaseIVAggregateResult> {
-  console.log('╔════════════════════════════════════════════════════════════════════════╗');
-  console.log('║  PHASE IV-AGGREGATE: COMBINING RESULTS & SELECTING CITATIONS          ║');
-  console.log('╚════════════════════════════════════════════════════════════════════════╝');
+  log.info('╔════════════════════════════════════════════════════════════════════════╗');
+  log.info('║  PHASE IV-AGGREGATE: COMBINING RESULTS & SELECTING CITATIONS          ║');
+  log.info('╚════════════════════════════════════════════════════════════════════════╝');
 
   const supabase = getSupabase();
 
@@ -945,10 +948,10 @@ export async function executePhaseIVAggregate(
     }
   }
 
-  console.log(`[Phase IV-Aggregate] Total searches: ${totalSuccesses + totalFailures}`);
-  console.log(`[Phase IV-Aggregate] Successful searches: ${totalSuccesses}`);
-  console.log(`[Phase IV-Aggregate] Failed searches: ${totalFailures}`);
-  console.log(`[Phase IV-Aggregate] Total candidates before filter: ${allCandidates.length}`);
+  log.info(`[Phase IV-Aggregate] Total searches: ${totalSuccesses + totalFailures}`);
+  log.info(`[Phase IV-Aggregate] Successful searches: ${totalSuccesses}`);
+  log.info(`[Phase IV-Aggregate] Failed searches: ${totalFailures}`);
+  log.info(`[Phase IV-Aggregate] Total candidates before filter: ${allCandidates.length}`);
 
   // ═══════════════════════════════════════════════════════════════════════
   // CHEN JURISDICTION FIX (2026-02-03): Post-search jurisdiction validation
@@ -958,9 +961,9 @@ export async function executePhaseIVAggregate(
   const filteredCandidates = filterByJurisdiction(allCandidates, jurisdictionType);
   const filteredCount = allCandidates.length - filteredCandidates.length;
   if (filteredCount > 0) {
-    console.log(`[Phase IV-Aggregate] ⚠️ Filtered out ${filteredCount} wrong-jurisdiction cases`);
+    log.info(`[Phase IV-Aggregate] ⚠️ Filtered out ${filteredCount} wrong-jurisdiction cases`);
   }
-  console.log(`[Phase IV-Aggregate] Candidates after jurisdiction filter: ${filteredCandidates.length}`);
+  log.info(`[Phase IV-Aggregate] Candidates after jurisdiction filter: ${filteredCandidates.length}`);
 
   // ═══════════════════════════════════════════════════════════════════════
   // CHEN CITATION QUALITY FIX (2026-02-03): Final quality validation
@@ -973,20 +976,20 @@ export async function executePhaseIVAggregate(
   );
   const qualityFilteredCount = filteredCandidates.length - qualityFilteredCandidates.length;
   if (qualityFilteredCount > 0) {
-    console.log(`[Phase IV-Aggregate] ⚠️ Quality filter removed ${qualityFilteredCount} citations (criminal/future/invalid)`);
+    log.info(`[Phase IV-Aggregate] ⚠️ Quality filter removed ${qualityFilteredCount} citations (criminal/future/invalid)`);
   }
-  console.log(`[Phase IV-Aggregate] Candidates after quality filter: ${qualityFilteredCandidates.length}`);
+  log.info(`[Phase IV-Aggregate] Candidates after quality filter: ${qualityFilteredCandidates.length}`);
 
   // Deduplicate candidates by ID
   const uniqueCandidates = deduplicateCandidates(qualityFilteredCandidates);
-  console.log(`[Phase IV-Aggregate] Unique candidates after dedup: ${uniqueCandidates.length}`);
+  log.info(`[Phase IV-Aggregate] Unique candidates after dedup: ${uniqueCandidates.length}`);
 
   // ═══════════════════════════════════════════════════════════════════════
   // CHEN RELEVANCE FIX (2026-02-05): Topical relevance scoring
   // Score each candidate for relevance to its claimed proposition
   // Reject candidates below 0.70 threshold
   // ═══════════════════════════════════════════════════════════════════════
-  console.log(`[Phase IV-Aggregate] ═══ TOPICAL RELEVANCE SCORING ═══`);
+  log.info(`[Phase IV-Aggregate] ═══ TOPICAL RELEVANCE SCORING ═══`);
   let relevanceRejections = 0;
   const relevanceScoredCandidates = uniqueCandidates.filter(candidate => {
     const element = initResult.elements.find(e => e.id === candidate.forElement || e.name === candidate.forElement);
@@ -1015,9 +1018,9 @@ export async function executePhaseIVAggregate(
   });
 
   if (relevanceRejections > 0) {
-    console.log(`[Phase IV-Aggregate] ⛔ Relevance scoring rejected ${relevanceRejections} candidates (threshold: ${TOPICAL_RELEVANCE_THRESHOLD})`);
+    log.info(`[Phase IV-Aggregate] ⛔ Relevance scoring rejected ${relevanceRejections} candidates (threshold: ${TOPICAL_RELEVANCE_THRESHOLD})`);
   }
-  console.log(`[Phase IV-Aggregate] Candidates after relevance scoring: ${relevanceScoredCandidates.length}`);
+  log.info(`[Phase IV-Aggregate] Candidates after relevance scoring: ${relevanceScoredCandidates.length}`);
 
   // ═══════════════════════════════════════════════════════════════════════
   // SP-06 CIV-006: Three-axis relevance scoring (keyword 40%, court 30%, recency 30%)
@@ -1033,7 +1036,7 @@ export async function executePhaseIVAggregate(
 
   const scoredResults = scoreSearchResults(relevanceScoredCandidates, scoringContext);
   const filteredScored = filterByMinimumScore(scoredResults, 0.3);
-  console.log(`[Phase IV-Aggregate] Three-axis scoring: ${filteredScored.length} passed (${scoredResults.length - filteredScored.length} below 0.3 threshold)`);
+  log.info(`[Phase IV-Aggregate] Three-axis scoring: ${filteredScored.length} passed (${scoredResults.length - filteredScored.length} below 0.3 threshold)`);
 
   // Map scored results back to CitationCandidate format with updated scores
   const scoredCandidates = filteredScored.map(s => ({
@@ -1051,7 +1054,7 @@ export async function executePhaseIVAggregate(
 
   const citationCount = selectedCitations.length;
 
-  console.log(`[Phase IV-Aggregate] Selected citations: ${citationCount}`);
+  log.info(`[Phase IV-Aggregate] Selected citations: ${citationCount}`);
 
   // Get statutory bank for this motion type
   const statutoryBank = MOTION_STATUTORY_BANKS[initResult.motionType] || [];
@@ -1075,7 +1078,7 @@ export async function executePhaseIVAggregate(
   if (citationCount === 0) {
     flaggedForReview = true;
     qualityNotes = 'CRITICAL: Zero citations found. CourtListener may be down or all searches failed. Manual research required.';
-    console.error(`[Phase IV-Aggregate] ${qualityNotes}`);
+    log.error(`[Phase IV-Aggregate] ${qualityNotes}`);
 
     await flagForManualReview(orderId, supabase, qualityNotes);
     throw new Error(`Phase IV failed: Zero citations. Order flagged for manual review.`);
@@ -1083,7 +1086,7 @@ export async function executePhaseIVAggregate(
   } else if (citationCount < MINIMUM_CITATIONS_HARD_STOP) {
     flaggedForReview = true;
     qualityNotes = `CRITICAL: Only ${citationCount} citations found (minimum ${MINIMUM_CITATIONS_HARD_STOP}). Manual research required.`;
-    console.error(`[Phase IV-Aggregate] ${qualityNotes}`);
+    log.error(`[Phase IV-Aggregate] ${qualityNotes}`);
 
     await flagForManualReview(orderId, supabase, qualityNotes);
     throw new Error(`Phase IV failed: Only ${citationCount} citations (minimum ${MINIMUM_CITATIONS_HARD_STOP}). Order flagged for manual review.`);
@@ -1091,7 +1094,7 @@ export async function executePhaseIVAggregate(
   } else if (citationCount < MINIMUM_CITATIONS_IDEAL) {
     flaggedForReview = true;
     qualityNotes = `Phase IV found ${citationCount} citations (below ideal ${MINIMUM_CITATIONS_IDEAL}). Review before delivery.`;
-    console.warn(`[Phase IV-Aggregate] ${qualityNotes}`);
+    log.warn(`[Phase IV-Aggregate] ${qualityNotes}`);
 
     await supabase
       .from('orders')
@@ -1109,15 +1112,15 @@ export async function executePhaseIVAggregate(
     elemId => candidatesByElement[elemId].length > 0
   ).length;
 
-  console.log('╔════════════════════════════════════════════════════════════════════════╗');
-  console.log('║  PHASE IV MULTI-STEP COMPLETE                                         ║');
-  console.log(`║  Citations Selected: ${String(citationCount).padEnd(50)}║`);
-  console.log(`║  Binding: ${String(bindingCount).padEnd(61)}║`);
-  console.log(`║  Persuasive: ${String(persuasiveCount).padEnd(58)}║`);
-  console.log(`║  Louisiana: ${String(louisianaCitations).padEnd(59)}║`);
-  console.log(`║  Federal: ${String(federalCitations).padEnd(61)}║`);
-  console.log(`║  Flagged for Review: ${String(flaggedForReview).padEnd(50)}║`);
-  console.log('╚════════════════════════════════════════════════════════════════════════╝');
+  log.info('╔════════════════════════════════════════════════════════════════════════╗');
+  log.info('║  PHASE IV MULTI-STEP COMPLETE                                         ║');
+  log.info(`║  Citations Selected: ${String(citationCount).padEnd(50)}║`);
+  log.info(`║  Binding: ${String(bindingCount).padEnd(61)}║`);
+  log.info(`║  Persuasive: ${String(persuasiveCount).padEnd(58)}║`);
+  log.info(`║  Louisiana: ${String(louisianaCitations).padEnd(59)}║`);
+  log.info(`║  Federal: ${String(federalCitations).padEnd(61)}║`);
+  log.info(`║  Flagged for Review: ${String(flaggedForReview).padEnd(50)}║`);
+  log.info('╚════════════════════════════════════════════════════════════════════════╝');
 
   return {
     success: citationCount >= MINIMUM_CITATIONS_HARD_STOP,
@@ -1166,7 +1169,7 @@ async function executeSearchWithTimeout(
 
   // CHEN FIX: Use tier mapping, NOT raw jurisdiction
   const mappedJurisdiction = TIER_JURISDICTION_MAP[task.tier];
-  console.log(`[executeSearchWithTimeout] task=${task.taskId} tier=${task.tier} → jurisdiction="${mappedJurisdiction}"`);
+  log.info(`[executeSearchWithTimeout] task=${task.taskId} tier=${task.tier} → jurisdiction="${mappedJurisdiction}"`);
 
   try {
     const response = await searchOpinions(task.query, mappedJurisdiction, 10, {
@@ -1249,7 +1252,7 @@ function extractLegalElements(input: PhaseInput): ExtractedElement[] {
     null;
 
   if (rawElements && Array.isArray(rawElements) && rawElements.length > 0) {
-    console.log(`[extractLegalElements] Found ${rawElements.length} elements from previous phases`);
+    log.info(`[extractLegalElements] Found ${rawElements.length} elements from previous phases`);
 
     return rawElements.map((el: unknown, idx: number) => {
       const element = el as Record<string, unknown>;
@@ -1269,7 +1272,7 @@ function extractLegalElements(input: PhaseInput): ExtractedElement[] {
   const motionTypeKey = normalizeMotionType(motionType || 'DEFAULT');
   const standardElements = STANDARD_ELEMENTS[motionTypeKey] || STANDARD_ELEMENTS.DEFAULT;
 
-  console.log(`[extractLegalElements] Using standard elements for motion type: ${motionTypeKey}`);
+  log.info(`[extractLegalElements] Using standard elements for motion type: ${motionTypeKey}`);
 
   return standardElements;
 }
@@ -1440,5 +1443,5 @@ async function flagForManualReview(
     })
     .eq('id', orderId);
 
-  console.warn(`[Phase IV] Order ${orderId} flagged for manual review: ${qualityNotes}`);
+  log.warn(`[Phase IV] Order ${orderId} flagged for manual review: ${qualityNotes}`);
 }

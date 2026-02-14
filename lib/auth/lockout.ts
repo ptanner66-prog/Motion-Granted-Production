@@ -4,6 +4,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('auth-lockout');
 /**
  * Lockout configuration:
  * - Lock after 5 failed attempts
@@ -79,7 +82,7 @@ export async function checkLockoutStatus(email: string): Promise<LockoutStatus> 
     .order('created_at', { ascending: false });
 
   if (error || !attempts) {
-    console.error('[Lockout] Error checking status:', error);
+    log.error('[Lockout] Error checking status:', error);
     return { isLocked: false, attemptsRemaining: LOCKOUT_CONFIG.MAX_ATTEMPTS, lockedUntil: null, minutesRemaining: null };
   }
 
@@ -154,7 +157,7 @@ async function logLockoutEvent(email: string, ipAddress: string): Promise<void> 
     created_at: new Date().toISOString(),
   });
 
-  console.log(`[Lockout] Account locked: ${email} from IP ${ipAddress}`);
+  log.info(`[Lockout] Account locked: ${email} from IP ${ipAddress}`);
 }
 
 /**
@@ -183,5 +186,5 @@ export async function clearFailedAttempts(email: string): Promise<void> {
 
   // We don't delete - just record successful login which resets the window
   // The window-based counting handles this automatically
-  console.log(`[Lockout] Successful login clears lockout window for: ${email}`);
+  log.info(`[Lockout] Successful login clears lockout window for: ${email}`);
 }

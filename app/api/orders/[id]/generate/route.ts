@@ -14,6 +14,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdmin } from '@supabase/supabase-js';
 import { inngest } from '@/lib/inngest/client';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-orders-generate');
 
 export const maxDuration = 30; // Just enough to trigger the workflow
 
@@ -107,7 +110,7 @@ export async function POST(
       .eq('id', orderId);
 
     if (updateError) {
-      console.error('[Generate] Failed to update order status:', updateError);
+      log.error('Failed to update order status', { error: updateError });
       return NextResponse.json(
         { error: 'Failed to update order status' },
         { status: 500 }
@@ -130,7 +133,7 @@ export async function POST(
       });
     } else {
       // Fallback: Execute workflow directly using v7.2 phase executors
-      console.log('[Generate] Inngest not configured, executing workflow directly with v7.2 system');
+      log.info('Inngest not configured, executing workflow directly with v7.2 system');
 
       // Import v7.2 phase executors and workflow functions
       const { executePhase } = await import('@/lib/workflow/phase-executors');
@@ -140,7 +143,7 @@ export async function POST(
       // SP-08: Background IIFE uses service_role because cookies are unavailable after response.
       const bgClient = getBackgroundClient();
       if (!bgClient) {
-        console.error('[Generate] Cannot start background workflow: missing SUPABASE_SERVICE_ROLE_KEY');
+        log.error('Cannot start background workflow: missing SUPABASE_SERVICE_ROLE_KEY');
         return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
       }
       (async () => {
@@ -153,7 +156,7 @@ export async function POST(
             .single();
 
           if (!workflow) {
-            console.log('[Generate] Workflow not found, creating new workflow');
+            log.info('Workflow not found, creating new workflow');
 
             // Get motion type ID - try to match from motion_types table, or use first available
             let motionTypeId = null;
@@ -204,7 +207,7 @@ export async function POST(
             }
 
             workflow = createdWorkflow;
-            console.log(`[Generate] Created workflow ${workflow.id} for order ${orderId}`);
+            log.info('Created workflow', { workflowId: workflow.id, orderId });
           }
 
           const { data: orderData } = await bgClient
@@ -238,7 +241,7 @@ export async function POST(
 
           // Execute phases dynamically following nextPhase routing
           while (currentPhase && phaseIterations < MAX_PHASES) {
-            console.log(`[Generate Direct] Executing phase ${currentPhase} (iteration ${phaseIterations + 1}, revision loop ${revisionLoopCount})`);
+            log.info('Executing phase', { phase: currentPhase, iteration: phaseIterations + 1, revisionLoop: revisionLoopCount });
 
             // Update workflow activity (current_phase is for old system, we track via phase codes in v7.2)
             await bgClient
@@ -255,7 +258,7 @@ export async function POST(
             if (currentPhase === 'VII' && phaseIterations > 1) {
               revisionLoopCount++;
               if (revisionLoopCount > MAX_REVISION_LOOPS) {
-                console.error(`[Generate Direct] Max revision loops (${MAX_REVISION_LOOPS}) reached`);
+                log.error('Max revision loops reached', { maxRevisionLoops: MAX_REVISION_LOOPS });
                 await bgClient
                   .from('order_workflows')
                   .update({
@@ -301,7 +304,7 @@ export async function POST(
             const result = await executePhase(currentPhase as any, phaseInput);
 
             if (!result.success) {
-              console.error(`[Generate Direct] Phase ${currentPhase} failed:`, result.error);
+              log.error('Phase failed', { phase: currentPhase, error: result.error });
 
               await bgClient
                 .from('order_workflows')
@@ -328,7 +331,7 @@ export async function POST(
             // Check if workflow requires review (HOLD condition)
             // Phase VII and Phase X are special: VII is just a notification, X is completion
             if (result.requiresReview && currentPhase !== 'VII' && currentPhase !== 'X') {
-              console.log(`[Generate Direct] Phase ${currentPhase} requires review (HOLD), stopping`);
+              log.info('Phase requires review (HOLD), stopping', { phase: currentPhase });
 
               await bgClient
                 .from('order_workflows')
@@ -351,12 +354,12 @@ export async function POST(
 
             // Phase VII requiresReview is just CP2 notification, don't stop
             if (result.requiresReview && currentPhase === 'VII') {
-              console.log(`[Generate Direct] Phase VII CP2 checkpoint - continuing`);
+              log.info('Phase VII CP2 checkpoint - continuing');
             }
 
             // Phase X requiresReview is CP3 - workflow complete, ready for admin review
             if (result.requiresReview && currentPhase === 'X') {
-              console.log(`[Generate Direct] Phase X CP3 checkpoint - workflow COMPLETE, ready for review`);
+              log.info('Phase X CP3 checkpoint - workflow COMPLETE, ready for review');
             }
 
             // Get next phase from result
@@ -364,7 +367,7 @@ export async function POST(
               currentPhase = result.nextPhase as string;
             } else {
               // No next phase means we're done - SUCCESS!
-              console.log(`[Generate Direct] Workflow completed successfully at phase ${currentPhase}`);
+              log.info('Workflow completed successfully', { phase: currentPhase });
 
               // Mark workflow as completed
               await bgClient
@@ -386,13 +389,13 @@ export async function POST(
                 })
                 .eq('id', orderId);
 
-              console.log(`[Generate Direct] Order ${orderId} ready for review`);
+              log.info('Order ready for review', { orderId });
               break;
             }
           }
 
           if (phaseIterations >= MAX_PHASES) {
-            console.error('[Generate Direct] Hit max phase iteration limit - possible infinite loop');
+            log.error('Hit max phase iteration limit - possible infinite loop');
             await bgClient
               .from('order_workflows')
               .update({
@@ -410,9 +413,9 @@ export async function POST(
               .eq('id', orderId);
           }
 
-          console.log('[Generate Direct] Workflow execution completed');
+          log.info('Workflow execution completed');
         } catch (error) {
-          console.error('[Generate Direct] Workflow execution error:', error);
+          log.error('Workflow execution error', { error: error instanceof Error ? error.message : error });
 
           // Record error in database so it's visible
           try {
@@ -436,7 +439,7 @@ export async function POST(
               })
               .eq('id', orderId);
           } catch (logError) {
-            console.error('[Generate Direct] Failed to log error:', logError);
+            log.error('Failed to log error', { error: logError instanceof Error ? logError.message : logError });
           }
         }
       })();
@@ -464,7 +467,7 @@ export async function POST(
     });
 
   } catch (error) {
-    console.error('[Generate] Failed to start workflow:', error);
+    log.error('Failed to start workflow', { error: error instanceof Error ? error.message : error });
 
     // Revert status on error
     await supabase

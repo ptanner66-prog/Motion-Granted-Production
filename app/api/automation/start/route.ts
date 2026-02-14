@@ -12,6 +12,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-start');
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -129,7 +132,7 @@ export async function POST(request: Request) {
         : 'Order queued for processing. Note: No documents were found - motion will be generated from checkout data only.',
     });
   } catch (error) {
-    console.error('Queue automation error:', error);
+    log.error('Queue automation error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Failed to queue automation',
     }, { status: 500 });

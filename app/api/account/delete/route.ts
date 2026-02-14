@@ -10,6 +10,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-account-delete');
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -39,7 +42,7 @@ export async function DELETE(request: NextRequest) {
 
     const userId = user.id;
     const userEmail = user.email;
-    console.log('[account/delete] Starting account deletion for user:', userId);
+    log.info('Starting account deletion', { userId });
 
     // SP-08: service_role scoped ONLY to auth.admin.deleteUser() and storage ops.
     // All DB .from() operations use user-scoped client below.
@@ -70,7 +73,7 @@ export async function DELETE(request: NextRequest) {
           await authAdminClient.storage
             .from('documents')
             .remove(paths as string[])
-            .catch(err => console.warn('[account/delete] Storage cleanup partial:', err));
+            .catch(err => log.warn('Storage cleanup partial', { error: err instanceof Error ? err.message : err }));
         }
       }
     }
@@ -98,7 +101,7 @@ export async function DELETE(request: NextRequest) {
         .eq(column, userId);
 
       if (error && !error.message.includes('does not exist') && !error.code?.includes('42P01')) {
-        console.warn(`[account/delete] Error deleting from ${table}:`, error.message);
+        log.warn('Error deleting from table', { table, error: error.message });
       }
     }
 
@@ -133,7 +136,7 @@ export async function DELETE(request: NextRequest) {
           .in('order_id', orderIds);
 
         if (error && !error.message.includes('does not exist') && !error.code?.includes('42P01')) {
-          console.warn(`[account/delete] Error deleting from ${table}:`, error.message);
+          log.warn('Error deleting from table', { table, error: error.message });
         }
       }
 
@@ -144,7 +147,7 @@ export async function DELETE(request: NextRequest) {
         .in('order_id', orderIds)
         .then(({ error }) => {
           if (error && !error.code?.includes('42P01')) {
-            console.warn('[account/delete] Error deleting refunds:', error.message);
+            log.warn('Error deleting refunds', { error: error.message });
           }
         });
 
@@ -155,7 +158,7 @@ export async function DELETE(request: NextRequest) {
         .eq('client_id', userId);
 
       if (ordersError) {
-        console.warn('[account/delete] Error deleting orders:', ordersError.message);
+        log.warn('Error deleting orders', { error: ordersError.message });
       }
     }
 
@@ -166,20 +169,20 @@ export async function DELETE(request: NextRequest) {
       .eq('id', userId);
 
     if (profileError) {
-      console.warn('[account/delete] Error deleting profile:', profileError.message);
+      log.warn('Error deleting profile', { error: profileError.message });
     }
 
     // 6. Delete the auth user
     const { error: deleteError } = await authAdminClient.auth.admin.deleteUser(userId);
     if (deleteError) {
-      console.error('[account/delete] Failed to delete auth user:', deleteError);
+      log.error('Failed to delete auth user', { error: deleteError });
       return NextResponse.json(
         { error: 'Failed to delete account. Please contact support.' },
         { status: 500 }
       );
     }
 
-    console.log('[account/delete] Account deleted successfully:', userId);
+    log.info('Account deleted successfully', { userId });
 
     // 7. Send confirmation email (best effort)
     if (userEmail && process.env.RESEND_API_KEY) {
@@ -194,13 +197,13 @@ export async function DELETE(request: NextRequest) {
                  <p>If you did not request this, please contact support immediately at support@motiongranted.com.</p>`,
         });
       } catch (emailErr) {
-        console.warn('[account/delete] Confirmation email failed:', emailErr);
+        log.warn('Confirmation email failed', { error: emailErr instanceof Error ? emailErr.message : emailErr });
       }
     }
 
     return NextResponse.json({ success: true, message: 'Account and all associated data deleted' });
   } catch (err) {
-    console.error('[account/delete] Unexpected error:', err);
+    log.error('Unexpected error', { error: err instanceof Error ? err.message : err });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

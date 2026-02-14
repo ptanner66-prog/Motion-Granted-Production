@@ -6,6 +6,9 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('automation-conflict-checker');
 import {
   analyzeConflicts,
   calculateSimilarity,
@@ -79,7 +82,7 @@ async function getConflictCheckSettings(): Promise<{
         (settingsMap.get('conflict_fuzzy_match_threshold') as { value?: number })?.value ?? 0.85,
     };
   } catch (error) {
-    console.error('[Conflict Checker] Failed to load settings:', error);
+    log.error('[Conflict Checker] Failed to load settings:', error);
     return {
       enabled: true,
       autoClearThreshold: 0.95,
@@ -668,7 +671,7 @@ async function logAutomationAction(
       was_auto_approved: (details.autoCleared as boolean) || false,
     });
   } catch (error) {
-    console.error('[Automation Log] Failed to log action:', error);
+    log.error('[Automation Log] Failed to log action:', error);
   }
 }
 

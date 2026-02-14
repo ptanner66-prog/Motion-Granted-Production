@@ -7,6 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-restart');
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,7 +38,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
     }
 
-    console.log(`[Workflow Restart] Starting restart for order ${orderId}`);
+    log.info('Starting restart for order', { orderId });
 
     // Get current workflow
     const { data: workflow, error: wfError } = await supabase
@@ -55,7 +58,7 @@ export async function POST(request: NextRequest) {
       .eq('order_workflow_id', workflow.id);
 
     if (deletePhaseError) {
-      console.error('[Workflow Restart] Error deleting phase executions:', deletePhaseError);
+      log.error('Error deleting phase executions', { error: deletePhaseError });
     }
 
     // Delete judge simulation results (if table exists)
@@ -67,11 +70,11 @@ export async function POST(request: NextRequest) {
 
       if (deleteJudgeError && deleteJudgeError.code !== 'PGRST205') {
         // Ignore "table not found" errors (PGRST205), log other errors
-        console.error('[Workflow Restart] Error deleting judge results:', deleteJudgeError);
+        log.error('Error deleting judge results', { error: deleteJudgeError });
       }
     } catch (err) {
       // Table might not exist yet - that's okay
-      console.log('[Workflow Restart] Judge simulation results table not found - skipping cleanup');
+      log.info('Judge simulation results table not found - skipping cleanup');
     }
 
     // Reset workflow to initial state
@@ -88,7 +91,7 @@ export async function POST(request: NextRequest) {
       .eq('id', workflow.id);
 
     if (updateWfError) {
-      console.error('[Workflow Restart] Error updating workflow:', updateWfError);
+      log.error('Error updating workflow', { error: updateWfError });
       return NextResponse.json({ error: 'Failed to reset workflow' }, { status: 500 });
     }
 
@@ -100,7 +103,7 @@ export async function POST(request: NextRequest) {
       .order('phase_number', { ascending: true });
 
     if (phasesError || !phases) {
-      console.error('[Workflow Restart] Error fetching phase definitions:', phasesError);
+      log.error('Error fetching phase definitions', { error: phasesError });
       return NextResponse.json({ error: 'Failed to fetch phase definitions' }, { status: 500 });
     }
 
@@ -117,7 +120,7 @@ export async function POST(request: NextRequest) {
       .insert(phaseExecutions);
 
     if (execError) {
-      console.error('[Workflow Restart] Error creating phase executions:', execError);
+      log.error('Error creating phase executions', { error: execError });
       return NextResponse.json({ error: 'Failed to create phase executions' }, { status: 500 });
     }
 
@@ -132,7 +135,7 @@ export async function POST(request: NextRequest) {
       .eq('id', orderId);
 
     if (updateOrderError) {
-      console.error('[Workflow Restart] Error updating order:', updateOrderError);
+      log.error('Error updating order', { error: updateOrderError });
       return NextResponse.json({ error: 'Failed to reset order' }, { status: 500 });
     }
 
@@ -146,7 +149,7 @@ export async function POST(request: NextRequest) {
         details: { workflow_id: workflow.id, restarted_by: user.id },
       });
 
-    console.log(`[Workflow Restart] Successfully restarted workflow ${workflow.id} for order ${orderId}`);
+    log.info('Successfully restarted workflow', { workflowId: workflow.id, orderId });
 
     return NextResponse.json({
       success: true,
@@ -155,7 +158,7 @@ export async function POST(request: NextRequest) {
       workflowId: workflow.id,
     });
   } catch (error) {
-    console.error('[Workflow Restart] Error:', error);
+    log.error('Workflow restart error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }

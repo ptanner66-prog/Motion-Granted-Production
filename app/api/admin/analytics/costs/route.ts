@@ -8,6 +8,9 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-analytics-costs');
 
 export async function GET() {
   try {
@@ -50,7 +53,7 @@ export async function GET() {
       .gte('orders.created_at', thirtyDaysAgo.toISOString());
 
     if (workflowError) {
-      console.error('[CostAnalytics] Error fetching workflow states:', workflowError);
+      log.error('Error fetching workflow states', { error: workflowError });
       // Return empty metrics if error
       return NextResponse.json(getEmptyMetrics());
     }
@@ -150,7 +153,7 @@ export async function GET() {
       totalOrders,
     });
   } catch (error) {
-    console.error('[CostAnalytics] Error:', error);
+    log.error('Cost analytics error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(getEmptyMetrics(), { status: 500 });
   }
 }

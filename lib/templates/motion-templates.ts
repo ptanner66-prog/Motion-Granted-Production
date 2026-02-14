@@ -14,6 +14,9 @@
  */
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('motion-templates');
 
 // ============================================================================
 // TYPES
@@ -280,7 +283,7 @@ export async function createTemplate(
     .single();
 
   if (error || !data) {
-    console.error('[MotionTemplates] Create error:', error);
+    log.error('Create error', { error });
     return null;
   }
 

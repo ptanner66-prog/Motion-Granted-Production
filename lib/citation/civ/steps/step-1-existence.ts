@@ -19,6 +19,9 @@ import { waitForToken } from '@/lib/rate-limiter';
 import { normalizeCitation, parseCitation, createOrUpdateCitation } from '../database';
 import type { ExistenceCheckOutput, NormalizedCitation } from '../types';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-civ-steps-step-1-existence');
 /**
  * Parse and normalize a citation string
  */
@@ -82,7 +85,7 @@ export async function executeExistenceCheck(
     // =========================================================================
     const hasToken = await waitForToken('courtlistener', 10000);
     if (!hasToken) {
-      console.warn('[CIV Step 1] CourtListener rate limit hit, waiting...');
+      log.warn('[CIV Step 1] CourtListener rate limit hit, waiting...');
       await waitForToken('courtlistener', 30000);
     }
 
@@ -152,12 +155,12 @@ export async function executeExistenceCheck(
     // COST: ~$0.10 per lookup
     // =========================================================================
     if (isFederal && isPACERConfigured()) {
-      console.log('[CIV Step 1] Citation not in CourtListener, checking PACER (federal unpublished)...');
+      log.info('[CIV Step 1] Citation not in CourtListener, checking PACER (federal unpublished)...');
 
       // Rate limit PACER to control costs
       const hasPacerToken = await waitForToken('pacer', 5000);
       if (!hasPacerToken) {
-        console.warn('[CIV Step 1] PACER rate limit hit, skipping PACER lookup');
+        log.warn('[CIV Step 1] PACER rate limit hit, skipping PACER lookup');
       } else {
         const pacerResult = await lookupPACER(citationString);
         sourcesChecked.push('pacer');
@@ -196,7 +199,7 @@ export async function executeExistenceCheck(
 
     return result;
   } catch (error) {
-    console.error('[CIV Step 1] Existence check error:', error);
+    log.error('[CIV Step 1] Existence check error:', error);
 
     return {
       ...result,
@@ -303,7 +306,7 @@ async function storeCitationInVPI(
     });
   } catch (error) {
     // Non-fatal - log but continue
-    console.error('[CIV Step 1] Failed to store citation in VPI:', error);
+    log.error('[CIV Step 1] Failed to store citation in VPI:', error);
   }
 }
 

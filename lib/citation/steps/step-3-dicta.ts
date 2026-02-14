@@ -24,6 +24,9 @@ import { askClaude } from '@/lib/automation/claude';
 import { createClient } from '@/lib/supabase/server';
 import type { MotionTier } from '@/types/workflow';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-steps-step-3-dicta');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -173,7 +176,7 @@ Respond with ONLY a JSON object:
     result.confidence = 0;
     result.reasoning = `Error during dicta detection: ${result.error}`;
 
-    console.error('[Step3] Dicta detection error:', result.error);
+    log.error('[Step3] Dicta detection error:', result.error);
   }
 
   result.duration_ms = Date.now() - startTime;
@@ -183,7 +186,7 @@ Respond with ONLY a JSON object:
     await logStep3Result(orderId, citationText, proposition, result);
   }
 
-  console.log(`[Step3] ${citationText.slice(0, 40)}...: ${result.classification}/${result.proposition_type} → ${result.action} (${result.duration_ms}ms)`);
+  log.info(`[Step3] ${citationText.slice(0, 40)}...: ${result.classification}/${result.proposition_type} → ${result.action} (${result.duration_ms}ms)`);
 
   return result;
 }
@@ -316,7 +319,7 @@ async function logStep3Result(
       },
     });
   } catch (error) {
-    console.error('[Step3] Failed to log result to database:', error);
+    log.error('[Step3] Failed to log result to database:', error);
   }
 }
 

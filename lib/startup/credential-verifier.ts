@@ -18,6 +18,9 @@
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('startup-credential-verifier');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -401,7 +404,7 @@ export async function verifyAllCredentials(): Promise<CredentialVerificationResu
   // Log results
   const failed = results.filter((r) => !r.valid && !r.error?.includes('Not configured'));
   if (failed.length > 0) {
-    console.error('[CredentialVerifier] Failed credentials:', failed);
+    log.error('[CredentialVerifier] Failed credentials:', failed);
     // Alert admin if critical services failed
     if (!allCriticalValid) {
       await alertAdminOfFailure(failed);
@@ -432,7 +435,7 @@ async function alertAdminOfFailure(failed: CredentialStatus[]): Promise<void> {
       },
     });
   } catch (error) {
-    console.error('[CredentialVerifier] Failed to send alert:', error);
+    log.error('[CredentialVerifier] Failed to send alert:', error);
   }
 }
 
@@ -457,7 +460,7 @@ export async function setDegradedMode(failedServices: string[]): Promise<void> {
       }),
     });
   } catch (error) {
-    console.error('[CredentialVerifier] Failed to set degraded mode:', error);
+    log.error('[CredentialVerifier] Failed to set degraded mode:', error);
   }
 }
 

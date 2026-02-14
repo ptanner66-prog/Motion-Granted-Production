@@ -6,6 +6,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('services-webhook-logger');
 /**
  * Webhook failure types for classification
  */
@@ -89,18 +92,18 @@ export async function logWebhookFailure(entry: WebhookFailureEntry): Promise<boo
 
     if (error) {
       // Log to console as fallback - never let logging failure crash the webhook
-      console.error('[WebhookLogger] Failed to log webhook failure to database:', error);
-      console.error('[WebhookLogger] Original failure:', JSON.stringify(entry, null, 2));
+      log.error('[WebhookLogger] Failed to log webhook failure to database:', error);
+      log.error('[WebhookLogger] Original failure:', JSON.stringify(entry, null, 2));
       return false;
     }
 
-    console.log(`[WebhookLogger] Logged ${entry.failure_type} failure for event ${entry.stripe_event_id || 'unknown'}`);
+    log.info(`[WebhookLogger] Logged ${entry.failure_type} failure for event ${entry.stripe_event_id || 'unknown'}`);
     return true;
 
   } catch (e) {
     // Absolute fallback - log to console
-    console.error('[WebhookLogger] Exception while logging webhook failure:', e);
-    console.error('[WebhookLogger] Original failure:', JSON.stringify(entry, null, 2));
+    log.error('[WebhookLogger] Exception while logging webhook failure:', e);
+    log.error('[WebhookLogger] Original failure:', JSON.stringify(entry, null, 2));
     return false;
   }
 }
@@ -131,7 +134,7 @@ export async function getRecentWebhookFailures(
   const { data, error } = await query;
 
   if (error) {
-    console.error('[WebhookLogger] Failed to fetch webhook failures:', error);
+    log.error('[WebhookLogger] Failed to fetch webhook failures:', error);
     return [];
   }
 
@@ -162,7 +165,7 @@ export async function resolveWebhookFailure(
     .eq('id', failureId);
 
   if (error) {
-    console.error('[WebhookLogger] Failed to resolve webhook failure:', error);
+    log.error('[WebhookLogger] Failed to resolve webhook failure:', error);
     return false;
   }
 

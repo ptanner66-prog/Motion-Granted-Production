@@ -9,6 +9,9 @@ import {
 } from '@/lib/automation';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
 import { ADMIN_EMAIL, ALERT_EMAIL } from '@/lib/config/notifications';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-cron');
 
 // Timing constants for stuck order recovery
 const STUCK_ORDER_THRESHOLD_MINUTES = 15;
@@ -57,12 +60,12 @@ export async function POST(request: Request) {
 
     // Require CRON_SECRET to be set and match (constant-time comparison)
     if (!expectedSecret || expectedSecret.length < 16) {
-      console.error('[Cron] CRON_SECRET not configured or too short');
+      log.error('CRON_SECRET not configured or too short');
       return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
     }
 
     if (!cronSecret || !secureCompare(cronSecret, expectedSecret)) {
-      console.warn('[Cron] Unauthorized cron request');
+      log.warn('Unauthorized cron request');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -138,7 +141,7 @@ export async function POST(request: Request) {
             });
 
             stuckOrderResults.recovered++;
-            console.log(`[Cron] Recovered stuck order: ${order.order_number}`);
+            log.info('Recovered stuck order', { orderNumber: order.order_number });
           } catch (err) {
             stuckOrderResults.failed++;
             stuckOrderResults.errors.push(`${order.order_number}: ${err instanceof Error ? err.message : 'Unknown'}`);
@@ -221,7 +224,7 @@ export async function POST(request: Request) {
         }
       }
     } catch (recoveryError) {
-      console.error('[Cron] Recovery error:', recoveryError);
+      log.error('Recovery error', { error: recoveryError instanceof Error ? recoveryError.message : recoveryError });
       stuckOrderResults.errors.push(`Recovery error: ${recoveryError instanceof Error ? recoveryError.message : 'Unknown'}`);
     }
 
@@ -237,7 +240,7 @@ export async function POST(request: Request) {
       results,
     });
   } catch (error) {
-    console.error('[Cron] Error:', error);
+    log.error('Cron error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       {
         success: false,

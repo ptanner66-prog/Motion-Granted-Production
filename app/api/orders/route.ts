@@ -6,6 +6,9 @@ import { sendEmail } from '@/lib/resend'
 import { OrderConfirmationEmail } from '@/emails/order-confirmation'
 import { formatMotionType } from '@/config/motion-types'
 import { startOrderAutomation } from '@/lib/workflow/automation-service'
+import { createLogger } from '@/lib/security/logger'
+
+const log = createLogger('api-orders')
 import { isStateAcceptingOrders } from '@/lib/admin/state-toggle'
 
 // Server-side validation schema for order creation
@@ -53,13 +56,13 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching orders:', error)
+      log.error('Error fetching orders', { error })
       return NextResponse.json({ error: 'Unable to retrieve your orders. Please try again.' }, { status: 500 })
     }
 
     return NextResponse.json(orders)
   } catch (error) {
-    console.error('Orders fetch error:', error)
+    log.error('Orders fetch error', { error: error instanceof Error ? error.message : error })
     return NextResponse.json({ error: 'Unable to retrieve your orders. Please try again.' }, { status: 500 })
   }
 }
@@ -158,7 +161,7 @@ export async function POST(req: Request) {
       .single()
 
     if (error) {
-      console.error('Order creation database error:', error)
+      log.error('Order creation database error', { error })
       return NextResponse.json({ error: 'Failed to create order. Please try again.' }, { status: 500 })
     }
 
@@ -235,10 +238,10 @@ export async function POST(req: Request) {
           portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/orders/${order.id}`,
         }),
       }).catch((err) => {
-        console.error('Failed to send confirmation email:', err)
+        log.error('Failed to send confirmation email', { error: err instanceof Error ? err.message : err })
       })
     } else {
-      console.warn('[Orders] User has no email address, skipping confirmation email')
+      log.warn('User has no email address, skipping confirmation email')
     }
 
     // NOTE: Automation is NOT started here. It is triggered by:
@@ -254,7 +257,7 @@ export async function POST(req: Request) {
       triggerAutomationUrl: `/api/automation/start?orderId=${order.id}`,
     })
   } catch (error) {
-    console.error('Order creation error:', error)
+    log.error('Order creation error', { error: error instanceof Error ? error.message : error })
     return NextResponse.json(
       { error: 'We couldn\'t process your order. Please try again, or contact support@motiongranted.com if the issue persists.' },
       { status: 500 }

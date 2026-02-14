@@ -8,6 +8,9 @@
  */
 
 import OpenAI from 'openai';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('openai-client');
 
 // ============================================================================
 // TYPES
@@ -96,7 +99,7 @@ class RateLimiter {
       const oldestRequest = this.requestTimestamps[0];
       const waitTime = oldestRequest + 60000 - now;
       if (waitTime > 0) {
-        console.log(`[OpenAI] Rate limit: waiting ${waitTime}ms for request capacity`);
+        log.info(`[OpenAI] Rate limit: waiting ${waitTime}ms for request capacity`);
         await this.sleep(waitTime);
       }
     }
@@ -108,7 +111,7 @@ class RateLimiter {
       if (oldestToken) {
         const waitTime = oldestToken.timestamp + 60000 - now;
         if (waitTime > 0) {
-          console.log(`[OpenAI] Rate limit: waiting ${waitTime}ms for token capacity`);
+          log.info(`[OpenAI] Rate limit: waiting ${waitTime}ms for token capacity`);
           await this.sleep(waitTime);
         }
       }
@@ -197,7 +200,7 @@ class OpenAIClient {
     this.apiKeys = primaryKey ? [primaryKey, ...rotationKeys] : rotationKeys;
 
     if (this.apiKeys.length === 0) {
-      console.warn('[OpenAI] No API keys configured');
+      log.warn('[OpenAI] No API keys configured');
     }
   }
 
@@ -220,7 +223,7 @@ class OpenAIClient {
     if (this.apiKeys.length > 1) {
       this.apiKeyIndex = (this.apiKeyIndex + 1) % this.apiKeys.length;
       this.client = null; // Force recreation with new key
-      console.log(`[OpenAI] Rotated to API key index ${this.apiKeyIndex}`);
+      log.info(`[OpenAI] Rotated to API key index ${this.apiKeyIndex}`);
     }
   }
 
@@ -300,7 +303,7 @@ class OpenAIClient {
 
         const latencyMs = Date.now() - startTime;
 
-        console.log(`[OpenAI] Request completed: model=${model}, tokens=${totalTokens}, cost=$${cost.toFixed(4)}, latency=${latencyMs}ms`);
+        log.info(`[OpenAI] Request completed: model=${model}, tokens=${totalTokens}, cost=$${cost.toFixed(4)}, latency=${latencyMs}ms`);
 
         return {
           success: true,
@@ -319,10 +322,10 @@ class OpenAIClient {
 
         // Check if we should rotate API key
         if (error instanceof OpenAI.RateLimitError) {
-          console.warn(`[OpenAI] Rate limit hit on attempt ${attempt + 1}, rotating key`);
+          log.warn(`[OpenAI] Rate limit hit on attempt ${attempt + 1}, rotating key`);
           this.rotateApiKey();
         } else if (error instanceof OpenAI.AuthenticationError) {
-          console.error(`[OpenAI] Authentication error, rotating key`);
+          log.error(`[OpenAI] Authentication error, rotating key`);
           this.rotateApiKey();
         }
 
@@ -332,13 +335,13 @@ class OpenAIClient {
           const jitter = Math.random() * baseDelay * 0.1;
           const delay = baseDelay + jitter;
 
-          console.warn(`[OpenAI] Request failed (attempt ${attempt + 1}/${MAX_RETRIES}), retrying in ${Math.round(delay)}ms:`, lastError.message);
+          log.warn(`[OpenAI] Request failed (attempt ${attempt + 1}/${MAX_RETRIES}), retrying in ${Math.round(delay)}ms:`, lastError.message);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
     }
 
-    console.error(`[OpenAI] All ${MAX_RETRIES} attempts failed:`, lastError?.message);
+    log.error(`[OpenAI] All ${MAX_RETRIES} attempts failed:`, lastError?.message);
 
     return {
       success: false,

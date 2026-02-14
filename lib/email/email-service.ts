@@ -13,6 +13,9 @@
 import { Resend } from 'resend';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('email-email-service');
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -31,7 +34,7 @@ function getResendClient(): Resend | null {
   if (!resendClient) {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
-      console.error('[EmailService] RESEND_API_KEY not configured — emails will be logged but not sent');
+      log.error('[EmailService] RESEND_API_KEY not configured — emails will be logged but not sent');
       return null;
     }
     resendClient = new Resend(apiKey);
@@ -77,12 +80,12 @@ export async function sendEmail(
   options: EmailOptions = {}
 ): Promise<EmailResult> {
   const correlationId = options.orderId || 'no-order';
-  console.log(`[EmailService][${correlationId}] Sending email to ${Array.isArray(to) ? to.join(', ') : to}: "${subject}"`);
+  log.info(`[EmailService][${correlationId}] Sending email to ${Array.isArray(to) ? to.join(', ') : to}: "${subject}"`);
 
   const client = getResendClient();
   if (!client) {
     const msg = 'Resend not configured — email skipped';
-    console.warn(`[EmailService][${correlationId}] ${msg}`);
+    log.warn(`[EmailService][${correlationId}] ${msg}`);
     await logEmailAttempt(correlationId, to, subject, false, undefined, msg);
     return { success: false, error: msg };
   }
@@ -102,7 +105,7 @@ export async function sendEmail(
 
       if (error) {
         lastError = error.message;
-        console.warn(`[EmailService][${correlationId}] Attempt ${attempt}/${MAX_RETRIES} failed: ${error.message}`);
+        log.warn(`[EmailService][${correlationId}] Attempt ${attempt}/${MAX_RETRIES} failed: ${error.message}`);
         if (attempt < MAX_RETRIES) {
           const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -110,13 +113,13 @@ export async function sendEmail(
         }
       } else {
         const messageId = data?.id || undefined;
-        console.log(`[EmailService][${correlationId}] Email sent successfully: ${messageId}`);
+        log.info(`[EmailService][${correlationId}] Email sent successfully: ${messageId}`);
         await logEmailAttempt(correlationId, to, subject, true, messageId);
         return { success: true, messageId };
       }
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
-      console.warn(`[EmailService][${correlationId}] Attempt ${attempt}/${MAX_RETRIES} threw: ${lastError}`);
+      log.warn(`[EmailService][${correlationId}] Attempt ${attempt}/${MAX_RETRIES} threw: ${lastError}`);
       if (attempt < MAX_RETRIES) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -125,7 +128,7 @@ export async function sendEmail(
   }
 
   // All retries exhausted — log failure, do NOT throw
-  console.error(`[EmailService][${correlationId}] All ${MAX_RETRIES} attempts failed: ${lastError}`);
+  log.error(`[EmailService][${correlationId}] All ${MAX_RETRIES} attempts failed: ${lastError}`);
   await logEmailAttempt(correlationId, to, subject, false, undefined, lastError);
   return { success: false, error: lastError };
 }
@@ -140,7 +143,7 @@ export function sendEmailAsync(
   options: EmailOptions = {}
 ): void {
   sendEmail(to, subject, html, options).catch((err) => {
-    console.error('[EmailService] Async email send failed:', err);
+    log.error('[EmailService] Async email send failed:', err);
   });
 }
 
@@ -170,6 +173,6 @@ async function logEmailAttempt(
       error_message: errorMessage || null,
     });
   } catch (err) {
-    console.error('[EmailService] Failed to log email attempt:', err);
+    log.error('[EmailService] Failed to log email attempt:', err);
   }
 }

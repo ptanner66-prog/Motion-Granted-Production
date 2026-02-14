@@ -18,6 +18,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-steps-step-4-quotes');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -331,7 +334,7 @@ export async function verifyQuote(
     result.result = 'NOT_FOUND';
     result.action = 'FLAG'; // Flag errors for review rather than auto-remove
 
-    console.error('[Step4] Quote verification error:', result.error);
+    log.error('[Step4] Quote verification error:', result.error);
   }
 
   result.duration_ms = Date.now() - startTime;
@@ -341,7 +344,7 @@ export async function verifyQuote(
     await logStep4Result(orderId, citationText, result);
   }
 
-  console.log(`[Step4] Quote (${quoteText.slice(0, 30)}...): ${result.result} (${result.similarity_score}% match, ${result.duration_ms}ms)`);
+  log.info(`[Step4] Quote (${quoteText.slice(0, 30)}...): ${result.result} (${result.similarity_score}% match, ${result.duration_ms}ms)`);
 
   return result;
 }
@@ -462,7 +465,7 @@ async function logStep4Result(
       },
     });
   } catch (error) {
-    console.error('[Step4] Failed to log result to database:', error);
+    log.error('[Step4] Failed to log result to database:', error);
   }
 }
 

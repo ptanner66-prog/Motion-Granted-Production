@@ -4,6 +4,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('retention-anonymize');
 /**
  * Grade to numeric GPA mapping
  */
@@ -32,7 +35,7 @@ export async function anonymizeOrderForAnalytics(orderId: string): Promise<void>
     .single();
 
   if (existing) {
-    console.log(`[Anonymize] Order ${orderId} already anonymized`);
+    log.info(`[Anonymize] Order ${orderId} already anonymized`);
     return;
   }
 
@@ -54,7 +57,7 @@ export async function anonymizeOrderForAnalytics(orderId: string): Promise<void>
     .single();
 
   if (orderError || !order) {
-    console.error(`[Anonymize] Could not fetch order ${orderId}:`, orderError);
+    log.error(`[Anonymize] Could not fetch order ${orderId}:`, orderError);
     throw new Error('Order not found');
   }
 
@@ -126,9 +129,9 @@ export async function anonymizeOrderForAnalytics(orderId: string): Promise<void>
     });
 
   if (insertError) {
-    console.error(`[Anonymize] Error inserting analytics for ${orderId}:`, insertError);
+    log.error(`[Anonymize] Error inserting analytics for ${orderId}:`, insertError);
     throw insertError;
   }
 
-  console.log(`[Anonymize] Created analytics record for order ${orderId}`);
+  log.info(`[Anonymize] Created analytics record for order ${orderId}`);
 }
