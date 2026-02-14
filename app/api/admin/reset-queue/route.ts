@@ -8,7 +8,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -31,20 +30,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json({ error: 'Database not configured' }, { status: 500 });
-    }
-
-    const adminClient = createSupabaseClient(supabaseUrl, supabaseServiceKey);
+    // SP-08: Use user-scoped client instead of service_role (admin verified above).
+    // Requires admin RLS policies on orders/workflows tables (see Task 10 migration).
 
     // Statuses that indicate stuck/failed orders needing reset
     const stuckStatuses = ['under_review', 'in_progress', 'generation_failed', 'pending_review', 'in_review', 'blocked'];
 
     // Get orders that need to be reset
-    const { data: stuckOrders, error: fetchError } = await adminClient
+    const { data: stuckOrders, error: fetchError } = await supabase
       .from('orders')
       .select('id, order_number, status')
       .in('status', stuckStatuses);
@@ -76,7 +69,7 @@ export async function POST(request: NextRequest) {
     // Reset each order's workflow properly
     for (const order of stuckOrders) {
       // Get workflow ID
-      const { data: workflow } = await adminClient
+      const { data: workflow } = await supabase
         .from('order_workflows')
         .select('id, workflow_path')
         .eq('order_id', order.id)
@@ -85,13 +78,13 @@ export async function POST(request: NextRequest) {
       if (workflow) {
         workflowIds.push(workflow.id);
         // Delete phase executions and judge results
-        await adminClient
+        await supabase
           .from('workflow_phase_executions')
           .delete()
           .eq('order_workflow_id', workflow.id);
 
         try {
-          await adminClient
+          await supabase
             .from('judge_simulation_results')
             .delete()
             .eq('order_workflow_id', workflow.id);
@@ -100,7 +93,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Reset workflow state
-        await adminClient
+        await supabase
           .from('order_workflows')
           .update({
             status: 'pending',
@@ -113,7 +106,7 @@ export async function POST(request: NextRequest) {
           .eq('id', workflow.id);
 
         // Recreate phase execution records
-        const { data: phases } = await adminClient
+        const { data: phases } = await supabase
           .from('workflow_phase_definitions')
           .select('id, phase_number')
           .eq('workflow_path', workflow.workflow_path)
@@ -127,7 +120,7 @@ export async function POST(request: NextRequest) {
             status: 'pending',
           }));
 
-          await adminClient
+          await supabase
             .from('workflow_phase_executions')
             .insert(phaseExecutions);
         }
@@ -135,7 +128,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update order statuses to 'submitted' (ready to restart)
-    const { data: updatedOrders, error: updateError } = await adminClient
+    const { data: updatedOrders, error: updateError } = await supabase
       .from('orders')
       .update({
         status: 'submitted',
@@ -150,7 +143,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log the action
-    await adminClient.from('automation_logs').insert({
+    await supabase.from('automation_logs').insert({
       action_type: 'queue_reset',
       action_details: {
         change_type: 'complete_reset',
@@ -199,17 +192,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json({ error: 'Database not configured' }, { status: 500 });
-    }
-
-    const adminClient = createSupabaseClient(supabaseUrl, supabaseServiceKey);
-
+    // SP-08: Reuse user-scoped client (admin verified above).
     // Get current order statuses
-    const { data: orders, error: fetchError } = await adminClient
+    const { data: orders, error: fetchError } = await supabase
       .from('orders')
       .select('id, order_number, status, created_at')
       .order('created_at', { ascending: false });

@@ -17,8 +17,10 @@ import { inngest } from '@/lib/inngest/client';
 
 export const maxDuration = 30; // Just enough to trigger the workflow
 
-// Create admin client with service role key (bypasses RLS)
-function getAdminClient() {
+// SP-08: service_role scoped to background IIFE only.
+// After the HTTP response is sent, cookies are unavailable, so the background
+// async workflow execution requires a service_role client.
+function getBackgroundClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -35,11 +37,6 @@ export async function POST(
 ) {
   const { id: orderId } = await params;
   const supabase = await createClient();
-  const adminClient = getAdminClient();
-
-  if (!adminClient) {
-    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-  }
 
   // Verify auth
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -73,8 +70,8 @@ export async function POST(
       );
     }
 
-    // Check workflow status
-    const { data: workflow } = await adminClient
+    // Check workflow status (user-scoped; admin verified above)
+    const { data: workflow } = await supabase
       .from('order_workflows')
       .select('id, status')
       .eq('order_id', orderId)
@@ -99,8 +96,8 @@ export async function POST(
       );
     }
 
-    // Update status to in_progress (use admin client to bypass RLS)
-    const { error: updateError } = await adminClient
+    // Update status to in_progress (user-scoped; admin verified above)
+    const { error: updateError } = await supabase
       .from('orders')
       .update({
         status: 'in_progress',
@@ -139,11 +136,17 @@ export async function POST(
       const { executePhase } = await import('@/lib/workflow/phase-executors');
       const { startWorkflow } = await import('@/lib/workflow');
 
-      // Execute phases in background (non-blocking)
+      // Execute phases in background (non-blocking).
+      // SP-08: Background IIFE uses service_role because cookies are unavailable after response.
+      const bgClient = getBackgroundClient();
+      if (!bgClient) {
+        console.error('[Generate] Cannot start background workflow: missing SUPABASE_SERVICE_ROLE_KEY');
+        return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      }
       (async () => {
         try {
           // Check if workflow exists, create if not
-          let { data: workflow } = await adminClient
+          let { data: workflow } = await bgClient
             .from('order_workflows')
             .select('id')
             .eq('order_id', orderId)
@@ -155,7 +158,7 @@ export async function POST(
             // Get motion type ID - try to match from motion_types table, or use first available
             let motionTypeId = null;
 
-            const { data: motionTypeData } = await adminClient
+            const { data: motionTypeData } = await bgClient
               .from('motion_types')
               .select('id')
               .eq('code', (order.motion_type || '').toUpperCase())
@@ -165,7 +168,7 @@ export async function POST(
               motionTypeId = motionTypeData.id;
             } else {
               // Fallback to first motion type
-              const { data: fallbackType } = await adminClient
+              const { data: fallbackType } = await bgClient
                 .from('motion_types')
                 .select('id')
                 .limit(1)
@@ -190,7 +193,7 @@ export async function POST(
             }
 
             // Fetch the created workflow
-            const { data: createdWorkflow } = await adminClient
+            const { data: createdWorkflow } = await bgClient
               .from('order_workflows')
               .select('id')
               .eq('order_id', orderId)
@@ -204,7 +207,7 @@ export async function POST(
             console.log(`[Generate] Created workflow ${workflow.id} for order ${orderId}`);
           }
 
-          const { data: orderData } = await adminClient
+          const { data: orderData } = await bgClient
             .from('orders')
             .select('*')
             .eq('id', orderId)
@@ -225,7 +228,7 @@ export async function POST(
           const MAX_REVISION_LOOPS = 3;
 
           // Update workflow status to in_progress
-          await adminClient
+          await bgClient
             .from('order_workflows')
             .update({
               status: 'in_progress',
@@ -238,7 +241,7 @@ export async function POST(
             console.log(`[Generate Direct] Executing phase ${currentPhase} (iteration ${phaseIterations + 1}, revision loop ${revisionLoopCount})`);
 
             // Update workflow activity (current_phase is for old system, we track via phase codes in v7.2)
-            await adminClient
+            await bgClient
               .from('order_workflows')
               .update({
                 last_activity_at: new Date().toISOString(),
@@ -253,14 +256,14 @@ export async function POST(
               revisionLoopCount++;
               if (revisionLoopCount > MAX_REVISION_LOOPS) {
                 console.error(`[Generate Direct] Max revision loops (${MAX_REVISION_LOOPS}) reached`);
-                await adminClient
+                await bgClient
                   .from('order_workflows')
                   .update({
                     status: 'failed',
                     last_error: `Motion failed to reach A- after ${MAX_REVISION_LOOPS} revision attempts`,
                   })
                   .eq('id', workflow.id);
-                await adminClient
+                await bgClient
                   .from('orders')
                   .update({
                     status: 'generation_failed',
@@ -300,7 +303,7 @@ export async function POST(
             if (!result.success) {
               console.error(`[Generate Direct] Phase ${currentPhase} failed:`, result.error);
 
-              await adminClient
+              await bgClient
                 .from('order_workflows')
                 .update({
                   status: 'failed',
@@ -308,7 +311,7 @@ export async function POST(
                 })
                 .eq('id', workflow.id);
 
-              await adminClient
+              await bgClient
                 .from('orders')
                 .update({
                   status: 'generation_failed',
@@ -327,7 +330,7 @@ export async function POST(
             if (result.requiresReview && currentPhase !== 'VII' && currentPhase !== 'X') {
               console.log(`[Generate Direct] Phase ${currentPhase} requires review (HOLD), stopping`);
 
-              await adminClient
+              await bgClient
                 .from('order_workflows')
                 .update({
                   status: 'blocked',
@@ -335,7 +338,7 @@ export async function POST(
                 })
                 .eq('id', workflow.id);
 
-              await adminClient
+              await bgClient
                 .from('orders')
                 .update({
                   status: 'on_hold',
@@ -364,7 +367,7 @@ export async function POST(
               console.log(`[Generate Direct] Workflow completed successfully at phase ${currentPhase}`);
 
               // Mark workflow as completed
-              await adminClient
+              await bgClient
                 .from('order_workflows')
                 .update({
                   status: 'completed',
@@ -374,7 +377,7 @@ export async function POST(
                 .eq('id', workflow.id);
 
               // Mark order as ready for review (motion generated, needs admin approval)
-              await adminClient
+              await bgClient
                 .from('orders')
                 .update({
                   status: 'pending_review',
@@ -390,7 +393,7 @@ export async function POST(
 
           if (phaseIterations >= MAX_PHASES) {
             console.error('[Generate Direct] Hit max phase iteration limit - possible infinite loop');
-            await adminClient
+            await bgClient
               .from('order_workflows')
               .update({
                 status: 'failed',
@@ -398,7 +401,7 @@ export async function POST(
               })
               .eq('id', workflow.id);
 
-            await adminClient
+            await bgClient
               .from('orders')
               .update({
                 status: 'generation_failed',
@@ -413,7 +416,7 @@ export async function POST(
 
           // Record error in database so it's visible
           try {
-            await adminClient
+            await bgClient
               .from('automation_logs')
               .insert({
                 order_id: orderId,
@@ -425,7 +428,7 @@ export async function POST(
               });
 
             // Update order status
-            await adminClient
+            await bgClient
               .from('orders')
               .update({
                 status: 'generation_failed',
@@ -440,7 +443,7 @@ export async function POST(
     }
 
     // Log the workflow trigger
-    await adminClient.from('automation_logs').insert({
+    await supabase.from('automation_logs').insert({
       order_id: orderId,
       action_type: 'workflow_triggered',
       action_details: {
@@ -463,16 +466,14 @@ export async function POST(
   } catch (error) {
     console.error('[Generate] Failed to start workflow:', error);
 
-    // Revert status on error (use admin client)
-    if (adminClient) {
-      await adminClient
-        .from('orders')
-        .update({
-          status: 'paid',
-          generation_error: error instanceof Error ? error.message : 'Failed to start workflow',
-        })
-        .eq('id', orderId);
-    }
+    // Revert status on error
+    await supabase
+      .from('orders')
+      .update({
+        status: 'paid',
+        generation_error: error instanceof Error ? error.message : 'Failed to start workflow',
+      })
+      .eq('id', orderId);
 
     return NextResponse.json(
       { error: 'Failed to start workflow' },

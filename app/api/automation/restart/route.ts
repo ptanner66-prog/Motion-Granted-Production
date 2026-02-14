@@ -13,7 +13,6 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
 
 export async function POST(request: Request) {
@@ -70,18 +69,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Create admin client for cleanup operations (bypasses RLS)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json({ error: 'Database not configured' }, { status: 500 });
-    }
-
-    const adminClient = createSupabaseClient(supabaseUrl, supabaseServiceKey);
+    // SP-08: Use user-scoped client instead of service_role (admin/clerk verified above).
+    // Requires admin RLS policies on workflow tables (see Task 10 migration).
 
     // Log the restart attempt
-    await adminClient.from('automation_logs').insert({
+    await supabase.from('automation_logs').insert({
       order_id: orderId,
       action_type: 'workflow_restart_requested',
       action_details: {
@@ -96,7 +88,7 @@ export async function POST(request: Request) {
     // ============================================================================
 
     // Get existing workflow(s) for this order
-    const { data: workflows } = await adminClient
+    const { data: workflows } = await supabase
       .from('order_workflows')
       .select('id')
       .eq('order_id', orderId);
@@ -105,32 +97,32 @@ export async function POST(request: Request) {
 
     if (workflowIds.length > 0) {
       // Delete workflow phase executions
-      await adminClient
+      await supabase
         .from('workflow_phase_executions')
         .delete()
         .in('workflow_id', workflowIds);
 
       // Delete the workflow records
-      await adminClient
+      await supabase
         .from('order_workflows')
         .delete()
         .eq('order_id', orderId);
     }
 
     // Clear citation banks for this order
-    await adminClient
+    await supabase
       .from('citation_banks')
       .delete()
       .eq('order_id', orderId);
 
     // Clear citation verifications for this order
-    await adminClient
+    await supabase
       .from('citation_verifications')
       .delete()
       .eq('order_id', orderId);
 
     // Clear verified citations for this order
-    await adminClient
+    await supabase
       .from('verified_citations')
       .delete()
       .eq('order_id', orderId);
@@ -139,7 +131,7 @@ export async function POST(request: Request) {
     // STEP 2: Reset order status and error fields
     // ============================================================================
 
-    await adminClient
+    await supabase
       .from('orders')
       .update({
         status: 'submitted',
@@ -150,7 +142,7 @@ export async function POST(request: Request) {
       .eq('id', orderId);
 
     // Log successful cleanup
-    await adminClient.from('automation_logs').insert({
+    await supabase.from('automation_logs').insert({
       order_id: orderId,
       action_type: 'workflow_data_cleared',
       action_details: {
@@ -165,7 +157,7 @@ export async function POST(request: Request) {
     // ============================================================================
 
     // Get filing deadline for priority calculation
-    const { data: freshOrder } = await adminClient
+    const { data: freshOrder } = await supabase
       .from('orders')
       .select('filing_deadline')
       .eq('id', orderId)
@@ -186,7 +178,7 @@ export async function POST(request: Request) {
         },
       });
     } catch (inngestError) {
-      await adminClient.from('automation_logs').insert({
+      await supabase.from('automation_logs').insert({
         order_id: orderId,
         action_type: 'workflow_restart_failed',
         action_details: {
@@ -203,7 +195,7 @@ export async function POST(request: Request) {
     }
 
     // Log success
-    await adminClient.from('automation_logs').insert({
+    await supabase.from('automation_logs').insert({
       order_id: orderId,
       action_type: 'workflow_restarted',
       action_details: {

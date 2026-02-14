@@ -41,14 +41,15 @@ export async function DELETE(request: NextRequest) {
     const userEmail = user.email;
     console.log('[account/delete] Starting account deletion for user:', userId);
 
-    // Use service role client for cascade deletion (bypasses RLS)
-    const adminSupabase = createServiceClient(
+    // SP-08: service_role scoped ONLY to auth.admin.deleteUser() and storage ops.
+    // All DB .from() operations use user-scoped client below.
+    const authAdminClient = createServiceClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
     // 1. Get user's orders for cascading deletion
-    const { data: orders } = await adminSupabase
+    const { data: orders } = await supabase
       .from('orders')
       .select('id')
       .eq('client_id', userId);
@@ -57,7 +58,7 @@ export async function DELETE(request: NextRequest) {
 
     // 2. Delete user's documents from storage
     if (orderIds.length > 0) {
-      const { data: docs } = await adminSupabase
+      const { data: docs } = await supabase
         .from('documents')
         .select('storage_path')
         .in('order_id', orderIds);
@@ -65,7 +66,8 @@ export async function DELETE(request: NextRequest) {
       if (docs && docs.length > 0) {
         const paths = docs.map(d => d.storage_path).filter(Boolean);
         if (paths.length > 0) {
-          await adminSupabase.storage
+          // NOTE: Storage operations need admin client for cross-bucket access
+          await authAdminClient.storage
             .from('documents')
             .remove(paths as string[])
             .catch(err => console.warn('[account/delete] Storage cleanup partial:', err));
@@ -90,7 +92,7 @@ export async function DELETE(request: NextRequest) {
     ];
 
     for (const { table, column } of directUserTables) {
-      const { error } = await adminSupabase
+      const { error } = await supabase
         .from(table)
         .delete()
         .eq(column, userId);
@@ -125,7 +127,7 @@ export async function DELETE(request: NextRequest) {
       ];
 
       for (const table of orderChildTables) {
-        const { error } = await adminSupabase
+        const { error } = await supabase
           .from(table)
           .delete()
           .in('order_id', orderIds);
@@ -136,7 +138,7 @@ export async function DELETE(request: NextRequest) {
       }
 
       // Delete refunds (references order_id)
-      await adminSupabase
+      await supabase
         .from('refunds')
         .delete()
         .in('order_id', orderIds)
@@ -147,7 +149,7 @@ export async function DELETE(request: NextRequest) {
         });
 
       // Delete orders themselves
-      const { error: ordersError } = await adminSupabase
+      const { error: ordersError } = await supabase
         .from('orders')
         .delete()
         .eq('client_id', userId);
@@ -158,7 +160,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 5. Delete the user profile
-    const { error: profileError } = await adminSupabase
+    const { error: profileError } = await supabase
       .from('profiles')
       .delete()
       .eq('id', userId);
@@ -168,7 +170,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 6. Delete the auth user
-    const { error: deleteError } = await adminSupabase.auth.admin.deleteUser(userId);
+    const { error: deleteError } = await authAdminClient.auth.admin.deleteUser(userId);
     if (deleteError) {
       console.error('[account/delete] Failed to delete auth user:', deleteError);
       return NextResponse.json(

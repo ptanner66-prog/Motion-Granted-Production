@@ -15,24 +15,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { clearAPIKeysCache } from '@/lib/api-keys';
-
-// Create admin client with service role key (bypasses RLS)
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable');
-  }
-  if (!supabaseServiceKey) {
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable');
-  }
-
-  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
-}
 
 // Encryption configuration
 const ENCRYPTION_PREFIX = 'enc_v2_'; // v2 for AES-GCM
@@ -241,9 +225,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    // Use admin client for database writes (bypasses RLS since we've verified admin)
-    const adminClient = getAdminClient();
-
+    // SP-08: Use user-scoped client instead of service_role (admin verified above).
+    // Requires admin RLS policies on automation_settings/automation_logs (see Task 10 migration).
     const body = await request.json();
     const {
       anthropic_api_key,
@@ -355,8 +338,8 @@ export async function POST(request: NextRequest) {
     const keysBeingSaved = settingsToSave.map(s => s.setting_key);
     console.log(`[API-KEYS SAVE] Saving ${settingsToSave.length} settings: ${keysBeingSaved.join(', ')}`);
 
-    // Save all settings using admin client (bypasses RLS)
-    const { error: saveError } = await adminClient
+    // Save settings (user-scoped; admin verified above)
+    const { error: saveError } = await supabase
       .from('automation_settings')
       .upsert(settingsToSave, {
         onConflict: 'setting_key',
@@ -373,8 +356,8 @@ export async function POST(request: NextRequest) {
     clearAPIKeysCache();
     console.log(`[API-KEYS SAVE] Cache cleared`);
 
-    // Log the change - use admin client and don't let logging failure break the save
-    const { error: logError } = await adminClient.from('automation_logs').insert({
+    // Log the change — don't let logging failure break the save
+    const { error: logError } = await supabase.from('automation_logs').insert({
       action_type: 'status_changed',
       action_details: {
         change_type: 'api_keys_updated',

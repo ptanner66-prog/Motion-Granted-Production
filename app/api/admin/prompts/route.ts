@@ -17,7 +17,6 @@
  */
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { PHASE_PROMPTS, PHASE_METADATA, loadPhasePrompts, refreshPhasePrompts, type PhaseKey } from '@/prompts/index';
 import {
   getPhaseConfig,
@@ -79,26 +78,22 @@ export async function GET() {
     // Load latest prompts from DB (falls back to files if DB unavailable)
     await loadPhasePrompts();
 
-    // Fetch DB metadata (version info, last editor) for each phase
+    // SP-08: Use user-scoped client instead of service_role for metadata.
+    // Requires admin RLS policies on phase_prompts (see Task 10 migration).
     let dbMetadata: Record<string, { editVersion: number; updatedBy: string | null; updatedAt: string | null }> = {};
     try {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      if (supabaseUrl && supabaseKey) {
-        const serviceClient = createSupabaseClient(supabaseUrl, supabaseKey);
-        const { data: dbRows } = await serviceClient
-          .from('phase_prompts')
-          .select('phase, edit_version, updated_by, updated_at')
-          .eq('is_active', true);
+      const { data: dbRows } = await supabase
+        .from('phase_prompts')
+        .select('phase, edit_version, updated_by, updated_at')
+        .eq('is_active', true);
 
-        if (dbRows) {
-          for (const row of dbRows) {
-            dbMetadata[row.phase] = {
-              editVersion: row.edit_version ?? 1,
-              updatedBy: row.updated_by ?? null,
-              updatedAt: row.updated_at ?? null,
-            };
-          }
+      if (dbRows) {
+        for (const row of dbRows) {
+          dbMetadata[row.phase] = {
+            editVersion: row.edit_version ?? 1,
+            updatedBy: row.updated_by ?? null,
+            updatedAt: row.updated_at ?? null,
+          };
         }
       }
     } catch {
@@ -241,18 +236,11 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: `Cannot map phase_key: ${phase_key}` }, { status: 400 });
     }
 
-    // 4. Use service role client for writes (bypasses RLS)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    // SP-08: Use user-scoped client instead of service_role (admin verified above).
+    // Requires admin RLS policies on phase_prompts/phase_prompt_versions (see Task 10 migration).
 
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-    }
-
-    const serviceClient = createSupabaseClient(supabaseUrl, supabaseKey);
-
-    // 5. Get current edit_version
-    const { data: current } = await serviceClient
+    // 4. Get current edit_version
+    const { data: current } = await supabase
       .from('phase_prompts')
       .select('edit_version')
       .eq('phase', dbPhase)
@@ -262,7 +250,7 @@ export async function PUT(request: Request) {
     const trimmedContent = content.trim();
 
     // 6. Update the prompt in phase_prompts
-    const { error: updateError } = await serviceClient
+    const { error: updateError } = await supabase
       .from('phase_prompts')
       .update({
         prompt_content: trimmedContent,
@@ -278,7 +266,7 @@ export async function PUT(request: Request) {
     }
 
     // 7. Insert version history (append-only)
-    const { error: versionError } = await serviceClient
+    const { error: versionError } = await supabase
       .from('phase_prompt_versions')
       .insert({
         phase: dbPhase,
