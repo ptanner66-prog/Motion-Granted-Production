@@ -23,6 +23,7 @@
  */
 
 import { inngest } from "./client";
+import { NonRetriableError } from "inngest";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -1877,8 +1878,13 @@ export const generateOrderWorkflow = inngest.createFunction(
         const result = await executePhase("VIII", input);
 
         if (!result.success || !result.output) {
-          console.error(`[Phase VIII Loop ${loopNum}] FAILED: ${result.error || 'No output'}`);
-          throw new Error(`Phase VIII revision failed: ${result.error || 'No output returned'}`);
+          const errorMsg = result.error || 'No output returned';
+          console.error(`[Phase VIII Loop ${loopNum}] FAILED: ${errorMsg}`);
+          // SP-07 TASK-06: JSON parse failures and truncation are non-retriable
+          if (errorMsg.includes('non-retriable') || errorMsg.includes('Non-retriable') || errorMsg.includes('malformed output')) {
+            throw new NonRetriableError(`Phase VIII revision failed (non-retriable): ${errorMsg}`);
+          }
+          throw new Error(`Phase VIII revision failed: ${errorMsg}`);
         }
 
         await logPhaseExecution(supabase, workflowState, "VIII", result, result.tokensUsed);
@@ -1914,6 +1920,14 @@ export const generateOrderWorkflow = inngest.createFunction(
           }, { onConflict: "order_id" });
         console.log(`[Orchestration] Loop ${loopNum} Phase VIII output persisted for crash recovery`);
       });
+
+      // SP-07 TASK-05: Check for fabrication detection and hold recommendation
+      if (phaseVIIIOutput?.fabricationDetected) {
+        console.warn(`[Orchestration] Loop ${loopNum}: FACT FABRICATION detected — revision was reverted. Entities: ${JSON.stringify(phaseVIIIOutput.fabricatedEntities)}`);
+      }
+      if (phaseVIIIOutput?.holdRecommended) {
+        console.warn(`[Orchestration] Loop ${loopNum}: Phase VIII recommends HOLD (${phaseVIIIOutput.holdReason}). ${(phaseVIIIOutput.bracketedPrompts as string[])?.length || 0} missing specifics.`);
+      }
 
       // STEP B: Phase VII.1 — Citation re-verification on the REVISED text
       const phaseVII1Result = await step.run(`phase-vii1-citation-check-loop-${loopNum}`, async () => {
