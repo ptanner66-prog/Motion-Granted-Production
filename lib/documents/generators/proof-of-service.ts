@@ -238,7 +238,7 @@ export function getCaliforniaTemplate(data: ProofOfServiceData): Document {
     new Paragraph({
       children: [
         new TextRun({
-          text: 'I declare under penalty of perjury under the laws of the State of California that the foregoing is true and correct.',
+          text: getPerjuryClause(data.jurisdiction),
           italics: true,
         }),
       ],
@@ -601,6 +601,25 @@ export function getLouisianaTemplate(data: ProofOfServiceData): Document {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Get jurisdiction-appropriate perjury clause.
+ * BD-19: Generic language for non-CA/non-LA states.
+ */
+function getPerjuryClause(jurisdiction: string): string {
+  const j = jurisdiction.toLowerCase();
+  if (j.includes('ca') || j.includes('california')) {
+    return 'I declare under penalty of perjury under the laws of the State of California that the foregoing is true and correct.';
+  }
+  if (j.includes('la') || j.includes('louisiana')) {
+    return 'I declare under penalty of perjury under the laws of the State of Louisiana that the foregoing is true and correct.';
+  }
+  if (j.includes('federal') || j.includes('fed')) {
+    return 'I declare under penalty of perjury under the laws of the United States of America that the foregoing is true and correct.';
+  }
+  // BD-19: Generic — no state-specific statutory references
+  return 'I declare under penalty of perjury under the laws of the applicable jurisdiction that the foregoing is true and correct.';
+}
 
 function formatDate(date: Date): string {
   const options: Intl.DateTimeFormatOptions = {

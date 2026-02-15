@@ -69,6 +69,11 @@ export interface Order {
   // For Phase IX.1 skip logic (v6.3)
   judge_ordered_separate_statement?: boolean;
 
+  // 50-state expansion (SP-C)
+  state?: string | null;
+  court_type?: string | null;
+  federal_district?: string | null;
+  pricing_multiplier_applied?: number | null;
   // SP-D: 7-Status Model fields
   amount_paid?: number | null;
   hold_response?: string | null;

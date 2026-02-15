@@ -8,9 +8,21 @@
  */
 
 import { sendEmail, sendEmailAsync, type EmailResult } from './email-service';
+import { resolveFromOrder } from '@/lib/jurisdiction/resolver';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com';
 const SUPPORT_EMAIL = 'support@motiongranted.com';
+
+/**
+ * BD-20: Resolve jurisdiction display string.
+ * Uses resolver when state is available, falls back to raw jurisdiction string.
+ */
+function resolveJurisdictionDisplay(data: { jurisdiction?: string; state?: string; court_type?: string }): string {
+  if (data.state) {
+    return resolveFromOrder(data).display;
+  }
+  return data.jurisdiction || 'N/A';
+}
 
 // ============================================================================
 // TYPES
@@ -22,6 +34,8 @@ interface OrderEmailData {
   customerEmail: string;
   motionType?: string;
   jurisdiction?: string;
+  state?: string;
+  court_type?: string;
   tier?: string;
   estimatedTurnaround?: string;
   totalPrice?: number;
@@ -43,7 +57,7 @@ export async function sendOrderConfirmation(order: OrderEmailData): Promise<Emai
         <h3 style="margin-top: 0;">Order Details</h3>
         <p><strong>Order ID:</strong> ${order.orderNumber}</p>
         <p><strong>Motion Type:</strong> ${order.motionType || 'N/A'}</p>
-        <p><strong>Jurisdiction:</strong> ${order.jurisdiction || 'N/A'}</p>
+        <p><strong>Jurisdiction:</strong> ${resolveJurisdictionDisplay(order)}</p>
         <p><strong>Tier:</strong> ${order.tier || 'N/A'}</p>
         <p><strong>Estimated Turnaround:</strong> ${turnaround}</p>
       </div>

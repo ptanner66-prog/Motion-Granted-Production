@@ -3,6 +3,7 @@
 // Task 44 | Version 1.0 — January 28, 2026
 
 import { createClient } from '@/lib/supabase/server';
+import { resolveFromOrder } from '@/lib/jurisdiction/resolver';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -113,7 +114,7 @@ export async function anonymizeOrderForAnalytics(orderId: string): Promise<void>
       motion_type: order.motion_type,
       motion_tier: order.tier,
       motion_path: order.path,
-      jurisdiction_type: order.jurisdiction,
+      jurisdiction_type: resolveFromOrder(order).analytics,
       court_type: order.court_type,
       state: order.state,
       judge_simulation_grade: workflow?.judge_simulation_grade || null,
