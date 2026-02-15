@@ -9,6 +9,7 @@ import { StatusTimeline } from '@/components/orders/status-timeline'
 import { CP3Actions } from '@/components/orders/cp3-actions'
 import { DeliverablesCard } from '@/components/orders/deliverables-card'
 import { HoldAlertCard } from '@/components/orders/hold-alert-card'
+import { QueueStatusCard } from '@/components/orders/queue-status-card'
 import { PostApprovalRevision } from '@/components/orders/post-approval-revision'
 import { CancellationCard } from '@/components/orders/cancellation-card'
 import { Separator } from '@/components/ui/separator'
@@ -64,6 +65,11 @@ function getOrderProgress(status: string) {
     cancelled: 0,
     pending_conflict_review: 10,
   }
+  return progressMap[status] ?? 0
+}
+
+// Format price for display
+function displayPrice(order: { total_price: number }) {
   return `$${order.total_price.toFixed(2)}`
 }
 
@@ -121,6 +127,7 @@ export default async function OrderDetailPage({
   const displayStatus = mapToDisplayStatus(order.status)
   const statusVersion = order.status_version || 1
   const amountPaid = order.amount_paid || 0
+  const progress = getOrderProgress(order.status)
 
   // Party string for header
   const partyString = parties.map(p => p.party_name).join(' v. ')
@@ -207,7 +214,6 @@ export default async function OrderDetailPage({
             </CardContent>
           </Card>
         )}
-      </div>
 
       {/* HOLD_PENDING alert (above main content) */}
       {displayStatus === 'HOLD_PENDING' && (
@@ -481,7 +487,7 @@ export default async function OrderDetailPage({
                 </div>
 
                 {/* Activity entries */}
-                {activityLogs?.map((log, i) => {
+                {activityLogs?.map((log: { action_type: string; created_at: string }, i: number) => {
                   const actionLabels: Record<string, string> = {
                     checkpoint_approved: 'Draft approved by admin',
                     checkpoint_changes_requested: 'Changes requested by admin',
