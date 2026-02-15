@@ -295,7 +295,8 @@ async function gatherDocuments(
   }
 
   // Add uploaded documents as exhibits
-  const uploadedDocs = (order.documents || []) as Array<{
+  const rawUploadedDocs = order.documents;
+  const uploadedDocs = (Array.isArray(rawUploadedDocs) ? rawUploadedDocs : []) as Array<{
     id: string;
     filename: string;
     storageUrl: string;
