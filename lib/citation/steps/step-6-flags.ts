@@ -76,6 +76,8 @@ export interface StrengthScore {
   rating: StrengthAssessment | 'INSUFFICIENT_DATA';
   citingOpinionCount: number;
   citingOpinionsLast10Years: number;
+  /** True when INSUFFICIENT_DATA for a case decided before 2000-01-01. ST-013 */
+  pre2000Caveat?: boolean;
 }
 
 // ============================================================================
@@ -188,8 +190,11 @@ export function getFlagPriority(flagType: string): number {
 /**
  * Convert AuthorityStrengthOutput (CIV Step 6) into a StrengthScore
  * for use by the flag compiler.
+ *
+ * @param output - Authority strength output from CIV pipeline
+ * @param dateFiled - ISO date string of when the case was decided (for pre-2000 caveat, ST-013)
  */
-export function toStrengthScore(output: AuthorityStrengthOutput): StrengthScore {
+export function toStrengthScore(output: AuthorityStrengthOutput, dateFiled?: string): StrengthScore {
   const citingOpinionCount = output.metrics.totalCitations;
   const citingOpinionsLast10Years = output.metrics.citationsLast10Years;
 
@@ -201,9 +206,22 @@ export function toStrengthScore(output: AuthorityStrengthOutput): StrengthScore 
     rating = output.assessment;
   }
 
+  // ST-013: Check for pre-2000 caveat
+  let pre2000Caveat = false;
+  if (rating === 'INSUFFICIENT_DATA' && dateFiled) {
+    try {
+      const filed = new Date(dateFiled);
+      const cutoff = new Date('2000-01-01');
+      pre2000Caveat = filed < cutoff;
+    } catch {
+      // Invalid date — don't apply caveat
+    }
+  }
+
   return {
     rating,
     citingOpinionCount,
     citingOpinionsLast10Years,
+    pre2000Caveat,
   };
 }
