@@ -26,7 +26,7 @@ interface CostMetrics {
   totalCostLast30Days: number;
   averageCostPerOrder: number;
   costByPhase: Record<string, number>;
-  costByTier: Record<'A' | 'B' | 'C', number>;
+  costByTier: Record<'A' | 'B' | 'C' | 'D', number>;
   costByProvider: {
     anthropic: number;
     openai: number;

@@ -25,7 +25,7 @@ interface OrderFormState {
 
   // Step 1: Motion Selection
   motionType: string
-  motionTier: 'A' | 'B' | 'C' | null
+  motionTier: 'A' | 'B' | 'C' | 'D' | null
   basePrice: number | null
   otherDescription: string
 
@@ -82,7 +82,7 @@ interface OrderFormState {
 const initialState = {
   step: 1,
   motionType: '',
-  motionTier: null as 'A' | 'B' | 'C' | null,
+  motionTier: null as 'A' | 'B' | 'C' | 'D' | null,
   basePrice: null,
   otherDescription: '',
   turnaround: 'standard' as const,

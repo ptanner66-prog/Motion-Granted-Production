@@ -10,7 +10,7 @@ export const TOTAL_PHASES = 14;
 
 export interface OrderContext {
   id: string;
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   motionType: string;
   jurisdiction: string;
   state: string;
@@ -97,17 +97,17 @@ export function getHoldStageAndNextAction(holdTriggeredAt: Date): {
 }
 
 export const FAILURE_THRESHOLDS = {
-  CITATION_FAILURE: { A: 0.20, B: 0.15, C: 0.10 },
-  JUDGE_GRADE_MINIMUM: { A: 0.83, B: 0.87, C: 0.87 },
+  CITATION_FAILURE: { A: 0.20, B: 0.15, C: 0.10, D: 0.08 },
+  JUDGE_GRADE_MINIMUM: { A: 0.83, B: 0.87, C: 0.87, D: 0.90 },
   MAX_REVISION_LOOPS: 3,
   QUALITY_PASSING: 0.87,
 } as const;
 
-export function isCitationFailureAcceptable(failureRate: number, tier: 'A' | 'B' | 'C'): boolean {
+export function isCitationFailureAcceptable(failureRate: number, tier: 'A' | 'B' | 'C' | 'D'): boolean {
   return failureRate <= FAILURE_THRESHOLDS.CITATION_FAILURE[tier];
 }
 
-export function isJudgeGradeAcceptable(grade: number, tier: 'A' | 'B' | 'C'): boolean {
+export function isJudgeGradeAcceptable(grade: number, tier: 'A' | 'B' | 'C' | 'D'): boolean {
   return grade >= FAILURE_THRESHOLDS.JUDGE_GRADE_MINIMUM[tier];
 }
 

@@ -7,7 +7,7 @@
 // ENUMS
 // ============================================================================
 
-export type MotionTier = 'A' | 'B' | 'C';
+export type MotionTier = 'A' | 'B' | 'C' | 'D';
 
 export type WorkflowPath = 'path_a' | 'path_b';
 
@@ -497,6 +497,10 @@ export const TIER_DESCRIPTIONS: Record<MotionTier, { name: string; description: 
   C: {
     name: 'Complex/Dispositive',
     description: 'Complex dispositive motions - MSJ, MSA, Preliminary Injunction, TRO',
+  },
+  D: {
+    name: 'Specialized/Enterprise',
+    description: 'Multi-party, cross-border, or enterprise-scale motions',
   },
 };
 

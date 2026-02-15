@@ -545,7 +545,7 @@ function buildRevisionPaymentEmail(
     motionType: (data.motionType as string) || '',
     caseCaption: (data.caseCaption as string) || '',
     revisionNumber: (data.revisionNumber as number) || 2,
-    tier: (data.tier as 'A' | 'B' | 'C') || 'B',
+    tier: (data.tier as 'A' | 'B' | 'C' | 'D') || 'B',
     amount: (data.amount as number) || 125,
     paymentUrl: (data.paymentUrl as string) || `${baseUrl}/checkout/revision/${data.revisionId}`,
     portalUrl: `${baseUrl}/dashboard`,

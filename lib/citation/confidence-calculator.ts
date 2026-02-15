@@ -353,12 +353,19 @@ export function applyFlagPenalties(
  * Adjust confidence thresholds based on motion tier
  * Tier C (high-stakes) has higher threshold requirements
  */
-export function getTierThresholds(tier: 'A' | 'B' | 'C'): {
+export function getTierThresholds(tier: 'A' | 'B' | 'C' | 'D'): {
   verificationPass: number;
   highConfidence: number;
   criticalStepMin: number;
 } {
   switch (tier) {
+    case 'D':
+      // Tier D: Highest stakes, strictest thresholds
+      return {
+        verificationPass: 0.85,
+        highConfidence: 0.93,
+        criticalStepMin: 0.75,
+      };
     case 'C':
       // Tier C: Higher stakes, stricter thresholds
       return {
@@ -389,7 +396,7 @@ export function getTierThresholds(tier: 'A' | 'B' | 'C'): {
  */
 export function meetsConfidenceRequirements(
   confidences: StepConfidences,
-  tier: 'A' | 'B' | 'C'
+  tier: 'A' | 'B' | 'C' | 'D'
 ): { meets: boolean; failures: string[] } {
   const thresholds = getTierThresholds(tier);
   const failures: string[] = [];

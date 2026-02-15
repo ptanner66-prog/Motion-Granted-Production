@@ -36,7 +36,7 @@ interface OrderEmailContext {
   orderNumber: string;
   motionType: string;
   motionTypeDisplay: string;
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   filingDeadline?: string;
   amountPaid?: string;
   holdReason?: string;
@@ -354,16 +354,17 @@ export async function triggerEmail(
 // HELPERS
 // ============================================================================
 
-function normalizeTier(tier: unknown): 'A' | 'B' | 'C' {
-  if (tier === 'A' || tier === 'B' || tier === 'C') return tier;
+function normalizeTier(tier: unknown): 'A' | 'B' | 'C' | 'D' {
+  if (tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D') return tier;
   if (typeof tier === 'number') {
     if (tier <= 1) return 'A';
     if (tier === 2) return 'B';
-    return 'C';
+    if (tier === 3) return 'C';
+    return 'D';
   }
   if (typeof tier === 'string') {
     const upper = tier.toUpperCase();
-    if (upper === 'A' || upper === 'B' || upper === 'C') return upper as 'A' | 'B' | 'C';
+    if (upper === 'A' || upper === 'B' || upper === 'C' || upper === 'D') return upper as 'A' | 'B' | 'C' | 'D';
   }
   return 'B';
 }

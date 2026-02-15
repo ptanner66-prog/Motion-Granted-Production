@@ -9,7 +9,7 @@
  * DO NOT reverse these descriptions. A is simple, C is complex.
  */
 
-export type MotionTier = 'A' | 'B' | 'C';
+export type MotionTier = 'A' | 'B' | 'C' | 'D';
 
 // ============================================================================
 // TIER DEFINITIONS
@@ -79,6 +79,21 @@ export const TIERS = {
       'Other Complex Motion',
     ],
   },
+  D: {
+    id: 'D' as const,
+    name: 'Specialized/Enterprise',
+    description: 'Multi-party, cross-border, or enterprise-scale motions',
+    color: { bg: '#FEF3C7', text: '#92400E' },
+    priceLA: { min: 3500, max: 6000 },
+    priceCA: { min: 4200, max: 7200 },
+    turnaround: '5-7 business days',
+    motionTypes: [
+      'Multi-Party Complex Litigation Motion',
+      'Cross-Border Discovery Motion',
+      'Enterprise-Scale Class Action Motion',
+      'Other Specialized Motion',
+    ],
+  },
 } as const;
 
 export type TierConfig = typeof TIERS[MotionTier];
@@ -121,6 +136,14 @@ export const WORKFLOW_TIER_CONFIG: Record<MotionTier, WorkflowTierConfig> = {
     citationTargets: { min: 4, target: 16, highStakes: true },
     qualityThreshold: 0.87,
   },
+  D: {
+    tier: 'D',
+    skipPhaseVI: false,
+    maxRevisionLoops: 5,
+    deepResearch: true,
+    citationTargets: { min: 8, target: 12, highStakes: true },
+    qualityThreshold: 0.87,
+  },
 };
 
 export function getWorkflowTierConfig(tier: MotionTier): WorkflowTierConfig {
@@ -158,6 +181,12 @@ export const TIER_PRICING: TierPricing[] = [
     louisiana: { min: 1500, max: 3500 },
     california: { min: 1800, max: 4200 },
     turnaroundDays: '4-5',
+  },
+  {
+    tier: 'D',
+    louisiana: { min: 3500, max: 6000 },
+    california: { min: 4200, max: 7200 },
+    turnaroundDays: '5-7',
   },
 ];
 

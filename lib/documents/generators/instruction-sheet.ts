@@ -44,7 +44,7 @@ export interface InstructionSheetData {
   orderSummary: {
     orderNumber: string;
     motionType: string;
-    tier: 'A' | 'B' | 'C';
+    tier: 'A' | 'B' | 'C' | 'D';
     price: number;
     generatedAt: Date;
   };

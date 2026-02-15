@@ -59,10 +59,11 @@ export interface PhaseXOutput {
 /**
  * Get required documents for a tier
  */
-export function getRequiredDocuments(tier: 'A' | 'B' | 'C'): string[] {
+export function getRequiredDocuments(tier: 'A' | 'B' | 'C' | 'D'): string[] {
   const tierADocs = ['motion', 'proposed_order', 'proof_of_service'];
   const tierBDocs = [...tierADocs, 'notice', 'declaration'];
   const tierCDocs = [...tierBDocs, 'separate_statement', 'compendium'];
+  const tierDDocs = [...tierCDocs, 'research_appendix'];
 
   switch (tier) {
     case 'A':
@@ -71,6 +72,8 @@ export function getRequiredDocuments(tier: 'A' | 'B' | 'C'): string[] {
       return tierBDocs;
     case 'C':
       return tierCDocs;
+    case 'D':
+      return tierDDocs;
     default:
       return tierADocs;
   }
@@ -115,7 +118,7 @@ const PAGE_LIMITS: Record<string, Record<string, number>> = {
 export async function runFinalQC(
   orderId: string,
   documents: AssemblyDocument[],
-  tier: 'A' | 'B' | 'C',
+  tier: 'A' | 'B' | 'C' | 'D',
   jurisdiction: string,
   motionType: string
 ): Promise<QCResult> {
@@ -510,7 +513,7 @@ export async function assembleFilingPackage(orderId: string): Promise<PhaseXOutp
     throw new Error(`Order not found: ${orderId}`);
   }
 
-  const tier = order.tier as 'A' | 'B' | 'C';
+  const tier = order.tier as 'A' | 'B' | 'C' | 'D';
   const jurisdiction = order.jurisdiction;
   const motionType = order.motion_type;
 

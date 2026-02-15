@@ -600,11 +600,12 @@ export function isPassingGrade(score: number): boolean {
  * Get failure threshold by tier
  * Returns the maximum allowed citation failure rate
  */
-export function getFailureThreshold(tier: 'A' | 'B' | 'C'): number {
+export function getFailureThreshold(tier: 'A' | 'B' | 'C' | 'D'): number {
   const thresholds = {
     A: 0.20, // 20% citation failure allowed (procedural)
     B: 0.15, // 15% citation failure allowed (intermediate)
     C: 0.10, // 10% citation failure allowed (dispositive)
+    D: 0.08, // 8% citation failure allowed (specialized)
   };
   return thresholds[tier];
 }

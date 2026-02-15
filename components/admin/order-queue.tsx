@@ -36,7 +36,7 @@ import {
 
 export interface QueueFilters {
   status?: string[];
-  tier?: ('A' | 'B' | 'C')[];
+  tier?: ('A' | 'B' | 'C' | 'D')[];
   dateFrom?: Date;
   dateTo?: Date;
   assignedTo?: string;
@@ -172,7 +172,7 @@ export function useOrderQueueRealtime(
       if (filters.tier && filters.tier.length > 0) {
         filteredData = filteredData.filter((order: Order) => {
           const tier = order.order_workflow_state?.[0]?.current_tier;
-          return tier && filters.tier!.includes(tier as 'A' | 'B' | 'C');
+          return tier && filters.tier!.includes(tier as 'A' | 'B' | 'C' | 'D');
         });
       }
 

@@ -22,7 +22,7 @@ import { MODELS } from '@/lib/config/models';
 // TYPES
 // ============================================================================
 
-export type MotionTier = 'A' | 'B' | 'C';
+export type MotionTier = 'A' | 'B' | 'C' | 'D';
 
 export type TaskType =
   | 'stage_1_holding'
@@ -89,6 +89,15 @@ const DEFAULT_CONFIGS: Record<MotionTier, Record<TaskType, string>> = {
     tiebreaker: 'gpt-4-turbo',
   },
   'C': {
+    stage_1_holding: 'gpt-4-turbo',
+    stage_2_adversarial: 'claude-opus-4-5-20251101',
+    dicta_detection: 'claude-sonnet-4-20250514',
+    bad_law_analysis: 'claude-sonnet-4-20250514',
+    drafting: 'claude-opus-4-5-20251101',
+    judge_simulation: 'claude-opus-4-5-20251101',
+    tiebreaker: 'gpt-4-turbo',
+  },
+  'D': {
     stage_1_holding: 'gpt-4-turbo',
     stage_2_adversarial: 'claude-opus-4-5-20251101',
     dicta_detection: 'claude-sonnet-4-20250514',

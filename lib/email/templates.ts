@@ -57,7 +57,7 @@ export interface OrderConfirmationData {
   orderNumber: string;
   motionType: string;
   motionTypeDisplay: string;
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   estimatedTurnaround: string;
   filingDeadline?: string;
   amountPaid: string;

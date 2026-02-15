@@ -84,7 +84,7 @@ export type CitationVerificationStatus =
  */
 export function shouldHardStop(
   verificationResults: Array<{ status: CitationVerificationStatus }>,
-  tier: 'A' | 'B' | 'C'
+  tier: 'A' | 'B' | 'C' | 'D'
 ): { halt: boolean; reason?: string; failedCount: number; totalCount: number } {
   const failedCitations = verificationResults.filter(
     r => r.status === 'REJECTED' || r.status === 'BLOCKED'
@@ -104,6 +104,7 @@ export function shouldHardStop(
     A: 0.20, // 20% citation failure allowed (procedural)
     B: 0.15, // 15% citation failure allowed (intermediate)
     C: 0.10, // 10% citation failure allowed (dispositive)
+    D: 0.08, // 8% citation failure allowed (specialized)
   };
 
   const threshold = thresholds[tier];

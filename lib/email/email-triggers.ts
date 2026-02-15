@@ -32,7 +32,7 @@ interface OrderEmailData {
 // ============================================================================
 
 export async function sendOrderConfirmation(order: OrderEmailData): Promise<EmailResult> {
-  const turnaroundMap: Record<string, string> = { A: '3 business days', B: '4 business days', C: '5 business days' };
+  const turnaroundMap: Record<string, string> = { A: '3 business days', B: '4 business days', C: '5 business days', D: '7 business days' };
   const turnaround = order.estimatedTurnaround || turnaroundMap[order.tier || 'B'] || '4 business days';
 
   const html = `

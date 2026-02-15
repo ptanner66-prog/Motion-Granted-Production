@@ -118,7 +118,7 @@ export function getMotionById(id: string) {
   return null;
 }
 
-export function getTierForMotion(motionId: string): 'A' | 'B' | 'C' | null {
+export function getTierForMotion(motionId: string): 'A' | 'B' | 'C' | 'D' | null {
   if (MOTION_TIERS.tierA.motions.some(m => m.id === motionId)) return 'A';
   if (MOTION_TIERS.tierB.motions.some(m => m.id === motionId)) return 'B';
   if (MOTION_TIERS.tierC.motions.some(m => m.id === motionId)) return 'C';

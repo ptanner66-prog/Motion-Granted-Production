@@ -235,6 +235,7 @@ function mapMotionTypeToCode(motionType: string, tier: MotionTier): string {
     'A': 'MTD_12B6',
     'B': 'MTC',
     'C': 'MEXT',
+    'D': 'MEXT',
   };
 
   return tierDefaults[tier] || 'MTC';

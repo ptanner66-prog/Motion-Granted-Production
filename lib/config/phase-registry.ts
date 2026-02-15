@@ -46,7 +46,7 @@ import { MODELS, validateModelString, type ModelId } from './models';
 // ============================================================================
 
 /** Motion complexity tiers. NEVER use 1/2/3. */
-export type Tier = 'A' | 'B' | 'C';
+export type Tier = 'A' | 'B' | 'C' | 'D';
 
 /** All 14 workflow phases in execution order. */
 export type WorkflowPhase =
@@ -78,6 +78,7 @@ interface TierRouting {
   A: RouteConfig;
   B: RouteConfig;
   C: RouteConfig;
+  D: RouteConfig;
 }
 
 /** Complete configuration for one phase. */
@@ -126,6 +127,7 @@ export const BATCH_SIZES = {
   A: 5,
   B: 4,
   C: 3,
+  D: 2,
   /** V.1, VII.1, IX.1 — always 2 regardless of tier */
   CIV: 2,
 } as const;
@@ -142,6 +144,7 @@ export const TURNAROUND = {
   A: { days: '2-3', businessDays: 3 },
   B: { days: '3-4', businessDays: 4 },
   C: { days: '4-5', businessDays: 5 },
+  D: { days: '5-7', businessDays: 7 },
 } as const;
 
 // ============================================================================
@@ -197,6 +200,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: NO_LLM,
       B: NO_LLM,
       C: NO_LLM,
+      D: NO_LLM,
     },
   },
 
@@ -210,6 +214,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
       C: SONNET_STANDARD,
+      D: SONNET_STANDARD,
     },
   },
 
@@ -227,6 +232,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
       C: OPUS_ET_10K,
+      D: OPUS_ET_10K,
     },
   },
 
@@ -240,6 +246,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: OPUS_STANDARD,
       C: OPUS_STANDARD,
+      D: OPUS_STANDARD,
     },
   },
 
@@ -257,6 +264,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
       C: OPUS_ET_10K,
+      D: OPUS_ET_10K,
     },
   },
 
@@ -275,22 +283,26 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: { model: MODELS.OPUS, maxTokens: 4096 },
       B: { model: MODELS.OPUS, maxTokens: 4096 },
       C: { model: MODELS.OPUS, maxTokens: 4096 },
+      D: { model: MODELS.OPUS, maxTokens: 4096 },
     },
     stages: {
       'stage1': {
         A: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         B: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         C: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        D: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
       },
       'stage2': {
         A: { model: MODELS.OPUS, maxTokens: 4096 },
         B: { model: MODELS.OPUS, maxTokens: 4096 },
         C: { model: MODELS.OPUS, maxTokens: 4096 },
+        D: { model: MODELS.OPUS, maxTokens: 4096 },
       },
       'steps3-5': {
         A: { model: MODELS.HAIKU, maxTokens: 4096 },
         B: { model: MODELS.HAIKU, maxTokens: 4096 },
         C: { model: MODELS.SONNET, maxTokens: 4096 },
+        D: { model: MODELS.SONNET, maxTokens: 4096 },
       },
     },
   },
@@ -306,6 +318,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SKIP,
       B: OPUS_ET_8K,
       C: OPUS_ET_8K,
+      D: OPUS_ET_8K,
     },
   },
 
@@ -320,6 +333,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: OPUS_ET_10K,
       B: OPUS_ET_10K,
       C: OPUS_ET_10K,
+      D: OPUS_ET_10K,
     },
   },
 
@@ -333,22 +347,26 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: { model: MODELS.OPUS, maxTokens: 4096 },
       B: { model: MODELS.OPUS, maxTokens: 4096 },
       C: { model: MODELS.OPUS, maxTokens: 4096 },
+      D: { model: MODELS.OPUS, maxTokens: 4096 },
     },
     stages: {
       'stage1': {
         A: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         B: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         C: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        D: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
       },
       'stage2': {
         A: { model: MODELS.OPUS, maxTokens: 4096 },
         B: { model: MODELS.OPUS, maxTokens: 4096 },
         C: { model: MODELS.OPUS, maxTokens: 4096 },
+        D: { model: MODELS.OPUS, maxTokens: 4096 },
       },
       'steps3-5': {
         A: { model: MODELS.HAIKU, maxTokens: 4096 },
         B: { model: MODELS.HAIKU, maxTokens: 4096 },
         C: { model: MODELS.SONNET, maxTokens: 4096 },
+        D: { model: MODELS.SONNET, maxTokens: 4096 },
       },
     },
   },
@@ -369,6 +387,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: OPUS_ET_8K,
       C: OPUS_ET_8K,
+      D: OPUS_ET_8K,
     },
   },
 
@@ -382,6 +401,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: NO_LLM,
       B: NO_LLM,
       C: NO_LLM,
+      D: NO_LLM,
     },
   },
 
@@ -395,6 +415,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
       C: SONNET_STANDARD,
+      D: SONNET_STANDARD,
     },
   },
 
@@ -408,22 +429,26 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: { model: MODELS.OPUS, maxTokens: 4096 },
       B: { model: MODELS.OPUS, maxTokens: 4096 },
       C: { model: MODELS.OPUS, maxTokens: 4096 },
+      D: { model: MODELS.OPUS, maxTokens: 4096 },
     },
     stages: {
       'stage1': {
         A: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         B: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         C: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        D: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
       },
       'stage2': {
         A: { model: MODELS.OPUS, maxTokens: 4096 },
         B: { model: MODELS.OPUS, maxTokens: 4096 },
         C: { model: MODELS.OPUS, maxTokens: 4096 },
+        D: { model: MODELS.OPUS, maxTokens: 4096 },
       },
       'steps3-5': {
         A: { model: MODELS.HAIKU, maxTokens: 4096 },
         B: { model: MODELS.HAIKU, maxTokens: 4096 },
         C: { model: MODELS.SONNET, maxTokens: 4096 },
+        D: { model: MODELS.SONNET, maxTokens: 4096 },
       },
     },
   },
@@ -438,6 +463,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: NO_LLM,
       B: NO_LLM,
       C: NO_LLM,
+      D: NO_LLM,
     },
   },
 };
@@ -616,7 +642,7 @@ export const TOTAL_PHASES = 14;
 (function validateRegistry(): void {
   for (const phase of PHASES) {
     const config = PHASE_REGISTRY[phase];
-    for (const tier of ['A', 'B', 'C'] as Tier[]) {
+    for (const tier of ['A', 'B', 'C', 'D'] as Tier[]) {
       const route = config.routing[tier];
       if (route.model !== null) {
         validateModelString(route.model, `PHASE_REGISTRY[${phase}].routing.${tier}`);

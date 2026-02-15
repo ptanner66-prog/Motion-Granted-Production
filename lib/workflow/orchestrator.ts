@@ -54,9 +54,9 @@ import type { WorkflowPath, MotionTier } from '@/types/workflow';
  * Mapping: 0→A, 1→A, 2→B, 3→C (0 treated as A for safety)
  * Already-letter values pass through unchanged.
  */
-function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' {
+function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' | 'D' {
   // If already a valid letter, return it
-  if (tier === 'A' || tier === 'B' || tier === 'C') {
+  if (tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D') {
     return tier;
   }
 
@@ -65,6 +65,7 @@ function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' {
     if (tier === 1 || tier === 0) return 'A';
     if (tier === 2) return 'B';
     if (tier === 3) return 'C';
+    if (tier === 4) return 'D';
   }
 
   // Handle string numbers
@@ -72,10 +73,11 @@ function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' {
     if (tier === '1' || tier === '0') return 'A';
     if (tier === '2') return 'B';
     if (tier === '3') return 'C';
+    if (tier === '4') return 'D';
     // Check for lowercase letters
     const upper = tier.toUpperCase();
-    if (upper === 'A' || upper === 'B' || upper === 'C') {
-      return upper as 'A' | 'B' | 'C';
+    if (upper === 'A' || upper === 'B' || upper === 'C' || upper === 'D') {
+      return upper as 'A' | 'B' | 'C' | 'D';
     }
   }
 
@@ -683,6 +685,7 @@ function mapMotionTypeToCode(motionType: string, tier: MotionTier): string {
     'A': 'MTD_12B6',
     'B': 'MTC',
     'C': 'MEXT',
+    'D': 'MEXT',
   };
 
   return tierDefaults[tier] || 'MTC';

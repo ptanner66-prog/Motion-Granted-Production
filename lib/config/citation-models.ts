@@ -40,7 +40,7 @@ export const CITATION_GPT_MODELS = {
 
 export type CitationStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type CitationStage = 'stage_1' | 'stage_2' | 'tiebreaker';
-export type Tier = 'A' | 'B' | 'C';
+export type Tier = 'A' | 'B' | 'C' | 'D';
 
 export interface CitationModelConfig {
   model: string;
@@ -307,6 +307,7 @@ export const PROTOCOL_7_THRESHOLDS: Record<Tier, number> = {
   A: 2,  // 2+ failures → PAUSE
   B: 4,  // 4+ failures → PAUSE
   C: 6,  // 6+ failures → PAUSE
+  D: 8,  // 8+ failures → PAUSE
 };
 
 // ============================================================================
@@ -317,6 +318,7 @@ export const CITATION_BATCH_SIZES: Record<Tier, number> = {
   A: 5,
   B: 4,
   C: 3,
+  D: 2,
 };
 
 /** Phases V.1, VII.1, IX.1 always use batch size 2 */

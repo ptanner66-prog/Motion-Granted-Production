@@ -15,6 +15,7 @@ export const REVISION_PRICING: Record<Tier, number> = {
   A: 75,
   B: 125,
   C: 200,
+  D: 300,
 };
 
 // Free revisions per order
@@ -72,6 +73,7 @@ function getDefaultPriceForTier(tier: Tier): number {
     A: 500,
     B: 1000,
     C: 2000,
+    D: 3500,
   };
   return tierPrices[tier];
 }

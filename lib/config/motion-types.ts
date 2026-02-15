@@ -17,7 +17,7 @@
 export interface MotionType {
   id: string;                      // Unique identifier, lowercase with underscores
   display_name: string;            // UI display name
-  tier: 'A' | 'B' | 'C';          // Pricing tier
+  tier: 'A' | 'B' | 'C' | 'D';    // Pricing tier
   category: MotionCategory;        // Grouping category
   availability: 'universal' | 'state_specific' | 'federal_only';
   available_states?: string[];     // For state_specific, which state codes
@@ -68,16 +68,18 @@ export const CATEGORY_LABELS: Record<MotionCategory, string> = {
   post_verdict: 'Post-Verdict',
 };
 
-export const TIER_LABELS: Record<'A' | 'B' | 'C', string> = {
+export const TIER_LABELS: Record<'A' | 'B' | 'C' | 'D', string> = {
   A: 'TIER A — Procedural ($150-$400)',
   B: 'TIER B — Intermediate ($500-$1,400)',
   C: 'TIER C — Complex/Dispositive ($1,500-$3,500)',
+  D: 'TIER D — Specialized/Enterprise ($3,500-$6,000)',
 };
 
-export const TIER_TURNAROUND: Record<'A' | 'B' | 'C', string> = {
+export const TIER_TURNAROUND: Record<'A' | 'B' | 'C' | 'D', string> = {
   A: '2-3 business days',
   B: '3-4 business days',
   C: '4-5 business days',
+  D: '5-7 business days',
 };
 
 // ============================================================================
@@ -1257,7 +1259,7 @@ export function getMotionType(id: string): MotionType | undefined {
 /**
  * Get motions by tier
  */
-export function getMotionsByTier(tier: 'A' | 'B' | 'C'): MotionType[] {
+export function getMotionsByTier(tier: 'A' | 'B' | 'C' | 'D'): MotionType[] {
   return MOTION_TYPES.filter((motion) => motion.tier === tier);
 }
 
@@ -1280,7 +1282,7 @@ export function getActiveCategories(): MotionCategory[] {
 /**
  * Get price range for a tier
  */
-export function getTierPriceRange(tier: 'A' | 'B' | 'C'): { min: number; max: number } {
+export function getTierPriceRange(tier: 'A' | 'B' | 'C' | 'D'): { min: number; max: number } {
   const motions = getMotionsByTier(tier);
   if (motions.length === 0) return { min: 0, max: 0 };
 

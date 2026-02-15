@@ -29,7 +29,7 @@ export interface OrderSearchQuery {
   query: string;
   filters?: {
     status?: string[];
-    tier?: ('A' | 'B' | 'C')[];
+    tier?: ('A' | 'B' | 'C' | 'D')[];
     dateFrom?: Date;
     dateTo?: Date;
     jurisdiction?: string[];
@@ -310,7 +310,7 @@ export async function searchOrders(
       if (
         query.filters?.tier &&
         query.filters.tier.length > 0 &&
-        !query.filters.tier.includes(tier as 'A' | 'B' | 'C')
+        !query.filters.tier.includes(tier as 'A' | 'B' | 'C' | 'D')
       ) {
         return null;
       }

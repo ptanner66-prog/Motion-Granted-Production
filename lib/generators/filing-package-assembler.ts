@@ -51,7 +51,7 @@ export interface FilingPackage {
     jurisdiction: string;
     isFederal: boolean;
     motionType: string;
-    tier: 'A' | 'B' | 'C';
+    tier: 'A' | 'B' | 'C' | 'D';
     generatedAt: string;
     totalPages: number;
     totalDocuments: number;
@@ -71,7 +71,7 @@ export interface AssemblerInput {
   };
   motionType: string;
   motionTypeDisplay: string;
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   caseInfo: CaseInfo;
   attorney: AttorneyInfo;
   content: {
