@@ -50,7 +50,6 @@ export interface CitationInput {
 }
 
 export interface VerificationOptions {
-  highStakes?: boolean;
   skipCache?: boolean;
   logToDb?: boolean;
   onProgress?: (step: number, status: string) => void;
@@ -402,7 +401,7 @@ async function runVerificationPipeline(
         opinionText,
         tier,
         orderId,
-        { highStakes: options?.highStakes, logToDb: options?.logToDb }
+        { logToDb: options?.logToDb }
       ),
       'Step 2 (Holding)',
       retryConfig
@@ -437,13 +436,11 @@ async function runVerificationPipeline(
     // ========================================================================
     // STEP 4: Quote Verification (if applicable)
     // ========================================================================
-    if (options?.highStakes || hasDirectQuote(proposition)) {
+    if (hasDirectQuote(proposition)) {
       progress(4, 'Verifying quotes...');
 
       // Extract quote from proposition or use provided quote text
-      const quoteToVerify = options?.highStakes && step2Result.supporting_quote
-        ? step2Result.supporting_quote
-        : extractQuoteFromText(proposition);
+      const quoteToVerify = extractQuoteFromText(proposition);
 
       if (quoteToVerify && opinionText) {
         step4Result = await verifyQuote(
@@ -605,7 +602,6 @@ export async function verifyCitationBatch(
     const batchResults = await Promise.all(
       batch.map(c =>
         verifyCitation(c.citation, c.proposition, orderId, tier, {
-          highStakes: options?.highStakes,
           skipCache: options?.skipCache,
           logToDb: options?.logToDb,
         })

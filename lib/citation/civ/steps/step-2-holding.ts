@@ -6,12 +6,11 @@
  * Stage 2: Claude Opus (Anthropic) - Adversarial verification (conditional)
  *
  * CIV-003: Two-stage verification flow (GPT → threshold → Opus → tiebreaker)
- * CIV-004: HIGH_STAKES identification (6 rules-based checks)
  * BUG-FIX-03: Correct confidence thresholds (80/95, was 70/90)
  *
  * Clay's Part C §3-4 BINDING:
- * - ≥95% AND NOT HIGH_STAKES → VERIFIED (skip Stage 2)
- * - 80-94% OR HIGH_STAKES → trigger Stage 2
+ * - ≥95% → VERIFIED (skip Stage 2)
+ * - 80-94% → trigger Stage 2
  * - <80% → HOLDING_MISMATCH → Protocol 2
  */
 
@@ -29,7 +28,6 @@ import { createLogger } from '@/lib/security/logger';
 const log = createLogger('citation-civ-steps-step-2-holding');
 import {
   getCitationModelWithLogging,
-  isHighStakes,
   resolveTiebreaker,
   CITATION_THRESHOLDS,
   type HoldingClassification,
@@ -122,7 +120,6 @@ Classification definitions:
  * Stage 2: Claude Opus (Anthropic) - Adversarial verification
  *
  * CIV-003: Updated prompt to include Stage 1 analysis for adversarial review.
- * CIV-004: Always runs for HIGH_STAKES citations regardless of Stage 1 confidence.
  */
 async function runStage2(
   caseName: string,
@@ -210,7 +207,6 @@ Respond in JSON format ONLY:
  * Main Step 2 function: Cross-vendor holding verification
  *
  * CIV-003: Two-stage verification flow with correct thresholds
- * CIV-004: HIGH_STAKES identification before Stage 1 evaluation
  */
 export async function step2HoldingVerification(
   caseName: string,
@@ -220,34 +216,10 @@ export async function step2HoldingVerification(
   propositionType: PropositionType,
   motionType: string,
   flags: string[] = [],
-  highStakesContext?: {
-    isSoleAuthority?: boolean;
-    caseAge?: number;
-    citationsDeclining?: boolean;
-    hasNegativeTreatment?: boolean;
-  },
+  _reserved?: unknown,
   context?: { orderId?: string; citationId?: string }
 ): Promise<Step2Result> {
   const tier = getTierFromMotionType(motionType);
-
-  // CIV-004: Check HIGH_STAKES BEFORE Stage 1 evaluation
-  const highStakesCheck = isHighStakes({
-    propositionType: propositionType as any,
-    motionTier: tier as Tier,
-    isSoleAuthority: highStakesContext?.isSoleAuthority ?? false,
-    caseAge: highStakesContext?.caseAge ?? 0,
-    citationsDeclining: highStakesContext?.citationsDeclining ?? false,
-    hasNegativeTreatment: highStakesContext?.hasNegativeTreatment ?? false,
-  });
-
-  if (highStakesCheck.isHighStakes) {
-    flags = [...flags, 'HIGH_STAKES'];
-    log.info(
-      `[CIV_STEP2] citation=${citation.substring(0, 50)} HIGH_STAKES=true ` +
-      `rules=[${highStakesCheck.triggeredRules.join(',')}] ` +
-      `reasons=[${highStakesCheck.reasons.join('; ')}]`
-    );
-  }
 
   // Stage 1: GPT-4o
   const stage1 = await runStage1(
@@ -263,15 +235,14 @@ export async function step2HoldingVerification(
   log.info(
     `[CIV_STEP2] citation=${citation.substring(0, 50)} stage=1 ` +
     `confidence=${stage1.confidence} classification=${stage1.classification} ` +
-    `result=${stage1.result} is_majority=${stage1.isFromMajority} ` +
-    `high_stakes=${highStakesCheck.isHighStakes}`
+    `result=${stage1.result} is_majority=${stage1.isFromMajority}`
   );
 
   // CIV-003: Threshold-based routing
   // Normalize confidence to 0-1 scale
   const normalizedConf = stage1.confidence > 1 ? stage1.confidence / 100 : stage1.confidence;
 
-  // Check if Stage 2 needed using updated logic
+  // Check if Stage 2 needed using confidence thresholds
   const needsStage2 = shouldTriggerStage2(stage1.confidence, flags);
 
   let stage2Result: Awaited<ReturnType<typeof runStage2>> | undefined;
@@ -305,8 +276,7 @@ export async function step2HoldingVerification(
     const stage2Approved = stage2Result.result === 'UPHELD';
     const tiebreakerResult = resolveTiebreaker(
       normalizedConf,
-      stage2Approved,
-      highStakesCheck.isHighStakes
+      stage2Approved
     );
 
     log.info(
@@ -334,7 +304,7 @@ export async function step2HoldingVerification(
         break;
     }
   } else if (normalizedConf >= CITATION_THRESHOLDS.HOLDING_PASS) {
-    // ≥95% AND NOT HIGH_STAKES → VERIFIED without Stage 2
+    // ≥95% → VERIFIED without Stage 2
     finalResult = 'VERIFIED';
     finalConfidence = stage1.confidence;
   }

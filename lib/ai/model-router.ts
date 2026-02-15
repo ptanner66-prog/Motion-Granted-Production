@@ -536,18 +536,13 @@ export async function callCIVAnthropic(
  * Trigger adversarial verification when:
  * - Confidence is borderline (80-94%) -> HOLDING_STAGE_2
  * - Confidence is low (<80%) -> HOLDING_FAIL (will also get Stage 2 for audit)
- * - HIGH_STAKES flag is set (always triggers Stage 2 regardless of confidence)
  *
- * >=95% AND NOT HIGH_STAKES = skip Stage 2 (VERIFIED)
+ * >=95% = skip Stage 2 (VERIFIED)
  */
 export function shouldTriggerStage2(
   confidence: number,
   flags: string[] = []
 ): boolean {
-  if (flags.includes('HIGH_STAKES')) {
-    return true;
-  }
-
   const normalizedConf = confidence > 1 ? confidence / 100 : confidence;
 
   if (normalizedConf >= 0.95) {
