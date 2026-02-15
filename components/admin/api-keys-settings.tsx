@@ -156,7 +156,16 @@ export function APIKeysSettings() {
   };
 
   const toggleShowKey = (key: string) => {
-    setShowKeys(prev => ({ ...prev, [key]: !prev[key] }));
+    setShowKeys(prev => {
+      const isNowVisible = !prev[key];
+      if (isNowVisible) {
+        // Auto-hide after 30 seconds
+        setTimeout(() => {
+          setShowKeys(current => ({ ...current, [key]: false }));
+        }, 30000);
+      }
+      return { ...prev, [key]: isNowVisible };
+    });
   };
 
   if (isLoading) {
@@ -496,14 +505,21 @@ export function APIKeysSettings() {
                   <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
                     id="pacer-username"
-                    type="text"
+                    type={showKeys['pacer_username'] ? 'text' : 'password'}
                     value={settings.pacer_username}
                     onChange={(e) =>
                       setSettings((prev) => ({ ...prev, pacer_username: e.target.value }))
                     }
                     placeholder="Enter PACER username"
-                    className="pl-10 font-mono text-sm"
+                    className="pl-10 pr-10 font-mono text-sm"
                   />
+                  <button
+                    type="button"
+                    onClick={() => toggleShowKey('pacer_username')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showKeys['pacer_username'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
               <div className="space-y-2">

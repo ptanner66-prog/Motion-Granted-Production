@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -196,13 +196,47 @@ export function ChangePasswordButton() {
 }
 
 export function Enable2FAButton() {
-  const { toast } = useToast()
+  const [mfaStatus, setMfaStatus] = useState<{
+    enrolled: boolean;
+    loading: boolean;
+  }>({ enrolled: false, loading: true })
 
-  const handleClick = () => {
-    toast({
-      title: 'Coming Soon',
-      description: 'Two-factor authentication will be available in a future update.',
-    })
+  useEffect(() => {
+    async function checkMFA() {
+      try {
+        const res = await fetch('/api/auth/mfa/status')
+        if (res.ok) {
+          const data = await res.json()
+          setMfaStatus({ enrolled: !!data.factorId, loading: false })
+        } else {
+          setMfaStatus({ enrolled: false, loading: false })
+        }
+      } catch {
+        setMfaStatus({ enrolled: false, loading: false })
+      }
+    }
+    checkMFA()
+  }, [])
+
+  if (mfaStatus.loading) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className="border-gray-200 text-gray-600"
+        disabled
+      >
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </Button>
+    )
+  }
+
+  if (mfaStatus.enrolled) {
+    return (
+      <span className="px-2 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-600 rounded">
+        Enabled
+      </span>
+    )
   }
 
   return (
@@ -210,7 +244,7 @@ export function Enable2FAButton() {
       variant="outline"
       size="sm"
       className="border-gray-200 text-gray-600 hover:bg-gray-100"
-      onClick={handleClick}
+      onClick={() => { window.location.href = '/admin/setup-mfa' }}
     >
       Enable
     </Button>

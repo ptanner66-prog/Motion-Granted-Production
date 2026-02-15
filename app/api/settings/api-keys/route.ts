@@ -104,8 +104,11 @@ function decryptKey(encryptedKey: string): string {
 function maskKey(key: string): string {
   if (!key) return '';
   const decrypted = key.startsWith('enc_v') ? decryptKey(key) : key;
-  if (!decrypted || decrypted.length <= 8) return '****';
-  return '****' + decrypted.slice(-4);
+  if (!decrypted || decrypted.length < 8) return '****';
+  const visibleStart = decrypted.slice(0, 5);
+  const visibleEnd = decrypted.slice(-4);
+  const masked = '*'.repeat(Math.max(decrypted.length - 9, 4));
+  return `${visibleStart}${masked}${visibleEnd}`;
 }
 
 // GET - Retrieve API key settings (masked)
@@ -185,7 +188,7 @@ export async function GET() {
       courtlistener_configured: !!(courtlistenerKey || envCourtListenerKey),
 
       // PACER
-      pacer_username: pacerUsername || envPACERUsername || '',
+      pacer_username: pacerUsername ? maskKey(pacerUsername) : (envPACERUsername ? maskKey(envPACERUsername) : ''),
       pacer_password: pacerPassword ? maskKey(pacerPassword) : (envPACERPassword ? maskKey(envPACERPassword) : ''),
       pacer_configured: !!((pacerUsername || envPACERUsername) && (pacerPassword || envPACERPassword)),
 
@@ -284,8 +287,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // PACER
-    if (pacer_username) {
+    // PACER — skip if masked (contains consecutive asterisks from maskKey)
+    if (pacer_username && !pacer_username.includes('****')) {
       settingsToSave.push({
         setting_key: 'pacer_username',
         setting_value: { value: pacer_username },
