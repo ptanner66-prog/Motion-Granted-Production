@@ -21,6 +21,7 @@ import { PHASE_PROMPTS, PHASE_METADATA, loadPhasePrompts, refreshPhasePrompts, t
 import {
   getPhaseConfig,
   PHASES,
+  WORKFLOW_VERSION,
   type WorkflowPhase,
 } from '@/lib/config/phase-registry';
 import { createLogger } from '@/lib/security/logger';
@@ -121,7 +122,7 @@ export async function GET() {
         promptText,
         wordCount,
         charCount: promptText.length,
-        version: 'v7.5',
+        version: WORKFLOW_VERSION,
         editVersion: meta?.editVersion ?? null,
         lastEditor: meta?.updatedBy ?? null,
         lastUpdated: meta?.updatedAt ?? null,
@@ -140,6 +141,11 @@ export async function GET() {
             model: config.routing.C.model,
             thinkingBudget: config.routing.C.thinkingBudget ?? null,
             maxTokens: config.routing.C.maxTokens,
+          },
+          D: {
+            model: config.routing.D.model,
+            thinkingBudget: config.routing.D.thinkingBudget ?? null,
+            maxTokens: config.routing.D.maxTokens,
           },
         },
         stages: config.stages
@@ -162,6 +168,11 @@ export async function GET() {
                     thinkingBudget: tierRouting.C.thinkingBudget ?? null,
                     maxTokens: tierRouting.C.maxTokens,
                   },
+                  D: {
+                    model: tierRouting.D.model,
+                    thinkingBudget: tierRouting.D.thinkingBudget ?? null,
+                    maxTokens: tierRouting.D.maxTokens,
+                  },
                 },
               ])
             )
@@ -178,7 +189,7 @@ export async function GET() {
     }
 
     return NextResponse.json(
-      { phases, version: 'v7.5', updatedAt: '2026-01-31' },
+      { phases, version: WORKFLOW_VERSION, updatedAt: '2026-01-31' },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (err) {

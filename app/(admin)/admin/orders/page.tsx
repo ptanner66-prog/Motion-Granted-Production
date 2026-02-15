@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
 import { formatMotionType } from '@/config/motion-types'
+import { TierBadge } from '@/components/workflow/TierBadge'
 import type { OrderStatus } from '@/types'
 
 export const metadata: Metadata = {
@@ -29,6 +30,7 @@ interface Order {
   id: string
   order_number: string
   motion_type: string
+  motion_tier: number | null
   case_caption: string
   status: string
   total_price: number
@@ -38,6 +40,39 @@ interface Order {
     full_name: string
     email: string
   }
+  order_workflows?: {
+    current_phase: number | null
+  }[]
+}
+
+const TIER_INT_TO_LETTER: Record<number, string> = { 0: 'A', 1: 'B', 2: 'C', 3: 'D' }
+
+const PHASE_LABELS: Record<number, string> = {
+  1: 'I - Intake',
+  2: 'II - Legal Standards',
+  3: 'III - Evidence Strategy',
+  4: 'IV - Research',
+  5: 'V - Drafting',
+  6: 'V.1 - Cit. Verify',
+  7: 'VI - Opposition',
+  8: 'VII - Judge Sim',
+  9: 'VII.1 - Post-Rev Cit',
+  10: 'VIII - Revisions',
+  11: 'VIII.5 - Caption',
+  12: 'IX - Support Docs',
+  13: 'IX.1 - Sep. Statement',
+  14: 'X - Assembly',
+}
+
+function PhaseIndicator({ phase, status }: { phase: number | null | undefined; status: string }) {
+  if (status === 'completed' || status === 'draft_delivered' || status === 'revision_delivered') {
+    return <span className="text-green-600 text-xs font-medium">Delivered</span>
+  }
+  if (!phase) {
+    return <span className="text-gray-400 text-xs italic">Awaiting workflow</span>
+  }
+  const label = PHASE_LABELS[phase] || `Phase ${phase}`
+  return <span className="text-blue-600 text-xs font-medium">{label}</span>
 }
 
 function getDaysUntilDue(deadline: string): number {
@@ -58,7 +93,7 @@ function getUrgencyClass(daysUntilDue: number, status: string) {
 export default async function AdminOrdersPage() {
   const supabase = await createClient()
 
-  // Fetch all orders with client info
+  // Fetch all orders with client info and workflow state
   const { data: orders } = await supabase
     .from('orders')
     .select(`
@@ -66,6 +101,9 @@ export default async function AdminOrdersPage() {
       profiles:client_id (
         full_name,
         email
+      ),
+      order_workflows (
+        current_phase
       )
     `)
     .order('created_at', { ascending: false })
@@ -321,10 +359,21 @@ function OrderList({
                       {order.order_number}
                     </span>
                     <OrderStatusBadge status={order.status as OrderStatus} size="sm" />
+                    {order.motion_tier != null && (
+                      <TierBadge tier={TIER_INT_TO_LETTER[order.motion_tier] || 'A'} size="sm" showTooltip={false} />
+                    )}
                   </div>
-                  <p className="font-semibold text-navy truncate">
-                    {formatMotionType(order.motion_type)}
-                  </p>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="font-semibold text-navy truncate">
+                      {formatMotionType(order.motion_type)}
+                    </p>
+                    <span className="hidden sm:inline-flex">
+                      <PhaseIndicator
+                        phase={order.order_workflows?.[0]?.current_phase}
+                        status={order.status}
+                      />
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2 text-sm text-gray-400">
                     <User className="h-3 w-3" />
                     <span className="truncate">

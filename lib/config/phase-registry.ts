@@ -99,6 +99,9 @@ interface PhaseConfig {
 // CONSTANTS
 // ============================================================================
 
+/** Current workflow version. Single source of truth — import this everywhere. */
+export const WORKFLOW_VERSION = 'v7.6';
+
 /** Quality threshold. B+ = 0.87 for ALL tiers. (§1.5 item 8) */
 export const QUALITY_THRESHOLD = 0.87;
 

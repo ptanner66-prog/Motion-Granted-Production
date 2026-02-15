@@ -29,7 +29,7 @@ export const orderFormSchema = z.object({
 
   // Step 5: Case Summary
   statementOfFacts: z.string().min(200, 'Statement of facts must be at least 200 characters'),
-  proceduralHistory: z.string().min(100, 'Procedural history must be at least 100 characters'),
+  proceduralHistory: z.string().optional().default(''),
 
   // Step 6: Instructions
   instructions: z.string().min(100, 'Instructions must be at least 100 characters'),
@@ -66,7 +66,7 @@ export const stepValidations = {
   }),
   5: z.object({
     statementOfFacts: z.string().min(200, 'Statement of facts must be at least 200 characters'),
-    proceduralHistory: z.string().min(100, 'Procedural history must be at least 100 characters'),
+    proceduralHistory: z.string().optional().default(''),
   }),
   6: z.object({
     instructions: z.string().min(100, 'Instructions must be at least 100 characters'),

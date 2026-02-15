@@ -42,8 +42,9 @@ export const intakeFormSchema = z.object({
     .min(500, 'Statement of facts must be at least 500 characters')
     .max(50000, 'Statement of facts must not exceed 50,000 characters'),
   proceduralHistory: z.string()
-    .min(200, 'Procedural history must be at least 200 characters')
-    .max(10000, 'Procedural history must not exceed 10,000 characters'),
+    .max(10000, 'Procedural history must not exceed 10,000 characters')
+    .optional()
+    .default(''),
   keyDates: z.array(z.object({
     id: z.string(),
     description: z.string().min(1, 'Description required'),
@@ -122,7 +123,7 @@ export const stepSchemas = {
 
   facts: z.object({
     statementOfFacts: z.string().min(500, 'Statement of facts must be at least 500 characters'),
-    proceduralHistory: z.string().min(200, 'Procedural history must be at least 200 characters'),
+    proceduralHistory: z.string().optional().default(''),
     keyDates: z.array(z.object({
       id: z.string(),
       description: z.string(),

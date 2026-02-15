@@ -4,9 +4,17 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CheckCircle, Loader2, Send, FileText, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle, Loader2, Send, FileText, AlertCircle, RefreshCw, Scale } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
+
+interface CitationSummary {
+  total: number;
+  verified: number;
+  flagged: number;
+  caseCitations: number;
+  statutoryCitations: number;
+}
 
 interface MotionReviewProps {
   orderId: string;
@@ -19,11 +27,13 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
   const [isLoading, setIsLoading] = useState(true);
   const [isApproving, setIsApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [citationSummary, setCitationSummary] = useState<CitationSummary | null>(null);
   const { toast } = useToast();
   const router = useRouter();
 
   useEffect(() => {
     loadMotion();
+    loadCitationSummary();
   }, [orderId]);
 
   const loadMotion = async () => {
@@ -43,6 +53,27 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
       console.error('Failed to load motion:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadCitationSummary = async () => {
+    try {
+      const response = await fetch(`/api/orders/${orderId}/citations`);
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data.success) {
+        const caseCitations = data.citations || [];
+        const statCitations = data.statutoryCitations || [];
+        setCitationSummary({
+          total: caseCitations.length + statCitations.length,
+          verified: caseCitations.filter((c: { verificationStatus: string }) => c.verificationStatus === 'verified').length,
+          flagged: caseCitations.filter((c: { verificationStatus: string }) => c.verificationStatus === 'flagged').length,
+          caseCitations: caseCitations.length,
+          statutoryCitations: statCitations.length,
+        });
+      }
+    } catch {
+      // Non-fatal: citation summary just won't be shown
     }
   };
 
@@ -170,6 +201,38 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
             <p className="text-blue-800 font-medium">
               This motion has been delivered to the client.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Citation Summary - reads from same DB source as Citations tab */}
+      {citationSummary && citationSummary.total > 0 && (
+        <Card className="bg-white border-gray-200">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Scale className="h-5 w-5 text-teal-600" />
+              <div className="flex items-center gap-4 text-sm">
+                <span className="text-gray-700 font-medium">
+                  {citationSummary.total} citation{citationSummary.total !== 1 ? 's' : ''} in draft
+                </span>
+                <span className="text-gray-300">|</span>
+                <span className="text-green-600">
+                  {citationSummary.verified} verified
+                </span>
+                {citationSummary.flagged > 0 && (
+                  <>
+                    <span className="text-gray-300">|</span>
+                    <span className="text-amber-600">
+                      {citationSummary.flagged} flagged
+                    </span>
+                  </>
+                )}
+                <span className="text-gray-300">|</span>
+                <span className="text-gray-500">
+                  {citationSummary.caseCitations} case, {citationSummary.statutoryCitations} statutory
+                </span>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
