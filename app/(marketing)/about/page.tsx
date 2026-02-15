@@ -1,145 +1,221 @@
 import { Metadata } from 'next';
-import Link from 'next/link';
-import { Users, Target, Lightbulb, ArrowRight } from 'lucide-react';
+import { SectionHeader } from '@/components/marketing/SectionHeader';
+import { FeatureCard } from '@/components/marketing/FeatureCard';
+import { CTASection } from '@/components/marketing/CTASection';
+import { Target, Scale, DollarSign, ShieldCheck } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'About',
-  description: 'Learn about Motion Granted — built by attorneys, for attorneys. AI-powered motion drafting for solo practitioners and small firms.',
+  title: 'About — Motion Granted',
+  description:
+    'Motion Granted was founded by attorneys who know what judges expect. We combine AI drafting with rigorous citation verification to deliver court-ready motions you can trust.',
+  openGraph: {
+    title: 'About — Motion Granted',
+    description:
+      'Founded by attorneys who know what judges expect. AI-powered motion drafting with every citation verified.',
+    type: 'website',
+  },
 };
 
 export default function AboutPage() {
   return (
-    <div>
-      {/* Page Header */}
-      <section className="pt-32 pb-16 bg-gradient-to-b from-white to-slate-50">
-        <div className="max-w-4xl mx-auto px-6 text-center">
-          <span className="text-sm font-bold text-[#C9A227] uppercase tracking-wider">
-            ABOUT US
-          </span>
-          <h1 className="font-serif text-5xl text-[#0F1F33] mt-3 mb-4">
-            Built by attorneys, <em className="text-[#C9A227]">for attorneys</em>
-          </h1>
-          <p className="text-lg text-slate-500 max-w-2xl mx-auto">
-            Motion Granted was founded to solve a problem every solo practitioner knows:
-            great legal work takes time you don&apos;t have.
+    <>
+      {/* ── Hero ── */}
+      <section className="page-hero page-hero--navy">
+        <div className="section-inner">
+          <div className="section-label">About Motion Granted</div>
+          <h1 className="section-title">We know what judges expect.</h1>
+          <p className="section-subtitle">
+            Motion Granted was built by litigators who spent decades in the courtroom.
+            We know what a judge reads first, what makes them skeptical, and what earns
+            a ruling in your favor.
           </p>
         </div>
       </section>
 
-      {/* Our Story */}
-      <section className="py-20 bg-slate-50">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid md:grid-cols-2 gap-16 items-start">
+      {/* ── Founder Story ── */}
+      <section className="section">
+        <div className="section-inner">
+          <div className="about-two-col">
             <div>
-              <h2 className="font-serif text-3xl text-[#0F1F33] mb-6">
-                The <em className="text-[#C9A227]">origin</em> story
+              <div className="section-label">Our Story</div>
+              <h2 className="section-title">
+                Founded by attorneys who&rsquo;ve been in the courtroom.
               </h2>
-              <div className="space-y-4 text-slate-600 leading-relaxed">
+              <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <p>
-                  <strong className="text-slate-700">After 30+ years of litigation practice</strong>,
-                  our founding attorney had drafted thousands of motions. He knew the process
-                  intimately — and he knew how much time it consumed.
+                  <strong>After 30+ years of litigation practice</strong>, our founding attorney
+                  had drafted thousands of motions. He knew the process intimately — and he knew
+                  how much time it consumed.
                 </p>
                 <p>
-                  Solo practitioners face an impossible choice: spend hours on motion drafting
-                  (eating into billable work), or refer complex cases to larger firms.
+                  Solo practitioners and small firms face an impossible choice: spend entire
+                  weekends on motion drafting — eating into billable work and family time — or
+                  refer complex cases to larger firms with deeper benches.
                 </p>
                 <p>
-                  Motion Granted exists to give small firms the drafting capacity of a
-                  large firm — without the large firm overhead.
+                  Motion Granted exists to give small firms the drafting capacity of a large
+                  firm — without the large firm overhead. We pair AI-assisted drafting with
+                  rigorous citation verification so every document that reaches your desk is
+                  ready for the courtroom.
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <StatCard value="30+" label="Years legal experience" />
-              <StatCard value="1000s" label="Motions drafted" />
-              <StatCard value="24hr" label="Standard turnaround" />
-              <StatCard value="95%" label="Citation accuracy target" />
+              <StatCard value="< 0.1%" label="Hallucination rate" />
+              <StatCard value="3 Days" label="Standard delivery" />
+              <StatCard value="50 States" label="Federal & state courts" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* Values */}
-      <section className="py-20 bg-white">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center mb-12">
-            <span className="text-sm font-bold text-[#C9A227] uppercase tracking-wider">
-              OUR VALUES
-            </span>
-            <h2 className="font-serif text-3xl text-[#0F1F33] mt-3">
-              What drives <em className="text-[#C9A227]">us</em>
-            </h2>
+      {/* ── The Problem ── */}
+      <section className="section" style={{ background: 'var(--slate-50)' }}>
+        <div className="section-inner">
+          <SectionHeader
+            label="The Problem"
+            title="AI legal tools have an accuracy problem."
+            subtitle="Most AI tools generate plausible-sounding drafts full of fabricated citations. We built something different."
+            center
+          />
+          <div className="feature-grid feature-grid--2col" style={{ marginTop: '2.5rem' }}>
+            <ProblemCard
+              number="01"
+              title="AI tools generate drafts you can&rsquo;t trust."
+              description="Large language models hallucinate case law at alarming rates — some platforms cite cases that don't exist, misstate holdings, or reference overruled authority. You can't file a brief you haven't independently verified."
+            />
+            <ProblemCard
+              number="02"
+              title="Verification takes longer than drafting."
+              description="Attorneys who use AI drafting tools often spend more time checking citations than they saved on the initial draft. The efficiency promise collapses under the verification burden."
+            />
+            <ProblemCard
+              number="03"
+              title="We verify before you ever see it."
+              description="Every citation in every Motion Granted document passes through a multi-step verification pipeline — checked for existence, holding accuracy, and subsequent history — before delivery."
+            />
+            <ProblemCard
+              number="04"
+              title="Court-ready documents at a fraction of the cost."
+              description="Instead of billing hours for research and drafting, you get a flat-fee filing package: motion, memorandum, declaration, and proposed order — with verified citations throughout."
+            />
           </div>
+        </div>
+      </section>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            <ValueCard
-              icon={<Target className="w-8 h-8" />}
+      {/* ── Our Principles ── */}
+      <section className="section">
+        <div className="section-inner">
+          <SectionHeader
+            label="Our Principles"
+            title="What guides our work."
+            center
+          />
+          <div className="feature-grid feature-grid--4col" style={{ marginTop: '2.5rem' }}>
+            <FeatureCard
+              icon={Target}
               title="Accuracy First"
-              description="Every citation is screened. Every fact is verified. We don't cut corners."
+              description="Every citation is independently verified. Every fact is cross-referenced. We don't cut corners because your reputation is on the line."
             />
-            <ValueCard
-              icon={<Users className="w-8 h-8" />}
+            <FeatureCard
+              icon={Scale}
               title="Attorney-Led"
-              description="AI drafts. Attorneys review. You get the best of both worlds."
+              description="AI drafts. Attorneys review. You get the efficiency of automation with the judgment of experienced litigators."
             />
-            <ValueCard
-              icon={<Lightbulb className="w-8 h-8" />}
+            <FeatureCard
+              icon={DollarSign}
               title="Transparent Pricing"
-              description="Flat fees, no surprises. Know your cost before you submit."
+              description="Flat fees, no surprises. Know your cost before you submit. No hourly billing, no retainers, no minimums."
+            />
+            <FeatureCard
+              icon={ShieldCheck}
+              title="Confidential & Secure"
+              description="Your case data is encrypted at rest and in transit. We never train on your documents. Attorney-client privilege is preserved."
             />
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-20 bg-[#0F1F33]">
-        <div className="max-w-4xl mx-auto px-6 text-center">
-          <h2 className="font-serif text-3xl text-white mb-6">
-            Ready to work with <em className="text-[#C9A227]">us?</em>
-          </h2>
-          <p className="text-slate-300 mb-8">
-            Submit your first order today and see the difference.
-          </p>
-          <Link
-            href="/orders/new"
-            className="inline-flex items-center gap-2 px-8 py-4 bg-[#C9A227] text-[#0F1F33] font-bold rounded-lg hover:bg-[#D4B33A] transition-all"
-          >
-            Get Started
-            <ArrowRight className="w-5 h-5" />
-          </Link>
-        </div>
-      </section>
-    </div>
+      {/* ── CTA ── */}
+      <CTASection
+        title="Ready to see the difference?"
+        subtitle="Submit your first matter and get a court-ready filing package delivered to your inbox."
+        primaryHref="/register"
+        primaryLabel="Get Started"
+        secondaryHref="/pricing"
+        secondaryLabel="View Pricing"
+        reassurances={[
+          'No retainer required',
+          'Flat-fee pricing',
+          'Every citation verified',
+          'One revision included',
+        ]}
+      />
+    </>
   );
 }
 
 function StatCard({ value, label }: { value: string; label: string }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-6 text-center">
-      <div className="font-serif text-3xl text-[#1E3A5F]">{value}</div>
-      <div className="text-sm text-slate-500 mt-1">{label}</div>
+    <div
+      style={{
+        background: 'var(--white)',
+        border: '1px solid var(--slate-200)',
+        borderRadius: '14px',
+        padding: '1.5rem',
+        textAlign: 'center',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: '2rem',
+          color: 'var(--navy-700)',
+          lineHeight: 1.2,
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          fontSize: '0.82rem',
+          color: 'var(--slate-500)',
+          marginTop: '0.35rem',
+          fontWeight: 500,
+        }}
+      >
+        {label}
+      </div>
     </div>
   );
 }
 
-function ValueCard({
-  icon,
+function ProblemCard({
+  number,
   title,
-  description
+  description,
 }: {
-  icon: React.ReactNode;
+  number: string;
   title: string;
   description: string;
 }) {
   return (
-    <div className="p-8 bg-slate-50 rounded-2xl border border-slate-200">
-      <div className="w-14 h-14 bg-[#C9A227]/20 rounded-xl flex items-center justify-center text-[#C9A227] mb-4">
-        {icon}
+    <div className="feature-card">
+      <div
+        style={{
+          fontSize: '0.72rem',
+          fontWeight: 700,
+          color: 'var(--gold-600)',
+          letterSpacing: '0.08em',
+          marginBottom: '0.75rem',
+        }}
+      >
+        {number}
       </div>
-      <h3 className="text-xl font-bold text-[#0F1F33] mb-2">{title}</h3>
-      <p className="text-slate-500">{description}</p>
+      <h3 dangerouslySetInnerHTML={{ __html: title }} />
+      <p>{description}</p>
     </div>
   );
 }
