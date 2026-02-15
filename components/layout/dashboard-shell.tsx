@@ -47,7 +47,7 @@ const mainNavigation = [
   },
   {
     name: 'Submit New Matter',
-    href: '/dashboard/submit',
+    href: '/submit',
     icon: PlusCircle,
     description: 'Submit a new motion',
   },
