@@ -107,6 +107,11 @@ import { handleProtocol10Exit } from "@/lib/workflow/protocol-10-handler";
 // SP-11: Protocol 5 — statutory reference verification after revision
 import { runProtocol5 } from "@/lib/citation/protocol-5";
 
+// BATCH_09 ST-002: Citation pre-fetch for batch existence lookups
+import { CourtListenerClient } from "@/lib/workflow/courtlistener-client";
+import { splitTextIntoBlocks } from "@/lib/citation/extraction-pipeline";
+import type { CLCitationResult } from "@/lib/citation/types";
+
 // SP24: Load DB-backed phase prompts at workflow start
 import { loadPhasePrompts } from "@/prompts";
 
@@ -1714,6 +1719,38 @@ export const generateOrderWorkflow = inngest.createFunction(
     console.log('[Orchestration] Accumulated after V:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
+    // STEP 6.5: Pre-fetch citation existence via batch CL lookup (ST-002)
+    // ========================================================================
+    const prefetchV1Result = await step.run("cit-prefetch-existence-v1", async () => {
+      const draftText = extractDraftText(workflowState.phaseOutputs["V"]);
+      if (!draftText) {
+        console.warn('[CIV] No draft text from Phase V — skipping pre-fetch');
+        return { prefetchMap: {} as Record<string, CLCitationResult>, apiCallsUsed: 0, errorCount: 0 };
+      }
+
+      const client = new CourtListenerClient();
+      const textBlocks = splitTextIntoBlocks(draftText, 5000);
+      const { results, apiCallsUsed, errors } = await client.batchCitationLookup(textBlocks);
+
+      console.log(`[CIV] Pre-fetch V.1 complete: ${results.size} citations in ${apiCallsUsed} API calls`);
+      if (errors.length > 0) {
+        console.warn(`[CIV] Pre-fetch V.1 errors:`, errors);
+      }
+
+      // Serialize Map for Inngest step boundary
+      return {
+        prefetchMap: Object.fromEntries(results) as Record<string, CLCitationResult>,
+        apiCallsUsed,
+        errorCount: errors.length,
+      };
+    });
+
+    // Store serialized prefetch map for Phase V.1 to consume
+    const prefetchMapV1 = new Map<string, CLCitationResult>(
+      Object.entries(prefetchV1Result.prefetchMap)
+    );
+
+    // ========================================================================
     // STEP 7: Phase V.1 - Citation Accuracy Check
     // ========================================================================
     const phaseV1Result = await step.run("phase-v1-citation-accuracy", async () => {
@@ -1985,6 +2022,35 @@ export const generateOrderWorkflow = inngest.createFunction(
       if (phaseVIIIOutput?.holdRecommended) {
         console.warn(`[Orchestration] Loop ${loopNum}: Phase VIII recommends HOLD (${phaseVIIIOutput.holdReason}). ${(phaseVIIIOutput.bracketedPrompts as string[])?.length || 0} missing specifics.`);
       }
+
+      // STEP B-pre: Pre-fetch citation existence for revised text (ST-002)
+      const prefetchVII1Result = await step.run(`cit-prefetch-existence-vii1-loop-${loopNum}`, async () => {
+        const revisedText = extractDraftText(workflowState.phaseOutputs["VIII"]);
+        if (!revisedText) {
+          console.warn(`[CIV] No revised text from Phase VIII loop ${loopNum} — skipping pre-fetch`);
+          return { prefetchMap: {} as Record<string, CLCitationResult>, apiCallsUsed: 0, errorCount: 0 };
+        }
+
+        const client = new CourtListenerClient();
+        const textBlocks = splitTextIntoBlocks(revisedText, 5000);
+        const { results, apiCallsUsed, errors } = await client.batchCitationLookup(textBlocks);
+
+        console.log(`[CIV] Pre-fetch VII.1 loop ${loopNum}: ${results.size} citations in ${apiCallsUsed} API calls`);
+        if (errors.length > 0) {
+          console.warn(`[CIV] Pre-fetch VII.1 loop ${loopNum} errors:`, errors);
+        }
+
+        return {
+          prefetchMap: Object.fromEntries(results) as Record<string, CLCitationResult>,
+          apiCallsUsed,
+          errorCount: errors.length,
+        };
+      });
+
+      // Store serialized prefetch map for Phase VII.1 to consume
+      const prefetchMapVII1 = new Map<string, CLCitationResult>(
+        Object.entries(prefetchVII1Result.prefetchMap)
+      );
 
       // STEP B: Phase VII.1 — Citation re-verification on the REVISED text
       const phaseVII1Result = await step.run(`phase-vii1-citation-check-loop-${loopNum}`, async () => {

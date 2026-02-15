@@ -159,6 +159,61 @@ export function reset(): void {
   logger.info('[RateLimiter] State reset');
 }
 
+// ============================================================================
+// HOURLY RATE COUNTER (for batch POST tracking)
+// ============================================================================
+
+// Module-level hourly counter (tracks actual API calls, not citations)
+let hourlyCallCount = 0;
+let hourlyWindowStart = Date.now();
+const HOUR_MS = 3600000;
+const HOURLY_LIMIT = 5000; // 5,000 requests/hour for CL authenticated
+
+/**
+ * Increment rate counter for API calls.
+ *
+ * IMPORTANT: callCount = number of actual API calls (batch POSTs),
+ * NOT the number of citations within the batch.
+ *
+ * Example: 25 citations in 2 batch POSTs = callCount of 2
+ */
+export function incrementSharedRateCounter(
+  api: 'courtlistener' | 'caselaw',
+  callCount: number
+): { allowed: boolean; remaining: number; resetAt: string } {
+  const now = Date.now();
+
+  // Reset hourly window if expired
+  if (now - hourlyWindowStart >= HOUR_MS) {
+    hourlyCallCount = 0;
+    hourlyWindowStart = now;
+  }
+
+  // Check if adding this many calls would exceed the limit
+  if (hourlyCallCount + callCount > HOURLY_LIMIT) {
+    const resetAt = new Date(hourlyWindowStart + HOUR_MS).toISOString();
+    log.warn(`[RateLimit] ${api} hourly limit would be exceeded`, {
+      current: hourlyCallCount,
+      requested: callCount,
+      limit: HOURLY_LIMIT,
+      resetAt,
+    });
+    return {
+      allowed: false,
+      remaining: Math.max(0, HOURLY_LIMIT - hourlyCallCount),
+      resetAt,
+    };
+  }
+
+  hourlyCallCount += callCount;
+
+  return {
+    allowed: true,
+    remaining: HOURLY_LIMIT - hourlyCallCount,
+    resetAt: new Date(hourlyWindowStart + HOUR_MS).toISOString(),
+  };
+}
+
 /**
  * Execute a function with rate limiting
  */

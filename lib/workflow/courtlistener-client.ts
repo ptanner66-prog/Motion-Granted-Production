@@ -24,6 +24,7 @@ import {
   type CourtListenerVerificationResult,
 } from '@/types/workflow';
 import { getCircuitBreaker, CircuitOpenError } from '@/lib/circuit-breaker';
+import type { CLCitationResult, BatchLookupResult, BatchError } from '@/lib/citation/types';
 
 // ============================================================================
 // TYPES
@@ -389,6 +390,116 @@ export class CourtListenerClient {
     }
 
     return { results, errors };
+  }
+
+  /**
+   * Batch citation lookup using CL's text extraction endpoint.
+   * Each batch POST counts as 1 request against rate limits (not per-citation).
+   *
+   * Pre-fetches citation existence data for the entire draft so that
+   * the per-citation pipeline can do O(1) Map lookups instead of API calls.
+   *
+   * @param textBlocks - Array of text blocks to extract citations from
+   * @param options.maxBatchSize - Max chars per POST (default: 5000)
+   * @returns Map of normalized citations to CL results
+   */
+  async batchCitationLookup(
+    textBlocks: string[],
+    options?: { maxBatchSize?: number }
+  ): Promise<BatchLookupResult> {
+    const results = new Map<string, CLCitationResult>();
+    const errors: BatchError[] = [];
+    let apiCallsUsed = 0;
+
+    for (const textBlock of textBlocks) {
+      // Rate limiter counts batch POSTs, not individual citations
+      await this.rateLimiter.waitForSlot();
+
+      try {
+        const response = await this.fetchWithRetry(
+          `${COURTLISTENER_BASE_URL}${COURTLISTENER_CITATION_LOOKUP}`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Token ${this.apiKey}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `text=${encodeURIComponent(textBlock)}`,
+          }
+        );
+
+        apiCallsUsed++;
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            // 429 from CL despite local tracking - desync
+            log.error('[CL] RATE_LIMIT_DESYNC - local limiter did not prevent 429');
+            await this.handleRateLimitDesync(response);
+            errors.push({
+              textBlock: textBlock.slice(0, 100) + '...',
+              error: 'Rate limit desync - requeued',
+              recoverable: true,
+            });
+            continue;
+          }
+          errors.push({
+            textBlock: textBlock.slice(0, 100) + '...',
+            error: `API error: ${response.status}`,
+            recoverable: response.status >= 500,
+          });
+          continue;
+        }
+
+        const data: CourtListenerLookupResponse = await response.json();
+
+        // Parse response and add to results map
+        for (const citation of data.citations || []) {
+          const normalized = this.normalizeCitationText(citation.citation);
+          results.set(normalized, {
+            found: true,
+            opinionId: citation.cluster_id,
+            caseName: citation.case_name,
+            court: citation.court,
+            dateFiled: citation.date_filed,
+            citation: citation.citation,
+          });
+        }
+      } catch (error) {
+        errors.push({
+          textBlock: textBlock.slice(0, 100) + '...',
+          error: error instanceof Error ? error.message : String(error),
+          recoverable: false,
+        });
+      }
+    }
+
+    return { results, apiCallsUsed, errors };
+  }
+
+  /**
+   * Handle a rate limit desync (429 received despite local tracking).
+   * Pauses all requests for the duration indicated by the Retry-After header.
+   */
+  private async handleRateLimitDesync(response: Response): Promise<void> {
+    const retryAfterHeader = response.headers.get('Retry-After');
+    const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 60;
+    const waitSeconds = isNaN(retryAfter) ? 60 : retryAfter;
+    log.warn(`[CL] Pausing all requests for ${waitSeconds}s due to 429`);
+    await this.sleep(waitSeconds * 1000);
+  }
+
+  /**
+   * Normalize a citation string for consistent Map key lookups.
+   */
+  private normalizeCitationText(citation: string): string {
+    return citation.toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Sleep helper.
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
