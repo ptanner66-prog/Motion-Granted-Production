@@ -31,7 +31,7 @@ export interface IntakeData {
 
   // Step 3: Motion Type
   motionType: string;
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
 
   // Step 4: Case Details
   caseDetails: {
@@ -82,7 +82,7 @@ const MAX_TOTAL_PAGES = 500;
 // Motion types by tier and jurisdiction availability
 export const MOTION_TYPES: Record<string, {
   name: string;
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   jurisdictions: string[];
   description: string;
 }> = {
@@ -178,10 +178,11 @@ export const MOTION_TYPES: Record<string, {
 };
 
 // Base prices by tier
-const BASE_PRICES: Record<'A' | 'B' | 'C', number> = {
+const BASE_PRICES: Record<'A' | 'B' | 'C' | 'D', number> = {
   'A': 299,
   'B': 599,
   'C': 999,
+  'D': 1499,
 };
 
 // Jurisdiction multipliers
@@ -339,7 +340,7 @@ export function validateStep(
  * Calculate price based on tier, jurisdiction, and rush option
  */
 export async function calculatePrice(
-  tier: 'A' | 'B' | 'C',
+  tier: 'A' | 'B' | 'C' | 'D',
   jurisdiction: string,
   rushOption: 'standard' | '48hr' | '24hr'
 ): Promise<PriceCalculation> {
@@ -360,7 +361,7 @@ export async function calculatePrice(
 /**
  * Get tier from motion type
  */
-export function getTierFromMotionType(motionType: string): 'A' | 'B' | 'C' | null {
+export function getTierFromMotionType(motionType: string): 'A' | 'B' | 'C' | 'D' | null {
   const config = MOTION_TYPES[motionType];
   return config?.tier || null;
 }
@@ -428,7 +429,7 @@ export function classifyDocument(
  */
 export function getMotionTypesForJurisdiction(
   jurisdiction: string
-): Array<{ id: string; name: string; tier: 'A' | 'B' | 'C'; description: string }> {
+): Array<{ id: string; name: string; tier: 'A' | 'B' | 'C' | 'D'; description: string }> {
   return Object.entries(MOTION_TYPES)
     .filter(([, config]) => config.jurisdictions.includes(jurisdiction))
     .map(([id, config]) => ({
@@ -452,13 +453,14 @@ export function getMotionTypesForJurisdiction(
  */
 export function getMotionTypesGroupedByTier(
   jurisdiction: string
-): Record<'A' | 'B' | 'C', Array<{ id: string; name: string; description: string }>> {
+): Record<'A' | 'B' | 'C' | 'D', Array<{ id: string; name: string; description: string }>> {
   const types = getMotionTypesForJurisdiction(jurisdiction);
 
   return {
     'A': types.filter(t => t.tier === 'A').map(({ id, name, description }) => ({ id, name, description })),
     'B': types.filter(t => t.tier === 'B').map(({ id, name, description }) => ({ id, name, description })),
     'C': types.filter(t => t.tier === 'C').map(({ id, name, description }) => ({ id, name, description })),
+    'D': types.filter(t => t.tier === 'D').map(({ id, name, description }) => ({ id, name, description })),
   };
 }
 

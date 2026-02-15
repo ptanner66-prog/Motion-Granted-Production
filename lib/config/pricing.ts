@@ -6,12 +6,14 @@ export const TIER_PRICING = {
   A: { min: 150, max: 400, description: 'Procedural' },
   B: { min: 500, max: 1400, description: 'Intermediate' },
   C: { min: 1500, max: 3500, description: 'Complex/Dispositive' },
+  D: { min: 1499, max: 1499, description: 'Highly Complex / Dispositive' },
 } as const;
 
 export const TURNAROUND_DAYS = {
   A: { standard: 3, display: '2-3 business days' },
   B: { standard: 4, display: '3-4 business days' },
   C: { standard: 5, display: '4-5 business days' },
+  D: { standard: 7, display: '5-7 business days' },
 } as const;
 
 export type RushLevel = 'standard' | 'expedited_48h' | 'emergency_24h';
@@ -44,7 +46,7 @@ export function calculatePrice(
 /**
  * Get turnaround days based on tier and rush level
  */
-export function getTurnaroundDays(tier: 'A' | 'B' | 'C', rushLevel: RushLevel): number {
+export function getTurnaroundDays(tier: 'A' | 'B' | 'C' | 'D', rushLevel: RushLevel): number {
   if (rushLevel === 'emergency_24h') return 1;
   if (rushLevel === 'expedited_48h') return 2;
   return TURNAROUND_DAYS[tier].standard;
@@ -53,7 +55,7 @@ export function getTurnaroundDays(tier: 'A' | 'B' | 'C', rushLevel: RushLevel): 
 /**
  * Get display string for turnaround
  */
-export function getTurnaroundDisplay(tier: 'A' | 'B' | 'C', rushLevel: RushLevel): string {
+export function getTurnaroundDisplay(tier: 'A' | 'B' | 'C' | 'D', rushLevel: RushLevel): string {
   if (rushLevel === 'emergency_24h') return '24 hours';
   if (rushLevel === 'expedited_48h') return '48 hours';
   return TURNAROUND_DAYS[tier].display;
@@ -62,10 +64,11 @@ export function getTurnaroundDisplay(tier: 'A' | 'B' | 'C', rushLevel: RushLevel
 /**
  * Get tier from price
  */
-export function getTierFromPrice(price: number): 'A' | 'B' | 'C' {
+export function getTierFromPrice(price: number): 'A' | 'B' | 'C' | 'D' {
   if (price <= TIER_PRICING.A.max * 100) return 'A'; // prices in cents
   if (price <= TIER_PRICING.B.max * 100) return 'B';
-  return 'C';
+  if (price <= TIER_PRICING.C.max * 100) return 'C';
+  return 'D';
 }
 
 /**
@@ -78,7 +81,7 @@ export function formatPrice(priceInCents: number): string {
 /**
  * Get price range display for tier
  */
-export function getTierPriceRangeDisplay(tier: 'A' | 'B' | 'C'): string {
+export function getTierPriceRangeDisplay(tier: 'A' | 'B' | 'C' | 'D'): string {
   const { min, max } = TIER_PRICING[tier];
   return `$${min}-$${max}`;
 }

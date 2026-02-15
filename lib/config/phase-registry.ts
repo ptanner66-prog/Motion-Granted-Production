@@ -34,7 +34,7 @@
  *   1. Immutable at runtime — no accidental production changes
  *   2. Version-controlled — every change is in git history
  *   3. Type-safe — compiler catches misconfigurations
- *   4. Testable — unit tests verify all 42 combinations
+ *   4. Testable — unit tests verify all 56 combinations (14 phases × 4 tiers)
  *   5. No DB dependency — works even if Supabase is down
  *   6. Reviewable — one file to understand the entire routing system
  */
@@ -45,8 +45,8 @@ import { MODELS, validateModelString, type ModelId } from './models';
 // TYPES
 // ============================================================================
 
-/** Motion complexity tiers. NEVER use 1/2/3. */
-export type Tier = 'A' | 'B' | 'C';
+/** Motion complexity tiers. NEVER use 1/2/3/4. */
+export type Tier = 'A' | 'B' | 'C' | 'D';
 
 /** All 14 workflow phases in execution order. */
 export type WorkflowPhase =
@@ -78,6 +78,7 @@ interface TierRouting {
   A: RouteConfig;
   B: RouteConfig;
   C: RouteConfig;
+  D: RouteConfig;
 }
 
 /** Complete configuration for one phase. */
@@ -126,6 +127,7 @@ export const BATCH_SIZES = {
   A: 5,
   B: 4,
   C: 3,
+  D: 2,
   /** V.1, VII.1, IX.1 — always 2 regardless of tier */
   CIV: 2,
 } as const;
@@ -142,6 +144,7 @@ export const TURNAROUND = {
   A: { days: '2-3', businessDays: 3 },
   B: { days: '3-4', businessDays: 4 },
   C: { days: '4-5', businessDays: 5 },
+  D: { days: '5-7', businessDays: 7 },
 } as const;
 
 // ============================================================================
@@ -173,13 +176,19 @@ const OPUS_ET_10K: RouteConfig = {
   maxTokens: 64_000,
 };
 
+const OPUS_ET_16K: RouteConfig = {
+  model: MODELS.OPUS,
+  thinkingBudget: 16_000,
+  maxTokens: 64_000,
+};
+
 // ============================================================================
 // THE REGISTRY — Every phase × tier combination
 // ============================================================================
 //
 // READ THIS TABLE LIKE A SPREADSHEET:
 //   Row    = Phase
-//   Column = Tier (A, B, C)
+//   Column = Tier (A, B, C, D)
 //   Cell   = { model, thinkingBudget?, maxTokens }
 //
 // If you need to change routing, change it HERE and ONLY here.
@@ -197,6 +206,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: NO_LLM,
       B: NO_LLM,
       C: NO_LLM,
+      D: NO_LLM,
     },
   },
 
@@ -210,6 +220,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
       C: SONNET_STANDARD,
+      D: SONNET_STANDARD,
     },
   },
 
@@ -227,12 +238,15 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
       C: OPUS_ET_10K,
+      D: OPUS_ET_10K,
     },
   },
 
   // ── Phase IV: Deep Research ───────────────────────────────────────
-  // MODE: CHAT. Sonnet A, Opus B/C.
+  // MODE: CHAT. Sonnet A, Opus B/C, Opus+ET 16K D.
   // CourtListener authority search, case analysis, authority ranking.
+  // Tier D gets 16K extended thinking — unique to D for exhaustive
+  // authority research on dispositive motions.
   'IV': {
     name: 'Deep Research',
     mode: 'CHAT',
@@ -240,6 +254,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: OPUS_STANDARD,
       C: OPUS_STANDARD,
+      D: OPUS_ET_16K,
     },
   },
 
@@ -257,6 +272,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
       C: OPUS_ET_10K,
+      D: OPUS_ET_10K,
     },
   },
 
@@ -275,28 +291,32 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: { model: MODELS.OPUS, maxTokens: 4096 },
       B: { model: MODELS.OPUS, maxTokens: 4096 },
       C: { model: MODELS.OPUS, maxTokens: 4096 },
+      D: { model: MODELS.OPUS, maxTokens: 4096 },
     },
     stages: {
       'stage1': {
         A: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         B: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         C: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        D: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
       },
       'stage2': {
         A: { model: MODELS.OPUS, maxTokens: 4096 },
         B: { model: MODELS.OPUS, maxTokens: 4096 },
         C: { model: MODELS.OPUS, maxTokens: 4096 },
+        D: { model: MODELS.OPUS, maxTokens: 4096 },
       },
       'steps3-5': {
         A: { model: MODELS.HAIKU, maxTokens: 4096 },
         B: { model: MODELS.HAIKU, maxTokens: 4096 },
         C: { model: MODELS.SONNET, maxTokens: 4096 },
+        D: { model: MODELS.SONNET, maxTokens: 4096 },
       },
     },
   },
 
   // ── Phase VI: Opposition Analysis ─────────────────────────────────
-  // MODE: CHAT. SKIP A, Opus+ET 8K B/C.
+  // MODE: CHAT. SKIP A, Opus+ET 8K B/C/D.
   // Anticipates opposing arguments and prepares responses.
   // Tier A procedural motions skip opposition analysis entirely.
   'VI': {
@@ -306,6 +326,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SKIP,
       B: OPUS_ET_8K,
       C: OPUS_ET_8K,
+      D: OPUS_ET_8K,
     },
   },
 
@@ -320,6 +341,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: OPUS_ET_10K,
       B: OPUS_ET_10K,
       C: OPUS_ET_10K,
+      D: OPUS_ET_10K,
     },
   },
 
@@ -333,22 +355,26 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: { model: MODELS.OPUS, maxTokens: 4096 },
       B: { model: MODELS.OPUS, maxTokens: 4096 },
       C: { model: MODELS.OPUS, maxTokens: 4096 },
+      D: { model: MODELS.OPUS, maxTokens: 4096 },
     },
     stages: {
       'stage1': {
         A: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         B: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         C: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        D: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
       },
       'stage2': {
         A: { model: MODELS.OPUS, maxTokens: 4096 },
         B: { model: MODELS.OPUS, maxTokens: 4096 },
         C: { model: MODELS.OPUS, maxTokens: 4096 },
+        D: { model: MODELS.OPUS, maxTokens: 4096 },
       },
       'steps3-5': {
         A: { model: MODELS.HAIKU, maxTokens: 4096 },
         B: { model: MODELS.HAIKU, maxTokens: 4096 },
         C: { model: MODELS.SONNET, maxTokens: 4096 },
+        D: { model: MODELS.SONNET, maxTokens: 4096 },
       },
     },
   },
@@ -369,6 +395,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: OPUS_ET_8K,
       C: OPUS_ET_8K,
+      D: OPUS_ET_8K,
     },
   },
 
@@ -382,6 +409,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: NO_LLM,
       B: NO_LLM,
       C: NO_LLM,
+      D: NO_LLM,
     },
   },
 
@@ -395,6 +423,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: SONNET_STANDARD,
       C: SONNET_STANDARD,
+      D: SONNET_STANDARD,
     },
   },
 
@@ -408,22 +437,26 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: { model: MODELS.OPUS, maxTokens: 4096 },
       B: { model: MODELS.OPUS, maxTokens: 4096 },
       C: { model: MODELS.OPUS, maxTokens: 4096 },
+      D: { model: MODELS.OPUS, maxTokens: 4096 },
     },
     stages: {
       'stage1': {
         A: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         B: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
         C: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
+        D: { model: MODELS.GPT4_TURBO, maxTokens: 4096 },
       },
       'stage2': {
         A: { model: MODELS.OPUS, maxTokens: 4096 },
         B: { model: MODELS.OPUS, maxTokens: 4096 },
         C: { model: MODELS.OPUS, maxTokens: 4096 },
+        D: { model: MODELS.OPUS, maxTokens: 4096 },
       },
       'steps3-5': {
         A: { model: MODELS.HAIKU, maxTokens: 4096 },
         B: { model: MODELS.HAIKU, maxTokens: 4096 },
         C: { model: MODELS.SONNET, maxTokens: 4096 },
+        D: { model: MODELS.SONNET, maxTokens: 4096 },
       },
     },
   },
@@ -438,6 +471,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: NO_LLM,
       B: NO_LLM,
       C: NO_LLM,
+      D: NO_LLM,
     },
   },
 };
@@ -451,7 +485,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
  * Returns null for CODE phases without LLM or SKIP (Phase VI Tier A).
  *
  * @param phase - Workflow phase (I through X)
- * @param tier - Motion complexity tier (A, B, C)
+ * @param tier - Motion complexity tier (A, B, C, D)
  * @param stage - Optional CIV stage for V.1/VII.1/IX.1 (stage1, stage2, steps3-5)
  * @returns Model string or null
  *
@@ -553,7 +587,7 @@ export function getMaxTokens(
 /**
  * Get citation batch size for a phase/tier combination.
  * CIV phases (V.1, VII.1, IX.1) always return 2.
- * Standard phases return tier-specific: A=5, B=4, C=3.
+ * Standard phases return tier-specific: A=5, B=4, C=3, D=2.
  */
 export function getBatchSize(phase: WorkflowPhase, tier: Tier): number {
   const CIV_PHASES: WorkflowPhase[] = ['V.1', 'VII.1', 'IX.1'];
@@ -616,7 +650,7 @@ export const TOTAL_PHASES = 14;
 (function validateRegistry(): void {
   for (const phase of PHASES) {
     const config = PHASE_REGISTRY[phase];
-    for (const tier of ['A', 'B', 'C'] as Tier[]) {
+    for (const tier of ['A', 'B', 'C', 'D'] as Tier[]) {
       const route = config.routing[tier];
       if (route.model !== null) {
         validateModelString(route.model, `PHASE_REGISTRY[${phase}].routing.${tier}`);

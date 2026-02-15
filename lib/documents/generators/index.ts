@@ -136,6 +136,16 @@ const TIER_REQUIREMENTS: Record<string, DocumentType[]> = {
     'notice_of_motion',
     'case_appendix',
   ],
+
+  // Tier D: Comprehensive package (dispositive motions)
+  D: [
+    'proof_of_service',
+    'table_of_authorities',
+    'exhibit_index',
+    'proposed_order',
+    'notice_of_motion',
+    'case_appendix',
+  ],
 };
 
 /**
@@ -293,7 +303,7 @@ export async function generateDocument<T extends DocumentType>(
  * Get required documents based on tier, jurisdiction, and motion type
  */
 export function getRequiredDocuments(
-  tier: 'A' | 'B' | 'C',
+  tier: 'A' | 'B' | 'C' | 'D',
   jurisdiction: string,
   motionType: string
 ): DocumentType[] {
@@ -351,7 +361,7 @@ export function getRequiredDocuments(
  */
 export async function generateAllRequired(
   orderId: string,
-  tier: 'A' | 'B' | 'C',
+  tier: 'A' | 'B' | 'C' | 'D',
   jurisdiction: string,
   motionType: string,
   dataProvider: DocumentDataProvider

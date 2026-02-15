@@ -9,7 +9,7 @@
  * DO NOT reverse these descriptions. A is simple, C is complex.
  */
 
-export type MotionTier = 'A' | 'B' | 'C';
+export type MotionTier = 'A' | 'B' | 'C' | 'D';
 
 // ============================================================================
 // TIER DEFINITIONS
@@ -61,22 +61,40 @@ export const TIERS = {
   },
   C: {
     id: 'C' as const,
-    name: 'Complex/Dispositive',
-    description: 'MSJ, MSA, PI, TRO - Complex strategic motions',
+    name: 'Complex',
+    description: 'Complex motions requiring deep analysis',
     color: { bg: '#EDE9FE', text: '#5B21B6' },
-    priceLA: { min: 1500, max: 3500 },
-    priceCA: { min: 1800, max: 4200 },
+    priceLA: { min: 999, max: 999 },
+    priceCA: { min: 1199, max: 1199 },
     turnaround: '4-5 business days',
+    motionTypes: [
+      'Anti-SLAPP Motion',
+      'Motion for JNOV',
+      'Motion for New Trial',
+      'Motion in Limine (Complex)',
+      'Peremptory Exception',
+      'Motion for Sanctions (Complex)',
+      'Other Complex Motion',
+    ],
+  },
+  D: {
+    id: 'D' as const,
+    name: 'Highly Complex/Dispositive',
+    description: 'MSJ, MSA, PI, TRO, Class Cert - Dispositive and highest-complexity motions',
+    color: { bg: '#FEF3C7', text: '#92400E' },
+    priceLA: { min: 1499, max: 1499 },
+    priceCA: { min: 1799, max: 1799 },
+    turnaround: '5-7 business days',
     motionTypes: [
       'Motion for Summary Judgment',
       'Motion for Summary Adjudication',
-      'Anti-SLAPP Motion',
+      'Motion for Partial Summary Judgment',
+      'Motion for Class Certification',
+      'Motion to Decertify Class',
       'Preliminary Injunction',
       'Temporary Restraining Order',
-      'Class Certification Motion',
-      'Motion for Sanctions (Complex)',
-      'Peremptory Exception',
-      'Other Complex Motion',
+      'Daubert/Sargent Motion',
+      'Anti-SLAPP Motion (Complex)',
     ],
   },
 } as const;
@@ -121,6 +139,14 @@ export const WORKFLOW_TIER_CONFIG: Record<MotionTier, WorkflowTierConfig> = {
     citationTargets: { min: 4, target: 16, highStakes: true },
     qualityThreshold: 0.87,
   },
+  D: {
+    tier: 'D',
+    skipPhaseVI: false,
+    maxRevisionLoops: 3,
+    deepResearch: true,
+    citationTargets: { min: 6, target: 20, highStakes: true },
+    qualityThreshold: 0.87,
+  },
 };
 
 export function getWorkflowTierConfig(tier: MotionTier): WorkflowTierConfig {
@@ -155,9 +181,15 @@ export const TIER_PRICING: TierPricing[] = [
   },
   {
     tier: 'C',
-    louisiana: { min: 1500, max: 3500 },
-    california: { min: 1800, max: 4200 },
+    louisiana: { min: 999, max: 999 },
+    california: { min: 1199, max: 1199 },
     turnaroundDays: '4-5',
+  },
+  {
+    tier: 'D',
+    louisiana: { min: 1499, max: 1499 },
+    california: { min: 1799, max: 1799 },
+    turnaroundDays: '5-7',
   },
 ];
 

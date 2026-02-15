@@ -43,7 +43,7 @@ export interface MotionData {
   supportingDocuments?: SupportingDocument[];
 
   // Metadata
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   filingDate: string;
 }
 

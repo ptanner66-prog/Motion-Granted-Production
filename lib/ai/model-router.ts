@@ -25,7 +25,7 @@ import { MODELS } from '@/lib/config/models';
 // TYPES
 // ============================================================================
 
-export type MotionTier = 'A' | 'B' | 'C';
+export type MotionTier = 'A' | 'B' | 'C' | 'D';
 
 export type TaskType =
   | 'stage_1_holding'
@@ -92,6 +92,15 @@ const DEFAULT_CONFIGS: Record<MotionTier, Record<TaskType, string>> = {
     tiebreaker: 'gpt-4-turbo',
   },
   'C': {
+    stage_1_holding: 'gpt-4-turbo',
+    stage_2_adversarial: 'claude-opus-4-5-20251101',
+    dicta_detection: 'claude-sonnet-4-20250514',
+    bad_law_analysis: 'claude-sonnet-4-20250514',
+    drafting: 'claude-opus-4-5-20251101',
+    judge_simulation: 'claude-opus-4-5-20251101',
+    tiebreaker: 'gpt-4-turbo',
+  },
+  'D': {
     stage_1_holding: 'gpt-4-turbo',
     stage_2_adversarial: 'claude-opus-4-5-20251101',
     dicta_detection: 'claude-sonnet-4-20250514',
@@ -415,6 +424,11 @@ export const CIV_MODEL_ROUTING = {
     stage_2_adversarial: MODELS.OPUS,
     steps_3_5: MODELS.SONNET,
   },
+  tier_d: {
+    stage_1_holding: CITATION_GPT_MODELS.STAGE_1_TIER_C,
+    stage_2_adversarial: MODELS.OPUS,
+    steps_3_5: MODELS.SONNET,
+  },
 } as const;
 
 /** Motion type to tier mapping for CIV */
@@ -434,13 +448,19 @@ export const MOTION_TYPE_TO_TIER: Record<string, MotionTier> = {
   'anti_slapp': 'B',
   'motion_to_dismiss': 'B',
 
-  // Tier C - Complex/high-stakes
-  'motion_for_summary_judgment': 'C',
-  'msj': 'C',
-  'preliminary_injunction': 'C',
-  'tro': 'C',
-  'class_certification': 'C',
-  'daubert_motion': 'C',
+  // Tier C - Complex
+  'anti_slapp_complex': 'C',
+  'motion_in_limine_complex': 'C',
+  'jnov': 'C',
+  'new_trial': 'C',
+
+  // Tier D - Highly Complex/Dispositive
+  'motion_for_summary_judgment': 'D',
+  'msj': 'D',
+  'preliminary_injunction': 'D',
+  'tro': 'D',
+  'class_certification': 'D',
+  'daubert_motion': 'D',
 };
 
 /** Get tier from motion type string */

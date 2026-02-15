@@ -48,7 +48,13 @@ const TIER_STYLES: Record<MotionTier, {
     bg: 'bg-purple-100',
     text: 'text-purple-700',
     border: 'border-purple-200',
-    tooltip: 'Complex/Dispositive - MSJ, MSA, PI, TRO',
+    tooltip: 'Complex - Anti-SLAPP, JNOV, New Trial',
+  },
+  D: {
+    bg: 'bg-amber-100',
+    text: 'text-amber-700',
+    border: 'border-amber-200',
+    tooltip: 'Highly Complex/Dispositive - MSJ, MSA, PI, TRO, Class Cert',
   },
 };
 
@@ -67,7 +73,7 @@ export function TierBadge({
 }: TierBadgeProps) {
   // Normalize tier to uppercase and validate
   const normalizedTier = (tier?.toString().toUpperCase() as MotionTier) || 'A';
-  const validTier: MotionTier = ['A', 'B', 'C'].includes(normalizedTier) ? normalizedTier : 'A';
+  const validTier: MotionTier = ['A', 'B', 'C', 'D'].includes(normalizedTier) ? normalizedTier : 'A';
 
   const styles = TIER_STYLES[validTier];
   const description = TIER_DESCRIPTIONS[validTier];
@@ -122,7 +128,7 @@ export function getTierColor(tier: MotionTier | string): {
   border: string;
 } {
   const normalizedTier = (tier?.toString().toUpperCase() as MotionTier) || 'A';
-  const validTier: MotionTier = ['A', 'B', 'C'].includes(normalizedTier) ? normalizedTier : 'A';
+  const validTier: MotionTier = ['A', 'B', 'C', 'D'].includes(normalizedTier) ? normalizedTier : 'A';
   return TIER_STYLES[validTier];
 }
 

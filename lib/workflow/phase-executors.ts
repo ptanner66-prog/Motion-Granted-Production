@@ -4811,7 +4811,7 @@ Assemble and check. Provide as JSON.`;
           propositionSupported: '',
           courtlistenerUrl: c.courtlistener_id ? `https://www.courtlistener.com/opinion/${c.courtlistener_id}/` : undefined,
         })),
-        tier: input.tier as 'A' | 'B' | 'C',
+        tier: input.tier as 'A' | 'B' | 'C' | 'D',
         filingDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       };
 

@@ -51,15 +51,18 @@ import type { WorkflowPath, MotionTier } from '@/types/workflow';
 // ============================================================================
 
 /**
- * Normalize motion tier to letter format (A, B, C).
- * Database may store as numeric (0/1/2/3) or letter - this ensures letter output.
+ * Normalize motion tier to letter format (A, B, C, D).
+ * Database may store as numeric (0/1/2/3/4) or letter - this ensures letter output.
  *
- * Mapping: 0→A, 1→A, 2→B, 3→C (0 treated as A for safety)
+ * Mapping: 0→A, 1→A, 2→B, 3→C, 4→D (0 treated as A for safety)
  * Already-letter values pass through unchanged.
+ *
+ * P0 FIX: THROWS on unknown tiers instead of silently defaulting to 'B'.
+ * Silent defaults caused Tier D ($1,499) motions to be processed as Tier B ($599).
  */
-function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' {
+function normalizeMotionTier(tier: unknown): MotionTier {
   // If already a valid letter, return it
-  if (tier === 'A' || tier === 'B' || tier === 'C') {
+  if (tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D') {
     return tier;
   }
 
@@ -68,23 +71,29 @@ function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' {
     if (tier === 1 || tier === 0) return 'A';
     if (tier === 2) return 'B';
     if (tier === 3) return 'C';
+    if (tier === 4) return 'D';
   }
 
-  // Handle string numbers
+  // Handle string numbers and lowercase letters
   if (typeof tier === 'string') {
     if (tier === '1' || tier === '0') return 'A';
     if (tier === '2') return 'B';
     if (tier === '3') return 'C';
+    if (tier === '4') return 'D';
     // Check for lowercase letters
     const upper = tier.toUpperCase();
-    if (upper === 'A' || upper === 'B' || upper === 'C') {
-      return upper as 'A' | 'B' | 'C';
+    if (upper === 'A' || upper === 'B' || upper === 'C' || upper === 'D') {
+      return upper as MotionTier;
     }
   }
 
-  // Default to B (Motion to Compel tier)
-  log.warn('Unknown tier value, defaulting to B', { tier });
-  return 'B';
+  // P0 FIX: THROW instead of defaulting. Silent defaults are how
+  // Tier D motions get processed as Tier B, costing $900 per incident.
+  throw new Error(
+    `[TIER_NORMALIZATION] Unknown tier value: ${JSON.stringify(tier)}. ` +
+    `Valid tiers are A, B, C, D (or numeric 0-4). ` +
+    `This error prevents silent misrouting of orders.`
+  );
 }
 
 // Create admin client with service role key (bypasses RLS for server-side operations)
@@ -682,6 +691,7 @@ function mapMotionTypeToCode(motionType: string, tier: MotionTier): string {
     'A': 'MTD_12B6',
     'B': 'MTC',
     'C': 'MEXT',
+    'D': 'MSJ',
   };
 
   return tierDefaults[tier] || 'MTC';
