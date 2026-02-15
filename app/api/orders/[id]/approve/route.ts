@@ -19,13 +19,17 @@ const log = createLogger('api-orders-approve');
 // ---------------------------------------------------------------------------
 // Customer CP3 Approval
 // ---------------------------------------------------------------------------
-async function handleCustomerApproval(orderId: string, userId: string) {
+async function handleCustomerApproval(
+  orderId: string,
+  userId: string,
+  body: { status_version?: number }
+) {
   const supabase = await createClient();
 
   // Fetch order and verify ownership
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, client_id, status, order_number')
+    .select('id, client_id, status, order_number, status_version')
     .eq('id', orderId)
     .single();
 
@@ -37,13 +41,13 @@ async function handleCustomerApproval(orderId: string, userId: string) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Verify the order is in a reviewable state
-  const reviewableStatuses = ['draft_delivered', 'pending_review'];
+  // Verify the order is in a reviewable state (7-status + legacy)
+  const reviewableStatuses = ['AWAITING_APPROVAL', 'draft_delivered', 'pending_review'];
   if (!reviewableStatuses.includes(order.status)) {
     return NextResponse.json(
       {
         error:
-          order.status === 'completed'
+          order.status === 'completed' || order.status === 'COMPLETED'
             ? 'This order has already been approved.'
             : 'This order is not ready for review.',
       },
@@ -51,18 +55,51 @@ async function handleCustomerApproval(orderId: string, userId: string) {
     );
   }
 
-  // Update order status to completed (atomic: only if in expected state)
-  const { error: updateError } = await supabase
+  // Optimistic concurrency: verify status_version
+  if (body.status_version === undefined || body.status_version === null) {
+    return NextResponse.json(
+      { error: 'status_version is required' },
+      { status: 400 }
+    );
+  }
+
+  const currentVersion = order.status_version ?? 0;
+  if (body.status_version !== currentVersion) {
+    return NextResponse.json(
+      {
+        error: 'Version conflict. The order has been modified by another request.',
+        current_version: currentVersion,
+      },
+      { status: 409 }
+    );
+  }
+
+  const now = new Date().toISOString();
+  const retentionExpiresAt = new Date(
+    Date.now() + 180 * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  // Update order status to completed (atomic: only if version matches)
+  const { data: updatedOrder, error: updateError } = await supabase
     .from('orders')
     .update({
       status: 'completed',
-      updated_at: new Date().toISOString(),
+      completed_at: now,
+      delivered_at: now,
+      retention_expires_at: retentionExpiresAt,
+      status_version: currentVersion + 1,
+      updated_at: now,
     })
     .eq('id', orderId)
-    .eq('status', 'draft_delivered');
+    .eq('status_version', currentVersion)
+    .select('id')
+    .single();
 
-  if (updateError) {
-    return NextResponse.json({ error: 'Failed to approve order' }, { status: 500 });
+  if (updateError || !updatedOrder) {
+    return NextResponse.json(
+      { error: 'Failed to approve order. It may have been modified concurrently.' },
+      { status: 409 }
+    );
   }
 
   // Fetch deliverable documents with download URLs
@@ -83,6 +120,7 @@ async function handleCustomerApproval(orderId: string, userId: string) {
   return NextResponse.json({
     success: true,
     orderNumber: order.order_number,
+    status_version: currentVersion + 1,
     downloadUrls,
     documents: (documents ?? []).map((doc: { id: string; file_name: string; document_type: string; file_type: string; file_url: string; file_size: number }) => ({
       id: doc.id,
@@ -112,7 +150,7 @@ export async function POST(
   }
 
   // Parse request body (may be empty for customer approval)
-  let body: { action?: string; notes?: string } = {};
+  let body: { action?: string; notes?: string; status_version?: number } = {};
   try {
     body = await request.json();
   } catch {
@@ -121,7 +159,7 @@ export async function POST(
 
   // Route: if no action field, treat as customer CP3 approval
   if (!body.action) {
-    return handleCustomerApproval(orderId, user.id);
+    return handleCustomerApproval(orderId, user.id, body);
   }
 
   // ---------- Admin checkpoint approval flow ----------

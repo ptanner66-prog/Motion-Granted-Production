@@ -6,10 +6,11 @@ const MAX_NOTES_LENGTH = 5000
 /**
  * POST /api/orders/[id]/request-changes
  *
- * Submits a revision request for an order at CP3.
+ * Submits a CP3 change request for an order awaiting customer approval.
+ * This is a free CP3 rework — does NOT increment revision_count.
  * Auth: Must be the order owner.
- * Body: { notes: string } — non-empty, max 5000 chars.
- * Returns: { success: true, revisionId: string }
+ * Body: { notes: string, status_version: number }
+ * Returns: { success: true }
  */
 export async function POST(
   request: Request,
@@ -29,9 +30,9 @@ export async function POST(
     }
 
     // Parse and validate body
-    let body: { notes?: unknown }
+    let body: { notes?: unknown; status_version?: unknown }
     try {
-      body = (await request.json()) as { notes?: unknown }
+      body = (await request.json()) as { notes?: unknown; status_version?: unknown }
     } catch {
       return NextResponse.json(
         { error: 'Invalid request body' },
@@ -58,10 +59,19 @@ export async function POST(
       )
     }
 
+    // Validate status_version
+    const statusVersion = typeof body.status_version === 'number' ? body.status_version : undefined
+    if (statusVersion === undefined) {
+      return NextResponse.json(
+        { error: 'status_version is required' },
+        { status: 400 }
+      )
+    }
+
     // Fetch the order and verify ownership
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, client_id, status, order_number, revision_count')
+      .select('id, client_id, status, order_number, status_version')
       .eq('id', orderId)
       .single()
 
@@ -73,74 +83,60 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Verify the order is in a reviewable state
-    const reviewableStatuses = ['draft_delivered', 'pending_review']
+    // Verify the order is in a reviewable state (7-status + legacy)
+    const reviewableStatuses = ['AWAITING_APPROVAL', 'draft_delivered', 'pending_review']
     if (!reviewableStatuses.includes(order.status)) {
       return NextResponse.json(
         {
           error:
-            order.status === 'completed'
+            order.status === 'completed' || order.status === 'COMPLETED'
               ? 'This order has already been approved and cannot be revised.'
-              : 'This order is not in a state that accepts revision requests.',
+              : 'This order is not in a state that accepts change requests.',
         },
         { status: 400 }
       )
     }
 
-    // Check for existing pending revision requests
-    const { data: existingRequests } = await supabase
-      .from('revision_requests')
-      .select('id')
-      .eq('order_id', orderId)
-      .in('status', ['pending', 'in_progress'])
-      .limit(1)
-
-    if (existingRequests && existingRequests.length > 0) {
+    // Optimistic concurrency check
+    const currentVersion = order.status_version ?? 0
+    if (statusVersion !== currentVersion) {
       return NextResponse.json(
-        { error: 'A revision request is already pending for this order.' },
+        {
+          error: 'Version conflict. The order has been modified by another request.',
+          current_version: currentVersion,
+        },
         { status: 409 }
       )
     }
 
-    // Create revision request
-    const { data: revision, error: revisionError } = await supabase
-      .from('revision_requests')
-      .insert({
-        order_id: orderId,
-        instructions: notes,
-        status: 'pending',
+    const now = new Date().toISOString()
+
+    // Update order status to in_progress with CP3 change notes
+    // This does NOT increment revision_count (free CP3 rework)
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: 'in_progress',
+        cp3_change_notes: notes,
+        status_version: currentVersion + 1,
+        updated_at: now,
       })
+      .eq('id', orderId)
+      .eq('status_version', currentVersion)
       .select('id')
       .single()
 
-    if (revisionError || !revision) {
+    if (updateError || !updatedOrder) {
       return NextResponse.json(
-        { error: 'Failed to create revision request' },
-        { status: 500 }
-      )
-    }
-
-    // Update order status to revision_requested
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: 'revision_requested',
-        revision_count: (order.revision_count ?? 0) + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', orderId)
-
-    if (updateError) {
-      return NextResponse.json(
-        { error: 'Failed to update order status' },
-        { status: 500 }
+        { error: 'Failed to submit change request. The order may have been modified concurrently.' },
+        { status: 409 }
       )
     }
 
     return NextResponse.json({
       success: true,
-      revisionId: revision.id,
       orderNumber: order.order_number,
+      status_version: currentVersion + 1,
     })
   } catch (err) {
     const message =

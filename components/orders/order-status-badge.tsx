@@ -1,11 +1,13 @@
 import { ORDER_STATUSES, type OrderStatus } from '@/config/motion-types'
-import { cn } from '@/lib/utils'
+import { cn, mapToDisplayStatus } from '@/lib/utils'
 
 interface OrderStatusBadgeProps {
-  status: OrderStatus
+  status: OrderStatus | string
   className?: string
   size?: 'sm' | 'default'
   showDot?: boolean
+  /** When true, maps legacy statuses to 7-status model for attorney display */
+  useDisplayStatus?: boolean
 }
 
 const statusStyles: Record<string, { bg: string; text: string; dot: string }> = {
@@ -60,9 +62,11 @@ export function OrderStatusBadge({
   status,
   className,
   size = 'default',
-  showDot = true
+  showDot = true,
+  useDisplayStatus = false
 }: OrderStatusBadgeProps) {
-  const statusConfig = ORDER_STATUSES[status]
+  const resolvedStatus = useDisplayStatus ? mapToDisplayStatus(status) : status
+  const statusConfig = ORDER_STATUSES[resolvedStatus as OrderStatus] || ORDER_STATUSES.submitted
   const styles = statusStyles[statusConfig.color] || statusStyles.gray
 
   return (

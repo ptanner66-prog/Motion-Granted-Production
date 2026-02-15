@@ -68,6 +68,21 @@ export interface Order {
 
   // For Phase IX.1 skip logic (v6.3)
   judge_ordered_separate_statement?: boolean;
+
+  // SP-D: 7-Status Model fields
+  amount_paid?: number | null;
+  hold_response?: string | null;
+  cp3_change_notes?: string | null;
+  revision_notes?: string | null;
+  cancel_reason?: string | null;
+  refund_amount?: number | null;
+  refund_status?: string | null;
+  delivered_at?: string | null;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
+  hold_expires_at?: string | null;
+  status_version?: number;
+  retention_expires_at?: string | null;
 }
 
 export type OrderStatus =
@@ -83,7 +98,15 @@ export type OrderStatus =
   | 'completed'
   | 'on_hold'
   | 'cancelled'
-  | 'refunded';
+  | 'refunded'
+  // 7-Status Model (SP-D Attorney Dashboard)
+  | 'PAID'
+  | 'HOLD_PENDING'
+  | 'IN_PROGRESS'
+  | 'AWAITING_APPROVAL'
+  | 'REVISION_REQ'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
 export interface Party {
   id: string;
