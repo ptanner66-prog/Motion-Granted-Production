@@ -1,53 +1,68 @@
-import { Metadata } from 'next';
+// app/(marketing)/page.tsx
+// CLAY'S APPROVED LANDING PAGE - DO NOT MODIFY DESIGN
 import Link from 'next/link';
 import {
   FileText,
   Scale,
+  Clock,
   Shield,
+  Check,
   ArrowRight,
   Search,
   AlertTriangle,
   BookOpen,
-  Zap
+  Zap,
+  DollarSign,
+  Users,
+  Lock,
+  Award
 } from 'lucide-react';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: 'Motion Granted | AI-Powered Legal Motion Drafting',
-  description: 'Professional motion drafting in hours, not days. Flat-fee pricing. Every citation screened for accuracy. No subscriptions, no minimums.',
-  openGraph: {
-    title: 'Motion Granted | AI-Powered Legal Motion Drafting',
-    description: 'Flat-fee motion drafting for attorneys. Court-ready documents with every citation screened.',
-  },
+  description: 'Professional motion drafting in hours, not days. Flat-fee pricing. Every citation screened for accuracy.',
 };
 
 export default function LandingPage() {
   return (
-    <div>
-      {/* Hero Section */}
+    <div className="font-sans">
+      {/* ============================================== */}
+      {/* HERO SECTION - Clay's approved design         */}
+      {/* ============================================== */}
       <section className="relative min-h-[90vh] bg-gradient-to-br from-[#0F1F33] to-[#1E3A5F] text-white overflow-hidden">
-        {/* Background pattern */}
+        {/* Background pattern - subtle plus signs */}
         <div className="absolute inset-0 opacity-5">
-          <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }} />
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            }}
+          />
         </div>
 
         <div className="relative max-w-6xl mx-auto px-6 pt-32 pb-20">
           <div className="text-center mb-12">
-            <span className="inline-block px-4 py-1.5 bg-[#C9A227]/20 text-[#C9A227] text-sm font-semibold rounded-full mb-6">
+            {/* Badge */}
+            <span className="inline-block px-4 py-1.5 bg-[#C9A227]/20 text-[#C9A227] text-sm font-semibold rounded-full mb-6 tracking-wider">
               LEGAL DRAFTING REIMAGINED
             </span>
+
+            {/* Headline - Instrument Serif */}
             <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl leading-tight mb-6">
               Motions drafted by AI.<br />
               <em className="text-[#C9A227]">Reviewed by attorneys.</em>
             </h1>
+
+            {/* Subheadline */}
             <p className="text-xl text-slate-300 max-w-2xl mx-auto mb-10">
               Professional motion drafting in hours, not days. Flat-fee pricing.
               Every citation screened for accuracy. No subscriptions, no minimums.
             </p>
+
+            {/* CTAs */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
-                href="/orders/new"
+                href="/register"
                 className="inline-flex items-center gap-2 px-8 py-4 bg-[#C9A227] text-[#0F1F33] font-bold rounded-lg hover:bg-[#D4B33A] transition-all shadow-lg hover:shadow-xl"
               >
                 Submit Your First Order
@@ -64,7 +79,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* How It Works */}
+      {/* ============================================== */}
+      {/* HOW IT WORKS - 3 Steps                        */}
+      {/* ============================================== */}
       <section className="py-24 bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-16">
@@ -107,7 +124,7 @@ export default function LandingPage() {
                 03
               </span>
               <Scale className="w-10 h-10 text-[#1E3A5F] mb-4" />
-              <h3 className="text-xl font-bold text-[#0F1F33] mb-2">Attorney review &amp; delivery</h3>
+              <h3 className="text-xl font-bold text-[#0F1F33] mb-2">Attorney review & delivery</h3>
               <p className="text-slate-500">
                 Licensed attorney reviews the draft. You receive a court-ready document.
               </p>
@@ -116,7 +133,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Citation Verification Section */}
+      {/* ============================================== */}
+      {/* CITATION VERIFICATION SECTION                 */}
+      {/* ============================================== */}
       <section className="py-24 bg-slate-50">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-16">
@@ -127,93 +146,182 @@ export default function LandingPage() {
               Every citation screened. <em className="text-[#C9A227]">Not some. Every one.</em>
             </h2>
             <p className="text-slate-500 mt-4 max-w-xl mx-auto">
-              Our 7-step verification pipeline catches bad law before it reaches your brief.
-              <br />
-              <span className="text-sm text-slate-400 mt-2 inline-block">
-                Verified using open-source legal databases. Not a substitute for Shepard&apos;s® or KeyCite®.
-              </span>
+              Our verification pipeline catches bad law before it reaches your brief.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-4 gap-6">
-            <VerificationStep
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <VerificationCard
               icon={<Search className="w-6 h-6" />}
-              title="Existence Check"
-              description="Verify the case actually exists in legal databases"
+              title="Citation Existence"
+              description="Every case verified against official court databases"
             />
-            <VerificationStep
-              icon={<BookOpen className="w-6 h-6" />}
-              title="Holding Analysis"
-              description="Extract and validate the legal holding"
-            />
-            <VerificationStep
+            <VerificationCard
               icon={<AlertTriangle className="w-6 h-6" />}
-              title="Subsequent History"
-              description="Check for overruling, distinguishing, or questioning"
+              title="Negative Treatment"
+              description="Overruled, reversed, or distinguished cases flagged"
             />
-            <VerificationStep
+            <VerificationCard
+              icon={<BookOpen className="w-6 h-6" />}
+              title="Quotation Accuracy"
+              description="Holdings and quotations verified against source"
+            />
+            <VerificationCard
               icon={<Shield className="w-6 h-6" />}
-              title="Bad Law Flags"
-              description="Flag citations with negative treatment signals"
+              title="Final Attorney Review"
+              description="Licensed attorney confirms all citations before delivery"
             />
           </div>
+
+          <p className="text-center text-xs text-slate-400 mt-8">
+            Verified using open-source legal databases. Not a substitute for Shepard&apos;s® or KeyCite®.
+          </p>
         </div>
       </section>
 
-      {/* Pricing Preview */}
+      {/* ============================================== */}
+      {/* PRICING PREVIEW                               */}
+      {/* ============================================== */}
       <section className="py-24 bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-16">
             <span className="text-sm font-bold text-[#C9A227] uppercase tracking-wider">
-              FLAT-FEE PRICING
+              TRANSPARENT PRICING
             </span>
             <h2 className="font-serif text-4xl text-[#0F1F33] mt-3">
-              Know your cost <em className="text-[#C9A227]">upfront</em>
+              Flat fees. <em className="text-[#C9A227]">No surprises.</em>
             </h2>
+            <p className="text-slate-500 mt-4 max-w-xl mx-auto">
+              Know exactly what you&apos;ll pay before you order. No hourly billing, no hidden fees.
+            </p>
           </div>
 
-          <div className="grid md:grid-cols-4 gap-6">
-            <PricingCard tier="A" price="$150" description="Simple procedural motions" />
-            <PricingCard tier="B" price="$350" description="Standard substantive motions" featured />
-            <PricingCard tier="C" price="$850" description="Complex motions with multiple issues" />
-            <PricingCard tier="D" price="$1,500+" description="Major dispositive motions" />
+          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+            <PricingCard
+              tier="Tier A"
+              price="$299"
+              description="Procedural Motions"
+              items={[
+                "Motion to Extend",
+                "Motion to Withdraw",
+                "Motion for Continuance",
+              ]}
+            />
+            <PricingCard
+              tier="Tier B"
+              price="$599"
+              description="Intermediate Motions"
+              items={[
+                "Motion to Compel",
+                "Motion in Limine",
+                "Exceptions (LA)",
+              ]}
+              featured
+            />
+            <PricingCard
+              tier="Tier C/D"
+              price="$999+"
+              description="Complex Motions"
+              items={[
+                "Summary Judgment",
+                "Preliminary Injunction",
+                "Class Certification",
+              ]}
+            />
           </div>
 
-          <div className="text-center mt-8">
+          <div className="text-center mt-12">
             <Link
               href="/pricing"
               className="inline-flex items-center gap-2 text-[#1E3A5F] font-semibold hover:text-[#C9A227] transition-colors"
             >
-              View full pricing details
+              View complete pricing guide
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-24 bg-[#0F1F33]">
+      {/* ============================================== */}
+      {/* WHY MOTION GRANTED                            */}
+      {/* ============================================== */}
+      <section className="py-24 bg-slate-50">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <span className="text-sm font-bold text-[#C9A227] uppercase tracking-wider">
+              WHY CHOOSE US
+            </span>
+            <h2 className="font-serif text-4xl text-[#0F1F33] mt-3">
+              Built for <em className="text-[#C9A227]">busy attorneys</em>
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <BenefitCard
+              icon={<DollarSign className="w-6 h-6" />}
+              title="No Retainers"
+              description="Pay per order. No ongoing commitments."
+            />
+            <BenefitCard
+              icon={<Lock className="w-6 h-6" />}
+              title="Confidential & Secure"
+              description="Your case information is never shared or used for training."
+            />
+            <BenefitCard
+              icon={<Users className="w-6 h-6" />}
+              title="Attorney Supervised"
+              description="Licensed attorneys review every draft before delivery."
+            />
+            <BenefitCard
+              icon={<Award className="w-6 h-6" />}
+              title="One Revision Included"
+              description="Not satisfied? We'll revise at no extra charge."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================== */}
+      {/* FINAL CTA                                     */}
+      {/* ============================================== */}
+      <section className="py-24 bg-gradient-to-br from-[#0F1F33] to-[#1E3A5F] text-white">
         <div className="max-w-4xl mx-auto px-6 text-center">
-          <h2 className="font-serif text-4xl text-white mb-6">
-            Ready to reclaim your <em className="text-[#C9A227]">billable hours?</em>
+          <h2 className="font-serif text-4xl md:text-5xl mb-6">
+            Ready to <em className="text-[#C9A227]">delegate</em>?
           </h2>
-          <p className="text-slate-300 text-lg mb-10">
-            Submit your first order today. No subscription required.
+          <p className="text-xl text-slate-300 mb-10 max-w-2xl mx-auto">
+            Stop spending nights and weekends on motion drafting.
+            Let us handle the heavy lifting while you focus on strategy.
           </p>
-          <Link
-            href="/orders/new"
-            className="inline-flex items-center gap-2 px-10 py-5 bg-[#C9A227] text-[#0F1F33] font-bold text-lg rounded-lg hover:bg-[#D4B33A] transition-all shadow-lg"
-          >
-            Get Started
-            <ArrowRight className="w-5 h-5" />
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-2 px-8 py-4 bg-[#C9A227] text-[#0F1F33] font-bold rounded-lg hover:bg-[#D4B33A] transition-all shadow-lg hover:shadow-xl"
+            >
+              Submit Your First Order
+              <ArrowRight className="w-5 h-5" />
+            </Link>
+            <Link
+              href="/how-it-works"
+              className="inline-flex items-center gap-2 px-8 py-4 border-2 border-white/30 text-white font-semibold rounded-lg hover:bg-white/10 transition-all"
+            >
+              Learn How It Works
+            </Link>
+          </div>
+          <p className="text-sm text-slate-400 mt-8">
+            Motion Granted is not a law firm. All work performed under attorney supervision.
+          </p>
         </div>
       </section>
     </div>
   );
 }
 
-function VerificationStep({
+// ==============================================
+// HELPER COMPONENTS
+// ==============================================
+
+function VerificationCard({
   icon,
   title,
   description
@@ -223,11 +331,11 @@ function VerificationStep({
   description: string;
 }) {
   return (
-    <div className="p-6 bg-white rounded-xl border border-slate-200 shadow-sm">
-      <div className="w-12 h-12 bg-[#1E3A5F]/10 rounded-lg flex items-center justify-center text-[#1E3A5F] mb-4">
+    <div className="p-6 bg-white rounded-xl border border-slate-200 hover:shadow-md transition-shadow">
+      <div className="w-12 h-12 bg-[#1E3A5F] rounded-lg flex items-center justify-center text-white mb-4">
         {icon}
       </div>
-      <h3 className="font-bold text-[#0F1F33] mb-2">{title}</h3>
+      <h3 className="font-semibold text-[#0F1F33] mb-2">{title}</h3>
       <p className="text-sm text-slate-500">{description}</p>
     </div>
   );
@@ -237,31 +345,52 @@ function PricingCard({
   tier,
   price,
   description,
-  featured = false
+  items,
+  featured = false,
 }: {
   tier: string;
   price: string;
   description: string;
+  items: string[];
   featured?: boolean;
 }) {
   return (
-    <div className={`
-      relative p-6 rounded-xl border transition-all
-      ${featured
-        ? 'bg-white border-[#C9A227] shadow-lg scale-105'
-        : 'bg-slate-50 border-slate-200'
-      }
-    `}>
-      {featured && (
-        <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-[#C9A227] text-[#0F1F33] text-xs font-bold rounded-full">
-          MOST POPULAR
-        </span>
-      )}
-      <div className="text-center">
-        <span className="text-sm font-bold text-slate-400">TIER {tier}</span>
-        <div className="font-serif text-3xl text-[#0F1F33] mt-1">{price}</div>
-        <p className="text-sm text-slate-500 mt-2">{description}</p>
+    <div className={`p-8 rounded-2xl border ${featured ? 'border-[#C9A227] bg-[#C9A227]/5 ring-2 ring-[#C9A227]' : 'border-slate-200 bg-white'}`}>
+      <span className="text-sm font-bold text-[#C9A227] uppercase tracking-wider">
+        {tier}
+      </span>
+      <div className="mt-2 mb-4">
+        <span className="text-4xl font-bold text-[#0F1F33]">{price}</span>
       </div>
+      <p className="text-slate-500 mb-6">{description}</p>
+      <ul className="space-y-2">
+        {items.map((item, i) => (
+          <li key={i} className="flex items-center gap-2 text-sm text-slate-600">
+            <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function BenefitCard({
+  icon,
+  title,
+  description
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="p-6 bg-white rounded-xl border border-slate-200 hover:shadow-md transition-shadow text-center">
+      <div className="w-12 h-12 bg-[#C9A227]/20 rounded-lg flex items-center justify-center text-[#C9A227] mx-auto mb-4">
+        {icon}
+      </div>
+      <h3 className="font-semibold text-[#0F1F33] mb-2">{title}</h3>
+      <p className="text-sm text-slate-500">{description}</p>
     </div>
   );
 }
