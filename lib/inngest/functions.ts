@@ -27,6 +27,7 @@ import { parseOrderDocuments, getOrderParsedDocuments } from "@/lib/workflow/doc
 import { quickValidate } from "@/lib/workflow/quality-validator";
 import { extractCitations } from "@/lib/citation/citation-verifier";
 import { MODELS } from "@/lib/config/models";
+import type Stripe from 'stripe';
 
 // Import the new 14-phase workflow orchestration
 import { generateOrderWorkflow, handleWorkflowFailure, workflowFunctions } from "./workflow-orchestration";
