@@ -20,6 +20,7 @@ import type { FormattingRules as NewFormattingRules } from '@/lib/services/forma
 import { sanitizePartyName, sanitizeForDocument } from '@/lib/utils/text-sanitizer';
 
 import { createLogger } from '@/lib/security/logger';
+import { resolveFromOrder, type OrderLike } from '@/lib/jurisdiction/resolver';
 
 const log = createLogger('documents-formatting-engine');
 // ============================================================================
@@ -120,6 +121,36 @@ export const JURISDICTION_RULES: Record<string, FormattingRules> = {
     pageLimit: 25,
     paperSize: { widthDXA: 12240, heightDXA: 15840, name: 'letter' },
   },
+
+  // BD-19: DEFAULT_STATE — ZERO state-specific statutory references
+  'DEFAULT_STATE': {
+    jurisdiction: 'DEFAULT_STATE',
+    linesPerPage: 28,
+    lineSpacing: 'double',
+    lineNumbers: false,
+    margins: { top: 1, bottom: 1, left: 1, right: 1 },
+    font: { name: 'Times New Roman', size: 12 },
+    footerFormat: null,
+    headerFormat: null,
+    pageLimit: 25,
+    paperSize: { widthDXA: 12240, heightDXA: 15840, name: 'letter' },
+    jurat: { type: 'declaration', language: 'I declare under penalty of perjury under the laws of the applicable jurisdiction that the foregoing is true and correct.' },
+  },
+
+  // DEFAULT_FEDERAL: Generic federal formatting
+  'DEFAULT_FEDERAL': {
+    jurisdiction: 'DEFAULT_FEDERAL',
+    linesPerPage: 28,
+    lineSpacing: 'double',
+    lineNumbers: false,
+    margins: { top: 1, bottom: 1, left: 1, right: 1 },
+    font: { name: 'Times New Roman', size: 12 },
+    footerFormat: null,
+    headerFormat: null,
+    pageLimit: 25,
+    paperSize: { widthDXA: 12240, heightDXA: 15840, name: 'letter' },
+    jurat: { type: 'declaration', language: 'I declare under penalty of perjury under the laws of the United States of America that the foregoing is true and correct.' },
+  },
 };
 
 // Motion-specific page limits
@@ -159,6 +190,20 @@ const MOTION_PAGE_LIMITS: Record<string, Record<string, number>> = {
     'opposition': 30,
     'reply': 15,
     'default': 30,
+  },
+  'DEFAULT_STATE': {
+    'motion': 25,
+    'opposition': 25,
+    'reply': 15,
+    'msj': 30,
+    'default': 25,
+  },
+  'DEFAULT_FEDERAL': {
+    'motion': 25,
+    'opposition': 25,
+    'reply': 15,
+    'msj': 30,
+    'default': 25,
   },
 };
 
@@ -321,8 +366,37 @@ export function getFormattingRules(jurisdiction: string): FormattingRules {
   } catch (error) {
     // Fallback to hardcoded rules if service fails
     log.warn(`[FormattingEngine] RuleLookupService failed for ${jurisdiction}, using fallback:`, error);
-    return JURISDICTION_RULES[jurisdiction] || JURISDICTION_RULES['la_state'];
+    return JURISDICTION_RULES[jurisdiction] || JURISDICTION_RULES['DEFAULT_STATE'];
   }
+}
+
+/**
+ * Get formatting rules for an order using the resolver.
+ *
+ * SP-C Task 11: Uses resolveFromOrder() with fallback chain:
+ * exact match → DEFAULT_STATE → throw
+ */
+export function getFormattingRulesForOrder(order: OrderLike): FormattingRules {
+  const resolved = resolveFromOrder(order);
+  const key = resolved.formatting;
+
+  // Try exact match first (e.g. 'CA_STATE', 'FEDERAL_9TH')
+  if (JURISDICTION_RULES[key]) {
+    return JURISDICTION_RULES[key];
+  }
+
+  // Try lowercase/legacy variants
+  const legacyKey = key.toLowerCase().replace('_state', '_state').replace('federal_', 'federal_');
+  if (JURISDICTION_RULES[legacyKey]) {
+    return JURISDICTION_RULES[legacyKey];
+  }
+
+  // Fallback to DEFAULT based on court type
+  if (resolved.courtType === 'FEDERAL') {
+    return JURISDICTION_RULES['DEFAULT_FEDERAL'] || JURISDICTION_RULES['DEFAULT_STATE'];
+  }
+
+  return JURISDICTION_RULES['DEFAULT_STATE'];
 }
 
 /**

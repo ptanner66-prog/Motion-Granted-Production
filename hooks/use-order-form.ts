@@ -42,6 +42,12 @@ interface OrderFormState {
   caseNumber: string
   caseCaption: string
 
+  // 50-state fields
+  stateCode: string
+  courtType: 'STATE' | 'FEDERAL' | ''
+  federalDistrict: string
+  pricingMultiplier: number
+
   // Step 4: Parties
   parties: Party[]
   relatedEntities: string
@@ -94,6 +100,10 @@ const initialState = {
   courtDivision: '',
   caseNumber: '',
   caseCaption: '',
+  stateCode: '',
+  courtType: '' as const,
+  federalDistrict: '',
+  pricingMultiplier: 1.0,
   parties: [
     { id: 'party-1', name: '', role: '' },
     { id: 'party-2', name: '', role: '' },
@@ -224,6 +234,10 @@ export const useOrderForm = create<OrderFormState>()(
         courtDivision: state.courtDivision,
         caseNumber: state.caseNumber,
         caseCaption: state.caseCaption,
+        stateCode: state.stateCode,
+        courtType: state.courtType,
+        federalDistrict: state.federalDistrict,
+        pricingMultiplier: state.pricingMultiplier,
         parties: state.parties,
         relatedEntities: state.relatedEntities,
         statementOfFacts: state.statementOfFacts,

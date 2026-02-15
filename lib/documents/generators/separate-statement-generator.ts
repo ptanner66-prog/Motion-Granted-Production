@@ -475,12 +475,15 @@ function generateSeparateStatementDocument(data: SeparateStatementData): Documen
     })
   );
 
-  // CRC 3.1350 reference
+  // Rule reference — jurisdiction-aware (BD-19: generic for non-CA)
+  const ruleReference = (data as { jurisdiction?: string }).jurisdiction?.toUpperCase().includes('CA')
+    ? '[Pursuant to California Rules of Court, Rule 3.1350]'
+    : '[See local rules for separate statement requirements]';
   children.push(
     new Paragraph({
       children: [
         new TextRun({
-          text: '[Pursuant to California Rules of Court, Rule 3.1350]',
+          text: ruleReference,
           italics: true,
           size: 20,
         }),

@@ -57,7 +57,9 @@ export async function GET(): Promise<NextResponse<StatesApiResponse | StatesApiE
       return NextResponse.json({ states: [] });
     }
 
-    return NextResponse.json({ states: states as StateResponse[] });
+    const response = NextResponse.json({ states: states as StateResponse[] });
+    response.headers.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+    return response;
   } catch (err) {
     console.error('[API /api/states] Unexpected error:', err);
     return NextResponse.json(

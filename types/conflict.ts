@@ -60,6 +60,8 @@ export interface ConflictCheckRequest {
   parties: PartyInfo[];
   caseNumber?: string;
   courtName?: string;
+  stateCode?: string;
+  courtType?: 'STATE' | 'FEDERAL';
 }
 
 /**

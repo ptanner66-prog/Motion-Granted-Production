@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   // Get the order
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, client_id, status, order_number, filing_deadline')
+    .select('id, client_id, status, order_number, filing_deadline, state, court_type')
     .eq('id', orderId)
     .single();
 
@@ -93,13 +93,15 @@ export async function POST(request: Request) {
     // Calculate priority based on filing deadline (closer deadline = higher priority)
     const priority = calculatePriority(order.filing_deadline);
 
-    // Send event to Inngest queue
+    // Send event to Inngest queue — BD-6: stateCode + courtType, NOT jurisdiction
     await inngest.send({
       name: 'order/submitted',
       data: {
         orderId,
         priority,
         filingDeadline: order.filing_deadline,
+        stateCode: order.state || undefined,
+        courtType: order.court_type || undefined,
       },
     });
 

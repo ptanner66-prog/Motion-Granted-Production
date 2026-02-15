@@ -2,6 +2,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/security/logger';
+import { clearPricingCache } from '@/lib/payments/jurisdiction-pricing';
 
 const log = createLogger('api-admin-states-code');
 
@@ -13,6 +14,8 @@ const ALLOWED_FIELDS = [
   'notes',
   'motion_availability',
   'formatting_profile',
+  'ai_disclosure_required',
+  'ai_disclosure_text',
 ] as const;
 
 interface UpdatePayload {
@@ -22,6 +25,8 @@ interface UpdatePayload {
   notes?: string | null;
   motion_availability?: Record<string, unknown>;
   formatting_profile?: string;
+  ai_disclosure_required?: boolean;
+  ai_disclosure_text?: string | null;
 }
 
 interface PatchResponse {
@@ -147,6 +152,26 @@ export async function PATCH(
             }
             updateData[field] = value;
             break;
+
+          case 'ai_disclosure_required':
+            if (typeof value !== 'boolean') {
+              return NextResponse.json(
+                { error: `Field '${field}' must be a boolean` },
+                { status: 400 }
+              );
+            }
+            updateData[field] = value;
+            break;
+
+          case 'ai_disclosure_text':
+            if (value !== null && typeof value !== 'string') {
+              return NextResponse.json(
+                { error: 'ai_disclosure_text must be a string or null' },
+                { status: 400 }
+              );
+            }
+            updateData[field] = value as string | null;
+            break;
         }
 
         hasValidField = true;
@@ -186,6 +211,11 @@ export async function PATCH(
         { error: 'Failed to update state' },
         { status: 500 }
       );
+    }
+
+    // Clear pricing cache if multiplier was updated
+    if ('pricing_multiplier' in updateData) {
+      clearPricingCache();
     }
 
     log.info(`State ${stateCode} updated by ${user.email}`, { stateCode, updateData });

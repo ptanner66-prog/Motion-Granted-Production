@@ -115,7 +115,8 @@ export async function deleteOrderData(
         drafting_instructions: null,
         court_name: null,
         judge_name: null,
-        // Retain: id, user_id, motion_type, tier, timestamps
+        federal_district: null, // SP-C Task 28: clear federal_district on deletion
+        // Retain: id, user_id, motion_type, tier, state, court_type, timestamps
       })
       .eq('id', orderId);
 
