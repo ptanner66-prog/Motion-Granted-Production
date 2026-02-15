@@ -201,6 +201,27 @@ export async function POST(
       return NextResponse.json({ error: 'No checkpoint pending for this workflow' }, { status: 400 });
     }
 
+    // Send Inngest event to unblock the workflow's waitForEvent step
+    try {
+      await inngest.send({
+        name: 'workflow/checkpoint-approved',
+        data: {
+          orderId,
+          action: action as 'APPROVE' | 'REQUEST_CHANGES' | 'CANCEL',
+          notes: notes || undefined,
+          approvedBy: user.id,
+          approvedAt: new Date().toISOString(),
+        },
+      });
+      log.info(`[CP3] Sent Inngest approval event: ${action} for order ${orderId}`);
+    } catch (inngestError) {
+      log.error('[CP3] Failed to send Inngest approval event', {
+        error: inngestError instanceof Error ? inngestError.message : inngestError,
+        orderId,
+        action,
+      });
+    }
+
     // Handle different actions
     if (action === 'APPROVE') {
       // Clear checkpoint and mark as complete
@@ -256,16 +277,6 @@ export async function POST(
           updated_at: new Date().toISOString(),
         })
         .eq('id', workflow.id);
-
-      // Trigger Phase VIII via Inngest
-      await inngest.send({
-        name: 'workflow/execute-phase',
-        data: {
-          orderId,
-          workflowId: workflow.id,
-          phase: 'VIII',
-        },
-      });
 
       // Log request
       await supabase.from('automation_logs').insert({

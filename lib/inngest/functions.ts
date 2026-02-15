@@ -1015,85 +1015,23 @@ export const updateQueuePositions = inngest.createFunction(
 /**
  * Handle Checkpoint Approval
  *
- * Called when an admin approves/rejects a blocking checkpoint.
+ * Backup logger for checkpoint approval events. The actual approval logic
+ * is handled by the main workflow (generateOrderWorkflow) via
+ * step.waitForEvent("wait-for-cp3-approval"). This function exists only
+ * to log the event for observability — it must NOT perform state transitions
+ * or send workflow events, as that would race with the main workflow.
  */
 export const handleCheckpointApproval = inngest.createFunction(
   {
     id: "workflow-checkpoint-approval",
   },
   { event: "workflow/checkpoint-approved" },
-  async ({ event, step }) => {
-    const { orderId, workflowId, action, nextPhase } = event.data;
-    const supabase = getSupabase();
-
-    await step.run("process-approval", async () => {
-      if (action === "APPROVE" && nextPhase) {
-        // Clear checkpoint and continue
-        await supabase
-          .from("workflow_state")
-          .update({
-            checkpoint_pending: false,
-            checkpoint_type: null,
-            checkpoint_data: null,
-            phase_status: "PENDING",
-          })
-          .eq("id", workflowId);
-
-        // Update order status
-        await supabase
-          .from("orders")
-          .update({ status: "completed" })
-          .eq("id", orderId);
-      } else if (action === "REQUEST_CHANGES") {
-        // Route back to Phase VIII
-        await supabase
-          .from("workflow_state")
-          .update({
-            checkpoint_pending: false,
-            checkpoint_type: null,
-            checkpoint_data: null,
-            current_phase: "VIII",
-            phase_status: "PENDING",
-          })
-          .eq("id", workflowId);
-      } else if (action === "CANCEL") {
-        await supabase
-          .from("workflow_state")
-          .update({
-            checkpoint_pending: false,
-            phase_status: "CANCELLED",
-          })
-          .eq("id", workflowId);
-
-        await supabase
-          .from("orders")
-          .update({ status: "cancelled" })
-          .eq("id", orderId);
-      }
-    });
-
-    // Continue workflow if approved
-    if (action === "APPROVE" && nextPhase) {
-      await step.sendEvent("continue-workflow", {
-        name: "workflow/execute-phase",
-        data: {
-          orderId,
-          workflowId,
-          phase: nextPhase,
-        },
-      });
-    } else if (action === "REQUEST_CHANGES") {
-      await step.sendEvent("request-changes", {
-        name: "workflow/execute-phase",
-        data: {
-          orderId,
-          workflowId,
-          phase: "VIII",
-        },
-      });
-    }
-
-    return { action, continued: action === "APPROVE" };
+  async ({ event }) => {
+    const { orderId, action } = event.data;
+    console.log(
+      `[CP3 Handler] Received approval event for order ${orderId}: ${action}`
+    );
+    return { logged: true, orderId, action };
   }
 );
 

@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { inngest } from '@/lib/inngest/client';
 import { generateMotionPDF, savePDFAsDeliverable } from '@/lib/workflow/pdf-generator';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
 import { sendEmail } from '@/lib/resend';
@@ -108,6 +109,25 @@ export async function POST(request: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', orderId);
+
+    // Send Inngest event to unblock the workflow's waitForEvent step (if waiting)
+    try {
+      await inngest.send({
+        name: 'workflow/checkpoint-approved',
+        data: {
+          orderId,
+          action: 'APPROVE',
+          approvedBy: user.id,
+          approvedAt: new Date().toISOString(),
+        },
+      });
+      log.info(`[CP3] Sent Inngest approval event for order ${orderId}`);
+    } catch (inngestError) {
+      log.error('[CP3] Failed to send Inngest approval event (non-fatal)', {
+        error: inngestError instanceof Error ? inngestError.message : inngestError,
+        orderId,
+      });
+    }
 
     // Update conversation status
     await supabase

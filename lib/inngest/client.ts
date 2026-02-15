@@ -68,9 +68,13 @@ export type WorkflowCheckpointApprovedEvent = {
   name: "workflow/checkpoint-approved";
   data: {
     orderId: string;
-    workflowId: string;
+    workflowId?: string;
     action: "APPROVE" | "REQUEST_CHANGES" | "CANCEL";
     nextPhase?: string;
+    notes?: string;
+    feedback?: string;
+    approvedBy?: string;
+    approvedAt?: string;
   };
 };
 
