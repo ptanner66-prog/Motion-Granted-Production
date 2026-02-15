@@ -1,21 +1,19 @@
 /**
  * Unified Citation Network Module
+ * Combines: Build Guide S3 + EMRG-004 + CIT-08-A
  *
- * V1 Features (Current):
- * - Forward citations (what cites this case)
- * - Strength scoring with pre-2000 caveat (ST-013)
- * - Negative treatment detection
+ * Single endpoint query returns both:
+ * - Strength scoring (citing opinion count + treatment distribution)
+ * - Negative treatment signals (overruled, superseded, etc.)
  *
- * V2 Features (TODO):
- * - Backward citations for Tier D (what this case cites)
- *   See Build Guide ST-014 for future implementation
+ * Uses getCitationTreatment() from the main CourtListener client to avoid
+ * duplicating auth, rate-limiting, and retry logic. For richer data (case names,
+ * dates), callers should use getOpinionById() for individual enrichment.
  *
- * @version BATCH_16 — ST-013, ST-014
+ * @version BATCH_10 — ST-004
  */
 
-import type { CourtListenerCitingOpinion } from './types';
-import { TREATMENT_CLASSIFICATION, type NormalizedTreatment } from './types';
-import { getCitingOpinions } from './client';
+import { getCitationTreatment } from '@/lib/courtlistener/client';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('citation-network');
@@ -24,12 +22,12 @@ const log = createLogger('citation-network');
 // TYPES
 // ============================================================================
 
-export interface CitingOpinion {
-  id: number;
-  citingOpinionId: number;
-  treatment: NormalizedTreatment;
-  rawTreatment: string;
-  depth: number;
+export interface CitationNetworkResult {
+  strength: StrengthScore;
+  negativeTreatment: NegativeTreatmentResult;
+  rawCitingOpinions: CitingOpinion[];
+  totalCount: number;
+  pagesRetrieved: number;
 }
 
 export interface StrengthScore {
@@ -38,8 +36,118 @@ export interface StrengthScore {
   positiveCount: number;
   negativeCount: number;
   neutralCount: number;
-  /** True when INSUFFICIENT_DATA for a case decided before 2000-01-01. ST-013 */
-  pre2000Caveat: boolean;
+}
+
+export interface NegativeTreatmentResult {
+  hasNegativeTreatment: boolean;
+  signals: TreatmentSignal[];
+  mostSevere: TreatmentType | null;
+}
+
+export interface TreatmentSignal {
+  type: TreatmentType;
+  citingOpinionId: number;
+  depth: number;
+}
+
+export type TreatmentType =
+  | 'overruled'
+  | 'superseded'
+  | 'distinguished'
+  | 'criticized'
+  | 'questioned'
+  | 'limited'
+  | 'abrogated'
+  | 'reversed'
+  | 'vacated';
+
+export interface CitingOpinion {
+  id: number;
+  treatment: string | null;
+  depth: number;
+}
+
+// Treatment severity ranking (higher = more severe)
+const TREATMENT_SEVERITY: Record<TreatmentType, number> = {
+  overruled: 100,
+  reversed: 95,
+  vacated: 92,
+  superseded: 90,
+  abrogated: 85,
+  limited: 50,
+  criticized: 40,
+  questioned: 30,
+  distinguished: 20,
+};
+
+const NEGATIVE_TREATMENT_TYPES: TreatmentType[] = [
+  'overruled', 'reversed', 'vacated', 'superseded', 'abrogated',
+];
+
+const CAUTION_TREATMENT_TYPES: TreatmentType[] = [
+  'distinguished', 'criticized', 'questioned', 'limited',
+];
+
+const ALL_NEGATIVE_AND_CAUTION: TreatmentType[] = [
+  ...NEGATIVE_TREATMENT_TYPES,
+  ...CAUTION_TREATMENT_TYPES,
+];
+
+const POSITIVE_TREATMENTS = ['followed', 'affirmed', 'approved', 'cited'];
+
+// ============================================================================
+// MAIN FUNCTION
+// ============================================================================
+
+/**
+ * Get forward citations and analyze strength + treatment in a single call.
+ *
+ * Delegates to getCitationTreatment() which queries the CourtListener
+ * citing-opinions endpoint with auth, rate limiting, and retry logic.
+ *
+ * @param opinionId - CourtListener opinion ID (number or string)
+ * @returns Combined strength score and negative treatment analysis
+ */
+export async function getForwardCitations(
+  opinionId: number | string,
+): Promise<CitationNetworkResult> {
+  const opinionIdStr = String(opinionId);
+
+  log.info(`[CitationNetwork] Querying forward citations for opinion ${opinionIdStr}`);
+
+  const result = await getCitationTreatment(opinionIdStr);
+
+  if (!result.success || !result.data) {
+    log.warn(`[CitationNetwork] Failed to get citation treatment for ${opinionIdStr}: ${result.error}`);
+    return emptyResult();
+  }
+
+  const { positive, negative, caution, treatments } = result.data;
+  const totalCount = treatments.length;
+
+  // Build CitingOpinion array from treatments
+  const citingOpinions: CitingOpinion[] = treatments.map(t => ({
+    id: t.citing_opinion_id,
+    treatment: t.treatment || null,
+    depth: t.depth,
+  }));
+
+  // Calculate strength and treatment from the same data
+  const strength = calculateStrengthScore(citingOpinions, totalCount, positive, negative, caution);
+  const negativeTreatment = extractTreatmentSignals(citingOpinions);
+
+  log.info(
+    `[CitationNetwork] Opinion ${opinionIdStr}: ${totalCount} citing opinions, ` +
+    `strength=${strength.rating}, negative_treatment=${negativeTreatment.hasNegativeTreatment}`
+  );
+
+  return {
+    strength,
+    negativeTreatment,
+    rawCitingOpinions: citingOpinions,
+    totalCount,
+    pagesRetrieved: 1,
+  };
 }
 
 // ============================================================================
@@ -47,174 +155,141 @@ export interface StrengthScore {
 // ============================================================================
 
 /**
- * Calculate base strength score from citing opinions.
- * Does NOT include pre-2000 caveat — use calculateStrengthScore for that.
- */
-function calculateBaseStrengthScore(
-  citingOpinions: CitingOpinion[],
-  totalCount: number
-): Omit<StrengthScore, 'pre2000Caveat'> {
-  let positiveCount = 0;
-  let negativeCount = 0;
-  let neutralCount = 0;
-
-  for (const op of citingOpinions) {
-    switch (op.treatment) {
-      case 'POSITIVE':
-        positiveCount++;
-        break;
-      case 'NEGATIVE':
-      case 'CAUTION':
-        negativeCount++;
-        break;
-      case 'NEUTRAL':
-      default:
-        neutralCount++;
-        break;
-    }
-  }
-
-  const citingOpinionCount = totalCount || citingOpinions.length;
-
-  // Determine rating
-  let rating: StrengthScore['rating'];
-  if (citingOpinionCount < 5) {
-    rating = 'INSUFFICIENT_DATA';
-  } else if (negativeCount > positiveCount) {
-    rating = 'WEAK';
-  } else if (citingOpinionCount >= 50 && positiveCount > negativeCount) {
-    rating = 'STRONG';
-  } else if (citingOpinionCount >= 10) {
-    rating = 'MODERATE';
-  } else {
-    rating = 'INSUFFICIENT_DATA';
-  }
-
-  return {
-    rating,
-    citingOpinionCount,
-    positiveCount,
-    negativeCount,
-    neutralCount,
-  };
-}
-
-/**
- * Calculate citation strength with pre-2000 caveat.
+ * Calculate citation strength based on citing opinions and treatment distribution.
  *
- * ST-013: When INSUFFICIENT_DATA is returned for a case filed before
- * 2000-01-01, sets pre2000Caveat=true to indicate that the rating reflects
- * data availability (CL backfill gaps), not case quality.
- *
- * @param citingOpinions - Classified citing opinions
- * @param totalCount - Total citing opinion count from API
- * @param dateFiled - ISO date string of when the case was decided
+ * Uses pre-computed treatment counts from getCitationTreatment() for efficiency,
+ * with the full opinions array available for deeper analysis if needed.
  */
 export function calculateStrengthScore(
   citingOpinions: CitingOpinion[],
   totalCount: number,
-  dateFiled?: string
+  positiveCount?: number,
+  negativeCount?: number,
+  cautionCount?: number,
 ): StrengthScore {
-  const base = calculateBaseStrengthScore(citingOpinions, totalCount);
+  if (totalCount === 0) {
+    return {
+      rating: 'INSUFFICIENT_DATA',
+      citingOpinionCount: 0,
+      positiveCount: 0,
+      negativeCount: 0,
+      neutralCount: 0,
+    };
+  }
 
-  // ST-013: Check for pre-2000 caveat
-  let pre2000Caveat = false;
-  if (base.rating === 'INSUFFICIENT_DATA' && dateFiled) {
-    try {
-      const filed = new Date(dateFiled);
-      const cutoff = new Date('2000-01-01');
-      pre2000Caveat = filed < cutoff;
-    } catch {
-      // Invalid date — don't apply caveat
+  // Use pre-computed counts if available, otherwise compute from opinions
+  let posCount: number;
+  let negCount: number;
+  let neutCount: number;
+
+  if (positiveCount !== undefined && negativeCount !== undefined) {
+    posCount = positiveCount;
+    negCount = negativeCount + (cautionCount ?? 0);
+    neutCount = totalCount - posCount - negCount;
+  } else {
+    posCount = 0;
+    negCount = 0;
+    neutCount = 0;
+
+    for (const opinion of citingOpinions) {
+      const treatment = opinion.treatment?.toLowerCase();
+      if (treatment && NEGATIVE_TREATMENT_TYPES.includes(treatment as TreatmentType)) {
+        negCount++;
+      } else if (treatment && CAUTION_TREATMENT_TYPES.includes(treatment as TreatmentType)) {
+        negCount++;
+      } else if (treatment && POSITIVE_TREATMENTS.includes(treatment)) {
+        posCount++;
+      } else {
+        neutCount++;
+      }
     }
   }
 
-  return { ...base, pre2000Caveat };
-}
+  // Determine rating
+  let rating: StrengthScore['rating'];
 
-// ============================================================================
-// CITING OPINION CLASSIFICATION
-// ============================================================================
-
-/**
- * Classify raw CL citing opinions into normalized treatment categories.
- */
-export function classifyCitingOpinions(
-  rawOpinions: CourtListenerCitingOpinion[]
-): CitingOpinion[] {
-  return rawOpinions.map((raw) => {
-    const rawTreatment = (raw.treatment || 'cited').toLowerCase();
-    const treatment: NormalizedTreatment =
-      TREATMENT_CLASSIFICATION[rawTreatment as keyof typeof TREATMENT_CLASSIFICATION] || 'NEUTRAL';
-
-    return {
-      id: raw.id,
-      citingOpinionId: raw.citing_opinion,
-      treatment,
-      rawTreatment,
-      depth: raw.depth,
-    };
-  });
-}
-
-// ============================================================================
-// HIGH-LEVEL API
-// ============================================================================
-
-/**
- * Fetch and score citation network strength for an opinion.
- *
- * @param opinionId - CourtListener opinion ID
- * @param dateFiled - ISO date string for pre-2000 caveat (ST-013)
- */
-export async function getCitationStrength(
-  opinionId: string,
-  dateFiled?: string
-): Promise<{
-  success: boolean;
-  data?: StrengthScore;
-  error?: string;
-}> {
-  try {
-    const result = await getCitingOpinions(opinionId, 200);
-    if (!result.success) {
-      return { success: false, error: result.error };
-    }
-
-    const classified = classifyCitingOpinions(result.data || []);
-    const score = calculateStrengthScore(classified, classified.length, dateFiled);
-
-    log.info(
-      `[getCitationStrength] Opinion ${opinionId}: ${score.rating} ` +
-      `(${score.citingOpinionCount} citing, +${score.positiveCount}/-${score.negativeCount})` +
-      (score.pre2000Caveat ? ' [PRE-2000 CAVEAT]' : '')
-    );
-
-    return { success: true, data: score };
-  } catch (error) {
-    log.error(`[getCitationStrength] Error for opinion ${opinionId}:`, error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Citation strength check failed',
-    };
+  if (totalCount < 5) {
+    rating = 'INSUFFICIENT_DATA';
+  } else if (negCount > 0 && negCount / totalCount > 0.2) {
+    rating = 'WEAK'; // More than 20% negative treatment
+  } else if (totalCount >= 50 && posCount / totalCount > 0.5) {
+    rating = 'STRONG';
+  } else if (totalCount >= 10) {
+    rating = 'MODERATE';
+  } else {
+    rating = 'WEAK';
   }
+
+  return {
+    rating,
+    citingOpinionCount: totalCount,
+    positiveCount: posCount,
+    negativeCount: negCount,
+    neutralCount: neutCount,
+  };
 }
 
 // ============================================================================
-// V2: BACKWARD CITATIONS (NOT IMPLEMENTED)
+// TREATMENT EXTRACTION
 // ============================================================================
 
 /**
- * V2: Get backward citations (what the cited opinion itself cites)
- * Useful for understanding an opinion's analytical foundation
- *
- * NOT IMPLEMENTED at launch. Tier D currently uses same behavior as Tier C.
- *
- * TODO: Implement for Tier D orders
- * - Query: /v4/opinions/?citing_opinion={id}
- * - Returns: Opinions cited by the target opinion
- * - Use case: Understanding opinion's legal reasoning chain
- *
- * @see Build Guide ST-014
+ * Extract negative treatment signals from citing opinions.
+ * Identifies the most severe treatment for quick risk assessment.
  */
-// export async function getBackwardCitations(opinionId: number): Promise<BackwardCitationResult>
+export function extractTreatmentSignals(citingOpinions: CitingOpinion[]): NegativeTreatmentResult {
+  const signals: TreatmentSignal[] = [];
+
+  for (const opinion of citingOpinions) {
+    const treatment = opinion.treatment?.toLowerCase() as TreatmentType;
+    if (treatment && ALL_NEGATIVE_AND_CAUTION.includes(treatment)) {
+      signals.push({
+        type: treatment,
+        citingOpinionId: opinion.id,
+        depth: opinion.depth,
+      });
+    }
+  }
+
+  // Find most severe treatment
+  let mostSevere: TreatmentType | null = null;
+  let maxSeverity = 0;
+
+  for (const signal of signals) {
+    const severity = TREATMENT_SEVERITY[signal.type] || 0;
+    if (severity > maxSeverity) {
+      maxSeverity = severity;
+      mostSevere = signal.type;
+    }
+  }
+
+  return {
+    hasNegativeTreatment: signals.length > 0,
+    signals,
+    mostSevere,
+  };
+}
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+function emptyResult(): CitationNetworkResult {
+  return {
+    strength: {
+      rating: 'INSUFFICIENT_DATA',
+      citingOpinionCount: 0,
+      positiveCount: 0,
+      negativeCount: 0,
+      neutralCount: 0,
+    },
+    negativeTreatment: {
+      hasNegativeTreatment: false,
+      signals: [],
+      mostSevere: null,
+    },
+    rawCitingOpinions: [],
+    totalCount: 0,
+    pagesRetrieved: 0,
+  };
+}

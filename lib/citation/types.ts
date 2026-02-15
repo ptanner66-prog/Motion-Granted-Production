@@ -2,9 +2,9 @@
  * Citation Pipeline Types
  *
  * Shared types for the citation verification pipeline, including
- * batch lookup results, pre-fetch map types, and flag compiler exports.
+ * batch lookup results, pre-fetch map types, and citation network types.
  *
- * @version BATCH_12 — ST-007: AIS Citation Strength Section
+ * @version BATCH_10 — ST-004
  */
 
 // Re-export flag compiler types (BATCH_12)
@@ -17,6 +17,18 @@ export {
   getFlagPriority,
   toStrengthScore,
 } from './steps/step-6-flags';
+
+// ============================================================================
+// CITATION NETWORK TYPES (re-exported from unified module)
+// ============================================================================
+
+export type {
+  CitationNetworkResult,
+  StrengthScore,
+  NegativeTreatmentResult,
+  TreatmentSignal,
+  TreatmentType,
+} from '@/lib/courtlistener/citation-network';
 
 // ============================================================================
 // COURTLISTENER BATCH LOOKUP TYPES
