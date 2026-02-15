@@ -1998,6 +1998,72 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.log(`[Orchestration] Loop ${loopNum} Phase VIII output persisted for crash recovery`);
       });
 
+      // Persist any newly verified case citations to the bank
+      const newBankEntries = (phaseVIIIOutput?.newBankEntries ?? []) as Array<{
+        caseName?: string;
+        citation?: string;
+        court?: string;
+        date_filed?: string;
+        courtlistener_id?: number | string;
+      }>;
+
+      if (newBankEntries.length > 0) {
+        await step.run(`bank-revision-citations-loop-${loopNum}`, async () => {
+          console.log(`[Orchestration] Banking ${newBankEntries.length} newly verified citation(s) from revision loop ${loopNum}`);
+
+          // 1. Update in-memory workflowState so next loop sees expanded bank
+          const phaseIVOutput = (workflowState.phaseOutputs['IV'] ?? {}) as Record<string, unknown>;
+          const currentBank = (phaseIVOutput.caseCitationBank ?? []) as Array<Record<string, unknown>>;
+
+          for (const entry of newBankEntries) {
+            // Deduplicate: skip if citation string already in bank
+            const alreadyInBank = currentBank.some(existing =>
+              (existing.citation as string || '').toLowerCase() === (entry.citation || '').toLowerCase()
+            );
+            if (alreadyInBank) {
+              console.log(`[Orchestration] Skipping duplicate: ${entry.caseName}`);
+              continue;
+            }
+
+            currentBank.push({
+              ...entry,
+              verification_method: 'fast_track_civ',
+              verification_timestamp: new Date().toISOString(),
+              source: 'phase_viii_revision',
+              added_in_loop: loopNum,
+            });
+            console.log(`[Orchestration] Banked: ${entry.caseName}, ${entry.citation}`);
+          }
+
+          // Write back to in-memory state
+          workflowState.phaseOutputs['IV'] = {
+            ...phaseIVOutput,
+            caseCitationBank: currentBank,
+          };
+
+          // 2. Persist to Supabase so crash recovery sees expanded bank
+          const { error: bankUpdateError } = await supabase
+            .from('orders')
+            .update({
+              phase_outputs: {
+                ...(await supabase
+                  .from('orders')
+                  .select('phase_outputs')
+                  .eq('id', orderId)
+                  .single()
+                  .then(r => (r.data?.phase_outputs ?? {}) as Record<string, unknown>)),
+                IV: workflowState.phaseOutputs['IV'],
+              },
+            })
+            .eq('id', orderId);
+
+          if (bankUpdateError) {
+            console.error(`[Orchestration] Failed to persist citation bank update:`, bankUpdateError);
+            // Non-fatal: in-memory state is updated, next loop still works.
+          }
+        });
+      }
+
       // MB-02: Send revision notification to customer (inside step.run for Inngest durability)
       await step.run(`send-revision-email-${loopNum}`, async () => {
         const customerEmail = workflowState.orderContext.firmEmail;
@@ -2079,6 +2145,45 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       if (phaseVII1Result?.output) {
         workflowState.phaseOutputs["VII.1"] = phaseVII1Result.output;
+      }
+
+      // Bank any citations verified by VII.1
+      const vii1BankEntries = ((phaseVII1Result.output as Record<string, unknown>)?.verifiedBankEntries ?? []) as Array<{
+        caseName?: string;
+        citation?: string;
+        court?: string;
+        date_filed?: string;
+        courtlistener_id?: number | string;
+      }>;
+
+      if (vii1BankEntries.length > 0) {
+        await step.run(`bank-vii1-citations-loop-${loopNum}`, async () => {
+          console.log(`[Orchestration] Banking ${vii1BankEntries.length} citation(s) verified by VII.1 loop ${loopNum}`);
+
+          const phaseIVOutput = (workflowState.phaseOutputs['IV'] ?? {}) as Record<string, unknown>;
+          const currentBank = (phaseIVOutput.caseCitationBank ?? []) as Array<Record<string, unknown>>;
+
+          for (const entry of vii1BankEntries) {
+            const alreadyInBank = currentBank.some(existing =>
+              (existing.citation as string || '').toLowerCase() === (entry.citation || '').toLowerCase()
+            );
+            if (alreadyInBank) continue;
+
+            currentBank.push({
+              ...entry,
+              verification_method: 'vii1_civ',
+              verification_timestamp: new Date().toISOString(),
+              source: 'phase_vii1_verification',
+              added_in_loop: loopNum,
+            });
+            console.log(`[Orchestration] Banked from VII.1: ${entry.caseName}`);
+          }
+
+          workflowState.phaseOutputs['IV'] = {
+            ...phaseIVOutput,
+            caseCitationBank: currentBank,
+          };
+        });
       }
 
       // BUG-11 FIX: Increment loop counter at WORKFLOW level

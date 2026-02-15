@@ -33,7 +33,7 @@ import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
 
 // SP-07: CIV pipeline imports for 7-step citation verification
-import { verifyBatch, verifyNewCitations } from '@/lib/civ';
+import { verifyBatch, verifyNewCitations, verifyUnauthorizedCitation } from '@/lib/civ';
 import type {
   CitationToVerify,
   BatchVerificationResult,
@@ -587,6 +587,8 @@ ${statuteList || '  [No statutory citations in bank]'}
 
 You may also cite Louisiana statutes directly:
   - La. C.C.P. art. [number] — Louisiana Code of Civil Procedure
+  - La. C.C. art. [number] — Louisiana Civil Code
+  - La. C.E. art. [number] — Louisiana Code of Evidence
   - La. R.S. [number]:[number] — Louisiana Revised Statutes
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -3435,9 +3437,30 @@ async function executePhaseVII1(input: PhaseInput): Promise<PhaseOutput> {
 
     // Extract revised motion text from Phase VIII output
     const revisedMotion = phaseVIIIOutput?.revisedMotion as Record<string, unknown> | undefined;
-    const revisedText = revisedMotion
-      ? Object.values(revisedMotion).filter(v => typeof v === 'string').join('\n')
-      : JSON.stringify(phaseVIIIOutput);
+
+    let revisedText: string;
+    if (revisedMotion) {
+      const textParts: string[] = [];
+      for (const value of Object.values(revisedMotion)) {
+        if (typeof value === 'string') {
+          textParts.push(value);
+        } else if (Array.isArray(value)) {
+          // Handle legalArguments: [{ heading: string, content: string }, ...]
+          for (const item of value) {
+            if (item && typeof item === 'object') {
+              for (const subValue of Object.values(item)) {
+                if (typeof subValue === 'string') {
+                  textParts.push(subValue);
+                }
+              }
+            }
+          }
+        }
+      }
+      revisedText = textParts.join('\n');
+    } else {
+      revisedText = JSON.stringify(phaseVIIIOutput);
+    }
 
     // Extract all citations from the revised text
     const citationsInRevision = extractCitationsFromText(revisedText);
@@ -3513,6 +3536,29 @@ async function executePhaseVII1(input: PhaseInput): Promise<PhaseOutput> {
       }
     }
 
+    // Build bank entries from verified citations
+    const verifiedBankEntries: Array<{
+      caseName: string;
+      citation: string;
+      court: string;
+      date_filed: string;
+      courtlistener_id?: number | string;
+    }> = [];
+
+    if (civResult) {
+      for (const result of civResult.results) {
+        if (result.compositeResult.status === 'VERIFIED' && result.compositeResult.confidenceScore >= 0.80) {
+          verifiedBankEntries.push({
+            caseName: result.citation.caseName,
+            citation: result.citation.normalized || result.citation.input,
+            court: result.citation.court || '',
+            date_filed: result.citation.year ? String(result.citation.year) : '',
+            courtlistener_id: result.verificationResults.step1Existence.courtlistenerId ?? undefined,
+          });
+        }
+      }
+    }
+
     const phaseOutput = {
       phaseComplete: 'VII.1',
       totalCitationsInRevision: citationsInRevision.length,
@@ -3527,7 +3573,9 @@ async function executePhaseVII1(input: PhaseInput): Promise<PhaseOutput> {
         blocked: civResult.blocked,
         averageConfidence: civResult.summary.averageConfidence,
       } : null,
-      escalated: newCitationsRejected > 0,
+      verifiedBankEntries,
+      // Soften escalation: only escalate if ALL new citations were rejected
+      escalated: newCitationsFound > 0 && newCitationsVerified === 0 && newCitationsRejected > 0,
     };
 
     console.log(`[Phase VII.1] ========== PHASE VII.1 COMPLETE ==========`);
@@ -3732,6 +3780,42 @@ function auditFactsAgainstSources(
 // PHASE VIII: Revisions
 // ============================================================================
 
+/**
+ * Strip specific citations from a structured revisedMotion object.
+ * Handles both top-level string fields (introduction, conclusion, etc.)
+ * and nested array fields (legalArguments: [{ heading, content }]).
+ */
+function stripCitationsFromMotion(
+  revisedMotion: unknown,
+  citationsToStrip: string[]
+): void {
+  if (!revisedMotion || typeof revisedMotion !== 'object' || citationsToStrip.length === 0) return;
+
+  const motion = revisedMotion as Record<string, unknown>;
+
+  for (const key of Object.keys(motion)) {
+    const value = motion[key];
+
+    // Top-level string fields (introduction, conclusion, statementOfFacts, etc.)
+    if (typeof value === 'string' && value.length > 100) {
+      motion[key] = stripUnauthorizedCitations(value, citationsToStrip);
+    }
+
+    // Array fields (legalArguments)
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item && typeof item === 'object') {
+          for (const subKey of Object.keys(item)) {
+            if (typeof item[subKey] === 'string' && item[subKey].length > 100) {
+              item[subKey] = stripUnauthorizedCitations(item[subKey], citationsToStrip);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
   const start = Date.now();
   console.log(`[Phase VIII] ========== STARTING PHASE VIII (REVISIONS) ==========`);
@@ -3817,9 +3901,28 @@ ${sig.firmPhone}
 ${sig.firmEmail}
 Attorney for ${getRepresentedPartyName()}`.trim();
 
+    const revisionCitationAddendum = `
+REVISION-SPECIFIC CITATION GUIDANCE:
+The judge evaluation below may demand specific case citations that are NOT in the
+citation bank. When the judge explicitly names a case authority:
+
+1. Include the citation in your revision exactly as the judge specified.
+2. Use the standard format: Case Name, Volume Reporter Page (Court Year).
+3. These citations will be verified against CourtListener after generation.
+4. If verification succeeds, they will be added to the bank automatically.
+5. If verification fails, they will be removed automatically.
+
+This guidance applies ONLY to citations the judge has explicitly demanded.
+DO NOT recall or invent any other citations from your training data.
+For propositions where the judge has NOT specified a citation, continue to
+use bank citations or write [CITATION NEEDED].
+`;
+
     const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
 
 ${citationEnforcementVIII}
+
+${revisionCitationAddendum}
 
 ${PHASE_PROMPTS.PHASE_VIII}
 
@@ -4029,26 +4132,96 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
     };
 
     if (!validationResultVIII.isValid) {
-      console.log('[Phase VIII] ⚠️ UNAUTHORIZED CITATIONS DETECTED IN REVISION');
+      console.log('[Phase VIII] UNAUTHORIZED CITATIONS DETECTED IN REVISION');
       console.log('[Phase VIII] Unauthorized citations:', validationResultVIII.unauthorizedCitations);
 
-      // Strip unauthorized citations
-      console.log('[Phase VIII] Stripping unauthorized citations from revised draft...');
+      // Attempt fast-track verification before stripping
+      const verifiedCitations: string[] = [];
+      const rejectedCitations: string[] = [];
+      const newBankEntries: VerifiedCitationEntry[] = [];
 
-      if (phaseOutput.revisedMotion && typeof phaseOutput.revisedMotion === 'object') {
-        for (const key of Object.keys(phaseOutput.revisedMotion)) {
-          const value = (phaseOutput.revisedMotion as Record<string, unknown>)[key];
-          if (typeof value === 'string' && value.length > 100) {
-            (phaseOutput.revisedMotion as Record<string, unknown>)[key] = stripUnauthorizedCitations(
-              value,
-              validationResultVIII.unauthorizedCitations
+      // Rate limit: max 5 verifications per loop (each makes 1-3 CourtListener + 1-2 LLM calls)
+      const MAX_FAST_TRACK_VERIFICATIONS = 5;
+      const toVerify = validationResultVIII.unauthorizedCitations.slice(0, MAX_FAST_TRACK_VERIFICATIONS);
+      const autoRejected = validationResultVIII.unauthorizedCitations.slice(MAX_FAST_TRACK_VERIFICATIONS);
+      rejectedCitations.push(...autoRejected);
+      if (autoRejected.length > 0) {
+        console.warn(`[Phase VIII] Rate-limited: ${autoRejected.length} citation(s) skipped (max ${MAX_FAST_TRACK_VERIFICATIONS} per loop)`);
+      }
+
+      for (const unauthorizedCitation of toVerify) {
+        try {
+          console.log(`[Phase VIII] Fast-track verifying: ${unauthorizedCitation.substring(0, 80)}`);
+          const { approved, result } = await verifyUnauthorizedCitation(
+            unauthorizedCitation,
+            `Revision-demanded citation for ${input.motionType}`,
+            input.orderId
+          );
+
+          if (approved) {
+            console.log(`[Phase VIII] VERIFIED: ${unauthorizedCitation.substring(0, 60)}`);
+            verifiedCitations.push(unauthorizedCitation);
+
+            // Build bank entry from verification result.
+            // courtlistenerId lives directly on ExistenceCheckOutput (line 100 of
+            // lib/citation/civ/types.ts), typed as courtlistenerId?: string.
+            const step1 = result.verificationResults.step1Existence;
+            newBankEntries.push({
+              caseName: result.citation.caseName,
+              citation: result.citation.normalized || result.citation.input,
+              court: result.citation.court || '',
+              date_filed: result.citation.year ? String(result.citation.year) : '',
+              courtlistener_id: step1.courtlistenerId ?? undefined,
+            });
+
+            // Audit trail: log verified citation to citation_verifications table.
+            // logCitationVerification is module-private (same file).
+            // courtlistenerId param is typed number | null; step1.courtlistenerId is string | undefined.
+            await logCitationVerification(
+              input.orderId,
+              'VIII-FT',
+              unauthorizedCitation,
+              step1.courtlistenerId ? parseInt(step1.courtlistenerId, 10) || null : null,
+              'verified',
+              { method: 'fast_track_civ', confidence: result.compositeResult.confidenceScore }
+            );
+          } else {
+            console.warn(`[Phase VIII] REJECTED: ${unauthorizedCitation.substring(0, 60)} (confidence: ${result.compositeResult.confidenceScore})`);
+            rejectedCitations.push(unauthorizedCitation);
+
+            // Audit trail for rejected citations
+            await logCitationVerification(
+              input.orderId,
+              'VIII-FT',
+              unauthorizedCitation,
+              null,
+              'rejected',
+              { method: 'fast_track_civ', confidence: result.compositeResult.confidenceScore,
+                status: result.compositeResult.status, flags: result.compositeResult.flags.map(f => f.message) }
             );
           }
+        } catch (verifyError) {
+          // CIV pipeline can throw on: CourtListener API timeout, rate limit (429),
+          // malformed citation parse failure, or Anthropic API error during Step 2.
+          // All are non-fatal — treat as rejection, next loop retries if judge re-demands it.
+          console.error(`[Phase VIII] Verification error for "${unauthorizedCitation.substring(0, 40)}":`, verifyError);
+          rejectedCitations.push(unauthorizedCitation);
         }
       }
 
-      citationValidationDataVIII.strippedCitations = validationResultVIII.unauthorizedCitations;
-      console.log('[Phase VIII] ✅ Unauthorized citations stripped from revision');
+      // Strip ONLY citations that failed verification
+      if (rejectedCitations.length > 0) {
+        console.log(`[Phase VIII] Stripping ${rejectedCitations.length} rejected citation(s)...`);
+        stripCitationsFromMotion(phaseOutput.revisedMotion, rejectedCitations);
+      }
+
+      // Store results for downstream use (Task 2 reads newBankEntries)
+      citationValidationDataVIII.strippedCitations = rejectedCitations;
+      citationValidationDataVIII.verifiedNewCitations = verifiedCitations;
+      citationValidationDataVIII.newBankEntries = newBankEntries;
+      phaseOutput.newBankEntries = newBankEntries;
+
+      console.log(`[Phase VIII] Citation triage: ${verifiedCitations.length} verified, ${rejectedCitations.length} rejected/stripped`);
     } else {
       console.log('[Phase VIII] ✅ Citation validation PASSED — all citations from verified bank');
     }
