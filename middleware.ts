@@ -172,16 +172,25 @@ export async function middleware(request: NextRequest) {
   }
 
   // ============================================================================
+  // PUBLIC API ROUTES (accessible without authentication)
+  // /api/admin/states/metadata — intake form loads enabled states before login
+  // ============================================================================
+
+  const isPublicApiRoute = pathname === '/api/admin/states/metadata';
+
+  // ============================================================================
   // PROTECTED ROUTES CHECK
   // ============================================================================
 
-  const isProtectedRoute = pathname.startsWith('/dashboard') ||
+  const isProtectedRoute = !isPublicApiRoute && (
+                          pathname.startsWith('/dashboard') ||
                           pathname.startsWith('/admin') ||
                           pathname.startsWith('/api/orders') ||
-                          pathname.startsWith('/api/admin');
+                          pathname.startsWith('/api/admin'));
 
-  const isAdminRoute = pathname.startsWith('/admin') ||
-                       pathname.startsWith('/api/admin');
+  const isAdminRoute = !isPublicApiRoute && (
+                       pathname.startsWith('/admin') ||
+                       pathname.startsWith('/api/admin'));
 
   if (isProtectedRoute && (authError || !user)) {
     // API routes get JSON 401; page routes get redirected to login
