@@ -17,9 +17,9 @@ import {
   ExternalLink,
   Settings
 } from 'lucide-react'
-import { formatCurrency, formatDateShort } from '@/lib/utils'
+import { formatCurrencyFromCents, formatRelativeTime, truncateString, mapToDisplayStatus } from '@/lib/utils'
 import { formatMotionType } from '@/config/motion-types'
-import type { OrderStatus } from '@/types'
+import type { OrderStatus } from '@/config/motion-types'
 
 interface Order {
   id: string
@@ -28,8 +28,10 @@ interface Order {
   case_caption: string
   status: string
   total_price: number
+  amount_paid: number | null
   filing_deadline: string
   created_at: string
+  parties?: Array<{ party_name: string; party_role: string }>
 }
 
 export const metadata: Metadata = {
@@ -37,7 +39,6 @@ export const metadata: Metadata = {
   description: 'Your Motion Granted dashboard.',
 }
 
-// Calculate days until due date
 function getDaysUntilDue(deadline: string): number {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -52,35 +53,47 @@ function getUrgencyClass(daysUntilDue: number) {
   return ''
 }
 
+/** Display price from amount_paid (cents from Stripe) or total_price (dollars fallback) */
+function displayPrice(order: Order): string {
+  if (order.amount_paid && order.amount_paid > 0) {
+    return `$${(order.amount_paid / 100).toFixed(2)}`
+  }
+  return `$${order.total_price.toFixed(2)}`
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Fetch orders from Supabase
+  // Fetch recent orders with parties
   const { data: orders } = await supabase
     .from('orders')
-    .select('*')
+    .select('*, parties(party_name, party_role)')
     .eq('client_id', user?.id)
     .order('created_at', { ascending: false })
     .limit(5)
 
-  // Calculate stats
+  // Fetch all order statuses for stats
   const { data: allOrders } = await supabase
     .from('orders')
     .select('status')
     .eq('client_id', user?.id)
 
-  const activeCount = allOrders?.filter((o: { status: string }) =>
-    ['submitted', 'in_progress', 'in_review'].includes(o.status)
-  ).length || 0
+  // Stat card queries per 7-status model spec
+  const activeCount = allOrders?.filter((o: { status: string }) => {
+    const ds = mapToDisplayStatus(o.status)
+    return ['PAID', 'IN_PROGRESS', 'REVISION_REQ'].includes(ds)
+  }).length || 0
 
-  const completedCount = allOrders?.filter((o: { status: string }) =>
-    o.status === 'completed'
-  ).length || 0
+  const completedCount = allOrders?.filter((o: { status: string }) => {
+    const ds = mapToDisplayStatus(o.status)
+    return ds === 'COMPLETED'
+  }).length || 0
 
-  const pendingReviewCount = allOrders?.filter((o: { status: string }) =>
-    o.status === 'draft_delivered'
-  ).length || 0
+  const pendingReviewCount = allOrders?.filter((o: { status: string }) => {
+    const ds = mapToDisplayStatus(o.status)
+    return ['AWAITING_APPROVAL', 'HOLD_PENDING'].includes(ds)
+  }).length || 0
 
   const stats = [
     {
@@ -115,7 +128,7 @@ export default async function DashboardPage() {
       iconColor: 'text-orange-600',
       trend: pendingReviewCount > 0 ? 'Action needed' : 'None pending',
       urgent: pendingReviewCount > 0,
-      href: '/orders?status=draft_delivered'
+      href: '/orders?status=pending_review'
     },
   ]
 
@@ -241,6 +254,8 @@ export default async function DashboardPage() {
             <div className="divide-y divide-gray-100">
               {recentOrders.map((order, index) => {
                 const daysUntilDue = getDaysUntilDue(order.filing_deadline)
+                const displayStatus = mapToDisplayStatus(order.status)
+                const partyString = order.parties?.map(p => p.party_name).join(' v. ') || ''
                 return (
                   <Link
                     key={order.id}
@@ -260,23 +275,30 @@ export default async function DashboardPage() {
                           <span className="font-mono text-xs text-gray-400 tracking-wide">
                             {order.order_number}
                           </span>
-                          <OrderStatusBadge status={order.status as OrderStatus} size="sm" />
+                          <OrderStatusBadge status={displayStatus as OrderStatus} size="sm" />
                         </div>
                         <p className="font-semibold text-navy truncate">
                           {formatMotionType(order.motion_type)}
                         </p>
-                        <p className="text-sm text-gray-500 truncate">{order.case_caption}</p>
+                        {partyString && (
+                          <p className="text-sm text-gray-500 truncate">
+                            {truncateString(partyString, 80)}
+                          </p>
+                        )}
+                        {!partyString && (
+                          <p className="text-sm text-gray-500 truncate">{order.case_caption}</p>
+                        )}
                       </div>
                     </div>
 
                     <div className="text-right flex-shrink-0 ml-4 hidden sm:block">
                       <p className="font-bold text-navy tabular-nums">
-                        {formatCurrency(order.total_price)}
+                        {displayPrice(order)}
                       </p>
                       <div className="flex items-center justify-end gap-1.5 mt-1 text-sm">
                         <Calendar className="h-3.5 w-3.5 text-gray-400" />
                         <span className={`${daysUntilDue <= 7 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
-                          {formatDateShort(order.filing_deadline)}
+                          {formatRelativeTime(order.created_at)}
                         </span>
                       </div>
                     </div>

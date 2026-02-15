@@ -721,6 +721,12 @@ function validateDraftCitations(
   authorizedPatterns.push(/La\.?\s*C\.?C\.?P\.?\s*[Aa]rt\.?\s*\d+/i);
   authorizedPatterns.push(/Louisiana\s+Code\s+of\s+Civil\s+Procedure/i);
   authorizedPatterns.push(/La\.?\s*R\.?S\.?\s*\d+:\d+/i);  // Louisiana Revised Statutes
+  // Civil Code
+  authorizedPatterns.push(/La\.?\s*C\.?\s*C\.?\s*[Aa]rt\.?\s*\d+/i);
+  authorizedPatterns.push(/Louisiana\s+Civil\s+Code/i);
+  // Code of Evidence
+  authorizedPatterns.push(/La\.?\s*C\.?\s*(?:E|Ev)\.?\s*[Aa]rt\.?\s*\d+/i);
+  authorizedPatterns.push(/Louisiana\s+Code\s+of\s+Evidence/i);
 
   // Find all case citations in the draft
   // Pattern matches: "Case Name, 123 F.3d 456 (Court Year)" or similar
@@ -3561,6 +3567,7 @@ interface FactAuditResult {
   knownEntities: number;
   suspiciousEntities: string[];
   hasFabrication: boolean;
+  fabricationSeverity: 'NONE' | 'LOW' | 'HIGH';
 }
 
 /**
@@ -3569,17 +3576,40 @@ interface FactAuditResult {
  */
 function isLegalTerm(entity: string): boolean {
   const legalTerms = [
-    'Supreme Court', 'Court of Appeal', 'District Court', 'Circuit Court',
-    'United States', 'State of Louisiana', 'Parish of', 'State of',
-    'Department of', 'Office of', 'Federal Rules', 'Civil Procedure',
-    'Code of Civil Procedure', 'Rules of Court', 'United States Constitution',
-    'Louisiana Constitution', 'Summary Judgment', 'Due Process', 'Equal Protection',
-    'First Amendment', 'Second Amendment', 'Fourth Amendment', 'Fifth Amendment',
-    'Fourteenth Amendment', 'Louisiana Revised Statutes', 'Civil Code',
-    'Supreme Court of Louisiana', 'Supreme Court of the United States',
+    // Courts
+    'Supreme Court', 'Court of Appeal', 'Court of Appeals', 'District Court',
+    'Circuit Court', 'Appellate Court', 'Family Court', 'Juvenile Court',
+    'Municipal Court', 'City Court', 'Justice of the Peace', 'Bankruptcy Court',
+    'Tax Court', 'Claims Court', 'Magistrate Judge',
+    // Federal districts
     'Eastern District', 'Western District', 'Middle District', 'Northern District',
-    'Southern District', 'Court of Appeals', 'Third Circuit', 'Fifth Circuit',
+    'Southern District', 'First Circuit', 'Second Circuit', 'Third Circuit',
+    'Fourth Circuit', 'Fifth Circuit', 'Sixth Circuit', 'Seventh Circuit',
+    'Eighth Circuit', 'Ninth Circuit', 'Tenth Circuit', 'Eleventh Circuit',
+    'Federal Circuit', 'District of Columbia',
+    // Government and institutions
+    'United States', 'State of Louisiana', 'Parish of', 'State of',
+    'Department of', 'Office of', 'Bureau of', 'Agency of',
     'Internal Revenue Service', 'Social Security', 'Workers Compensation',
+    'Department of Justice', 'Department of Children', 'Department of Health',
+    // Louisiana-specific
+    'Supreme Court of Louisiana', 'Supreme Court of the United States',
+    'Louisiana Constitution', 'Louisiana Revised Statutes', 'Civil Code',
+    'Louisiana Civil Code', 'Louisiana Code of Evidence',
+    'Code of Civil Procedure', 'Code of Criminal Procedure',
+    'Code of Evidence', 'Children\'s Code', 'Uniform Commercial Code',
+    // Legal concepts and rules
+    'Federal Rules', 'Civil Procedure', 'Criminal Procedure',
+    'Rules of Court', 'Rules of Evidence', 'United States Constitution',
+    'Summary Judgment', 'Due Process', 'Equal Protection',
+    'Res Judicata', 'Stare Decisis', 'Burden of Proof',
+    'Trade Secrets Act', 'Unfair Trade Practices',
+    // Amendments
+    'First Amendment', 'Second Amendment', 'Third Amendment',
+    'Fourth Amendment', 'Fifth Amendment', 'Sixth Amendment',
+    'Seventh Amendment', 'Eighth Amendment', 'Ninth Amendment',
+    'Tenth Amendment', 'Eleventh Amendment', 'Twelfth Amendment',
+    'Thirteenth Amendment', 'Fourteenth Amendment',
   ];
   return legalTerms.some(term => entity.includes(term));
 }
@@ -3608,9 +3638,50 @@ function auditFactsAgainstSources(
     input.jurisdiction || '',
     input.motionType || '',
   ];
-  const sourceText = sources.join(' ');
 
-  // Extract named entities from revised draft
+  // Task 9: Include string values from Phase IV-VII outputs as valid sources
+  for (const phaseKey of ['IV', 'V', 'VI', 'VII'] as const) {
+    const phaseData = input.previousPhaseOutputs?.[phaseKey];
+    if (phaseData && typeof phaseData === 'object') {
+      const extractStrings = (obj: unknown, depth: number): string[] => {
+        if (depth > 3) return [];
+        if (typeof obj === 'string') return [obj];
+        if (Array.isArray(obj)) return obj.flatMap(item => extractStrings(item, depth + 1));
+        if (obj && typeof obj === 'object') {
+          return Object.values(obj).flatMap(val => extractStrings(val, depth + 1));
+        }
+        return [];
+      };
+      sources.push(...extractStrings(phaseData, 0));
+    }
+  }
+
+  const sourceText = sources.join(' ');
+  const sourceTextLower = sourceText.toLowerCase();
+
+  // Task 8: Cross-reference citation bank from Phase IV
+  const phaseIVOutput = (input.previousPhaseOutputs?.['IV'] ?? {}) as Record<string, unknown>;
+  const citationBankEntries = (phaseIVOutput?.caseCitationBank ?? []) as Array<{ caseName?: string; citation?: string }>;
+  const citationBankText = citationBankEntries
+    .map(c => `${c.caseName || ''} ${c.citation || ''}`)
+    .join(' ')
+    .toLowerCase();
+
+  // Task 5: Strip legal role prefixes before entity extraction
+  const legalRolePrefixes = [
+    'Defendant', 'Plaintiff', 'Petitioner', 'Respondent',
+    'Appellant', 'Appellee', 'Intervenor', 'Movant', 'Exceptor',
+    'Cross-Defendant', 'Cross-Plaintiff', 'Third-Party',
+    'Counter-Defendant', 'Counter-Plaintiff',
+  ];
+  let cleanedText = revisedDraftText;
+  for (const prefix of legalRolePrefixes) {
+    cleanedText = cleanedText.replace(
+      new RegExp('\\b' + prefix + '\\s+', 'g'), ''
+    );
+  }
+
+  // Extract named entities from cleaned draft
   // Look for: titled names, organizational names, full dates
   const entityPatterns = [
     /(?:Dr\.|Mr\.|Mrs\.|Ms\.|Prof\.|Hon\.)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/g,
@@ -3620,7 +3691,7 @@ function auditFactsAgainstSources(
 
   const draftEntities: string[] = [];
   for (const pattern of entityPatterns) {
-    const matches = revisedDraftText.match(pattern) || [];
+    const matches = cleanedText.match(pattern) || [];
     draftEntities.push(...matches);
   }
 
@@ -3629,18 +3700,31 @@ function auditFactsAgainstSources(
 
   // Filter out known entities, legal terms, bracketed prompts
   const suspiciousEntities = uniqueEntities.filter(entity => {
-    if (entity.startsWith('[ATTORNEY:')) return false; // Bracketed prompt, not fabrication
-    if (sourceText.includes(entity)) return false;     // Found in sources
-    if (isLegalTerm(entity)) return false;             // Known legal term
-    if (entity.length < 5) return false;               // Too short to be meaningful
+    if (entity.startsWith('[ATTORNEY:')) return false;
+    // Task 6: Case-insensitive source comparison
+    if (sourceTextLower.includes(entity.toLowerCase())) return false;
+    if (isLegalTerm(entity)) return false;
+    if (entity.length < 5) return false;
+    // Task 8: Cross-reference citation bank
+    if (citationBankText.includes(entity.toLowerCase())) return false;
     return true;
   });
+
+  // Task 7: Severity-based fabrication assessment
+  const fabricationRatio = suspiciousEntities.length / Math.max(uniqueEntities.length, 1);
+  const severity: 'NONE' | 'LOW' | 'HIGH' =
+    fabricationRatio > 0.25 || suspiciousEntities.length > 3
+      ? 'HIGH'
+      : suspiciousEntities.length > 0
+        ? 'LOW'
+        : 'NONE';
 
   return {
     totalEntities: uniqueEntities.length,
     knownEntities: uniqueEntities.length - suspiciousEntities.length,
     suspiciousEntities,
-    hasFabrication: suspiciousEntities.length > 0,
+    hasFabrication: severity === 'HIGH',
+    fabricationSeverity: severity,
   };
 }
 
@@ -3684,10 +3768,12 @@ async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
     // Safe extraction of evaluation with multiple fallback paths
     const evaluation = (phaseVIIOutput?.evaluation ?? phaseVIIOutput?.judgeSimulation ?? phaseVIIOutput ?? {}) as Record<string, unknown>;
 
-    // Safe property access with defaults
-    const weaknesses = (evaluation?.weaknesses ?? evaluation?.concerns ?? []) as unknown[];
-    const specificFeedback = (evaluation?.specificFeedback ?? evaluation?.feedback ?? evaluation?.notes ?? 'No specific feedback provided') as string;
-    const revisionSuggestions = (evaluation?.revisionSuggestions ?? evaluation?.recommendations ?? evaluation?.suggestions ?? []) as unknown[];
+    // Safe property access with defaults — uses Phase VII's actual field names
+    const weaknesses = (evaluation?.deficiencies ?? evaluation?.weaknesses ?? evaluation?.concerns ?? []) as unknown[];
+    const specificFeedback = (evaluation?.argument_assessment
+      ? JSON.stringify(evaluation.argument_assessment)
+      : (evaluation?.specificFeedback ?? evaluation?.feedback ?? evaluation?.notes ?? 'No specific feedback provided')) as string;
+    const revisionSuggestions = (evaluation?.revision_instructions ?? evaluation?.revisionSuggestions ?? evaluation?.recommendations ?? evaluation?.suggestions ?? []) as unknown[];
 
     console.log(`[Phase VIII] Weaknesses found: ${weaknesses.length}`);
     console.log(`[Phase VIII] Revision suggestions found: ${revisionSuggestions.length}`);
@@ -3884,8 +3970,8 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
 
     const factAudit = auditFactsAgainstSources(revisedMotionForAudit, input);
 
-    if (factAudit.hasFabrication) {
-      console.error(`[Phase VIII] FACT FABRICATION DETECTED: ${factAudit.suspiciousEntities.join(', ')}`);
+    if (factAudit.fabricationSeverity === 'HIGH') {
+      console.error(`[Phase VIII] HIGH FABRICATION DETECTED: ${factAudit.suspiciousEntities.join(', ')}`);
       console.warn(`[Phase VIII] Reverting to pre-revision draft (currentDraft). Fabricated entities will be logged.`);
 
       // Revert to currentDraft (NOT Phase V — preserves prior loop's good revisions)
@@ -3894,6 +3980,13 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
         : phaseVOutput;
       phaseOutput.fabricationDetected = true;
       phaseOutput.fabricatedEntities = factAudit.suspiciousEntities;
+      phaseOutput.factAudit = factAudit;
+    } else if (factAudit.fabricationSeverity === 'LOW') {
+      // LOW severity: log warnings but do NOT revert — preserves valid revisions
+      console.warn(`[Phase VIII] LOW fabrication severity: ${factAudit.suspiciousEntities.join(', ')}`);
+      console.warn(`[Phase VIII] Keeping revised draft — entities flagged for admin review`);
+      phaseOutput.fabricationDetected = false;
+      phaseOutput.fabricationWarnings = factAudit.suspiciousEntities;
       phaseOutput.factAudit = factAudit;
     } else {
       phaseOutput.fabricationDetected = false;
@@ -4119,6 +4212,60 @@ Validate captions. Provide as JSON.`;
 }
 
 // ============================================================================
+// PHASE IX JURISDICTION FILTER
+// ============================================================================
+
+/**
+ * Remove procedurally inappropriate supporting documents based on jurisdiction
+ * and motion type. Louisiana state courts use exceptions (not motions) and do
+ * not use California-style declarations or memoranda of points and authorities.
+ */
+function filterJurisdictionInappropriateDocuments(
+  phaseOutput: Record<string, unknown>,
+  jurisdiction: string,
+  motionType: string
+): void {
+  const jurisdictionLower = (jurisdiction || '').toLowerCase();
+  const motionLower = (motionType || '').toLowerCase();
+
+  // Louisiana state court exception-based motions
+  const isLouisianaState = jurisdictionLower.includes('louisiana') && !jurisdictionLower.includes('federal')
+    && !jurisdictionLower.includes('district');
+  const isException = motionLower.includes('exception') || motionLower.includes('no cause of action')
+    || motionLower.includes('peremptory') || motionLower.includes('dilatory')
+    || motionLower.includes('declinatory');
+
+  if (!isLouisianaState && !isException) return;
+
+  // Documents inappropriate for Louisiana state court exception practice
+  const inappropriatePatterns = [
+    /declaration\s+in\s+support/i,
+    /memorandum\s+of\s+points\s+and\s+authorities/i,
+    /request\s+for\s+judicial\s+notice/i,
+    /declaration\s+of\s+/i,  // California-style declarations
+    /points\s+and\s+authorities/i,
+  ];
+
+  // Filter documents array if present
+  for (const key of ['documents', 'supportingDocuments', 'supporting_documents']) {
+    const docs = phaseOutput[key];
+    if (Array.isArray(docs)) {
+      const filtered = docs.filter((doc: unknown) => {
+        if (!doc || typeof doc !== 'object') return true;
+        const docObj = doc as Record<string, unknown>;
+        const title = String(docObj.title || docObj.name || docObj.documentType || '');
+        const isInappropriate = inappropriatePatterns.some(p => p.test(title));
+        if (isInappropriate) {
+          console.warn(`[Phase IX] Removed jurisdiction-inappropriate document: "${title}" (LA state court)`);
+        }
+        return !isInappropriate;
+      });
+      phaseOutput[key] = filtered;
+    }
+  }
+}
+
+// ============================================================================
 // PHASE IX: Supporting Documents
 // ============================================================================
 
@@ -4272,6 +4419,9 @@ Generate supporting documents. The Certificate of Service MUST include the exact
     }
 
     const phaseOutput = { ...parsed.data, phaseComplete: 'IX' };
+
+    // Task 12: Filter jurisdiction-inappropriate documents from Phase IX output
+    filterJurisdictionInappropriateDocuments(phaseOutput, input.jurisdiction, input.motionType);
 
     // Check if IX.1 needed (MSJ/MSA)
     const needsIX1 = input.motionType.toUpperCase().includes('SUMMARY') ||

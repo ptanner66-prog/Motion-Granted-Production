@@ -7,14 +7,68 @@
  * Source: Chunk 11, Task 82 - MOTION_TYPES_BY_STATE_SPEC_v2_EXPANDED.md
  */
 
-import {
-  MOTION_TYPES,
-  MotionType,
-  MotionCategory,
-  CATEGORY_LABELS,
-  TIER_LABELS,
-} from '@/lib/config/motion-types';
+import { MOTION_TYPE_REGISTRY, type MotionTypeDefinition } from '@/lib/workflow/motion-type-registry';
 import { getStateConfig } from '@/lib/config/state-configs';
+
+// Compatibility types (migrated from deleted lib/config/motion-types.ts — AUDIT-005)
+type MotionCategory = string;
+
+export interface MotionType {
+  id: string;
+  display_name: string;
+  tier: 'A' | 'B' | 'C' | 'D';
+  category: MotionCategory;
+  availability: 'universal' | 'state_specific' | 'federal_only';
+  available_states?: string[];
+  court_types: ('state' | 'federal')[];
+  description: string;
+  base_price_min: number;
+  base_price_max: number;
+}
+
+function mapRegistryToMotionType(def: MotionTypeDefinition): MotionType {
+  const availabilityMap: Record<string, 'universal' | 'state_specific' | 'federal_only'> = {
+    UNIVERSAL: 'universal', LA_ONLY: 'state_specific', CA_ONLY: 'state_specific',
+    STATE_ONLY: 'state_specific', FEDERAL_ONLY: 'federal_only',
+  };
+  const courtMap: Record<string, 'state' | 'federal'> = { STATE: 'state', FEDERAL: 'federal' };
+  return {
+    id: def.slug,
+    display_name: def.name,
+    tier: def.tier,
+    category: def.category,
+    availability: availabilityMap[def.availability] ?? 'universal',
+    available_states: def.availability === 'LA_ONLY' ? ['LA'] : def.availability === 'CA_ONLY' ? ['CA'] : undefined,
+    court_types: def.courtTypes.map(ct => courtMap[ct] ?? 'state'),
+    description: def.name,
+    base_price_min: def.basePrice * 100,
+    base_price_max: def.basePrice * 100,
+  };
+}
+
+const MOTION_TYPES: MotionType[] = MOTION_TYPE_REGISTRY.map(mapRegistryToMotionType);
+
+const CATEGORY_LABELS: Record<string, string> = {
+  general: 'General', service: 'Service of Process', trial_setting: 'Trial Setting',
+  case_management: 'Case Management', discovery: 'Discovery',
+  discovery_sanctions: 'Discovery Sanctions', pleading: 'Pleading',
+  jurisdiction: 'Jurisdiction', party_management: 'Parties & Intervention',
+  settlement: 'Settlement & ADR', prejudgment: 'Prejudgment', trial: 'Trial',
+  post_judgment: 'Post-Judgment', dispositive: 'Dispositive',
+  injunctive: 'Injunctive Relief', expert: 'Expert Witnesses', post_verdict: 'Post-Verdict',
+  Procedural: 'Procedural', Discovery: 'Discovery', Dispositive: 'Dispositive',
+  'Injunctive Relief': 'Injunctive Relief', 'Post-Trial': 'Post-Trial',
+  Administrative: 'Administrative', Protective: 'Protective', 'Case Management': 'Case Management',
+  Criminal: 'Criminal', Appellate: 'Appellate', 'Family Law': 'Family Law',
+  Bankruptcy: 'Bankruptcy', 'Federal Specific': 'Federal Specific',
+};
+
+const TIER_LABELS: Record<'A' | 'B' | 'C' | 'D', string> = {
+  A: 'TIER A — Procedural ($299)',
+  B: 'TIER B — Intermediate ($599)',
+  C: 'TIER C — Complex/Dispositive ($999)',
+  D: 'TIER D — Highly Complex ($1,499)',
+};
 
 // ============================================================================
 // TYPES

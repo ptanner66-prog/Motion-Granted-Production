@@ -8,9 +8,34 @@
 
 import React, { useState, useEffect } from 'react';
 import { useIntakeForm } from '@/lib/intake/context';
-import { MOTION_TYPES, getMotionTypeByCode } from '@/lib/intake/motion-types';
+import { MOTION_TYPE_REGISTRY, getMotionBySlug } from '@/lib/workflow/motion-type-registry';
 import { JURISDICTIONS, getJurisdictionByCode, getCourtByCode } from '@/lib/intake/jurisdictions';
-import { formatPrice, getEstimatedDeliveryDate } from '@/lib/intake/pricing';
+
+function getMotionTypeByCode(code: string) {
+  return getMotionBySlug(code) ?? MOTION_TYPE_REGISTRY.find(m => m.name === code);
+}
+
+function formatPrice(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function getEstimatedDeliveryDate(motionType: string, rushDelivery: boolean): Date {
+  const motion = getMotionBySlug(motionType);
+  const tier = motion?.tier ?? 'B';
+  const standardDays: Record<string, number> = { A: 3, B: 5, C: 7, D: 10 };
+  const turnaroundDays = rushDelivery ? Math.max(1, Math.ceil((standardDays[tier] ?? 5) / 2)) : (standardDays[tier] ?? 5);
+  const deliveryDate = new Date();
+  let daysAdded = 0;
+  while (daysAdded < turnaroundDays) {
+    deliveryDate.setDate(deliveryDate.getDate() + 1);
+    const dayOfWeek = deliveryDate.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) daysAdded++;
+  }
+  return deliveryDate;
+}
 import { FormSection } from './shared/FormSection';
 import {
   CheckCircle,
