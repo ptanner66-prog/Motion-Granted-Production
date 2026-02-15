@@ -24,7 +24,7 @@ export {
 
 export type {
   CitationNetworkResult,
-  StrengthScore,
+  StrengthScore as NetworkStrengthScore,
   NegativeTreatmentResult,
   TreatmentSignal,
   TreatmentType,
