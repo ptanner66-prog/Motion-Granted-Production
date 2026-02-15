@@ -8,7 +8,6 @@
 import {
   getCitationModel,
   getCitationModelWithLogging,
-  isHighStakes,
   resolveTiebreaker,
   getAuthorityLevel,
   CITATION_THRESHOLDS,
@@ -120,114 +119,37 @@ describe('getCitationModel', () => {
 });
 
 // ============================================================================
-// isHighStakes TESTS
-// ============================================================================
-
-describe('isHighStakes', () => {
-  const baseInput = {
-    propositionType: 'SECONDARY' as const,
-    motionTier: 'B' as Tier,
-    isSoleAuthority: false,
-    caseAge: 5,
-    citationsDeclining: false,
-    hasNegativeTreatment: false,
-  };
-
-  it('returns false when no conditions met', () => {
-    const result = isHighStakes(baseInput);
-    expect(result.isHighStakes).toBe(false);
-    expect(result.triggeredRules).toHaveLength(0);
-  });
-
-  it('triggers Rule 1 for PRIMARY_STANDARD', () => {
-    const result = isHighStakes({ ...baseInput, propositionType: 'PRIMARY_STANDARD' });
-    expect(result.isHighStakes).toBe(true);
-    expect(result.triggeredRules).toContain(1);
-  });
-
-  it('triggers Rule 2 for DISPOSITIVE_ELEMENT', () => {
-    const result = isHighStakes({ ...baseInput, propositionType: 'DISPOSITIVE_ELEMENT' });
-    expect(result.isHighStakes).toBe(true);
-    expect(result.triggeredRules).toContain(2);
-  });
-
-  it('triggers Rule 3 for Tier C', () => {
-    const result = isHighStakes({ ...baseInput, motionTier: 'C' });
-    expect(result.isHighStakes).toBe(true);
-    expect(result.triggeredRules).toContain(3);
-  });
-
-  it('triggers Rule 4 for sole authority', () => {
-    const result = isHighStakes({ ...baseInput, isSoleAuthority: true });
-    expect(result.isHighStakes).toBe(true);
-    expect(result.triggeredRules).toContain(4);
-  });
-
-  it('triggers Rule 5 for old declining authority', () => {
-    const result = isHighStakes({ ...baseInput, caseAge: 35, citationsDeclining: true });
-    expect(result.isHighStakes).toBe(true);
-    expect(result.triggeredRules).toContain(5);
-  });
-
-  it('does NOT trigger Rule 5 for old but non-declining', () => {
-    const result = isHighStakes({ ...baseInput, caseAge: 35, citationsDeclining: false });
-    expect(result.triggeredRules).not.toContain(5);
-  });
-
-  it('triggers Rule 6 for negative treatment', () => {
-    const result = isHighStakes({ ...baseInput, hasNegativeTreatment: true });
-    expect(result.isHighStakes).toBe(true);
-    expect(result.triggeredRules).toContain(6);
-  });
-
-  it('can trigger multiple rules simultaneously', () => {
-    const result = isHighStakes({
-      propositionType: 'PRIMARY_STANDARD',
-      motionTier: 'C',
-      isSoleAuthority: true,
-      caseAge: 5,
-      citationsDeclining: false,
-      hasNegativeTreatment: false,
-    });
-    expect(result.triggeredRules).toContain(1);
-    expect(result.triggeredRules).toContain(3);
-    expect(result.triggeredRules).toContain(4);
-    expect(result.triggeredRules.length).toBe(3);
-  });
-});
-
-// ============================================================================
 // resolveTiebreaker TESTS
 // ============================================================================
 
 describe('resolveTiebreaker', () => {
   it('returns VERIFIED when both stages approve (≥95%)', () => {
-    const result = resolveTiebreaker(0.96, true, false);
+    const result = resolveTiebreaker(0.96, true);
     expect(result.result).toBe('VERIFIED');
   });
 
   it('returns NEEDS_REVIEW when Stage 1 approves but Stage 2 rejects', () => {
-    const result = resolveTiebreaker(0.96, false, false);
+    const result = resolveTiebreaker(0.96, false);
     expect(result.result).toBe('NEEDS_REVIEW');
   });
 
   it('returns VERIFIED_WITH_NOTES when uncertain + Stage 2 approves', () => {
-    const result = resolveTiebreaker(0.88, true, false);
+    const result = resolveTiebreaker(0.88, true);
     expect(result.result).toBe('VERIFIED_WITH_NOTES');
   });
 
   it('returns NEEDS_REVIEW when uncertain + Stage 2 rejects', () => {
-    const result = resolveTiebreaker(0.88, false, false);
+    const result = resolveTiebreaker(0.88, false);
     expect(result.result).toBe('NEEDS_REVIEW');
   });
 
   it('returns HOLDING_MISMATCH when Stage 1 fails (<80%)', () => {
-    const result = resolveTiebreaker(0.75, true, false);
+    const result = resolveTiebreaker(0.75, true);
     expect(result.result).toBe('HOLDING_MISMATCH');
   });
 
   it('returns HOLDING_MISMATCH regardless of Stage 2 when below fail threshold', () => {
-    const result = resolveTiebreaker(0.50, true, true);
+    const result = resolveTiebreaker(0.50, true);
     expect(result.result).toBe('HOLDING_MISMATCH');
   });
 });

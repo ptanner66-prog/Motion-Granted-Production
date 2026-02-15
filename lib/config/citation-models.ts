@@ -200,7 +200,7 @@ export const CITATION_THRESHOLDS = {
 } as const;
 
 // ============================================================================
-// HIGH_STAKES RULES (Clay's Part C §4 — BINDING)
+// PROPOSITION TYPES (Clay's Part C §4 — BINDING)
 // ============================================================================
 
 export type PropositionType =
@@ -211,72 +211,6 @@ export type PropositionType =
   | 'CONTEXT'
   | 'PROCEDURAL'
   | 'SECONDARY';
-
-export interface HighStakesInput {
-  propositionType: PropositionType;
-  motionTier: Tier;
-  isSoleAuthority: boolean;
-  caseAge: number;         // years
-  citationsDeclining: boolean;
-  hasNegativeTreatment: boolean;
-}
-
-/**
- * Determine if a citation is HIGH_STAKES.
- * HIGH_STAKES citations ALWAYS trigger Stage 2 regardless of Stage 1 confidence.
- *
- * 6 conditions — ANY one triggers HIGH_STAKES:
- */
-export function isHighStakes(input: HighStakesInput): {
-  isHighStakes: boolean;
-  triggeredRules: number[];
-  reasons: string[];
-} {
-  const triggeredRules: number[] = [];
-  const reasons: string[] = [];
-
-  // Rule 1: Primary legal standard
-  if (input.propositionType === 'PRIMARY_STANDARD') {
-    triggeredRules.push(1);
-    reasons.push('Primary legal standard — entire motion fails if wrong');
-  }
-
-  // Rule 2: Dispositive element
-  if (input.propositionType === 'DISPOSITIVE_ELEMENT') {
-    triggeredRules.push(2);
-    reasons.push('Dispositive element — determines case outcome');
-  }
-
-  // Rule 3: Complex motion (Tier C or D)
-  if (input.motionTier === 'C' || input.motionTier === 'D') {
-    triggeredRules.push(3);
-    reasons.push(`Tier ${input.motionTier} complex motion — highest malpractice exposure`);
-  }
-
-  // Rule 4: Sole authority
-  if (input.isSoleAuthority) {
-    triggeredRules.push(4);
-    reasons.push('Sole authority for proposition — no backup if fails');
-  }
-
-  // Rule 5: Old declining authority
-  if (input.caseAge > 30 && input.citationsDeclining) {
-    triggeredRules.push(5);
-    reasons.push(`Case age ${input.caseAge} years with declining citations`);
-  }
-
-  // Rule 6: Negative treatment
-  if (input.hasNegativeTreatment) {
-    triggeredRules.push(6);
-    reasons.push('Has negative treatment flags — needs adversarial review');
-  }
-
-  return {
-    isHighStakes: triggeredRules.length > 0,
-    triggeredRules,
-    reasons,
-  };
-}
 
 // ============================================================================
 // HOLDING CLASSIFICATIONS (Clay's Part C Issue 11 — BINDING)
@@ -457,7 +391,7 @@ export const RELEVANCE_WEIGHTS = {
 } as const;
 
 // ============================================================================
-// HIGH_STAKES TIEBREAKER MATRIX (Clay's Part C — BINDING)
+// TIEBREAKER MATRIX (Clay's Part C — BINDING)
 // ============================================================================
 
 export type TiebreakerResult = 'VERIFIED' | 'VERIFIED_WITH_NOTES' | 'NEEDS_REVIEW' | 'HOLDING_MISMATCH';
@@ -475,8 +409,7 @@ export type TiebreakerResult = 'VERIFIED' | 'VERIFIED_WITH_NOTES' | 'NEEDS_REVIE
  */
 export function resolveTiebreaker(
   stage1Confidence: number,
-  stage2Approved: boolean,
-  isHighStakes: boolean
+  stage2Approved: boolean
 ): { result: TiebreakerResult; reason: string } {
   // Stage 1 FAIL
   if (stage1Confidence < CITATION_THRESHOLDS.HOLDING_FAIL) {
@@ -491,7 +424,6 @@ export function resolveTiebreaker(
     if (stage2Approved) {
       return { result: 'VERIFIED', reason: 'Both stages approve' };
     }
-    // Stage 1 approve + Stage 2 flag/reject = NEEDS_REVIEW for HIGH_STAKES
     return {
       result: 'NEEDS_REVIEW',
       reason: 'Stage 1 approved but Stage 2 flagged — never auto-approve over Opus objection',

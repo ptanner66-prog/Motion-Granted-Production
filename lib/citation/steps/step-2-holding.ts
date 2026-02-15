@@ -15,7 +15,6 @@
  * Triggers when:
  * - Stage 1 confidence 70-94%
  * - Stage 1 confidence <70%
- * - HIGH_STAKES flag is set
  *
  * Tiebreaker: GPT-4 Turbo if Stage 1 and Stage 2 disagree
  */
@@ -102,19 +101,13 @@ const MODELS = {
  * Stage 2 triggers if ANY condition is true:
  * - confidence >= 70 && confidence < 95 (uncertain zone)
  * - confidence < 70 (low confidence)
- * - isHighStakes === true (high stakes flag)
  *
  * @param stage1Confidence - Confidence score from Stage 1 (0-1)
- * @param isHighStakes - Whether citation is marked as HIGH_STAKES
  * @returns true if Stage 2 should be triggered
  */
 export function shouldTriggerStage2(
-  stage1Confidence: number,
-  isHighStakes: boolean
+  stage1Confidence: number
 ): boolean {
-  // HIGH_STAKES always triggers Stage 2
-  if (isHighStakes) return true;
-
   // Low confidence (<70%) triggers Stage 2
   if (stage1Confidence < STAGE_2_CONFIDENCE_LOW_THRESHOLD) return true;
 
@@ -131,11 +124,9 @@ export function shouldTriggerStage2(
  */
 export function getStage2TriggerReason(
   stage1Confidence: number,
-  isHighStakes: boolean,
   forceStage2: boolean
 ): string {
   if (forceStage2) return 'forced';
-  if (isHighStakes) return 'high_stakes';
   if (stage1Confidence < STAGE_2_CONFIDENCE_LOW_THRESHOLD) return 'low_confidence';
   if (stage1Confidence < STAGE_2_CONFIDENCE_HIGH_THRESHOLD) return 'medium_confidence';
   return 'not_triggered';
@@ -398,7 +389,6 @@ export async function verifyHolding(
   tier: MotionTier,
   orderId: string,
   options?: {
-    highStakes?: boolean;
     forceStage2?: boolean;
     logToDb?: boolean;
   }
@@ -443,7 +433,6 @@ export async function verifyHolding(
     // Determine if Stage 2 is needed
     const needsStage2 =
       options?.forceStage2 ||
-      options?.highStakes ||
       stage1.confidence < STAGE_2_CONFIDENCE_LOW_THRESHOLD ||
       (stage1.confidence >= STAGE_2_CONFIDENCE_LOW_THRESHOLD &&
         stage1.confidence <= STAGE_2_CONFIDENCE_HIGH_THRESHOLD);
@@ -452,7 +441,6 @@ export async function verifyHolding(
       result.stage_2_triggered = true;
       result.stage_2_reason =
         options?.forceStage2 ? 'forced' :
-        options?.highStakes ? 'high_stakes' :
         stage1.confidence < STAGE_2_CONFIDENCE_LOW_THRESHOLD ? 'low_confidence' :
         'medium_confidence';
 
