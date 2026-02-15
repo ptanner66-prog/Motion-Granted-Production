@@ -4585,9 +4585,9 @@ Assemble and check. Provide as JSON.`;
     // BUG #6 FIX: Determine delivery readiness from a SINGLE code path.
     // Cross-reference generic names against actual party names from intake
     // so that a real party named "John Doe" does not block delivery.
-    const realPlaceholders = placeholderValidation.placeholders || [];
+    const realPlaceholders = Array.isArray(placeholderValidation.placeholders) ? placeholderValidation.placeholders : [];
     // TASK-11: Cross-reference generic names against ALL intake data (parties + attorney)
-    const genericNamesFiltered = (placeholderValidation.genericNames || []).filter(
+    const genericNamesFiltered = (Array.isArray(placeholderValidation.genericNames) ? placeholderValidation.genericNames : []).filter(
       (name: string) => !isRealPartyName(name, input.parties, input.attorneyName)
     );
     const hasBlockingIssues =
@@ -4647,9 +4647,9 @@ Assemble and check. Provide as JSON.`;
     // ========================================================================
     // TASK-09: AIS COMPLIANCE VALIDATION
     // ========================================================================
-    const phaseIXDocTypes = (
-      (phaseIXOutput?.documents || phaseIXOutput?.supportingDocuments || []) as Array<Record<string, unknown>>
-    ).map(d => String(d.type || d.name || ''));
+    const rawPhaseIXDocs = phaseIXOutput?.documents ?? phaseIXOutput?.supportingDocuments;
+    const phaseIXDocTypes = (Array.isArray(rawPhaseIXDocs) ? rawPhaseIXDocs as Array<Record<string, unknown>> : [])
+      .map(d => String(d.type || d.name || ''));
 
     const aisCompliance = validateAISCompliance(
       input.instructions || '',
@@ -4699,7 +4699,8 @@ Assemble and check. Provide as JSON.`;
     // ADD CITATION METADATA TO FINAL OUTPUT - Citation Viewer Feature
     // =========================================================================
     const phaseIVOutput = (input.previousPhaseOutputs?.['IV'] ?? {}) as Record<string, unknown>;
-    const caseCitationBank = (phaseIVOutput?.caseCitationBank || []) as Array<{
+    const rawCaseCitations = phaseIVOutput?.caseCitationBank;
+    const caseCitationBank = (Array.isArray(rawCaseCitations) ? rawCaseCitations : []) as Array<{
       caseName?: string;
       citation?: string;
       courtlistener_id?: number;
@@ -4707,7 +4708,8 @@ Assemble and check. Provide as JSON.`;
       date_filed?: string;
       authorityLevel?: string;
     }>;
-    const statutoryCitationBank = (phaseIVOutput?.statutoryCitationBank || []) as Array<{
+    const rawStatutoryCitations = phaseIVOutput?.statutoryCitationBank;
+    const statutoryCitationBank = (Array.isArray(rawStatutoryCitations) ? rawStatutoryCitations : []) as Array<{
       citation?: string;
       name?: string;
     }>;
@@ -4790,8 +4792,8 @@ Assemble and check. Provide as JSON.`;
         jurisdiction: input.jurisdiction || 'la_state',
         parish: input.parish,
         division: input.division,
-        plaintiffs: (input.parties || []).filter((p: { role: string; name: string }) => p.role === 'plaintiff').map((p: { name: string }) => p.name),
-        defendants: (input.parties || []).filter((p: { role: string; name: string }) => p.role === 'defendant').map((p: { name: string }) => p.name),
+        plaintiffs: (Array.isArray(input.parties) ? input.parties : []).filter((p: { role: string; name: string }) => p.role === 'plaintiff').map((p: { name: string }) => p.name),
+        defendants: (Array.isArray(input.parties) ? input.parties : []).filter((p: { role: string; name: string }) => p.role === 'defendant').map((p: { name: string }) => p.name),
         clientRole: (input.clientRole || 'plaintiff') as 'plaintiff' | 'defendant' | 'petitioner' | 'respondent',
         attorneyName: input.attorneyName || '',
         barNumber: input.barNumber || '',
