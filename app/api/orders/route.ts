@@ -11,28 +11,45 @@ import { createLogger } from '@/lib/security/logger'
 const log = createLogger('api-orders')
 import { isStateAcceptingOrders } from '@/lib/admin/state-toggle'
 
+// Map tier letter to DB integer
+const TIER_TO_INT: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 }
+
 // Server-side validation schema for order creation
+// SP-14: Backward-compatible with old wizard + new consolidated form
 const createOrderSchema = z.object({
   motion_type: z.string().min(1, 'Motion type is required'),
-  motion_tier: z.number().int().min(0).max(3),
+  // Accept number (correct) or string letter (old wizard sends 'A','B',etc.)
+  motion_tier: z.union([z.number().int().min(0).max(3), z.string()]),
   base_price: z.number().nullable(),
   turnaround: z.enum(['standard', 'rush_72', 'rush_48']),
   rush_surcharge: z.number().min(0),
   total_price: z.number().min(0),
-  filing_deadline: z.string().min(1, 'Filing deadline is required'),
+  // SP-14: filing_deadline optional — attorney manages own deadlines
+  filing_deadline: z.string().optional().default(''),
   jurisdiction: z.string().min(1, 'Jurisdiction is required'),
   court_division: z.string().nullable().optional(),
   case_number: z.string().min(1, 'Case number is required'),
-  case_caption: z.string().min(1, 'Case caption is required'),
+  // SP-14: case_caption optional — generated from plaintiff/defendant names
+  case_caption: z.string().optional().default(''),
   statement_of_facts: z.string().min(100, 'Statement of facts is too short'),
-  procedural_history: z.string().min(50, 'Procedural history is too short'),
+  // SP-14: procedural_history removed from intake form
+  procedural_history: z.string().optional().default(''),
   instructions: z.string().min(50, 'Instructions are too short'),
   related_entities: z.string().nullable().optional(),
+  // SP-14: parties now optional — generated from plaintiff/defendant names
   parties: z.array(z.object({
     name: z.string().min(1),
     role: z.string().min(1),
-  })).min(2, 'At least two parties are required'),
+  })).optional().default([]),
   documents: z.array(z.any()).optional(),
+  // SP-14: New fields from consolidated intake form
+  filing_posture: z.enum(['FILING', 'RESPONDING']).optional(),
+  plaintiff_names: z.string().optional(),
+  defendant_names: z.string().optional(),
+  party_represented: z.string().optional(),
+  judge_name: z.string().optional(),
+  opposing_counsel_name: z.string().optional(),
+  opposing_counsel_firm: z.string().optional(),
 })
 
 export async function GET() {
@@ -94,12 +111,47 @@ export async function POST(req: Request) {
     }
     const body = parseResult.data
 
+    // SP-14: Normalize motion_tier to integer
+    const motionTier = typeof body.motion_tier === 'string'
+      ? (TIER_TO_INT[body.motion_tier.toUpperCase()] ?? 1)
+      : body.motion_tier
+
+    // SP-14: Generate case_caption from plaintiff/defendant if not provided
+    const caseCaption = body.case_caption ||
+      (body.plaintiff_names && body.defendant_names
+        ? `${body.plaintiff_names.split(';')[0].trim()} v. ${body.defendant_names.split(';')[0].trim()}`
+        : 'Caption Pending')
+
+    // SP-14: Generate filing_deadline default if not provided (attorney manages own deadlines)
+    const turnaroundDays = body.turnaround === 'rush_48' ? 2 : body.turnaround === 'rush_72' ? 3 : 7
+    const filingDeadlineStr = body.filing_deadline ||
+      new Date(Date.now() + turnaroundDays * 2 * 86400000).toISOString().split('T')[0]
+
+    // SP-14: Procedural history default — removed from intake
+    const proceduralHistory = body.procedural_history || 'Not provided.'
+
+    // SP-14: Build related_entities JSON with new intake metadata
+    const existingEntities = body.related_entities ? body.related_entities : null
+    const intakeMetadata: Record<string, string> = {}
+    if (body.filing_posture) intakeMetadata.filing_posture = body.filing_posture
+    if (body.plaintiff_names) intakeMetadata.plaintiff_names = body.plaintiff_names
+    if (body.defendant_names) intakeMetadata.defendant_names = body.defendant_names
+    if (body.party_represented) intakeMetadata.party_represented = body.party_represented
+    if (body.judge_name) intakeMetadata.judge_name = body.judge_name
+    if (body.opposing_counsel_name) intakeMetadata.opposing_counsel_name = body.opposing_counsel_name
+    if (body.opposing_counsel_firm) intakeMetadata.opposing_counsel_firm = body.opposing_counsel_firm
+    const relatedEntities = Object.keys(intakeMetadata).length > 0
+      ? JSON.stringify(intakeMetadata)
+      : existingEntities
+
     // Server-side jurisdiction validation: verify the selected state is accepting orders
     const jurisdictionValue = body.jurisdiction.toUpperCase().trim()
-    // Extract state code: handle both "LA" format and "Louisiana State Court" format
-    const stateCodeMatch = jurisdictionValue.match(/^([A-Z]{2})(?:\s|$)/)
-    if (stateCodeMatch) {
-      const stateCode = stateCodeMatch[1]
+    // Extract state code: handle LA_STATE, CA_STATE, FEDERAL_5TH, FEDERAL_9TH, and legacy formats
+    const stateCodeMap: Record<string, string> = {
+      LA_STATE: 'LA', FEDERAL_5TH: 'LA', CA_STATE: 'CA', FEDERAL_9TH: 'CA',
+    }
+    const stateCode = stateCodeMap[jurisdictionValue] || jurisdictionValue.match(/^([A-Z]{2})(?:\s|$)/)?.[1]
+    if (stateCode) {
       const stateAccepting = await isStateAcceptingOrders(supabase, stateCode, body.motion_type)
       if (!stateAccepting) {
         return NextResponse.json(
@@ -128,7 +180,7 @@ export async function POST(req: Request) {
     }
 
     // Calculate expected delivery date
-    const filingDeadline = new Date(body.filing_deadline)
+    const filingDeadline = new Date(filingDeadlineStr)
     const daysBeforeDeadline = body.turnaround === 'rush_48' ? 2 : body.turnaround === 'rush_72' ? 3 : 5
     const expectedDelivery = new Date(filingDeadline)
     expectedDelivery.setDate(expectedDelivery.getDate() - daysBeforeDeadline)
@@ -139,21 +191,21 @@ export async function POST(req: Request) {
       .insert({
         client_id: user.id,
         motion_type: body.motion_type,
-        motion_tier: body.motion_tier,
+        motion_tier: motionTier,
         base_price: body.base_price,
         turnaround: body.turnaround,
         rush_surcharge: body.rush_surcharge,
         total_price: body.total_price,
-        filing_deadline: body.filing_deadline,
+        filing_deadline: filingDeadlineStr,
         expected_delivery: expectedDelivery.toISOString().split('T')[0],
         jurisdiction: body.jurisdiction,
         court_division: body.court_division || null,
         case_number: body.case_number,
-        case_caption: body.case_caption,
+        case_caption: caseCaption,
         statement_of_facts: body.statement_of_facts,
-        procedural_history: body.procedural_history,
+        procedural_history: proceduralHistory,
         instructions: body.instructions,
-        related_entities: body.related_entities || null,
+        related_entities: relatedEntities,
         stripe_payment_intent_id: paymentIntent?.id || null,
         stripe_payment_status: paymentIntent ? 'pending' : (stripePaymentRequired ? 'not_configured' : 'not_required'),
       })
@@ -165,20 +217,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Failed to create order. Please try again.' }, { status: 500 })
     }
 
-    // Insert parties
-    if (body.parties && body.parties.length > 0) {
-      const partiesData = body.parties
-        .filter((p: { name: string; role: string }) => p.name && p.role)
-        .map((p: { name: string; role: string }) => ({
-          order_id: order.id,
-          party_name: p.name,
-          party_name_normalized: p.name.toLowerCase().trim(),
-          party_role: p.role,
-        }))
+    // Insert parties — from explicit array or from plaintiff/defendant name fields
+    const partyEntries: { name: string; role: string }[] = []
 
-      if (partiesData.length > 0) {
-        await supabase.from('parties').insert(partiesData)
+    if (body.parties && body.parties.length > 0) {
+      partyEntries.push(...body.parties.filter((p: { name: string; role: string }) => p.name && p.role))
+    }
+
+    // SP-14: Build parties from plaintiff/defendant name strings (semicolon-separated)
+    if (partyEntries.length === 0) {
+      if (body.plaintiff_names) {
+        body.plaintiff_names.split(';').filter(Boolean).forEach((name: string) => {
+          partyEntries.push({ name: name.trim(), role: body.party_represented || 'Plaintiff' })
+        })
       }
+      if (body.defendant_names) {
+        const defRole = body.party_represented === 'Defendant' ? 'Plaintiff' : 'Defendant'
+        body.defendant_names.split(';').filter(Boolean).forEach((name: string) => {
+          partyEntries.push({ name: name.trim(), role: defRole })
+        })
+      }
+    }
+
+    if (partyEntries.length > 0) {
+      const partiesData = partyEntries.map(p => ({
+        order_id: order.id,
+        party_name: p.name,
+        party_name_normalized: p.name.toLowerCase().trim(),
+        party_role: p.role,
+      }))
+      await supabase.from('parties').insert(partiesData)
     }
 
     // Insert documents

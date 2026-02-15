@@ -124,7 +124,7 @@ export default async function DashboardPage() {
       title: 'New Order',
       description: 'Start a new motion request',
       icon: PlusCircle,
-      href: '/orders/new',
+      href: '/submit',
       iconBg: 'bg-gradient-to-br from-teal/20 to-teal/10',
       iconColor: 'text-teal',
       primary: true

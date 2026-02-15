@@ -126,8 +126,8 @@ export const CA_MULTIPLIER = 1.20;
 /** Rush multipliers. */
 export const RUSH_MULTIPLIERS = {
   standard: { multiplier: 1.0, label: 'Standard' },
-  rush_72h: { multiplier: 1.25, label: '72-hour rush (+25%)' },
-  rush_48h: { multiplier: 1.50, label: '48-hour rush (+50%)' },
+  rush_48h: { multiplier: 1.25, label: '48-hour rush (+25%)' },
+  rush_24h: { multiplier: 1.50, label: '24-hour rush (+50%)' },
 } as const;
 
 export type RushTier = keyof typeof RUSH_MULTIPLIERS;
