@@ -47,10 +47,22 @@ export const metadata: Metadata = {
   description: 'View order details.',
 }
 
-/** Display price from amount_paid (cents) or total_price (dollars) */
-function displayPrice(order: { amount_paid?: number | null; total_price: number }): string {
-  if (order.amount_paid && order.amount_paid > 0) {
-    return `$${(order.amount_paid / 100).toFixed(2)}`
+// Calculate progress based on status
+function getOrderProgress(status: string) {
+  // Progress milestones: revision_requested is NOT forward progress
+  const progressMap: Record<string, number> = {
+    submitted: 15,
+    under_review: 25,
+    assigned: 35,
+    in_progress: 50,
+    in_review: 65,
+    draft_delivered: 80,
+    revision_requested: 70, // Slightly back from draft_delivered
+    revision_delivered: 85,
+    completed: 100,
+    on_hold: 20,
+    cancelled: 0,
+    pending_conflict_review: 10,
   }
   return `$${order.total_price.toFixed(2)}`
 }
@@ -150,9 +162,51 @@ export default async function OrderDetailPage({
         </div>
       </div>
 
-      {/* Status Timeline */}
-      <div className="mb-6 p-4 bg-white rounded-xl shadow-sm border-0">
-        <StatusTimeline displayStatus={displayStatus} />
+        {/* Progress bar */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="font-medium text-gray-600">Order Progress</span>
+            <span className="text-teal font-semibold">{Math.round(progress)}%</span>
+          </div>
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-teal to-teal-dark rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Queue Status Card - Show for orders in queue or processing */}
+        {['submitted', 'under_review', 'in_progress', 'pending_review', 'generation_failed'].includes(order.status) && (
+          <div className="mt-6">
+            <QueueStatusCard
+              orderId={order.id}
+              status={order.status}
+              queuePosition={order.queue_position}
+              generationStartedAt={order.generation_started_at}
+            />
+          </div>
+        )}
+
+        {/* CC-R3-07: Conflict Review Notice */}
+        {order.status === 'pending_conflict_review' && (
+          <Card className="mt-6 border-amber-200 bg-amber-50">
+            <CardContent className="flex items-start gap-4 py-5">
+              <AlertCircle className="h-6 w-6 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-amber-900">Order Under Review</h3>
+                <p className="text-sm text-amber-800 mt-1">
+                  This order is under review for a potential scheduling conflict. You will be notified within 5 business days.
+                </p>
+                {order.created_at && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    Expected resolution by: {formatDate(new Date(new Date(order.created_at).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString())}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* HOLD_PENDING alert (above main content) */}

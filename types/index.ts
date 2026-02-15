@@ -99,14 +99,7 @@ export type OrderStatus =
   | 'on_hold'
   | 'cancelled'
   | 'refunded'
-  // 7-Status Model (SP-D Attorney Dashboard)
-  | 'PAID'
-  | 'HOLD_PENDING'
-  | 'IN_PROGRESS'
-  | 'AWAITING_APPROVAL'
-  | 'REVISION_REQ'
-  | 'COMPLETED'
-  | 'CANCELLED';
+  | 'pending_conflict_review';
 
 export interface Party {
   id: string;

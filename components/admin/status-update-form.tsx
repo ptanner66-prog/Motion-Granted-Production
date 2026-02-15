@@ -27,6 +27,7 @@ const ORDER_STATUSES = [
   { value: 'completed', label: 'Completed', description: 'Order finalized' },
   { value: 'generation_failed', label: 'Generation Failed', description: 'AI generation failed - retry needed' },
   { value: 'blocked', label: 'Blocked', description: 'Requires manual intervention' },
+  { value: 'pending_conflict_review', label: 'Conflict Review', description: 'Under review for scheduling conflict' },
   { value: 'cancelled', label: 'Cancelled', description: 'Order cancelled' },
 ]
 

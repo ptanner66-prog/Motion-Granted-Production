@@ -199,7 +199,7 @@ export async function runConflictCheck(
       };
     }
 
-    // Fetch all historical parties (excluding this order and same client)
+    // Fetch all historical parties (excluding this order, same client, and terminal statuses — CC-R3-06)
     const { data: historicalPartiesData, error: histError } = await supabase
       .from('parties')
       .select(`
@@ -210,10 +210,12 @@ export async function runConflictCheck(
         orders!inner (
           order_number,
           case_caption,
-          client_id
+          client_id,
+          status
         )
       `)
-      .neq('order_id', orderId);
+      .neq('order_id', orderId)
+      .not('orders.status', 'in', '("cancelled","cancelled_timeout","completed")');
 
     const historicalParties = historicalPartiesData as HistoricalParty[] | null;
 

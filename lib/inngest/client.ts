@@ -74,6 +74,14 @@ export type WorkflowCheckpointApprovedEvent = {
   };
 };
 
+// CC-R3-04: Conflict review event
+export type ConflictReviewStartedEvent = {
+  name: "conflict/review-started";
+  data: {
+    orderId: string;
+  };
+};
+
 export type Events = {
   "order/submitted": OrderSubmittedEvent;
   "order/generate-draft": OrderGenerationEvent;
@@ -81,6 +89,7 @@ export type Events = {
   "workflow/execute-phase": WorkflowExecutePhaseEvent;
   "workflow/checkpoint-reached": WorkflowCheckpointReachedEvent;
   "workflow/checkpoint-approved": WorkflowCheckpointApprovedEvent;
+  "conflict/review-started": ConflictReviewStartedEvent;
 };
 
 /**

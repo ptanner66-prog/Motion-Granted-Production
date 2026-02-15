@@ -9,6 +9,7 @@ import {
 import { processRevisionPayment } from '@/lib/workflow/checkpoint-service';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
 import { logWebhookFailure } from '@/lib/services/webhook-logger';
+import { populateOrderFromCheckoutMetadata } from '@/lib/payments/order-creation';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -681,6 +682,15 @@ async function handleCheckoutSessionCompleted(
     }
 
     if (order) {
+      // 50-State Step 7.3: Populate R1 columns from checkout metadata
+      if (session.metadata) {
+        await populateOrderFromCheckoutMetadata(
+          supabase,
+          orderId,
+          session.metadata as Record<string, string>,
+        );
+      }
+
       await queueOrderNotification(orderId, 'payment_received');
       await scheduleTask('conflict_check', {
         orderId,
