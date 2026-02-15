@@ -442,7 +442,7 @@ export function getMotionTypesForJurisdiction(
     }))
     .sort((a, b) => {
       // Sort by tier, then by name
-      const tierOrder = { 'A': 0, 'B': 1, 'C': 2 };
+      const tierOrder = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
       if (tierOrder[a.tier] !== tierOrder[b.tier]) {
         return tierOrder[a.tier] - tierOrder[b.tier];
       }

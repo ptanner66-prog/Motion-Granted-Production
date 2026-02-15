@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Layers } from 'lucide-react';
 
 interface TierMetrics {
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   orderCount: number;
   avgCompletionTime: number; // hours
   avgRevisions: number;

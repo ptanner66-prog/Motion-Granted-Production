@@ -216,7 +216,7 @@ export function searchMotions(
  */
 export function filterByTier(
   motions: MotionType[],
-  tier: 'A' | 'B' | 'C'
+  tier: 'A' | 'B' | 'C' | 'D'
 ): MotionType[] {
   return motions.filter((m) => m.tier === tier);
 }

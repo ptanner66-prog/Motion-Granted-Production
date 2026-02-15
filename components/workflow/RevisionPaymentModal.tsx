@@ -25,7 +25,7 @@ interface RevisionPaymentModalProps {
   onOpenChange: (open: boolean) => void;
   workflowId: string;
   revisionId: string;
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   amount: number;
   revisionNumber: number;
   orderNumber?: string;
@@ -36,6 +36,7 @@ const TIER_INFO = {
   A: { name: 'Simple Motion', price: 75 },
   B: { name: 'Moderate Motion', price: 125 },
   C: { name: 'Complex Motion', price: 200 },
+  D: { name: 'Specialized Motion', price: 300 },
 };
 
 export function RevisionPaymentModal({
@@ -144,7 +145,7 @@ export function RevisionPaymentModal({
           <div className="text-xs text-muted-foreground bg-muted rounded-lg p-3">
             <strong>Revision Pricing:</strong> Each order includes 1 free revision.
             Additional revisions are priced by motion complexity:
-            Tier A (Simple): $75 | Tier B (Moderate): $125 | Tier C (Complex): $200
+            Tier A (Simple): $75 | Tier B (Moderate): $125 | Tier C (Complex): $200 | Tier D (Specialized): $300
           </div>
 
           {/* Error message */}

@@ -87,7 +87,7 @@ async function getOrderSummary(supabase: Awaited<ReturnType<typeof createClient>
   });
 
   // Orders by tier
-  const ordersByTier: Record<string, number> = { A: 0, B: 0, C: 0 };
+  const ordersByTier: Record<string, number> = { A: 0, B: 0, C: 0, D: 0 };
   orders?.forEach((o: OrderRow) => {
     if (o.motion_tier) {
       ordersByTier[o.motion_tier] = (ordersByTier[o.motion_tier] || 0) + 1;

@@ -97,6 +97,21 @@ export const TIERS = {
       'Anti-SLAPP Motion (Complex)',
     ],
   },
+  D: {
+    id: 'D' as const,
+    name: 'Specialized/Enterprise',
+    description: 'Multi-party, cross-border, or enterprise-scale motions',
+    color: { bg: '#FEF3C7', text: '#92400E' },
+    priceLA: { min: 3500, max: 6000 },
+    priceCA: { min: 4200, max: 7200 },
+    turnaround: '5-7 business days',
+    motionTypes: [
+      'Multi-Party Complex Litigation Motion',
+      'Cross-Border Discovery Motion',
+      'Enterprise-Scale Class Action Motion',
+      'Other Specialized Motion',
+    ],
+  },
 } as const;
 
 export type TierConfig = typeof TIERS[MotionTier];

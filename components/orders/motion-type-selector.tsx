@@ -32,7 +32,7 @@ interface MotionType {
   code: string;
   name: string;
   description: string | null;
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   base_price_cents: number;
   typical_turnaround_days: number;
   rush_available: boolean;
@@ -70,6 +70,13 @@ const TIER_INFO = {
     color: 'text-purple-600 bg-purple-50 border-purple-200',
     badge: 'bg-purple-100 text-purple-700',
   },
+  D: {
+    name: 'Specialized/Enterprise',
+    description: 'Multi-party, cross-border, or enterprise-scale motions',
+    icon: Zap,
+    color: 'text-amber-600 bg-amber-50 border-amber-200',
+    badge: 'bg-amber-100 text-amber-700',
+  },
 };
 
 function formatPrice(cents: number): string {
@@ -89,7 +96,7 @@ export function MotionTypeSelector({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTier, setSelectedTier] = useState<'all' | 'A' | 'B' | 'C'>('all');
+  const [selectedTier, setSelectedTier] = useState<'all' | 'A' | 'B' | 'C' | 'D'>('all');
 
   useEffect(() => {
     async function fetchMotionTypes() {
