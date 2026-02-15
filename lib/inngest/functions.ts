@@ -16,6 +16,7 @@
 import { inngest } from "./client";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createLogger } from '@/lib/security/logger';
+import type Stripe from 'stripe';
 
 const log = createLogger('inngest-functions');
 import Anthropic from "@anthropic-ai/sdk";
