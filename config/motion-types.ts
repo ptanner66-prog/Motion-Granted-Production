@@ -113,6 +113,14 @@ export const ORDER_STATUSES = {
   on_hold: { label: "On Hold", color: "red", bgColor: "bg-red-100", textColor: "text-red-800" },
   cancelled: { label: "Cancelled", color: "gray", bgColor: "bg-gray-100", textColor: "text-gray-800" },
   refunded: { label: "Refunded", color: "gray", bgColor: "bg-gray-100", textColor: "text-gray-500" },
+  // 7-Status Model (SP-D Attorney Dashboard)
+  PAID: { label: "Submitted", color: "orange", bgColor: "bg-orange-100", textColor: "text-orange-800" },
+  HOLD_PENDING: { label: "Action needed", color: "yellow", bgColor: "bg-yellow-100", textColor: "text-yellow-800" },
+  IN_PROGRESS: { label: "In progress", color: "blue", bgColor: "bg-blue-100", textColor: "text-blue-800" },
+  AWAITING_APPROVAL: { label: "Ready for review", color: "green", bgColor: "bg-green-100", textColor: "text-green-800" },
+  REVISION_REQ: { label: "Revision in progress", color: "purple", bgColor: "bg-purple-100", textColor: "text-purple-800" },
+  COMPLETED: { label: "Completed", color: "gray", bgColor: "bg-gray-100", textColor: "text-gray-600" },
+  CANCELLED: { label: "Cancelled", color: "red", bgColor: "bg-red-100", textColor: "text-red-800" },
 } as const;
 
 export type MotionTier = keyof typeof MOTION_TIERS;
