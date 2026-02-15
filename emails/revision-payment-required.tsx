@@ -23,7 +23,7 @@ interface RevisionPaymentRequiredEmailProps {
   motionType: string
   caseCaption: string
   revisionNumber: number
-  tier: 'A' | 'B' | 'C'
+  tier: 'A' | 'B' | 'C' | 'D'
   amount: number
   paymentUrl: string
   portalUrl?: string
@@ -33,6 +33,7 @@ const TIER_NAMES = {
   A: 'Simple Motion',
   B: 'Moderate Motion',
   C: 'Complex Motion',
+  D: 'Specialized Motion',
 };
 
 export function RevisionPaymentRequiredEmail({
@@ -155,7 +156,7 @@ export function RevisionPaymentRequiredEmail({
               </Link>
             </Text>
             <Text style={pricingNote}>
-              <strong>Revision Pricing:</strong> Tier A (Simple): $75 | Tier B (Moderate): $125 | Tier C (Complex): $200
+              <strong>Revision Pricing:</strong> Tier A (Simple): $75 | Tier B (Moderate): $125 | Tier C (Complex): $200 | Tier D (Specialized): $300
             </Text>
             <Text style={footerDisclaimer}>
               Motion Granted is not a law firm. All work product requires attorney review
