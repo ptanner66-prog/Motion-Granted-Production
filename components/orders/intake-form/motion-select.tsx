@@ -56,9 +56,9 @@ export function MotionSelect() {
                           {motion.price !== null
                             ? formatCurrency(motion.price)
                             : 'Quote'}
-                          {'priceMax' in motion && motion.priceMax && (
-                            <span> - {formatCurrency(motion.priceMax as number)}</span>
-                          )}
+                          {'priceMax' in motion && typeof motion.priceMax === 'number' ? (
+                            <span> - {formatCurrency(motion.priceMax)}</span>
+                          ) : null}
                         </span>
                       </div>
                     </SelectItem>
