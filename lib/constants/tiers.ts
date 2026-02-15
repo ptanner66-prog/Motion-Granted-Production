@@ -110,7 +110,7 @@ export interface WorkflowTierConfig {
   skipPhaseVI: boolean;
   maxRevisionLoops: number;
   deepResearch: boolean;
-  citationTargets: { min: number; target: number; highStakes: boolean };
+  citationTargets: { min: number; target: number; deepVerification: boolean };
   qualityThreshold: number;
 }
 
@@ -120,7 +120,7 @@ export const WORKFLOW_TIER_CONFIG: Record<MotionTier, WorkflowTierConfig> = {
     skipPhaseVI: true,        // Procedural motions rarely face opposition
     maxRevisionLoops: 2,
     deepResearch: false,
-    citationTargets: { min: 4, target: 8, highStakes: false },
+    citationTargets: { min: 4, target: 8, deepVerification: false },
     qualityThreshold: 0.87,   // B+ = A- minimum (same for all tiers)
   },
   B: {
@@ -128,7 +128,7 @@ export const WORKFLOW_TIER_CONFIG: Record<MotionTier, WorkflowTierConfig> = {
     skipPhaseVI: false,
     maxRevisionLoops: 3,
     deepResearch: true,
-    citationTargets: { min: 4, target: 12, highStakes: false },
+    citationTargets: { min: 4, target: 12, deepVerification: false },
     qualityThreshold: 0.87,
   },
   C: {
@@ -136,7 +136,7 @@ export const WORKFLOW_TIER_CONFIG: Record<MotionTier, WorkflowTierConfig> = {
     skipPhaseVI: false,
     maxRevisionLoops: 3,
     deepResearch: true,
-    citationTargets: { min: 4, target: 16, highStakes: true },
+    citationTargets: { min: 4, target: 16, deepVerification: true },
     qualityThreshold: 0.87,
   },
   D: {
@@ -144,7 +144,7 @@ export const WORKFLOW_TIER_CONFIG: Record<MotionTier, WorkflowTierConfig> = {
     skipPhaseVI: false,
     maxRevisionLoops: 3,
     deepResearch: true,
-    citationTargets: { min: 6, target: 20, highStakes: true },
+    citationTargets: { min: 6, target: 20, deepVerification: true },
     qualityThreshold: 0.87,
   },
 };

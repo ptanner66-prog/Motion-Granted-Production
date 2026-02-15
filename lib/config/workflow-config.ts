@@ -117,12 +117,12 @@ export function isProtocol10Triggered(revisionCount: number): boolean {
 
 export const CITATION_BATCH_CONFIG = {
   DEFAULT: 4,
-  HIGH_STAKES: 2,
-  HIGH_STAKES_PHASES: ['V.1', 'VII.1'] as Phase[],
+  REDUCED: 2,
+  REDUCED_PHASES: ['V.1', 'VII.1'] as Phase[],
 } as const;
 
 export function getCitationBatchSize(phase: Phase): number {
-  return CITATION_BATCH_CONFIG.HIGH_STAKES_PHASES.includes(phase) ? CITATION_BATCH_CONFIG.HIGH_STAKES : CITATION_BATCH_CONFIG.DEFAULT;
+  return CITATION_BATCH_CONFIG.REDUCED_PHASES.includes(phase) ? CITATION_BATCH_CONFIG.REDUCED : CITATION_BATCH_CONFIG.DEFAULT;
 }
 
 export const USER_CHECKPOINTS: Phase[] = ['IV', 'VII', 'X'];
