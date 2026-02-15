@@ -6,7 +6,7 @@
  * Shows revision loop metrics
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { RefreshCw, TrendingDown, AlertTriangle } from 'lucide-react';
 
@@ -22,23 +22,31 @@ interface RevisionStats {
 export function RevisionAnalyticsCard() {
   const [stats, setStats] = useState<RevisionStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/analytics/revisions');
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.error || `Request failed (${response.status})`);
+      }
+    } catch (err) {
+      console.error('Failed to fetch revision stats:', err);
+      setError('Network error loading revision statistics');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchStats() {
-      try {
-        const response = await fetch('/api/admin/analytics/revisions');
-        if (response.ok) {
-          const data = await response.json();
-          setStats(data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch revision stats:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchStats();
-  }, []);
+  }, [fetchStats]);
 
   if (loading) {
     return (
@@ -59,7 +67,7 @@ export function RevisionAnalyticsCard() {
     );
   }
 
-  if (!stats) {
+  if (error) {
     return (
       <Card>
         <CardHeader>
@@ -69,7 +77,37 @@ export function RevisionAnalyticsCard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-gray-500">No revision data available</p>
+          <div className="text-center py-4">
+            <p className="text-red-500 text-sm">{error}</p>
+            <button
+              onClick={fetchStats}
+              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!stats || stats.totalRevisions === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RefreshCw className="h-5 w-5" />
+            Revision Analytics
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-4">
+            <p className="text-gray-500">No revision data available yet.</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Revision analytics will appear after orders complete Phase VII.
+            </p>
+          </div>
         </CardContent>
       </Card>
     );
