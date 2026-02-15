@@ -11,7 +11,32 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useIntakeForm } from '@/lib/intake/context';
 import { getFilteredMotions, groupMotionsForDropdown } from '@/lib/utils/motion-filter';
-import { TIER_LABELS, CATEGORY_LABELS, type MotionType as ConfigMotionType } from '@/lib/config/motion-types';
+// Labels and type inlined from deleted lib/config/motion-types.ts (AUDIT-005)
+interface ConfigMotionType {
+  id: string; display_name: string; tier: 'A' | 'B' | 'C' | 'D';
+  category: string; availability: string; available_states?: string[];
+  court_types: string[]; description: string; ccp_reference?: string;
+  frcp_reference?: string; base_price_min: number; base_price_max: number;
+}
+const TIER_LABELS: Record<'A' | 'B' | 'C' | 'D', string> = {
+  A: 'TIER A — Procedural ($299)', B: 'TIER B — Intermediate ($599)',
+  C: 'TIER C — Complex/Dispositive ($999)', D: 'TIER D — Highly Complex ($1,499)',
+};
+const CATEGORY_LABELS: Record<string, string> = {
+  general: 'General', service: 'Service of Process', trial_setting: 'Trial Setting',
+  case_management: 'Case Management', discovery: 'Discovery',
+  discovery_sanctions: 'Discovery Sanctions', pleading: 'Pleading',
+  jurisdiction: 'Jurisdiction', party_management: 'Parties & Intervention',
+  settlement: 'Settlement & ADR', prejudgment: 'Prejudgment', trial: 'Trial',
+  post_judgment: 'Post-Judgment', dispositive: 'Dispositive',
+  injunctive: 'Injunctive Relief', expert: 'Expert Witnesses', post_verdict: 'Post-Verdict',
+  Procedural: 'Procedural', Discovery: 'Discovery', Dispositive: 'Dispositive',
+  'Injunctive Relief': 'Injunctive Relief', 'Post-Trial': 'Post-Trial',
+  Administrative: 'Administrative', Protective: 'Protective',
+  'Case Management': 'Case Management', Criminal: 'Criminal',
+  Appellate: 'Appellate', 'Family Law': 'Family Law',
+  Bankruptcy: 'Bankruptcy', 'Federal Specific': 'Federal Specific',
+};
 import { getStateConfig } from '@/lib/config/state-configs';
 import type { Tier, CourtType } from '@/lib/intake/types';
 import { FormSection } from './shared/FormSection';

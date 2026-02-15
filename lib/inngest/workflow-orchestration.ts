@@ -139,11 +139,19 @@ function extractDraftText(phaseOutput: unknown): string | null {
   if (typeof phaseOutput === 'string') return phaseOutput;
   if (typeof phaseOutput === 'object') {
     const obj = phaseOutput as Record<string, unknown>;
-    // Phase VIII output may store draft in various fields
-    for (const key of ['revised_draft', 'revisedDraft', 'draft', 'content', 'motionBody']) {
+    // Phase VIII output stores draft in revisedMotion (object or string)
+    for (const key of ['revisedMotion', 'revised_draft', 'revisedDraft', 'draft', 'content', 'motionBody']) {
       if (typeof obj[key] === 'string' && (obj[key] as string).length > 0) {
         return obj[key] as string;
       }
+    }
+    // Handle revisedMotion as structured object
+    if (obj.revisedMotion && typeof obj.revisedMotion === 'object') {
+      return formatMotionObjectToText(obj.revisedMotion as Record<string, unknown>);
+    }
+    // Handle draftMotion as structured object (Phase V)
+    if (obj.draftMotion && typeof obj.draftMotion === 'object') {
+      return formatMotionObjectToText(obj.draftMotion as Record<string, unknown>);
     }
   }
   return null;
@@ -2464,6 +2472,63 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       console.log(`[Orchestration] CP3 BLOCKING checkpoint triggered — awaiting approval`);
     });
+
+    // ========================================================================
+    // STEP 15.5: Wait for CP3 Admin Approval (BLOCKING)
+    // ========================================================================
+    const approvalResult = await step.waitForEvent(
+      "wait-for-cp3-approval",
+      {
+        event: "workflow/checkpoint-approved",
+        match: "data.workflowId",
+        timeout: "7d",
+      }
+    );
+
+    if (!approvalResult) {
+      await step.run("cp3-timeout-handler", async () => {
+        await supabase.from('orders')
+          .update({ status: 'approval_timeout' })
+          .eq('id', orderId);
+        console.error(`[Orchestration] CP3 approval timed out after 7 days for order ${orderId}`);
+      });
+      throw new Error('CP3 approval timed out after 7 days');
+    }
+
+    if (approvalResult.data.action === 'CANCEL') {
+      await step.run("cp3-cancel-handler", async () => {
+        await supabase.from('orders')
+          .update({ status: 'cancelled' })
+          .eq('id', orderId);
+        console.log(`[Orchestration] Order ${orderId} cancelled via CP3`);
+      });
+      return { status: 'cancelled', orderId };
+    }
+
+    if (approvalResult.data.action === 'REQUEST_CHANGES') {
+      // Route back to Phase VIII revision loop with existing state
+      console.log(`[Orchestration] CP3 requested changes — routing back to Phase VIII`);
+      await step.run("cp3-revision-requested", async () => {
+        await supabase.from('orders')
+          .update({ status: 'in_progress' })
+          .eq('id', orderId);
+      });
+      // Re-send the workflow event to re-enter the revision loop
+      await step.sendEvent("cp3-revision-reentry", {
+        name: "workflow/execute-phase",
+        data: {
+          workflowId: workflowState.workflowId,
+          orderId,
+          phase: "VIII",
+          reason: "CP3_REQUEST_CHANGES",
+          adminFeedback: approvalResult.data.feedback || '',
+        },
+      });
+      return { status: 'revision_requested', orderId };
+    }
+
+    // Only APPROVE reaches generate-deliverables below
+    console.log(`[Orchestration] CP3 APPROVED — proceeding to deliverables`);
 
     // ========================================================================
     // STEP 16: Generate Deliverables
