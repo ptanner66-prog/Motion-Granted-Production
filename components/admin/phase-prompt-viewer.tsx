@@ -51,8 +51,9 @@ interface PhaseData {
     A: TierRouting;
     B: TierRouting;
     C: TierRouting;
+    D: TierRouting;
   };
-  stages: Record<string, { A: TierRouting; B: TierRouting; C: TierRouting }> | null;
+  stages: Record<string, { A: TierRouting; B: TierRouting; C: TierRouting; D: TierRouting }> | null;
 }
 
 interface PromptsResponse {
@@ -171,7 +172,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 }
 
 function TierRoutingBadges({ routing }: { routing: PhaseData['routing'] }) {
-  const tiers = (['A', 'B', 'C'] as const).map((tier) => {
+  const tiers = (['A', 'B', 'C', 'D'] as const).map((tier) => {
     const route = routing[tier];
     const label = formatModelName(route.model);
     const variant = modelBadgeVariant(route.model);
@@ -206,14 +207,15 @@ function StageRoutingTable({ stages }: { stages: NonNullable<PhaseData['stages']
               <th className="pb-2 pr-4 font-medium">Stage</th>
               <th className="pb-2 pr-4 font-medium">Tier A</th>
               <th className="pb-2 pr-4 font-medium">Tier B</th>
-              <th className="pb-2 font-medium">Tier C</th>
+              <th className="pb-2 pr-4 font-medium">Tier C</th>
+              <th className="pb-2 font-medium">Tier D</th>
             </tr>
           </thead>
           <tbody>
             {Object.entries(stages).map(([stageName, tierRouting]) => (
               <tr key={stageName} className="border-b border-gray-50 last:border-0">
                 <td className="py-2 pr-4 font-medium text-gray-700">{stageName}</td>
-                {(['A', 'B', 'C'] as const).map((tier) => {
+                {(['A', 'B', 'C', 'D'] as const).map((tier) => {
                   const route = tierRouting[tier];
                   return (
                     <td key={tier} className="py-2 pr-4">
@@ -447,8 +449,8 @@ function PhaseCard({
         <CardContent>
           <div className="space-y-4">
             {/* Routing detail */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {(['A', 'B', 'C'] as const).map((tier) => {
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {(['A', 'B', 'C', 'D'] as const).map((tier) => {
                 const route = phase.routing[tier];
                 return (
                   <div key={tier} className="bg-gray-50 rounded-lg p-3">

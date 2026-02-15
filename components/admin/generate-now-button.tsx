@@ -144,7 +144,7 @@ export function GenerateNowButton({ orderId, orderNumber, orderStatus, filingTyp
           14-Phase Workflow
         </CardTitle>
         <CardDescription className="text-amber-700">
-          Order {orderNumber} - v7.2 Workflow Orchestration
+          Order {orderNumber} - Workflow Orchestration
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

@@ -111,6 +111,9 @@ export async function POST(req: Request) {
     }
     const body = parseResult.data
 
+    // Normalize motion_type: trim whitespace to prevent duplicates in analytics
+    const normalizedMotionType = body.motion_type.trim()
+
     // SP-14: Normalize motion_tier to integer
     const motionTier = typeof body.motion_tier === 'string'
       ? (TIER_TO_INT[body.motion_tier.toUpperCase()] ?? 1)
@@ -172,7 +175,7 @@ export async function POST(req: Request) {
         currency: 'usd',
         metadata: {
           // SECURITY: Only include order_id after creation, not PII
-          motion_type: body.motion_type,
+          motion_type: normalizedMotionType,
         },
       }, {
         idempotencyKey,
@@ -190,7 +193,7 @@ export async function POST(req: Request) {
       .from('orders')
       .insert({
         client_id: user.id,
-        motion_type: body.motion_type,
+        motion_type: normalizedMotionType,
         motion_tier: motionTier,
         base_price: body.base_price,
         turnaround: body.turnaround,

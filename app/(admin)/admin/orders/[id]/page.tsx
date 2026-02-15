@@ -345,10 +345,17 @@ export default async function AdminOrderDetailPage({
               {/* Procedural History */}
               <Card className="bg-white border-gray-200 overflow-hidden">
                 <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-lg text-navy">Procedural History</CardTitle>
+                  <CardTitle className="text-lg text-navy">
+                    Procedural History
+                    <span className="text-gray-400 text-xs font-normal ml-2">Optional</span>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6 overflow-hidden">
-                  <p className="text-gray-600 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.procedural_history}</p>
+                  {order.procedural_history && order.procedural_history !== 'Not provided.' ? (
+                    <p className="text-gray-600 whitespace-pre-wrap break-words overflow-wrap-anywhere leading-relaxed">{order.procedural_history}</p>
+                  ) : (
+                    <p className="text-gray-400 italic">Not provided — motion will rely on statement of facts above.</p>
+                  )}
                 </CardContent>
               </Card>
 
