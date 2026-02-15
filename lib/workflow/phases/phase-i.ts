@@ -15,6 +15,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { validateMandatoryFields, type MandatoryFieldData } from '../intake-validation';
 import { calculateInternalDeadline, validateDeadlineYear } from '../utils/deadline-calculator';
+import type { JudgeLookupResult } from '@/lib/citation/types';
+import { lookupJudge } from '@/lib/courtlistener/judge-lookup';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -61,6 +63,10 @@ export interface IntakeData {
   basePrice: number;
   rushFee: number;
   totalPrice: number;
+
+  // CL-enriched judge data (ST-006 — BATCH_11_JUDGE_LOOKUP)
+  judgeProfile?: JudgeLookupResult | null;
+  judgeProfilePending?: boolean;  // True when status='MULTIPLE'
 }
 
 export interface IntakeValidationResult {
@@ -558,6 +564,28 @@ export async function saveIntakeData(
 
     const phaseOutputs = (order?.phase_outputs || {}) as Record<string, unknown>;
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Judge profile lookup (ST-006 — BATCH_11_JUDGE_LOOKUP)
+    // Non-blocking: errors are logged but do not fail intake
+    // ═══════════════════════════════════════════════════════════════════════
+    let judgeProfile: JudgeLookupResult | null = null;
+    let judgeProfilePending = false;
+
+    if (intakeData.caseDetails.judgeName) {
+      try {
+        judgeProfile = await lookupJudge(
+          intakeData.caseDetails.judgeName,
+          intakeData.caseDetails.courtName,
+          intakeData.caseDetails.division ?? undefined
+        );
+        judgeProfilePending = judgeProfile.status === 'MULTIPLE';
+
+        log.info(`[Phase I] Judge lookup result for "${intakeData.caseDetails.judgeName}": ${judgeProfile.status}`);
+      } catch (error) {
+        log.warn('[Phase I] Judge lookup failed (non-blocking):', error);
+      }
+    }
+
     // Save Phase I output
     phaseOutputs['I'] = {
       phaseComplete: 'I',
@@ -583,6 +611,8 @@ export async function saveIntakeData(
         rushFee: intakeData.rushFee,
         totalPrice: intakeData.totalPrice,
       },
+      judgeProfile,
+      judgeProfilePending,
       validatedAt: new Date().toISOString(),
     };
 

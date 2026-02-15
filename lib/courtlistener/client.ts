@@ -2052,6 +2052,170 @@ function formatDateDisplay(dateStr: string): string {
 // END CITATION VIEWER METHODS
 // ============================================================================
 
+// ============================================================================
+// V4 CURSOR-BASED PAGINATION HELPER
+// ============================================================================
+
+export interface PaginationConfig {
+  /** Maximum pages to retrieve (default: 10) */
+  maxPages: number;
+  /** Results per page (default: 100) */
+  pageSize: number;
+  /** Stop if a page returns 0 results (default: true) */
+  abortOnEmpty: boolean;
+}
+
+export interface PaginatedResult<T> {
+  results: T[];
+  totalCount: number;
+  pagesRetrieved: number;
+  /** True if maxPages reached before exhausting results */
+  truncated: boolean;
+}
+
+const DEFAULT_PAGINATION_CONFIG: PaginationConfig = {
+  maxPages: 10,
+  pageSize: 100,
+  abortOnEmpty: true,
+};
+
+/**
+ * Paginate through a V4 endpoint using cursor-based pagination.
+ *
+ * CourtListener V4 uses cursor-based pagination (not offset-based).
+ * Response format: { count, next (URL with cursor), previous, results }
+ *
+ * @param endpoint - API endpoint path (e.g., '/opinions-cited/')
+ * @param params - Query parameters (excluding cursor/limit)
+ * @param config - Pagination configuration overrides
+ * @param requestOptions - Optional timeout/signal options
+ *
+ * @version BATCH_13 — ST-010
+ */
+export async function paginateV4<T>(
+  endpoint: string,
+  params: Record<string, string | number> = {},
+  config?: Partial<PaginationConfig>,
+  requestOptions?: RequestOptions
+): Promise<PaginatedResult<T>> {
+  const cfg = { ...DEFAULT_PAGINATION_CONFIG, ...config };
+  const results: T[] = [];
+  let totalCount = 0;
+  let pagesRetrieved = 0;
+  let cursor: string | null = null;
+
+  // Build query string from params
+  const buildQueryString = (extraParams: Record<string, string | number>): string => {
+    const allParams = { ...params, limit: cfg.pageSize, ...extraParams };
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(allParams)) {
+      searchParams.set(key, String(value));
+    }
+    return searchParams.toString();
+  };
+
+  try {
+    // First page
+    const firstPageQuery = buildQueryString({});
+    const firstResponse = await makeRequest<V4PaginationResponse<T>>(
+      `${endpoint}?${firstPageQuery}`,
+      requestOptions
+    );
+
+    if (!firstResponse.success || !firstResponse.data) {
+      log.warn(`[paginateV4] First page request failed: ${firstResponse.error}`);
+      return { results, totalCount, pagesRetrieved: 0, truncated: false };
+    }
+
+    totalCount = firstResponse.data.count ?? 0;
+    pagesRetrieved = 1;
+
+    if (Array.isArray(firstResponse.data.results)) {
+      results.push(...firstResponse.data.results);
+    }
+
+    // Extract cursor from next URL
+    cursor = extractCursorFromUrl(firstResponse.data.next);
+
+    // Abort if empty and configured to do so
+    if (cfg.abortOnEmpty && results.length === 0) {
+      return { results, totalCount, pagesRetrieved, truncated: false };
+    }
+
+    // Continue pagination
+    while (cursor && pagesRetrieved < cfg.maxPages) {
+      const pageQuery = buildQueryString({ cursor });
+      const pageResponse = await makeRequest<V4PaginationResponse<T>>(
+        `${endpoint}?${pageQuery}`,
+        requestOptions
+      );
+
+      pagesRetrieved++;
+
+      if (!pageResponse.success || !pageResponse.data) {
+        log.warn(`[paginateV4] Page ${pagesRetrieved} request failed: ${pageResponse.error}`);
+        break;
+      }
+
+      if (Array.isArray(pageResponse.data.results)) {
+        results.push(...pageResponse.data.results);
+      }
+
+      // Abort on empty page
+      if (cfg.abortOnEmpty && pageResponse.data.results?.length === 0) {
+        log.warn(`[paginateV4] CL_EMPTY_PAGE_WITH_CURSOR at page ${pagesRetrieved}`);
+        break;
+      }
+
+      cursor = extractCursorFromUrl(pageResponse.data.next);
+    }
+
+    return {
+      results,
+      totalCount,
+      pagesRetrieved,
+      truncated: cursor !== null,
+    };
+  } catch (error) {
+    // Handle cursor expiration gracefully — return what we have so far
+    if (error instanceof Error && error.message.includes('cursor')) {
+      log.warn(`[paginateV4] CL_CURSOR_EXPIRED at page ${pagesRetrieved}`);
+      return { results, totalCount, pagesRetrieved, truncated: true };
+    }
+    throw error;
+  }
+}
+
+/**
+ * V4 paginated response shape from CourtListener
+ */
+interface V4PaginationResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+/**
+ * Extract cursor parameter from CL's next URL.
+ * V4 uses cursor-based pagination where the next URL contains a cursor param.
+ */
+function extractCursorFromUrl(nextUrl: string | null | undefined): string | null {
+  if (!nextUrl) return null;
+
+  try {
+    const url = new URL(nextUrl);
+    return url.searchParams.get('cursor');
+  } catch {
+    // Invalid URL — no more pages
+    return null;
+  }
+}
+
+// ============================================================================
+// END V4 PAGINATION HELPER
+// ============================================================================
+
 /**
  * Determine if a court's decisions are binding or persuasive for a jurisdiction
  *
