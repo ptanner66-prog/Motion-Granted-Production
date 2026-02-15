@@ -9,6 +9,7 @@ import { StatusTimeline } from '@/components/orders/status-timeline'
 import { CP3Actions } from '@/components/orders/cp3-actions'
 import { DeliverablesCard } from '@/components/orders/deliverables-card'
 import { HoldAlertCard } from '@/components/orders/hold-alert-card'
+import { QueueStatusCard } from '@/components/orders/queue-status-card'
 import { PostApprovalRevision } from '@/components/orders/post-approval-revision'
 import { CancellationCard } from '@/components/orders/cancellation-card'
 import { Separator } from '@/components/ui/separator'
@@ -64,7 +65,14 @@ function getOrderProgress(status: string) {
     cancelled: 0,
     pending_conflict_review: 10,
   }
-  return `$${order.total_price.toFixed(2)}`
+  return progressMap[status] ?? 50
+}
+
+function displayPrice(order: { total_price?: number | null }): string {
+  if (order.total_price != null) {
+    return `$${order.total_price.toFixed(2)}`
+  }
+  return '—'
 }
 
 export default async function OrderDetailPage({
@@ -124,6 +132,7 @@ export default async function OrderDetailPage({
 
   // Party string for header
   const partyString = parties.map(p => p.party_name).join(' v. ')
+  const progress = getOrderProgress(order.status)
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
@@ -207,7 +216,6 @@ export default async function OrderDetailPage({
             </CardContent>
           </Card>
         )}
-      </div>
 
       {/* HOLD_PENDING alert (above main content) */}
       {displayStatus === 'HOLD_PENDING' && (
@@ -481,7 +489,7 @@ export default async function OrderDetailPage({
                 </div>
 
                 {/* Activity entries */}
-                {activityLogs?.map((log, i) => {
+                {activityLogs?.map((log: { action_type: string; action_details: Record<string, unknown> | null; created_at: string }, i: number) => {
                   const actionLabels: Record<string, string> = {
                     checkpoint_approved: 'Draft approved by admin',
                     checkpoint_changes_requested: 'Changes requested by admin',

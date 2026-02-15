@@ -18,6 +18,7 @@ import { type SupabaseClient } from '@supabase/supabase-js';
 import { assembleFilingPackage, type AssemblerInput, type FilingPackage } from '../generators/filing-package-assembler';
 import { convertDocxBufferToPDF } from '../pdf/generator';
 import { uploadDocument, ensureBucketExists } from './storage-manager';
+import { normalizeTier } from '@/lib/utils/tier-helpers';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -489,22 +490,3 @@ export async function generateAndStoreFilingPackage(
 // HELPERS
 // ============================================================================
 
-function normalizeTier(tier: unknown): 'A' | 'B' | 'C' | 'D' {
-  if (tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D') return tier;
-  if (typeof tier === 'number') {
-    if (tier <= 1) return 'A';
-    if (tier === 2) return 'B';
-    if (tier === 3) return 'C';
-    if (tier === 4) return 'D';
-    return 'C';
-  }
-  if (typeof tier === 'string') {
-    const upper = tier.toUpperCase();
-    if (upper === 'A' || upper === 'B' || upper === 'C' || upper === 'D') return upper as 'A' | 'B' | 'C' | 'D';
-    if (tier === '1' || tier === '0') return 'A';
-    if (tier === '2') return 'B';
-    if (tier === '3') return 'C';
-    if (tier === '4') return 'D';
-  }
-  return 'B'; // Default to Tier B
-}
