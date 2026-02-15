@@ -21,7 +21,7 @@ import { getStateConfig } from '@/lib/config/state-configs';
 // ============================================================================
 
 export interface MotionGroup {
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   tierLabel: string; // "TIER A — Procedural ($150-$400)"
   priceRange: { min: number; max: number };
   categories: CategoryGroup[];
@@ -127,7 +127,7 @@ export function getFilteredMotions(
  * Inner: Category
  */
 export function groupMotionsForDropdown(motions: MotionType[]): MotionGroup[] {
-  const tiers: ('A' | 'B' | 'C')[] = ['A', 'B', 'C'];
+  const tiers: ('A' | 'B' | 'C' | 'D')[] = ['A', 'B', 'C', 'D'];
   const groups: MotionGroup[] = [];
 
   for (const tier of tiers) {
@@ -334,7 +334,7 @@ function formatCurrency(cents: number): string {
 /**
  * Get tier price range formatted string
  */
-export function getTierPriceRangeFormatted(tier: 'A' | 'B' | 'C'): string {
+export function getTierPriceRangeFormatted(tier: 'A' | 'B' | 'C' | 'D'): string {
   switch (tier) {
     case 'A':
       return '$150 - $400';
@@ -342,6 +342,8 @@ export function getTierPriceRangeFormatted(tier: 'A' | 'B' | 'C'): string {
       return '$500 - $1,400';
     case 'C':
       return '$1,500 - $3,500';
+    case 'D':
+      return '$1,499';
   }
 }
 

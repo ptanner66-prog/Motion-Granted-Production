@@ -299,7 +299,7 @@ export interface PhaseIVInput {
   orderId: string;
   motionType: MotionTypeCode;
   jurisdiction: string;
-  tier: 'A' | 'B' | 'C';
+  tier: 'A' | 'B' | 'C' | 'D';
   statementOfFacts: string;
   phaseIIOutput?: Record<string, unknown>;
   phaseIIIOutput?: Record<string, unknown>;

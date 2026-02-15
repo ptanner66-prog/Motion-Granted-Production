@@ -6,7 +6,7 @@
  */
 
 export type WorkflowPath = 'A' | 'B';
-export type Tier = 'A' | 'B' | 'C';
+export type Tier = 'A' | 'B' | 'C' | 'D';
 export type CourtType = 'state' | 'federal';
 export type TonePreference = 'aggressive' | 'measured' | 'conciliatory';
 export type ServiceMethod = 'electronic' | 'mail' | 'personal' | 'overnight';

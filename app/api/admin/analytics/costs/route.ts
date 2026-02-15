@@ -61,7 +61,7 @@ export async function GET() {
     // Calculate metrics
     let totalCost = 0;
     const costByPhase: Record<string, number> = {};
-    const costByTier: Record<string, number> = { A: 0, B: 0, C: 0 };
+    const costByTier: Record<string, number> = { A: 0, B: 0, C: 0, D: 0 };
     const costByProvider: Record<string, number> = {
       anthropic: 0,
       openai: 0,
@@ -115,7 +115,7 @@ export async function GET() {
 
       // Track by tier
       const tier = (state.current_tier as string) || 'B';
-      if (tier === 'A' || tier === 'B' || tier === 'C') {
+      if (tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D') {
         costByTier[tier] += orderTotal;
       }
 
@@ -204,7 +204,7 @@ function getEmptyMetrics() {
     totalCostLast30Days: 0,
     averageCostPerOrder: 0,
     costByPhase: {},
-    costByTier: { A: 0, B: 0, C: 0 },
+    costByTier: { A: 0, B: 0, C: 0, D: 0 },
     costByProvider: { anthropic: 0, openai: 0, courtlistener: 0, pacer: 0 },
     monthlyTrend: [],
     topExpensiveOrders: [],

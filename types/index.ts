@@ -30,7 +30,7 @@ export interface Order {
   clerk_id: string | null;
   motion_type: string;
   motion_tier: number;
-  tier?: 'A' | 'B' | 'C';  // v6.3: Tier A/B/C format (synced from motion_tier)
+  tier?: 'A' | 'B' | 'C' | 'D';  // v6.3: Tier A/B/C/D format (synced from motion_tier)
   base_price: number;
   turnaround: 'standard' | 'rush_72' | 'rush_48';
   rush_surcharge: number;
