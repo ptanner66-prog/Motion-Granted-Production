@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
       "@next/next/no-html-link-for-pages": "warn",
       "react-hooks/set-state-in-effect": "warn",
       "react-hooks/immutability": "warn",
+      "no-bitwise": "error",
     },
   },
   // Override default ignores of eslint-config-next.

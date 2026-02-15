@@ -29,7 +29,7 @@ import {
   HeadingLevel,
 } from 'docx';
 import { createClient } from '@/lib/supabase/server';
-import { extractTextFromPDF, extractTextFromDOCX } from '@/lib/workflow/phases/phase-ii';
+import { extractTextFromPDF, extractTextFromDOCX } from '@/lib/utils/text-extraction';
 
 import { createLogger } from '@/lib/security/logger';
 

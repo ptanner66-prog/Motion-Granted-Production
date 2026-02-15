@@ -65,12 +65,14 @@ function getOrderProgress(status: string) {
     cancelled: 0,
     pending_conflict_review: 10,
   }
-  return progressMap[status] ?? 0
+  return progressMap[status] ?? 50
 }
 
-// Format price for display
-function displayPrice(order: { total_price: number }) {
-  return `$${order.total_price.toFixed(2)}`
+function displayPrice(order: { total_price?: number | null }): string {
+  if (order.total_price != null) {
+    return `$${order.total_price.toFixed(2)}`
+  }
+  return '—'
 }
 
 export default async function OrderDetailPage({
@@ -131,6 +133,7 @@ export default async function OrderDetailPage({
 
   // Party string for header
   const partyString = parties.map(p => p.party_name).join(' v. ')
+  const progress = getOrderProgress(order.status)
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
@@ -487,7 +490,7 @@ export default async function OrderDetailPage({
                 </div>
 
                 {/* Activity entries */}
-                {activityLogs?.map((log: { action_type: string; created_at: string }, i: number) => {
+                {activityLogs?.map((log: { action_type: string; action_details: Record<string, unknown> | null; created_at: string }, i: number) => {
                   const actionLabels: Record<string, string> = {
                     checkpoint_approved: 'Draft approved by admin',
                     checkpoint_changes_requested: 'Changes requested by admin',

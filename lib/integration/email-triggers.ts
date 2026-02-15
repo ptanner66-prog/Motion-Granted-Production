@@ -13,6 +13,7 @@
 
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { sendOrderEmail, type EmailEvent } from '../email';
+import { normalizeTier } from '@/lib/utils/tier-helpers';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -358,18 +359,3 @@ export async function triggerEmail(
 // HELPERS
 // ============================================================================
 
-function normalizeTier(tier: unknown): 'A' | 'B' | 'C' | 'D' {
-  if (tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D') return tier;
-  if (typeof tier === 'number') {
-    if (tier <= 1) return 'A';
-    if (tier === 2) return 'B';
-    if (tier === 3) return 'C';
-    if (tier === 4) return 'D';
-    return 'C';
-  }
-  if (typeof tier === 'string') {
-    const upper = tier.toUpperCase();
-    if (upper === 'A' || upper === 'B' || upper === 'C' || upper === 'D') return upper as 'A' | 'B' | 'C' | 'D';
-  }
-  return 'B';
-}
