@@ -170,7 +170,7 @@ export function StateCourtSelection() {
                 <div className="mt-4 p-3 bg-green-100 border border-green-200 rounded-lg">
                   <div className="flex items-center text-green-800">
                     <CheckCircle className="w-5 h-5 mr-2" />
-                    Thanks! We'll email you when {stateConfig.name} is available.
+                    Thanks! We&apos;ll email you when {stateConfig.name} is available.
                   </div>
                 </div>
               ) : (

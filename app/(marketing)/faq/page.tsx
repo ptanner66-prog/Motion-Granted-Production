@@ -207,7 +207,7 @@ export default function FAQPage() {
             Still have <em className="text-[#C9A227]">questions?</em>
           </h2>
           <p className="text-slate-300 mb-8">
-            Contact us directly and we'll get back to you within 24 hours.
+            Contact us directly and we&apos;ll get back to you within 24 hours.
           </p>
           <div className="flex gap-4 justify-center">
             <Link

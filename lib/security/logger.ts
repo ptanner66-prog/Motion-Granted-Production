@@ -48,11 +48,11 @@ export function createLogger(service: string) {
 
     switch (level) {
       case 'error':
-        // eslint-disable-next-line no-console
+         
         console.error(output);
         break;
       case 'warn':
-        // eslint-disable-next-line no-console
+         
         console.warn(output);
         break;
       default:

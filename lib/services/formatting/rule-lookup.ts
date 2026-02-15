@@ -144,14 +144,14 @@ export class RuleLookupService {
     let lineNumbering = config.lineNumbering
       ? { enabled: config.lineNumbering.enabled, linesPerPage: config.lineNumbering.linesPerPage }
       : null;
-    let footer = config.footer?.required
+    const footer = config.footer?.required
       ? {
           required: true,
           format: config.footer.format ?? 'Page {PAGE}',
           fontSizePoints: config.footer.minFontSizePoints ?? font.sizePoints,
         }
       : null;
-    let header = config.header?.required
+    const header = config.header?.required
       ? { required: true, format: config.header.format ?? '' }
       : null;
     let pageLimit = config.pageLimits?.motion ?? null;

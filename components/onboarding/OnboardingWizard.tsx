@@ -229,7 +229,7 @@ export function OnboardingWizard({
             </h2>
             <p className="text-gray-600 max-w-md mx-auto mb-8">
               Motion Granted uses AI to help you draft professional legal motions
-              in minutes, not hours. Let's get you set up.
+              in minutes, not hours. Let&apos;s get you set up.
             </p>
             <div className="grid gap-4 sm:grid-cols-3 max-w-lg mx-auto">
               <div className="p-4 bg-gray-50 rounded-lg">

@@ -500,7 +500,7 @@ export default function SubmitNewMatterPage() {
         allFiles.push({ file: doc, type: 'supporting_document' });
       });
 
-      let failedFiles: string[] = [];
+      const failedFiles: string[] = [];
       for (let i = 0; i < allFiles.length; i++) {
         const { file, type } = allFiles[i];
         setUploadProgress({

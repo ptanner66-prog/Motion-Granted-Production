@@ -88,7 +88,7 @@ function determineCompositeStatus(steps: VerificationSteps): {
   flags: string[];
 } {
   const flags: string[] = [];
-  let blockingReason: string | null = null;
+  const blockingReason: string | null = null;
 
   // BLOCKED: Step 1 NOT_FOUND (hallucinated citation)
   if (steps.step_1.result === 'NOT_FOUND' || steps.step_1.result === 'ERROR') {
