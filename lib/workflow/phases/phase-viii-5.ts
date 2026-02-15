@@ -13,6 +13,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { extractCaptionFromText, extractTextFromPDF, extractTextFromDOCX } from './phase-ii';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phases-phase-viii-5');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -173,7 +176,7 @@ async function extractCaptionFromPackageDocument(
       .download(documentPath);
 
     if (error || !fileData) {
-      console.warn(`[Phase VIII.5] Could not download ${documentPath}`);
+      log.warn(`[Phase VIII.5] Could not download ${documentPath}`);
       return null;
     }
 
@@ -194,7 +197,7 @@ async function extractCaptionFromPackageDocument(
     // Extract caption
     return extractCaptionFromDocument(text);
   } catch (error) {
-    console.error(`[Phase VIII.5] Error extracting from ${documentPath}:`, error);
+    log.error(`[Phase VIII.5] Error extracting from ${documentPath}:`, error);
     return null;
   }
 }
@@ -272,7 +275,7 @@ export async function applyCaptionCorrection(
   corrections: Array<{ field: string; newValue: string }>
 ): Promise<boolean> {
   try {
-    console.log(`[Phase VIII.5] Applying ${corrections.length} corrections to document ${documentId}`);
+    log.info(`[Phase VIII.5] Applying ${corrections.length} corrections to document ${documentId}`);
 
     // For now, log corrections - full implementation would:
     // 1. Download document
@@ -283,7 +286,7 @@ export async function applyCaptionCorrection(
     // This would be expanded in production
     return true;
   } catch (error) {
-    console.error(`[Phase VIII.5] Error applying corrections:`, error);
+    log.error(`[Phase VIII.5] Error applying corrections:`, error);
     return false;
   }
 }
@@ -296,7 +299,7 @@ export async function applyCaptionCorrection(
  * Validate captions across all documents in filing package
  */
 export async function validateCaptions(orderId: string): Promise<PhaseVIII5Output> {
-  console.log(`[Phase VIII.5] Starting caption validation for order ${orderId}`);
+  log.info(`[Phase VIII.5] Starting caption validation for order ${orderId}`);
 
   const supabase = await createClient();
 
@@ -338,7 +341,7 @@ export async function validateCaptions(orderId: string): Promise<PhaseVIII5Outpu
       : null,
   };
 
-  console.log('[Phase VIII.5] Authoritative caption:', authoritativeCaption);
+  log.info('[Phase VIII.5] Authoritative caption:', authoritativeCaption);
 
   // Get documents from filing package
   const documents = (order.documents || []) as Array<{
@@ -353,7 +356,7 @@ export async function validateCaptions(orderId: string): Promise<PhaseVIII5Outpu
 
   // Check each document
   for (const doc of documents) {
-    console.log(`[Phase VIII.5] Checking document: ${doc.filename}`);
+    log.info(`[Phase VIII.5] Checking document: ${doc.filename}`);
 
     const extractedCaption = await extractCaptionFromPackageDocument(doc.storageUrl, supabase);
 
@@ -373,7 +376,7 @@ export async function validateCaptions(orderId: string): Promise<PhaseVIII5Outpu
 
     let correctionApplied = false;
     if (discrepancies.length > 0) {
-      console.log(`[Phase VIII.5] Found ${discrepancies.length} discrepancies in ${doc.filename}`);
+      log.info(`[Phase VIII.5] Found ${discrepancies.length} discrepancies in ${doc.filename}`);
 
       // Attempt to apply corrections
       const corrections = discrepancies.map(d => ({
@@ -429,7 +432,7 @@ export async function validateCaptions(orderId: string): Promise<PhaseVIII5Outpu
     .update({ phase_outputs: phaseOutputs })
     .eq('id', orderId);
 
-  console.log(`[Phase VIII.5] Complete: ${status}, ${totalCorrections} corrections applied`);
+  log.info(`[Phase VIII.5] Complete: ${status}, ${totalCorrections} corrections applied`);
 
   return output;
 }
@@ -462,13 +465,13 @@ export async function completePhaseVIII5(
       })
       .eq('order_id', orderId);
 
-    console.log(`[Phase VIII.5] Completed for order ${orderId}, advancing to Phase IX`);
+    log.info(`[Phase VIII.5] Completed for order ${orderId}, advancing to Phase IX`);
     return {
       success: true,
       nextPhase: 'IX',
     };
   } catch (error) {
-    console.error('[Phase VIII.5] Error completing phase:', error);
+    log.error('[Phase VIII.5] Error completing phase:', error);
     return {
       success: false,
       nextPhase: 'VIII.5',

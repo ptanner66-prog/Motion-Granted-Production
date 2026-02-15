@@ -8,6 +8,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-queue-order');
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -92,7 +95,7 @@ export async function POST(request: NextRequest) {
       priority,
     });
   } catch (error) {
-    console.error('Queue order error:', error);
+    log.error('Queue order error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Failed to queue order',
     }, { status: 500 });

@@ -4,6 +4,9 @@
 
 import { Resend } from 'resend';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('email-retention-emails');
 let resendClient: Resend | null = null;
 
 function getResend(): Resend {
@@ -120,9 +123,9 @@ export async function sendDeletionReminderEmail(params: DeletionReminderParams):
   });
 
   if (error) {
-    console.error(`[Email] Failed to send deletion reminder to ${params.to}:`, error);
+    log.error(`[Email] Failed to send deletion reminder to ${params.to}:`, error);
     throw error;
   }
 
-  console.log(`[Email] Sent deletion reminder to ${params.to} for order ${params.orderId}`);
+  log.info(`[Email] Sent deletion reminder to ${params.to} for order ${params.orderId}`);
 }

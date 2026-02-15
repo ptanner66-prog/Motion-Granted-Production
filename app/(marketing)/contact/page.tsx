@@ -1,242 +1,241 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { Mail, Clock, CheckCircle, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-
-const contactInfo = [
-  {
-    icon: Mail,
-    title: 'Email',
-    value: 'support@motiongranted.com',
-    href: 'mailto:support@motiongranted.com',
-  },
-  {
-    icon: Clock,
-    title: 'Response Time',
-    value: 'Within one business day',
-    href: null,
-  },
-]
+import { useState } from 'react';
+import { Mail, Phone, MapPin, Send, Loader2, CheckCircle } from 'lucide-react';
 
 export default function ContactPage() {
-  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
-  const [errorMessage, setErrorMessage] = useState('')
+  const [formState, setFormState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    subject: 'General Inquiry',
+    message: '',
+  });
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setStatus('loading')
-    setErrorMessage('')
-
-    const formData = new FormData(e.currentTarget)
-    const data = {
-      firstName: formData.get('firstName'),
-      lastName: formData.get('lastName'),
-      email: formData.get('email'),
-      phone: formData.get('phone'),
-      subject: formData.get('subject'),
-      message: formData.get('message'),
-    }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormState('submitting');
 
     try {
       const response = await fetch('/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
+        body: JSON.stringify(formData),
+      });
 
-      if (!response.ok) {
-        const result = await response.json()
-        throw new Error(result.error || 'Failed to send message')
+      if (response.ok) {
+        setFormState('success');
+        setFormData({
+          firstName: '',
+          lastName: '',
+          email: '',
+          phone: '',
+          subject: 'General Inquiry',
+          message: '',
+        });
+      } else {
+        setFormState('error');
       }
-
-      setStatus('success')
-      e.currentTarget.reset()
-    } catch (error) {
-      setStatus('error')
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'Failed to send message. Please email us directly at support@motiongranted.com'
-      )
+    } catch {
+      setFormState('error');
     }
-  }
+  };
 
   return (
-    <div className="bg-white">
-      {/* Header */}
-      <section className="bg-gray-50 py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <h1 className="text-4xl font-bold tracking-tight text-navy sm:text-5xl">
-              Contact Us
-            </h1>
-            <p className="mt-6 text-lg text-gray-600">
-              Have a question? We&apos;d love to hear from you. Send us a message and we&apos;ll
-              respond within one business day.
-            </p>
-          </div>
+    <div>
+      {/* Page Header */}
+      <section className="pt-32 pb-16 bg-gradient-to-b from-white to-slate-50">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <span className="text-sm font-bold text-[#C9A227] uppercase tracking-wider">
+            CONTACT
+          </span>
+          <h1 className="font-serif text-5xl text-[#0F1F33] mt-3 mb-4">
+            Get in <em className="text-[#C9A227]">touch</em>
+          </h1>
+          <p className="text-lg text-slate-500">
+            Questions about our services? Ready to submit your first order? We&apos;re here to help.
+          </p>
         </div>
       </section>
 
-      {/* Contact content */}
-      <section className="py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid gap-12 lg:grid-cols-2">
-            {/* Contact form */}
-            <div>
-              <h2 className="text-2xl font-bold text-navy mb-6">Send a Message</h2>
-
-              {status === 'success' ? (
-                <div className="p-8 bg-green-50 rounded-xl border border-green-200 text-center">
-                  <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold text-green-800 mb-2">Message Sent!</h3>
-                  <p className="text-green-700">
-                    Thank you for contacting us. We&apos;ll respond within one business day.
-                  </p>
-                  <Button
-                    className="mt-6"
-                    variant="outline"
-                    onClick={() => setStatus('idle')}
-                  >
-                    Send Another Message
-                  </Button>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid gap-6 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="firstName">First Name</Label>
-                      <Input
-                        id="firstName"
-                        name="firstName"
-                        placeholder="John"
-                        required
-                        disabled={status === 'loading'}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lastName">Last Name</Label>
-                      <Input
-                        id="lastName"
-                        name="lastName"
-                        placeholder="Smith"
-                        required
-                        disabled={status === 'loading'}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      placeholder="john@lawfirm.com"
-                      required
-                      disabled={status === 'loading'}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone (optional)</Label>
-                    <Input
-                      id="phone"
-                      name="phone"
-                      type="tel"
-                      placeholder="(555) 123-4567"
-                      disabled={status === 'loading'}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="subject">Subject</Label>
-                    <Input
-                      id="subject"
-                      name="subject"
-                      placeholder="How can we help?"
-                      required
-                      disabled={status === 'loading'}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="message">Message</Label>
-                    <Textarea
-                      id="message"
-                      name="message"
-                      placeholder="Tell us more about your inquiry..."
-                      rows={5}
-                      required
-                      disabled={status === 'loading'}
-                    />
-                  </div>
-
-                  {status === 'error' && (
-                    <div className="p-4 bg-red-50 rounded-lg border border-red-200 flex items-start gap-3">
-                      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                      <p className="text-red-700 text-sm">{errorMessage}</p>
-                    </div>
-                  )}
-
-                  <Button
-                    type="submit"
-                    size="lg"
-                    disabled={status === 'loading'}
-                  >
-                    {status === 'loading' ? 'Sending...' : 'Send Message'}
-                  </Button>
-                </form>
-              )}
+      {/* Contact Content */}
+      <section className="py-20">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid md:grid-cols-5 gap-12">
+            {/* Contact Info */}
+            <div className="md:col-span-2 space-y-6">
+              <ContactCard
+                icon={<Mail className="w-6 h-6" />}
+                title="Email Us"
+                content="info@motiongranted.ai"
+                note="Response within 24 hours"
+              />
+              <ContactCard
+                icon={<Phone className="w-6 h-6" />}
+                title="Call Us"
+                content="(225) 555-0123"
+                note="Mon-Fri, 9am-5pm CST"
+              />
+              <ContactCard
+                icon={<MapPin className="w-6 h-6" />}
+                title="Location"
+                content="Baton Rouge, Louisiana"
+                note="Serving attorneys nationwide"
+              />
             </div>
 
-            {/* Contact info */}
-            <div>
-              <h2 className="text-2xl font-bold text-navy mb-6">Get in Touch</h2>
-              <div className="space-y-8">
-                {contactInfo.map((item) => (
-                  <div key={item.title} className="flex gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-gold/10 rounded-lg">
-                      <item.icon className="h-6 w-6 text-gold" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-navy">{item.title}</h3>
-                      {item.href ? (
-                        <a
-                          href={item.href}
-                          className="text-gray-600 hover:text-gold transition-colors"
-                        >
-                          {item.value}
-                        </a>
-                      ) : (
-                        <p className="text-gray-600">{item.value}</p>
-                      )}
-                    </div>
+            {/* Contact Form */}
+            <div className="md:col-span-3">
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                <h3 className="font-serif text-2xl text-[#0F1F33] mb-2">Send us a message</h3>
+                <p className="text-slate-400 text-sm mb-6">
+                  Fill out the form below and we&apos;ll get back to you soon.
+                </p>
+
+                {formState === 'success' ? (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+                    <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                    <h4 className="font-semibold text-green-800 mb-2">Message Sent!</h4>
+                    <p className="text-green-600 text-sm">
+                      We&apos;ll get back to you within 24 hours.
+                    </p>
                   </div>
-                ))}
-              </div>
+                ) : (
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          First Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.firstName}
+                          onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1E3A5F] focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Last Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.lastName}
+                          onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1E3A5F] focus:border-transparent outline-none"
+                        />
+                      </div>
+                    </div>
 
-              {/* Location info */}
-              <div className="mt-8 p-6 bg-cream rounded-xl border border-navy/10">
-                <h3 className="font-semibold text-navy mb-2">Location</h3>
-                <p className="text-gray-600">
-                  Motion Granted is a Louisiana-based legal drafting service specializing in
-                  Louisiana state courts, Louisiana federal courts, and the Fifth Circuit.
-                </p>
-              </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Email *
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={formData.email}
+                        onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1E3A5F] focus:border-transparent outline-none"
+                      />
+                    </div>
 
-              {/* Additional info */}
-              <div className="mt-6 rounded-xl bg-gray-50 p-6">
-                <h3 className="font-semibold text-navy">For Existing Orders</h3>
-                <p className="mt-2 text-gray-600">
-                  For urgent matters related to an existing order, please use the messaging
-                  feature in your client portal for faster response.
-                </p>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Phone (optional)
+                      </label>
+                      <input
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1E3A5F] focus:border-transparent outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Subject
+                      </label>
+                      <select
+                        value={formData.subject}
+                        onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
+                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1E3A5F] focus:border-transparent outline-none"
+                      >
+                        <option>General Inquiry</option>
+                        <option>Pricing Question</option>
+                        <option>Order Support</option>
+                        <option>Partnership Opportunity</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Message *
+                      </label>
+                      <textarea
+                        required
+                        rows={4}
+                        value={formData.message}
+                        onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
+                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1E3A5F] focus:border-transparent resize-none outline-none"
+                      />
+                    </div>
+
+                    {formState === 'error' && (
+                      <p className="text-red-600 text-sm">
+                        Something went wrong. Please try again.
+                      </p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={formState === 'submitting'}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-[#1E3A5F] text-white font-semibold rounded-lg hover:bg-[#152C4A] transition-colors disabled:opacity-50"
+                    >
+                      {formState === 'submitting' ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Send className="w-5 h-5" />
+                      )}
+                      {formState === 'submitting' ? 'Sending...' : 'Send Message'}
+                    </button>
+                  </form>
+                )}
               </div>
             </div>
           </div>
         </div>
       </section>
     </div>
-  )
+  );
+}
+
+function ContactCard({
+  icon,
+  title,
+  content,
+  note
+}: {
+  icon: React.ReactNode;
+  title: string;
+  content: string;
+  note: string;
+}) {
+  return (
+    <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl hover:shadow-md transition-shadow">
+      <div className="w-12 h-12 bg-[#C9A227]/20 rounded-lg flex items-center justify-center text-[#C9A227] mb-4">
+        {icon}
+      </div>
+      <h4 className="font-semibold text-[#0F1F33] mb-1">{title}</h4>
+      <p className="text-slate-700 font-medium">{content}</p>
+      <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
+        <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+        {note}
+      </div>
+    </div>
+  );
 }

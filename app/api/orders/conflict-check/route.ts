@@ -5,6 +5,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { runPrePaymentConflictCheck, validateParties, parsePartyInput } from '@/lib/intake/conflict-integration';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-orders-conflict-check');
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest) {
       matchCount: result.conflictResult?.matches?.length || 0,
     });
   } catch (error) {
-    console.error('[ConflictCheck] Error:', error);
+    log.error('Conflict check error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Conflict check failed' }, { status: 500 });
   }
 }

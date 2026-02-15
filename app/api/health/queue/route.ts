@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { getRateLimitStatus } from '@/lib/rate-limit';
 import { getQueueStats } from '@/lib/queue-status';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('health-queue');
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -85,7 +88,7 @@ export async function GET() {
     });
   } catch (error) {
     // Log detailed error internally but don't expose to client
-    console.error('Health check error:', error);
+    log.error('Health check error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       {
         status: 'unhealthy',

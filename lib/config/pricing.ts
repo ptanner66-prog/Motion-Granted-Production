@@ -6,7 +6,7 @@ export const TIER_PRICING = {
   A: { min: 150, max: 400, description: 'Procedural' },
   B: { min: 500, max: 1400, description: 'Intermediate' },
   C: { min: 1500, max: 3500, description: 'Complex/Dispositive' },
-  D: { min: 3500, max: 6000, description: 'Specialized/Enterprise' },
+  D: { min: 1499, max: 1499, description: 'Highly Complex / Dispositive' },
 } as const;
 
 export const TURNAROUND_DAYS = {

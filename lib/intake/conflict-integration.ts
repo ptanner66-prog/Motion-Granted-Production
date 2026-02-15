@@ -4,7 +4,10 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { checkForConflicts } from '@/lib/services/conflict/conflict-check-service';
+import { createLogger } from '@/lib/security/logger';
 import type { IntakeConflictCheckRequest, IntakeConflictCheckResult } from '@/types/conflict';
+
+const log = createLogger('conflict-integration');
 
 export interface IntakeParties {
   plaintiffs: string[];
@@ -58,11 +61,11 @@ export async function runPrePaymentConflictCheck(
   // Determine if order can proceed to payment
   switch (result.action) {
     case 'PROCEED':
-      console.log(`[ConflictIntegration] Order ${orderId} cleared - no conflicts`);
+      log.info('Order cleared - no conflicts', { orderId });
       return { canProceed: true, conflictResult: result };
 
     case 'REVIEW':
-      console.log(`[ConflictIntegration] Order ${orderId} needs review - soft conflict`);
+      log.info('Order needs review - soft conflict', { orderId });
       return {
         canProceed: false,
         conflictResult: result,
@@ -71,7 +74,7 @@ export async function runPrePaymentConflictCheck(
       };
 
     case 'BLOCK':
-      console.log(`[ConflictIntegration] Order ${orderId} blocked - hard conflict`);
+      log.warn('Order blocked - hard conflict', { orderId });
       return {
         canProceed: false,
         conflictResult: result,

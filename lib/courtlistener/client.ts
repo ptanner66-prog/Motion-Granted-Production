@@ -22,6 +22,9 @@ import type { CitationDetails, CitationTreatment, CitationReference } from '@/ty
 import { simplifyQueryV2 } from './query-builder';
 import { scoreRelevance, TOPICAL_RELEVANCE_THRESHOLD, type PropositionContext } from './relevance-scorer';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('courtlistener-client');
 const COURTLISTENER_BASE_URL = 'https://www.courtlistener.com/api/rest/v4';
 const COURTLISTENER_V3_URL = 'https://www.courtlistener.com/api/rest/v3';
 const DEFAULT_TIMEOUT = 150000; // 150s - CourtListener takes 60-97s per request (measured)
@@ -49,7 +52,7 @@ async function waitForRateLimit(): Promise<void> {
     const oldestCall = apiCallTimestamps[0];
     const waitTime = RATE_LIMIT_WINDOW_MS - (now - oldestCall) + 100; // +100ms buffer
 
-    console.log(`[CourtListener] Rate limit reached, waiting ${waitTime}ms...`);
+    log.info(`[CourtListener] Rate limit reached, waiting ${waitTime}ms...`);
     await new Promise(resolve => setTimeout(resolve, waitTime));
 
     // Recurse to check again after waiting
@@ -91,7 +94,7 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   // 3. Legacy fallback: COURTLISTENER_API_TOKEN
   const envToken = process.env.COURTLISTENER_API_TOKEN;
   if (envToken) {
-    console.warn('[CourtListener] Using legacy COURTLISTENER_API_TOKEN - consider migrating to COURTLISTENER_API_KEY');
+    log.warn('[CourtListener] Using legacy COURTLISTENER_API_TOKEN - consider migrating to COURTLISTENER_API_KEY');
     return { Authorization: `Token ${envToken}` };
   }
 
@@ -116,26 +119,26 @@ export async function validateCourtListenerConfig(): Promise<{
     // 1. Check database
     const dbToken = await getCourtListenerAPIKey();
     if (dbToken) {
-      console.log(`[CourtListener] API key configured (db): ${dbToken.substring(0, 8)}... ✓`);
+      log.info(`[CourtListener] API key configured (db): ${dbToken.substring(0, 8)}... ✓`);
       return { configured: true };
     }
 
     // 2. Check COURTLISTENER_API_KEY (Vercel standard)
     const envKey = process.env.COURTLISTENER_API_KEY;
     if (envKey) {
-      console.log(`[CourtListener] API key configured (COURTLISTENER_API_KEY): ${envKey.substring(0, 8)}... ✓`);
+      log.info(`[CourtListener] API key configured (COURTLISTENER_API_KEY): ${envKey.substring(0, 8)}... ✓`);
       return { configured: true };
     }
 
     // 3. Legacy fallback: COURTLISTENER_API_TOKEN
     const envToken = process.env.COURTLISTENER_API_TOKEN;
     if (envToken) {
-      console.log(`[CourtListener] API key configured (legacy COURTLISTENER_API_TOKEN): ${envToken.substring(0, 8)}... ✓`);
+      log.info(`[CourtListener] API key configured (legacy COURTLISTENER_API_TOKEN): ${envToken.substring(0, 8)}... ✓`);
       return { configured: true };
     }
 
     const error = 'COURTLISTENER_API_KEY not set. Get a free key at https://www.courtlistener.com/api/rest-info/';
-    console.error(`[CourtListener] FATAL: ${error}`);
+    log.error(`[CourtListener] FATAL: ${error}`);
     return { configured: false, error };
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Failed to check API key';
@@ -169,9 +172,9 @@ async function makeRequest<T>(
       await waitForRateLimit();
 
       const fullUrl = `${COURTLISTENER_BASE_URL}${endpoint}`;
-      console.log(`[makeRequest] API call: ${fullUrl.substring(0, 150)}...`);
-      console.log(`[makeRequest] Auth header present: ${!!authHeader.Authorization}`);
-      console.log(`[makeRequest] Auth header prefix: ${authHeader.Authorization?.substring(0, 15)}...`);
+      log.info(`[makeRequest] API call: ${fullUrl.substring(0, 150)}...`);
+      log.info(`[makeRequest] Auth header present: ${!!authHeader.Authorization}`);
+      log.info(`[makeRequest] Auth header prefix: ${authHeader.Authorization?.substring(0, 15)}...`);
 
       // CHEN-TIMEOUT-FIX: Combine external signal with timeout signal
       // If external signal provided, use it; otherwise use timeout
@@ -186,29 +189,29 @@ async function makeRequest<T>(
         signal: effectiveSignal,
       });
 
-      console.log(`[makeRequest] Response status: ${response.status} ${response.statusText}`);
+      log.info(`[makeRequest] Response status: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         // Log error response body for debugging
         const errorBody = await response.text();
-        console.error(`[makeRequest] ❌ HTTP ${response.status} error body: ${errorBody.substring(0, 500)}`);
+        log.error(`[makeRequest] ❌ HTTP ${response.status} error body: ${errorBody.substring(0, 500)}`);
 
         if (response.status === 429) {
           // Rate limited - wait and retry
           const waitTime = BACKOFF_BASE_MS * Math.pow(2, attempt);
-          console.log(`[makeRequest] Rate limited, waiting ${waitTime}ms before retry...`);
+          log.info(`[makeRequest] Rate limited, waiting ${waitTime}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         }
 
         if (response.status === 404) {
-          console.log(`[makeRequest] 404 Not Found - returning empty result`);
+          log.info(`[makeRequest] 404 Not Found - returning empty result`);
           return { success: true, data: undefined }; // Not found is valid result
         }
 
         // CHEN-FIX: CourtListener returns 502/503/504 sometimes - retry with delay
         if (response.status === 502 || response.status === 503 || response.status === 504) {
-          console.warn(`[makeRequest] ⚠️ Got ${response.status} (server error), retrying after 2s delay...`);
+          log.warn(`[makeRequest] ⚠️ Got ${response.status} (server error), retrying after 2s delay...`);
           await new Promise(resolve => setTimeout(resolve, 2000));
           continue; // This will retry the request
         }
@@ -217,7 +220,7 @@ async function makeRequest<T>(
       }
 
       const data = await response.json();
-      console.log(`[makeRequest] ✓ Success - received ${JSON.stringify(data).length} bytes`);
+      log.info(`[makeRequest] ✓ Success - received ${JSON.stringify(data).length} bytes`);
       return { success: true, data };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -846,20 +849,20 @@ export async function searchOpinions(
       // Split comma-separated codes and add each as separate param
       const courtParams = courtCode.split(',').map(c => `court=${c.trim()}`).join('&');
       endpoint += `&${courtParams}`;
-      console.log(`[searchOpinions] Court filter: ${courtParams}`);
+      log.info(`[searchOpinions] Court filter: ${courtParams}`);
     }
 
     endpoint += `&page_size=${limit}`;
 
     // DIAGNOSTIC LOGGING
-    console.log(`╔══════════════════════════════════════════════════════════════╗`);
-    console.log(`║  [searchOpinions] DEBUG                                      ║`);
-    console.log(`╚══════════════════════════════════════════════════════════════╝`);
-    console.log(`[searchOpinions] Query: "${query}"`);
-    console.log(`[searchOpinions] Jurisdiction input: "${jurisdiction}"`);
-    console.log(`[searchOpinions] Mapped court codes: "${courtCode}"`);
-    console.log(`[searchOpinions] Full endpoint: ${endpoint}`);
-    console.log(`[searchOpinions] Full URL: ${COURTLISTENER_BASE_URL}${endpoint}`);
+    log.info(`╔══════════════════════════════════════════════════════════════╗`);
+    log.info(`║  [searchOpinions] DEBUG                                      ║`);
+    log.info(`╚══════════════════════════════════════════════════════════════╝`);
+    log.info(`[searchOpinions] Query: "${query}"`);
+    log.info(`[searchOpinions] Jurisdiction input: "${jurisdiction}"`);
+    log.info(`[searchOpinions] Mapped court codes: "${courtCode}"`);
+    log.info(`[searchOpinions] Full endpoint: ${endpoint}`);
+    log.info(`[searchOpinions] Full URL: ${COURTLISTENER_BASE_URL}${endpoint}`);
 
     const result = await makeRequest<{
       count: number;
@@ -892,19 +895,19 @@ export async function searchOpinions(
     });
 
     // DIAGNOSTIC: Log raw API response
-    console.log(`[searchOpinions] API call success: ${result.success}`);
-    console.log(`[searchOpinions] API error: ${result.error || 'none'}`);
-    console.log(`[searchOpinions] Raw count: ${result.data?.count ?? 'undefined'}`);
-    console.log(`[searchOpinions] Results array length: ${result.data?.results?.length ?? 'undefined'}`);
+    log.info(`[searchOpinions] API call success: ${result.success}`);
+    log.info(`[searchOpinions] API error: ${result.error || 'none'}`);
+    log.info(`[searchOpinions] Raw count: ${result.data?.count ?? 'undefined'}`);
+    log.info(`[searchOpinions] Results array length: ${result.data?.results?.length ?? 'undefined'}`);
 
     if (!result.success) {
-      console.error(`[searchOpinions] ❌ API CALL FAILED: ${result.error}`);
+      log.error(`[searchOpinions] ❌ API CALL FAILED: ${result.error}`);
       return { success: false, error: result.error };
     }
 
     if (!result.data || result.data.count === 0) {
-      console.log(`[searchOpinions] ⚠️ ZERO RESULTS returned for query: "${query}"`);
-      console.log(`[searchOpinions] Full response data:`, JSON.stringify(result.data, null, 2));
+      log.info(`[searchOpinions] ⚠️ ZERO RESULTS returned for query: "${query}"`);
+      log.info(`[searchOpinions] Full response data:`, JSON.stringify(result.data, null, 2));
       return {
         success: true,
         data: { opinions: [], total_count: 0 },
@@ -915,7 +918,7 @@ export async function searchOpinions(
     // CRITICAL FIX (2026-01-30): CourtListener search returns id=null at result level!
     // The actual opinion ID is in op.opinions[0].id (nested array)
     // We MUST extract from the nested opinions array or use cluster_id as fallback
-    console.log(`[searchOpinions] ═══ TRANSFORMING ${result.data.results.length} RESULTS ═══`);
+    log.info(`[searchOpinions] ═══ TRANSFORMING ${result.data.results.length} RESULTS ═══`);
 
     const opinions = result.data.results.map((op, idx) => {
       // Build citation string from citation array
@@ -931,7 +934,7 @@ export async function searchOpinions(
       // VALIDATION: Reject citation if it's just a bare number (opinion ID, not a legal citation)
       // Valid citations look like "884 F.3d 546" not "9402549"
       if (citationStr && /^\d+$/.test(citationStr.trim())) {
-        console.warn(`[searchOpinions] ⚠️ INVALID CITATION: "${citationStr}" is a bare number (likely opinion ID), not a legal citation. Case: ${op.caseName || op.case_name}`);
+        log.warn(`[searchOpinions] ⚠️ INVALID CITATION: "${citationStr}" is a bare number (likely opinion ID), not a legal citation. Case: ${op.caseName || op.case_name}`);
         citationStr = ''; // Clear invalid citation - better to have no citation than a fake one
       }
 
@@ -949,17 +952,17 @@ export async function searchOpinions(
       const resolvedId = nestedOpinionId || siblingId || clusterId;
 
       if (idx < 3) {
-        console.log(`[searchOpinions] Result[${idx}] ID resolution:`);
-        console.log(`  - op.id (TOP LEVEL - USUALLY NULL): ${op.id}`);
-        console.log(`  - op.opinions[0].id (NESTED): ${nestedOpinionId}`);
-        console.log(`  - op.sibling_ids[0]: ${siblingId}`);
-        console.log(`  - op.cluster_id: ${clusterId}`);
-        console.log(`  - RESOLVED ID: ${resolvedId}`);
+        log.info(`[searchOpinions] Result[${idx}] ID resolution:`);
+        log.info(`  - op.id (TOP LEVEL - USUALLY NULL): ${op.id}`);
+        log.info(`  - op.opinions[0].id (NESTED): ${nestedOpinionId}`);
+        log.info(`  - op.sibling_ids[0]: ${siblingId}`);
+        log.info(`  - op.cluster_id: ${clusterId}`);
+        log.info(`  - RESOLVED ID: ${resolvedId}`);
       }
 
       if (!resolvedId) {
-        console.error(`[searchOpinions] ❌ FATAL: Could not resolve ID for result ${idx}!`);
-        console.error(`[searchOpinions] Full result object:`, JSON.stringify(op, null, 2).substring(0, 500));
+        log.error(`[searchOpinions] ❌ FATAL: Could not resolve ID for result ${idx}!`);
+        log.error(`[searchOpinions] Full result object:`, JSON.stringify(op, null, 2).substring(0, 500));
       }
 
       return {
@@ -979,13 +982,13 @@ export async function searchOpinions(
     // FIX: Use proper null/undefined check - ID 0 is a valid CourtListener ID!
     const validOpinions = opinions.filter(op => op.id !== undefined && op.id !== null);
     if (validOpinions.length < opinions.length) {
-      console.warn(`[searchOpinions] ⚠️ Filtered out ${opinions.length - validOpinions.length} results without valid IDs`);
+      log.warn(`[searchOpinions] ⚠️ Filtered out ${opinions.length - validOpinions.length} results without valid IDs`);
     }
 
-    console.log(`[searchOpinions] ✅ Found ${validOpinions.length} valid opinions for query: "${query}"`);
-    console.log(`[searchOpinions] First opinion ID: ${validOpinions[0]?.id || 'NONE'}`);
-    console.log(`[searchOpinions] First opinion case_name: ${validOpinions[0]?.case_name || 'NONE'}`);
-    console.log(`[searchOpinions] All IDs: [${validOpinions.slice(0, 5).map(o => o.id).join(', ')}${validOpinions.length > 5 ? '...' : ''}]`);
+    log.info(`[searchOpinions] ✅ Found ${validOpinions.length} valid opinions for query: "${query}"`);
+    log.info(`[searchOpinions] First opinion ID: ${validOpinions[0]?.id || 'NONE'}`);
+    log.info(`[searchOpinions] First opinion case_name: ${validOpinions[0]?.case_name || 'NONE'}`);
+    log.info(`[searchOpinions] All IDs: [${validOpinions.slice(0, 5).map(o => o.id).join(', ')}${validOpinions.length > 5 ? '...' : ''}]`);
 
     return {
       success: true,
@@ -995,7 +998,7 @@ export async function searchOpinions(
       },
     };
   } catch (error) {
-    console.error('[CourtListener] Search error:', error);
+    log.error('[CourtListener] Search error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Search failed',
@@ -1031,20 +1034,20 @@ function mapJurisdictionToCourtCode(jurisdiction: string): string | null {
   // Louisiana STATE courts only (for binding authority in state court motions)
   // Returns So. 3d citations from LA Supreme Court and Courts of Appeal
   if (normalized === 'louisiana_state' || normalized === 'la_state') {
-    console.log('[mapJurisdictionToCourtCode] Louisiana STATE courts only (binding authority)');
+    log.info('[mapJurisdictionToCourtCode] Louisiana STATE courts only (binding authority)');
     return 'la,lactapp';
   }
 
   // Louisiana ALL courts (state + Fifth Circuit for persuasive authority)
   if (normalized.includes('louisiana') || normalized === 'la') {
     // la = Supreme Court, lactapp = Court of Appeal, ca5 = Fifth Circuit
-    console.log('[mapJurisdictionToCourtCode] Louisiana ALL courts (state + federal)');
+    log.info('[mapJurisdictionToCourtCode] Louisiana ALL courts (state + federal)');
     return 'la,lactapp,ca5';
   }
 
   // Louisiana FEDERAL courts only
   if (normalized === 'louisiana_federal' || normalized === 'la_federal') {
-    console.log('[mapJurisdictionToCourtCode] Louisiana FEDERAL courts only');
+    log.info('[mapJurisdictionToCourtCode] Louisiana FEDERAL courts only');
     return 'ca5,laed,lamd,lawd';
   }
 
@@ -1104,7 +1107,7 @@ export async function getOpinionText(
   error?: string;
 }> {
   try {
-    console.log(`[CourtListener] Fetching opinion text for ID: ${opinionId}`);
+    log.info(`[CourtListener] Fetching opinion text for ID: ${opinionId}`);
 
     const result = await makeRequest<{
       id: number;
@@ -1146,7 +1149,7 @@ export async function getOpinionText(
       },
     };
   } catch (error) {
-    console.error('[CourtListener] Get opinion text error:', error);
+    log.error('[CourtListener] Get opinion text error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to get opinion text',
@@ -1421,13 +1424,13 @@ export async function buildVerifiedCitationBank(
   error?: string;
 }> {
   // EXPANDED CITATION RESEARCH — TARGET 12-20 CITATIONS
-  console.log(`╔══════════════════════════════════════════════════════════════╗`);
-  console.log(`║  EXPANDED CITATION RESEARCH — TARGET: 12-20 CITATIONS       ║`);
-  console.log(`║  Version: 2026-01-30-CITATION-ENFORCEMENT                   ║`);
-  console.log(`╚══════════════════════════════════════════════════════════════╝`);
-  console.log(`[buildVerifiedCitationBank] Total queries received: ${queries.length}`);
-  console.log(`[buildVerifiedCitationBank] Target citations: ${minCitations}-${maxCitations}`);
-  console.log(`[buildVerifiedCitationBank] API Key present: ${!!process.env.COURTLISTENER_API_KEY}`);
+  log.info(`╔══════════════════════════════════════════════════════════════╗`);
+  log.info(`║  EXPANDED CITATION RESEARCH — TARGET: 12-20 CITATIONS       ║`);
+  log.info(`║  Version: 2026-01-30-CITATION-ENFORCEMENT                   ║`);
+  log.info(`╚══════════════════════════════════════════════════════════════╝`);
+  log.info(`[buildVerifiedCitationBank] Total queries received: ${queries.length}`);
+  log.info(`[buildVerifiedCitationBank] Target citations: ${minCitations}-${maxCitations}`);
+  log.info(`[buildVerifiedCitationBank] API Key present: ${!!process.env.COURTLISTENER_API_KEY}`);
 
   const citations: VerifiedCitation[] = [];
   let searchesPerformed = 0;
@@ -1447,7 +1450,7 @@ export async function buildVerifiedCitationBank(
   } else if (queryText.includes('summary') || queryText.includes('judgment')) {
     motionType = 'summary_judgment';
   }
-  console.log(`[buildVerifiedCitationBank] Motion type detected: ${motionType}`);
+  log.info(`[buildVerifiedCitationBank] Motion type detected: ${motionType}`);
 
   // Get expanded fallback queries
   const fallbackQueries = EXPANDED_FALLBACK_QUERIES[motionType] || EXPANDED_FALLBACK_QUERIES['default'];
@@ -1458,7 +1461,7 @@ export async function buildVerifiedCitationBank(
     ...fallbackQueries.map(q => ({ query: q, forElement: 'fallback' })),
   ].filter(q => q.query.length > 2);
   const uniqueQueries = [...new Map(allQueries.map(q => [q.query, q])).values()];
-  console.log(`[buildVerifiedCitationBank] ${uniqueQueries.length} unique queries to search`);
+  log.info(`[buildVerifiedCitationBank] ${uniqueQueries.length} unique queries to search`);
 
   // CHEN RELEVANCE FIX (2026-02-05): Build proposition context for relevance scoring
   const propositionContext: PropositionContext = {
@@ -1501,7 +1504,7 @@ export async function buildVerifiedCitationBank(
 
       if (!relevanceResult.passes_threshold) {
         relevanceRejections++;
-        console.log(`[buildVerifiedCitationBank] ⛔ RELEVANCE REJECT (${relevanceResult.score.toFixed(3)}): ${opinion.case_name?.substring(0, 50)}... — ${relevanceResult.reasoning.substring(0, 100)}`);
+        log.info(`[buildVerifiedCitationBank] ⛔ RELEVANCE REJECT (${relevanceResult.score.toFixed(3)}): ${opinion.case_name?.substring(0, 50)}... — ${relevanceResult.reasoning.substring(0, 100)}`);
         continue;
       }
 
@@ -1530,7 +1533,7 @@ export async function buildVerifiedCitationBank(
         search_query_used: searchQuery || '',
         search_result_rank: rank + 1,
       });
-      console.log(`[buildVerifiedCitationBank] ✅ ${source} (relevance: ${relevanceResult.score.toFixed(3)}): ${opinion.case_name?.substring(0, 50)}...`);
+      log.info(`[buildVerifiedCitationBank] ✅ ${source} (relevance: ${relevanceResult.score.toFixed(3)}): ${opinion.case_name?.substring(0, 50)}...`);
       elementCoverage.add(forElement);
     }
   };
@@ -1539,7 +1542,7 @@ export async function buildVerifiedCitationBank(
   // PHASE 1: Search LOUISIANA STATE COURTS FIRST (highest authority)
   // Uses parallel batches for faster execution (Vercel Pro optimization)
   // ================================================================
-  console.log(`[buildVerifiedCitationBank] ═══ PHASE 1: Louisiana State Courts (PARALLEL) ═══`);
+  log.info(`[buildVerifiedCitationBank] ═══ PHASE 1: Louisiana State Courts (PARALLEL) ═══`);
 
   // Run searches in parallel batches of 5 for better performance
   const phase1Queries = uniqueQueries.slice(0, 10);
@@ -1549,7 +1552,7 @@ export async function buildVerifiedCitationBank(
       try {
         return await searchOpinions(queryInfo.query, 'Louisiana', 8);
       } catch (error) {
-        console.error(`[buildVerifiedCitationBank] LA state search failed for "${queryInfo.query}":`, error);
+        log.error(`[buildVerifiedCitationBank] LA state search failed for "${queryInfo.query}":`, error);
         return { success: false, error: String(error) };
       }
     },
@@ -1573,14 +1576,14 @@ export async function buildVerifiedCitationBank(
     }
   }
 
-  console.log(`[buildVerifiedCitationBank] After Phase 1 (LA State): ${citations.length} citations (${relevanceRejections} relevance rejections)`);
+  log.info(`[buildVerifiedCitationBank] After Phase 1 (LA State): ${citations.length} citations (${relevanceRejections} relevance rejections)`);
 
   // ================================================================
   // PHASE 2: Search FIFTH CIRCUIT FEDERAL (binding federal authority)
   // Uses parallel batches for faster execution (Vercel Pro optimization)
   // ================================================================
   if (citations.length < maxCitations) {
-    console.log(`[buildVerifiedCitationBank] ═══ PHASE 2: Fifth Circuit Federal (PARALLEL) ═══`);
+    log.info(`[buildVerifiedCitationBank] ═══ PHASE 2: Fifth Circuit Federal (PARALLEL) ═══`);
 
     // Run searches in parallel batches of 5 for better performance
     const phase2Queries = uniqueQueries.slice(0, 8);
@@ -1590,7 +1593,7 @@ export async function buildVerifiedCitationBank(
         try {
           return await searchOpinions(queryInfo.query, 'fifth circuit', 6);
         } catch (error) {
-          console.error(`[buildVerifiedCitationBank] Federal search failed for "${queryInfo.query}":`, error);
+          log.error(`[buildVerifiedCitationBank] Federal search failed for "${queryInfo.query}":`, error);
           return { success: false, error: String(error) };
         }
       },
@@ -1616,14 +1619,14 @@ export async function buildVerifiedCitationBank(
     }
   }
 
-  console.log(`[buildVerifiedCitationBank] After Phase 2 (Federal): ${citations.length} citations`);
+  log.info(`[buildVerifiedCitationBank] After Phase 2 (Federal): ${citations.length} citations`);
 
   // ================================================================
   // PHASE 3: Broad search if still under minimum
   // Uses parallel batches for faster execution (Vercel Pro optimization)
   // ================================================================
   if (citations.length < minCitations) {
-    console.log(`[buildVerifiedCitationBank] ═══ PHASE 3: Broad Search (PARALLEL, under ${minCitations} citations) ═══`);
+    log.info(`[buildVerifiedCitationBank] ═══ PHASE 3: Broad Search (PARALLEL, under ${minCitations} citations) ═══`);
 
     const broadQueries = [
       'Louisiana civil procedure',
@@ -1640,7 +1643,7 @@ export async function buildVerifiedCitationBank(
           const result = await searchOpinions(query, 'Louisiana', 10);
           return { query, result };
         } catch (error) {
-          console.error(`[buildVerifiedCitationBank] Broad search failed for "${query}":`, error);
+          log.error(`[buildVerifiedCitationBank] Broad search failed for "${query}":`, error);
           return { query, result: { success: false, error: String(error) } };
         }
       })
@@ -1658,14 +1661,14 @@ export async function buildVerifiedCitationBank(
     }
   }
 
-  console.log(`[buildVerifiedCitationBank] After Phase 3 (Broad): ${citations.length} citations (${relevanceRejections} total relevance rejections)`);
+  log.info(`[buildVerifiedCitationBank] After Phase 3 (Broad): ${citations.length} citations (${relevanceRejections} total relevance rejections)`);
 
   // ================================================================
   // PHASE 4: LAST RESORT - Search without jurisdiction filter
   // Uses parallel execution for faster recovery (Vercel Pro optimization)
   // ================================================================
   if (citations.length < 4) {  // Minimum 4 for any motion
-    console.log(`[buildVerifiedCitationBank] ═══ PHASE 4: LAST RESORT (PARALLEL, no filter) ═══`);
+    log.info(`[buildVerifiedCitationBank] ═══ PHASE 4: LAST RESORT (PARALLEL, no filter) ═══`);
 
     const lastResortQueries = ['motion to compel', 'discovery sanctions', 'civil procedure'];
 
@@ -1677,7 +1680,7 @@ export async function buildVerifiedCitationBank(
           const result = await searchOpinions(query, undefined, 15);
           return { query, result };
         } catch (error) {
-          console.error(`[buildVerifiedCitationBank] Last resort error:`, error);
+          log.error(`[buildVerifiedCitationBank] Last resort error:`, error);
           return { query, result: { success: false, error: String(error) } };
         }
       })
@@ -1731,24 +1734,24 @@ export async function buildVerifiedCitationBank(
   // ================================================================
   // FINAL REPORT
   // ================================================================
-  console.log(`╔══════════════════════════════════════════════════════════════╗`);
-  console.log(`║  CITATION BANK COMPLETE                                      ║`);
-  console.log(`╚══════════════════════════════════════════════════════════════╝`);
-  console.log(`[buildVerifiedCitationBank] Total citations: ${citations.length}`);
-  console.log(`[buildVerifiedCitationBank] Louisiana citations: ${louisianaCitations}`);
-  console.log(`[buildVerifiedCitationBank] Federal citations: ${federalCitations}`);
-  console.log(`[buildVerifiedCitationBank] Searches performed: ${searchesPerformed}`);
-  console.log(`[buildVerifiedCitationBank] Elements covered: ${elementCoverage.size}`);
-  console.log(`[buildVerifiedCitationBank] Relevance rejections: ${relevanceRejections}`);
+  log.info(`╔══════════════════════════════════════════════════════════════╗`);
+  log.info(`║  CITATION BANK COMPLETE                                      ║`);
+  log.info(`╚══════════════════════════════════════════════════════════════╝`);
+  log.info(`[buildVerifiedCitationBank] Total citations: ${citations.length}`);
+  log.info(`[buildVerifiedCitationBank] Louisiana citations: ${louisianaCitations}`);
+  log.info(`[buildVerifiedCitationBank] Federal citations: ${federalCitations}`);
+  log.info(`[buildVerifiedCitationBank] Searches performed: ${searchesPerformed}`);
+  log.info(`[buildVerifiedCitationBank] Elements covered: ${elementCoverage.size}`);
+  log.info(`[buildVerifiedCitationBank] Relevance rejections: ${relevanceRejections}`);
 
   if (citations.length > 0) {
-    console.log(`[buildVerifiedCitationBank] Top citations by authority:`);
+    log.info(`[buildVerifiedCitationBank] Top citations by authority:`);
     citations.slice(0, 5).forEach((c, i) => {
-      console.log(`  ${i + 1}. ${c.caseName?.substring(0, 50)}... (${c.court})`);
+      log.info(`  ${i + 1}. ${c.caseName?.substring(0, 50)}... (${c.court})`);
     });
-    console.log(`[buildVerifiedCitationBank] All IDs: [${citations.slice(0, 8).map(c => c.courtlistener_id).join(', ')}${citations.length > 8 ? '...' : ''}]`);
+    log.info(`[buildVerifiedCitationBank] All IDs: [${citations.slice(0, 8).map(c => c.courtlistener_id).join(', ')}${citations.length > 8 ? '...' : ''}]`);
   } else {
-    console.error(`[buildVerifiedCitationBank] ❌ FATAL: No citations found!`);
+    log.error(`[buildVerifiedCitationBank] ❌ FATAL: No citations found!`);
   }
 
   return {
@@ -1789,7 +1792,7 @@ export async function getCitationDetailsForViewer(
   const includeText = options?.includeText ?? false;
 
   try {
-    console.log(`[CitationViewer] Fetching details for opinion ${opinionId}`);
+    log.info(`[CitationViewer] Fetching details for opinion ${opinionId}`);
 
     // Fetch opinion data
     const opinionResult = await makeRequest<{
@@ -1934,10 +1937,10 @@ export async function getCitationDetailsForViewer(
       }
     }
 
-    console.log(`[CitationViewer] Successfully fetched details for ${caseNameShort}`);
+    log.info(`[CitationViewer] Successfully fetched details for ${caseNameShort}`);
     return { success: true, data: details };
   } catch (error) {
-    console.error('[CitationViewer] Error fetching citation details:', error);
+    log.error('[CitationViewer] Error fetching citation details:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to fetch citation details',
@@ -1961,7 +1964,7 @@ export async function batchGetCitationDetails(
   const results = new Map<string, CitationDetails>();
   const errors: string[] = [];
 
-  console.log(`[CitationViewer] Batch fetching ${opinionIds.length} citations`);
+  log.info(`[CitationViewer] Batch fetching ${opinionIds.length} citations`);
 
   // Process in parallel with concurrency limit
   const CONCURRENCY = 5;
@@ -1978,7 +1981,7 @@ export async function batchGetCitationDetails(
     await Promise.all(promises);
   }
 
-  console.log(`[CitationViewer] Batch complete: ${results.size} success, ${errors.length} errors`);
+  log.info(`[CitationViewer] Batch complete: ${results.size} success, ${errors.length} errors`);
   return { success: true, data: results, errors };
 }
 

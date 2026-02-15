@@ -11,6 +11,9 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { getAnthropicAPIKey } from '@/lib/api-keys';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('claude-client');
 
 // Rate limit tracking
 let lastRequestTime = 0;
@@ -85,7 +88,7 @@ export async function createMessageWithRetry(
   const maxTokens = params.max_tokens;
   const useStreaming = maxTokens >= 16000;
 
-  console.log(`[Claude] Using streaming: ${useStreaming} (${maxTokens} tokens)`);
+  log.info(`[Claude] Using streaming: ${useStreaming} (${maxTokens} tokens)`);
 
   // Ensure minimum interval between requests
   const now = Date.now();
@@ -93,7 +96,7 @@ export async function createMessageWithRetry(
 
   if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
     const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-    console.log(`[Claude] Waiting ${waitTime}ms before request (rate limit protection)`);
+    log.info(`[Claude] Waiting ${waitTime}ms before request (rate limit protection)`);
     await sleep(waitTime);
   }
 
@@ -105,7 +108,7 @@ export async function createMessageWithRetry(
       lastRequestTime = Date.now();
       requestCount++;
 
-      console.log(`[Claude] Attempt ${attempt + 1}/${maxRetries + 1} - Making request...`);
+      log.info(`[Claude] Attempt ${attempt + 1}/${maxRetries + 1} - Making request...`);
 
       let response: Anthropic.Message;
 
@@ -119,7 +122,7 @@ export async function createMessageWithRetry(
       }
 
       // Log success
-      console.log(`[Claude] Success - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
+      log.info(`[Claude] Success - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
 
       if (onSuccess) {
         onSuccess(response.usage.input_tokens, response.usage.output_tokens);
@@ -138,7 +141,7 @@ export async function createMessageWithRetry(
         const jitter = rateLimitInfo.retryAfterMs * (0.1 + Math.random() * 0.2);
         const waitMs = Math.ceil(rateLimitInfo.retryAfterMs + jitter);
 
-        console.log(`[Claude] Rate limited. Waiting ${Math.round(waitMs / 1000)}s before retry ${attempt + 2}...`);
+        log.info(`[Claude] Rate limited. Waiting ${Math.round(waitMs / 1000)}s before retry ${attempt + 2}...`);
 
         if (onRetry) {
           onRetry(attempt + 1, waitMs, rateLimitInfo.message);
@@ -154,7 +157,7 @@ export async function createMessageWithRetry(
         const baseDelay = 2000;
         const waitMs = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
 
-        console.log(`[Claude] Retryable error. Waiting ${Math.round(waitMs / 1000)}s before retry ${attempt + 2}...`);
+        log.info(`[Claude] Retryable error. Waiting ${Math.round(waitMs / 1000)}s before retry ${attempt + 2}...`);
 
         if (onRetry) {
           onRetry(attempt + 1, waitMs, lastError.message);

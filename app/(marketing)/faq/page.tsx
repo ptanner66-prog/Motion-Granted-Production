@@ -1,202 +1,231 @@
-import { Metadata } from 'next'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
+// app/faq/page.tsx
+'use client';
 
-export const metadata: Metadata = {
-  title: 'FAQ',
-  description: 'Frequently asked questions about Motion Granted services.',
+import { useState } from 'react';
+import Link from 'next/link';
+import { ChevronDown, ArrowRight } from 'lucide-react';
+
+interface FAQItem {
+  question: string;
+  answer: string;
 }
 
-const faqCategories = [
+const FAQ_CATEGORIES: { name: string; items: FAQItem[] }[] = [
   {
-    title: 'General Questions',
-    questions: [
+    name: 'Getting Started',
+    items: [
       {
-        q: 'What is Motion Granted?',
-        a: 'Motion Granted is a legal process outsourcing company that provides motion drafting services to attorneys. We employ law clerks who prepare motion drafts under the direction and supervision of the hiring attorney. We are not a law firm and do not provide legal advice or representation.',
+        question: 'What is Motion Granted?',
+        answer: 'Motion Granted is a legal process outsourcing (LPO) service that provides motion drafting support to solo practitioners and small law firms. We use AI-assisted drafting combined with attorney review to deliver court-ready motions at flat-fee pricing.',
       },
       {
-        q: 'Who prepares the work product?',
-        a: 'All drafts are prepared by qualified law clerks with legal research and writing experience. Our clerks work under the direction you provide in your order instructions. You, as the hiring attorney, remain responsible for supervising the work product and making all legal and strategic decisions.',
+        question: 'Is Motion Granted a law firm?',
+        answer: 'No. Motion Granted is NOT a law firm and does not provide legal advice or legal representation. We provide drafting services under the direction and supervision of the hiring attorney. The attorney of record reviews all work product and assumes full responsibility for the final document filed with the court.',
       },
       {
-        q: 'Is this the unauthorized practice of law?',
-        a: 'No. Motion Granted functions similarly to an in-house law clerk or contract attorney working under your supervision. We prepare drafts based on your instructions and under your direction. You review, revise, and file all work product. We do not interact with your clients, appear in court, or make legal decisions. This arrangement is analogous to hiring any non-attorney support staff for drafting assistance.',
+        question: 'What jurisdictions do you serve?',
+        answer: 'We currently serve Louisiana and California state courts, plus federal courts in the 5th and 9th Circuits. We plan to expand to additional states in 2026. All work product is prepared to comply with the local rules of the target jurisdiction.',
       },
       {
-        q: 'What jurisdictions do you serve?',
-        a: 'We currently serve attorneys practicing in Louisiana state and federal courts. We are expanding to additional jurisdictions—contact us if you practice elsewhere and would like to be notified when we expand.',
+        question: 'How do I submit my first order?',
+        answer: 'Click "Get Started" to create an account, then follow our 8-step intake wizard. You\'ll upload your case documents, describe the motion you need, select your deadline, and pay the flat fee. Our system handles the rest.',
       },
     ],
   },
   {
-    title: 'How It Works',
-    questions: [
+    name: 'Pricing & Payment',
+    items: [
       {
-        q: 'How do I place an order?',
-        a: "Create an account, then use our intake form to select your motion type, provide case information, upload documents, and submit your instructions. Payment is collected at the time of order. You'll receive a confirmation email and can track your order status in your dashboard.",
+        question: 'How is pricing determined?',
+        answer: 'Pricing is based on motion complexity. Tier A ($150) covers simple procedural motions. Tier B ($350) covers standard substantive motions. Tier C ($850) covers complex multi-issue motions. Tier D ($1,500+) covers major dispositive motions like summary judgment. Rush delivery is available for an additional fee.',
       },
       {
-        q: 'What information do I need to provide?',
-        a: 'You\'ll need to provide: (1) Motion type and deadline, (2) Case information including court, case number, and parties, (3) Statement of facts and procedural history, (4) Your specific instructions on what arguments to make, and (5) Relevant case documents (complaint, answer, prior motions, discovery, etc.).',
+        question: 'Are there any subscriptions or minimums?',
+        answer: 'No. We operate on a per-order basis with flat-fee pricing. No subscriptions, no retainers, no minimum order requirements. You pay only for what you order.',
       },
       {
-        q: 'How long does it take?',
-        a: 'Standard turnaround varies by motion complexity: Tier A (procedural) motions typically take 2-3 business days, Tier B (substantive) motions take 3-4 business days, and Tier C (complex/dispositive) motions take 4-5 business days. Rush delivery is available for most orders at an additional charge.',
+        question: 'What payment methods do you accept?',
+        answer: 'We accept all major credit cards via Stripe. Payment is collected at the time of order submission. We do not currently accept ACH, wire transfers, or payment on account.',
       },
       {
-        q: 'Can I request rush delivery?',
-        a: 'Yes. We offer 72-hour rush (+25%) and 48-hour rush (+50%) delivery for most motion types. Rush availability depends on current workload. If rush delivery is not available for your order, we will contact you.',
-      },
-    ],
-  },
-  {
-    title: 'Your Responsibilities',
-    questions: [
-      {
-        q: 'What is my role in the process?',
-        a: 'You provide the case documents, facts, and drafting instructions. You also supervise the drafting process, review the completed draft, and ultimately file the motion under your name. You remain responsible for all legal judgment and client relationships.',
-      },
-      {
-        q: 'Do I need to review the draft before filing?',
-        a: 'Absolutely. You must review and approve all work product before filing. Our drafts are starting points—you should revise as necessary to reflect your professional judgment, verify all citations and facts, and ensure the arguments align with your case strategy.',
-      },
-      {
-        q: 'Who is responsible for the accuracy of the work?',
-        a: 'You are. While we strive for accuracy and quality, you are the supervising attorney. You must verify all facts, check all citations, and ensure the legal arguments are sound. We prepare drafts; you bear professional responsibility for anything filed with the court.',
+        question: 'What if I\'m not satisfied with the work?',
+        answer: 'Every order includes one revision at no additional charge. If the revision still doesn\'t meet your needs, contact us to discuss a refund. We want you to be satisfied with every order.',
       },
     ],
   },
   {
-    title: 'Pricing and Payment',
-    questions: [
+    name: 'Quality & Accuracy',
+    items: [
       {
-        q: 'How does pricing work?',
-        a: 'We charge flat fees based on motion type. Prices are listed on our pricing page. There are no hourly fees or hidden charges. What you see is what you pay (plus any rush surcharge if applicable).',
+        question: 'How do you ensure citation accuracy?',
+        answer: 'Every citation in our motions goes through a 7-step verification pipeline. We check case existence, extract holdings, analyze subsequent history, and flag any negative treatment. Our screening uses open-source legal databases and is not a substitute for Shepard\'s\u00AE or KeyCite\u00AE research.',
       },
       {
-        q: 'When is payment due?',
-        a: 'Payment is due at the time of order submission. We accept all major credit cards via Stripe.',
+        question: 'Do attorneys review the AI-generated drafts?',
+        answer: 'Yes. All work product is reviewed by a licensed attorney before delivery. The AI handles initial drafting and citation research; the attorney reviews for legal accuracy, proper argument structure, and compliance with local rules.',
       },
       {
-        q: 'What if my matter is more complex than a standard motion?',
-        a: 'If your matter requires substantially more work than a typical motion of that type, we may contact you to discuss a supplemental quote before proceeding. We will not charge additional fees without your approval.',
-      },
-      {
-        q: 'Do you offer refunds?',
-        a: 'We do not offer refunds for completed work. If we are unable to complete your order for any reason, we will provide a full refund. If you are dissatisfied with the quality of a draft, please contact support.',
+        question: 'What is your turnaround time?',
+        answer: 'Standard turnaround is 24-48 hours depending on motion complexity. Rush delivery (same-day or next-day) is available for an additional fee. Deadlines are guaranteed; if we can\'t meet your deadline, we\'ll tell you before you submit.',
       },
     ],
   },
   {
-    title: 'Documents and Delivery',
-    questions: [
+    name: 'Working With Us',
+    items: [
       {
-        q: 'What file formats do you deliver?',
-        a: 'We deliver Microsoft Word documents (.docx) so you can easily make edits before filing.',
+        question: 'What documents do I need to provide?',
+        answer: 'At minimum: the operative complaint or petition, any relevant prior orders, and a brief description of what you need. For more complex motions, you may want to include discovery responses, deposition excerpts, or key exhibits. The more context you provide, the better the draft.',
       },
       {
-        q: 'How do I receive my completed draft?',
-        a: 'Completed drafts are uploaded to your order in the client portal. You will receive an email notification when your draft is ready for download.',
+        question: 'How do I communicate with the drafting team?',
+        answer: 'Your order includes a secure client portal where you can upload documents, leave notes, and track status. For urgent questions, you can email us directly. We aim to respond to all inquiries within 4 business hours.',
       },
       {
-        q: 'Can I communicate with the clerk working on my matter?',
-        a: 'Yes. Each order has a messaging feature that allows you to communicate with your assigned clerk. Use this for clarifications or to provide additional information.',
-      },
-    ],
-  },
-  {
-    title: 'Confidentiality and Security',
-    questions: [
-      {
-        q: 'Is my case information confidential?',
-        a: 'Yes. All staff are bound by confidentiality obligations. We treat your case information with the same care you would expect from any professional legal service provider.',
+        question: 'Can I request a specific attorney?',
+        answer: 'We assign attorneys based on expertise and availability. While we can\'t guarantee a specific attorney, you can note preferences in your order and we\'ll accommodate when possible.',
       },
       {
-        q: 'How do you handle conflicts of interest?',
-        a: 'We maintain a conflicts database and check all new orders against it. If a potential conflict is identified, we will notify you and either obtain appropriate waivers or decline the engagement.',
-      },
-      {
-        q: 'How is my data secured?',
-        a: 'We use industry-standard security measures including encrypted data transmission (SSL/TLS), secure cloud storage, and access controls. Our platform is built on trusted infrastructure providers.',
+        question: 'Is my case information confidential?',
+        answer: 'Absolutely. All case information is protected by strict confidentiality agreements and industry-standard security measures. We never share client information with third parties except as required to complete your order.',
       },
     ],
   },
-  {
-    title: 'Account and Support',
-    questions: [
-      {
-        q: 'How do I create an account?',
-        a: "Click \"Get Started\" and complete the registration form. You'll need to provide your bar number and state(s) of licensure. Account creation is free—you only pay when you place an order.",
-      },
-      {
-        q: 'What if I have questions not answered here?',
-        a: 'Contact us at support@motiongranted.com or use the contact form on our website. We typically respond within one business day.',
-      },
-    ],
-  },
-]
+];
 
 export default function FAQPage() {
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [openItems, setOpenItems] = useState<Set<string>>(new Set());
+
+  const toggleItem = (id: string) => {
+    setOpenItems(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const filteredCategories = activeCategory === 'all'
+    ? FAQ_CATEGORIES
+    : FAQ_CATEGORIES.filter(c => c.name === activeCategory);
+
   return (
-    <div className="bg-white">
-      {/* Header */}
-      <section className="bg-gray-50 py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <h1 className="text-4xl font-bold tracking-tight text-navy sm:text-5xl">
-              Frequently Asked Questions
-            </h1>
-            <p className="mt-6 text-lg text-gray-600">
-              Everything you need to know about Motion Granted
-            </p>
-          </div>
+    <div className="font-sans">
+      {/* Page Header */}
+      <section className="pt-32 pb-12 bg-gradient-to-b from-white to-slate-50">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <span className="text-sm font-bold text-[#C9A227] uppercase tracking-wider">
+            FREQUENTLY ASKED QUESTIONS
+          </span>
+          <h1 className="font-serif text-5xl text-[#0F1F33] mt-3 mb-4">
+            Questions? <em className="text-[#C9A227]">Answers.</em>
+          </h1>
+          <p className="text-lg text-slate-500">
+            Everything you need to know about working with Motion Granted.
+          </p>
         </div>
       </section>
 
+      {/* Category Navigation */}
+      <div className="max-w-4xl mx-auto px-6 -mt-6 mb-8">
+        <div className="flex flex-wrap justify-center gap-2">
+          <button
+            onClick={() => setActiveCategory('all')}
+            className={`px-5 py-2 rounded-full font-semibold text-sm transition-all ${
+              activeCategory === 'all'
+                ? 'bg-[#1E3A5F] text-white'
+                : 'bg-white border border-slate-200 text-slate-600 hover:border-[#1E3A5F]'
+            }`}
+          >
+            All
+          </button>
+          {FAQ_CATEGORIES.map(cat => (
+            <button
+              key={cat.name}
+              onClick={() => setActiveCategory(cat.name)}
+              className={`px-5 py-2 rounded-full font-semibold text-sm transition-all ${
+                activeCategory === cat.name
+                  ? 'bg-[#1E3A5F] text-white'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:border-[#1E3A5F]'
+              }`}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* FAQ Content */}
-      <section className="py-16 sm:py-24">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-          {faqCategories.map((category) => (
-            <div key={category.title} className="mb-12">
-              <h2 className="text-2xl font-bold text-navy mb-6">{category.title}</h2>
-              <Accordion type="single" collapsible className="w-full">
-                {category.questions.map((faq, index) => (
-                  <AccordionItem key={index} value={`${category.title}-${index}`}>
-                    <AccordionTrigger className="text-left text-navy">
-                      {faq.q}
-                    </AccordionTrigger>
-                    <AccordionContent>{faq.a}</AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
+      <section className="pb-20">
+        <div className="max-w-3xl mx-auto px-6">
+          {filteredCategories.map(category => (
+            <div key={category.name} className="mb-10">
+              <h2 className="font-serif text-2xl text-[#0F1F33] pb-4 border-b-2 border-[#C9A227] mb-4">
+                {category.name}
+              </h2>
+              <div className="space-y-2">
+                {category.items.map((item, idx) => {
+                  const itemId = `${category.name}-${idx}`;
+                  const isOpen = openItems.has(itemId);
+
+                  return (
+                    <div key={itemId} className="border-b border-slate-200">
+                      <button
+                        onClick={() => toggleItem(itemId)}
+                        className="w-full py-5 flex items-center justify-between gap-4 text-left"
+                      >
+                        <span className="font-semibold text-[#0F1F33]">{item.question}</span>
+                        <span className={`
+                          w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all
+                          ${isOpen ? 'bg-[#1E3A5F] text-white' : 'bg-slate-100 text-slate-400'}
+                        `}>
+                          <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                        </span>
+                      </button>
+                      <div className={`overflow-hidden transition-all duration-300 ${
+                        isOpen ? 'max-h-96 pb-5' : 'max-h-0'
+                      }`}>
+                        <p className="text-slate-600 leading-relaxed">{item.answer}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Contact CTA */}
-      <section className="bg-gray-50 py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-2xl font-bold text-navy">Still have questions?</h2>
-            <p className="mt-4 text-gray-600">
-              We&apos;re here to help. Contact us and we&apos;ll get back to you within one business day.
-            </p>
-            <div className="mt-8">
-              <Button size="lg" asChild>
-                <Link href="/contact">Contact Us</Link>
-              </Button>
-            </div>
+      {/* CTA */}
+      <section className="py-16 bg-[#0F1F33]">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <h2 className="font-serif text-3xl text-white mb-4">
+            Still have <em className="text-[#C9A227]">questions?</em>
+          </h2>
+          <p className="text-slate-300 mb-8">
+            Contact us directly and we'll get back to you within 24 hours.
+          </p>
+          <div className="flex gap-4 justify-center">
+            <Link
+              href="/contact"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-[#0F1F33] font-semibold rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              Contact Us
+            </Link>
+            <Link
+              href="/orders/new"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-[#C9A227] text-[#0F1F33] font-semibold rounded-lg hover:bg-[#D4B33A] transition-colors"
+            >
+              Get Started
+              <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </section>
     </div>
-  )
+  );
 }

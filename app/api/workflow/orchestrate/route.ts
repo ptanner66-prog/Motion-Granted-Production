@@ -24,6 +24,9 @@ import {
 import { getWorkflowProgress } from '@/lib/workflow/workflow-state';
 import { getTemplateForPath } from '@/lib/workflow/motion-templates';
 import type { WorkflowPath, MotionTier } from '@/types/workflow';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-orchestrate');
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -102,7 +105,7 @@ export async function POST(request: Request) {
       message: 'Workflow initialized. 14-phase pipeline started via Inngest.',
     });
   } catch (error) {
-    console.error('Orchestration error:', error);
+    log.error('Orchestration error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Orchestration failed. Please try again.' },
       { status: 500 }
@@ -204,7 +207,7 @@ export async function GET(request: Request) {
       { status: 400 }
     );
   } catch (error) {
-    console.error('Get orchestration status error:', error);
+    log.error('Get orchestration status error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Failed to get status. Please try again.' },
       { status: 500 }
@@ -235,7 +238,7 @@ function mapMotionTypeToCode(motionType: string, tier: MotionTier): string {
     'A': 'MTD_12B6',
     'B': 'MTC',
     'C': 'MEXT',
-    'D': 'MEXT',
+    'D': 'MSJ',
   };
 
   return tierDefaults[tier] || 'MTC';

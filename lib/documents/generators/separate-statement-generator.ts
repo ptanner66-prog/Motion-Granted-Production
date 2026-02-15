@@ -31,6 +31,9 @@ import {
 import { createClient } from '@/lib/supabase/server';
 import { JURISDICTION_RULES } from '@/lib/documents/formatting-engine';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('documents-generators-separate-statement-generator');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -594,17 +597,17 @@ function generateSeparateStatementDocument(data: SeparateStatementData): Documen
 export async function generateSeparateStatement(
   data: SeparateStatementData
 ): Promise<SeparateStatementResult> {
-  console.log(`[SeparateStatement] Generating for order ${data.orderId}`);
+  log.info(`[SeparateStatement] Generating for order ${data.orderId}`);
 
   // Run CRC 3.1350(c) evidence validation
   const validation = validateSeparateStatement(data);
 
   if (validation.warnings.length > 0) {
-    console.warn('[SeparateStatement] Validation warnings:', validation.warnings);
+    log.warn('[SeparateStatement] Validation warnings:', validation.warnings);
   }
 
   if (!validation.valid) {
-    console.error('[SeparateStatement] Validation errors:', validation.errors);
+    log.error('[SeparateStatement] Validation errors:', validation.errors);
     // Return result with validation errors but don't throw
     // This allows the UI to show the errors to the user
     return {
@@ -634,7 +637,7 @@ export async function generateSeparateStatement(
     });
 
   if (uploadError) {
-    console.error('[SeparateStatement] Upload error:', uploadError);
+    log.error('[SeparateStatement] Upload error:', uploadError);
     throw new Error(`Failed to upload separate statement: ${uploadError.message}`);
   }
 
@@ -648,8 +651,8 @@ export async function generateSeparateStatement(
   // Estimate page count (rough: header + ~3 facts per page)
   const estimatedPageCount = Math.max(1, Math.ceil(factCount / 3) + 1);
 
-  console.log(`[SeparateStatement] Generated successfully: ${storagePath}`);
-  console.log(`[SeparateStatement] Facts: ${factCount}, Evidence citations: ${evidenceCount}`);
+  log.info(`[SeparateStatement] Generated successfully: ${storagePath}`);
+  log.info(`[SeparateStatement] Facts: ${factCount}, Evidence citations: ${evidenceCount}`);
 
   return {
     path: storagePath,

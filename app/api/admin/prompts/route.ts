@@ -23,6 +23,9 @@ import {
   PHASES,
   type WorkflowPhase,
 } from '@/lib/config/phase-registry';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-prompts');
 
 /** Maps PHASE_PROMPTS keys (PHASE_I) to PHASE_REGISTRY keys (I). */
 const PROMPT_KEY_TO_PHASE: Record<string, WorkflowPhase> = {
@@ -180,7 +183,7 @@ export async function GET() {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[GET /api/admin/prompts] Error:', message);
+    log.error('GET prompts error', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -261,7 +264,7 @@ export async function PUT(request: Request) {
       .eq('phase', dbPhase);
 
     if (updateError) {
-      console.error(`[PUT /api/admin/prompts] Update failed for ${phase_key}:`, updateError);
+      log.error('Update failed for phase', { phaseKey: phase_key, error: updateError });
       return NextResponse.json({ error: 'Failed to save prompt' }, { status: 500 });
     }
 
@@ -278,14 +281,14 @@ export async function PUT(request: Request) {
 
     if (versionError) {
       // Non-fatal — the prompt itself was saved
-      console.warn(`[PUT /api/admin/prompts] Version history insert failed for ${phase_key}:`, versionError);
+      log.warn('Version history insert failed', { phaseKey: phase_key, error: versionError });
     }
 
     // 8. Invalidate prompt cache so next workflow run uses new content
     await refreshPhasePrompts();
 
     // 9. Log the edit
-    console.log(`[PUT /api/admin/prompts] ${phase_key} updated to v${newVersion} by ${user.email ?? user.id}`);
+    log.info('Phase prompt updated', { phaseKey: phase_key, version: newVersion, updatedBy: user.email ?? user.id });
 
     // 10. Return success
     const wordCount = trimmedContent.split(/\s+/).filter(Boolean).length;
@@ -297,7 +300,7 @@ export async function PUT(request: Request) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[PUT /api/admin/prompts] Error:', message);
+    log.error('PUT prompts error', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

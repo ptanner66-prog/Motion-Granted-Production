@@ -21,6 +21,9 @@
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('search-order-search');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -289,7 +292,7 @@ export async function searchOrders(
     const { data, error, count } = await dbQuery;
 
     if (error) {
-      console.error('[OrderSearch] Query error:', error);
+      log.error('[OrderSearch] Query error:', error);
       return { results: [], total: 0, took: Date.now() - startTime };
     }
 
@@ -352,7 +355,7 @@ export async function searchOrders(
       took: Date.now() - startTime,
     };
   } catch (error) {
-    console.error('[OrderSearch] Error:', error);
+    log.error('[OrderSearch] Error:', error);
     return { results: [], total: 0, took: Date.now() - startTime };
   }
 }
@@ -389,7 +392,7 @@ export async function quickSearch(
       type: 'order',
     }));
   } catch (error) {
-    console.error('[OrderSearch] Quick search error:', error);
+    log.error('[OrderSearch] Quick search error:', error);
     return [];
   }
 }

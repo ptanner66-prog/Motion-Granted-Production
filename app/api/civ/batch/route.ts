@@ -7,6 +7,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { verifyBatch, type BatchVerificationRequest, type CitationToVerify } from '@/lib/civ/pipeline';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-civ-batch');
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -104,7 +107,7 @@ export async function POST(request: Request) {
       result,
     });
   } catch (error) {
-    console.error('CIV batch verification error:', error);
+    log.error('CIV batch verification error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Batch verification failed' },
       { status: 500 }

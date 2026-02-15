@@ -11,6 +11,9 @@ import { queueOrderNotification } from '@/lib/automation/notification-sender';
 import { sendEmail } from '@/lib/resend';
 import { DraftReadyEmail } from '@/emails/draft-ready';
 import { createElement } from 'react';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-chat-approve');
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -126,7 +129,7 @@ export async function POST(request: Request) {
         },
       });
     } catch (logErr) {
-      console.error('Failed to log approval:', logErr);
+      log.error('Failed to log approval', { error: logErr instanceof Error ? logErr.message : logErr });
       // Don't fail the request if logging fails
     }
 
@@ -154,16 +157,16 @@ export async function POST(request: Request) {
             orderUrl: `${baseUrl}/orders/${orderId}`,
           }),
         });
-        console.log(`[APPROVE] Email sent for order ${order.order_number}`);
+        log.info('Email sent for order', { orderNumber: order.order_number });
       } catch (emailErr) {
-        console.error('Failed to send email directly:', emailErr);
+        log.error('Failed to send email directly', { error: emailErr instanceof Error ? emailErr.message : emailErr });
         // Fall back to queue if direct send fails
         await queueOrderNotification(orderId, 'draft_ready', {
           clientName: clientProfile.full_name || 'Client',
           clientEmail: clientProfile.email,
           deliverableReady: true,
-        }).catch((err: unknown) => {
-          console.error('Failed to queue notification:', err);
+        }).catch(err => {
+          log.error('Failed to queue notification', { error: err instanceof Error ? err.message : err });
         });
       }
     }
@@ -175,7 +178,7 @@ export async function POST(request: Request) {
       status: 'draft_delivered',
     });
   } catch (error) {
-    console.error('Approve motion error:', error);
+    log.error('Approve motion error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Failed to approve motion. Please try again.',
     }, { status: 500 });

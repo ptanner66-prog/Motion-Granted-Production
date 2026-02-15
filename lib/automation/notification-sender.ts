@@ -27,6 +27,9 @@ import type {
 import { formatDate, formatCurrency } from '@/lib/utils';
 import React from 'react';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('automation-notification-sender');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -102,7 +105,7 @@ async function getNotificationSettings(): Promise<NotificationSettings> {
       batchSize: (settingsMap.get('notification_batch_size') as { value?: number })?.value ?? 50,
     };
   } catch (error) {
-    console.error('[Notifications] Failed to load settings:', error);
+    log.error('[Notifications] Failed to load settings:', error);
     return {
       enabled: true,
       quietHours: {
@@ -405,7 +408,7 @@ function buildEmailComponent(
       return buildRevisionPaymentEmail(data, baseUrl);
 
     default:
-      console.warn(`[Notifications] No email template for type: ${type}`);
+      log.warn(`[Notifications] No email template for type: ${type}`);
       return null;
   }
 }
@@ -794,7 +797,7 @@ async function logAutomationAction(
       action_details: details,
     });
   } catch (error) {
-    console.error('[Automation Log] Failed to log action:', error);
+    log.error('[Automation Log] Failed to log action:', error);
   }
 }
 

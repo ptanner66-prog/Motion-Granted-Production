@@ -72,7 +72,7 @@ export const TIER_LABELS: Record<'A' | 'B' | 'C' | 'D', string> = {
   A: 'TIER A — Procedural ($150-$400)',
   B: 'TIER B — Intermediate ($500-$1,400)',
   C: 'TIER C — Complex/Dispositive ($1,500-$3,500)',
-  D: 'TIER D — Specialized/Enterprise ($3,500-$6,000)',
+  D: 'TIER D — Highly Complex / Dispositive ($1,499)',
 };
 
 export const TIER_TURNAROUND: Record<'A' | 'B' | 'C' | 'D', string> = {
@@ -1283,6 +1283,7 @@ export function getActiveCategories(): MotionCategory[] {
  * Get price range for a tier
  */
 export function getTierPriceRange(tier: 'A' | 'B' | 'C' | 'D'): { min: number; max: number } {
+  if (tier === 'D') return { min: 1499, max: 1499 };
   const motions = getMotionsByTier(tier);
   if (motions.length === 0) return { min: 0, max: 0 };
 

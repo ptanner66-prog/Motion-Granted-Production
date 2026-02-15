@@ -11,6 +11,9 @@ import {
   getNextAllowedPhase,
   type PhaseId
 } from './phase-gates';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-api-guards');
 
 // ============================================================================
 // PHASE GATE MIDDLEWARE
@@ -27,7 +30,7 @@ export async function requirePhaseGate(
   const gateResult = await validatePhaseGate(orderId, requiredPhase);
 
   if (!gateResult.canProceed) {
-    console.error(`[API GUARD] Phase gate blocked for order ${orderId}: ${gateResult.error}`);
+    log.error('Phase gate blocked', { orderId, error: gateResult.error });
 
     return NextResponse.json(
       {
@@ -97,7 +100,7 @@ export function blockDirectGeneration(
   requestContext: { source?: string; bypassWorkflow?: boolean }
 ): NextResponse | null {
   if (requestContext.bypassWorkflow === true) {
-    console.error('[API GUARD] Direct generation bypass attempted');
+    log.error('Direct generation bypass attempted');
 
     return NextResponse.json(
       {

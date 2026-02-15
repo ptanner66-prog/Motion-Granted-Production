@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
+import { createLogger } from '@/lib/security/logger'
+
+const log = createLogger('api-orders-deliverables')
 
 // POST /api/orders/[id]/deliverables
 // Upload completed draft (clerk/admin only)
@@ -74,7 +77,7 @@ export async function POST(
       })
 
     if (uploadError) {
-      console.error('Storage upload error:', uploadError)
+      log.error('Storage upload error', { error: uploadError })
       return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
     }
 
@@ -100,7 +103,7 @@ export async function POST(
       .single()
 
     if (dbError) {
-      console.error('Database insert error:', dbError)
+      log.error('Database insert error', { error: dbError })
       // Clean up uploaded file
       await supabase.storage.from('documents').remove([filePath]).catch(() => {})
       return NextResponse.json({ error: 'Failed to save document record' }, { status: 500 })
@@ -117,7 +120,7 @@ export async function POST(
     })
 
   } catch (error) {
-    console.error('Error uploading deliverable:', error)
+    log.error('Error uploading deliverable', { error: error instanceof Error ? error.message : error })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -182,7 +185,7 @@ export async function GET(
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Fetch deliverables error:', error)
+      log.error('Fetch deliverables error', { error })
       return NextResponse.json({ deliverables: [] })
     }
 
@@ -195,7 +198,7 @@ export async function GET(
     return NextResponse.json({ deliverables: deliverablesWithUrls })
 
   } catch (error) {
-    console.error('Error fetching deliverables:', error)
+    log.error('Error fetching deliverables', { error: error instanceof Error ? error.message : error })
     return NextResponse.json({ deliverables: [] })
   }
 }
@@ -257,7 +260,7 @@ export async function DELETE(
         .remove([doc.file_url])
 
       if (storageError) {
-        console.warn(`[Deliverable Delete] Storage delete warning for ${doc.file_url}:`, storageError.message)
+        log.warn('Storage delete warning', { fileUrl: doc.file_url, error: storageError.message })
         // Continue with DB deletion even if storage fails — file may already be gone
       }
     }
@@ -270,16 +273,16 @@ export async function DELETE(
       .eq('order_id', orderId)
 
     if (deleteError) {
-      console.error('[Deliverable Delete] Database delete error:', deleteError)
+      log.error('Database delete error', { error: deleteError })
       return NextResponse.json({ error: 'Failed to delete document record' }, { status: 500 })
     }
 
-    console.log(`[Deliverable Delete] Deleted ${doc.file_name} (${documentId}) from order ${orderId} by ${user.id}`)
+    log.info('Deleted deliverable', { fileName: doc.file_name, documentId, orderId, deletedBy: user.id })
 
     return NextResponse.json({ success: true, deletedId: documentId })
 
   } catch (error) {
-    console.error('Error deleting deliverable:', error)
+    log.error('Error deleting deliverable', { error: error instanceof Error ? error.message : error })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

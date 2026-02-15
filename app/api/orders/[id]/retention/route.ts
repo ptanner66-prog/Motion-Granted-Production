@@ -6,6 +6,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getRetentionStatus, extendRetention } from '@/lib/retention';
 import { deleteOrderData } from '@/lib/retention';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-orders-retention');
 import { logActivity } from '@/lib/activity/activity-logger';
 
 /**
@@ -53,7 +56,7 @@ export async function GET(
 
     return NextResponse.json(status);
   } catch (error) {
-    console.error('[API] Retention GET error:', error);
+    log.error('Retention GET error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
@@ -165,7 +168,7 @@ export async function POST(
       { status: 400 }
     );
   } catch (error) {
-    console.error('[API] Retention POST error:', error);
+    log.error('Retention POST error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

@@ -4,6 +4,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('retention-retention-service');
 const DEFAULT_RETENTION_DAYS = 180;
 const MAX_RETENTION_DAYS = 730; // 2 years hard cap
 const REMINDER_DAYS_BEFORE = 14;
@@ -106,11 +109,11 @@ export async function setInitialRetention(orderId: string): Promise<void> {
     .eq('id', orderId);
 
   if (error) {
-    console.error(`[Retention] Failed to set initial retention for ${orderId}:`, error);
+    log.error(`[Retention] Failed to set initial retention for ${orderId}:`, error);
     throw error;
   }
 
-  console.log(`[Retention] Set retention for order ${orderId}: expires ${expiresAt.toISOString()}`);
+  log.info(`[Retention] Set retention for order ${orderId}: expires ${expiresAt.toISOString()}`);
 }
 
 /**
@@ -161,13 +164,13 @@ export async function extendRetention(
     .eq('id', orderId);
 
   if (updateError) {
-    console.error(`[Retention] Failed to extend retention for ${orderId}:`, updateError);
+    log.error(`[Retention] Failed to extend retention for ${orderId}:`, updateError);
     return { success: false, error: 'Failed to update retention' };
   }
 
   const daysRemaining = Math.ceil((finalDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
 
-  console.log(`[Retention] Extended retention for order ${orderId}: expires ${finalDate.toISOString()}`);
+  log.info(`[Retention] Extended retention for order ${orderId}: expires ${finalDate.toISOString()}`);
 
   return {
     success: true,
@@ -200,7 +203,7 @@ export async function getOrdersDueForReminder(): Promise<Array<{
     .not('retention_expires_at', 'is', null);
 
   if (error) {
-    console.error('[Retention] Error fetching orders for reminder:', error);
+    log.error('[Retention] Error fetching orders for reminder:', error);
     return [];
   }
 
@@ -236,7 +239,7 @@ export async function getExpiredOrders(): Promise<Array<{ id: string }>> {
     .not('retention_expires_at', 'is', null);
 
   if (error) {
-    console.error('[Retention] Error fetching expired orders:', error);
+    log.error('[Retention] Error fetching expired orders:', error);
     return [];
   }
 

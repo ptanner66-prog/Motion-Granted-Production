@@ -3,6 +3,9 @@
 // VERSION: 1.0.0
 
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('conflicts-check');
 import type {
   ConflictCheckInput,
   ConflictCheckResult,
@@ -54,7 +57,7 @@ export async function checkForConflicts(
     .limit(1000);  // Check against last 1000 orders
 
   if (error) {
-    console.error('Conflict check query failed:', error);
+    log.error('Conflict check query failed:', error);
     throw new Error(`Conflict check failed: ${error.message}`);
   }
 
@@ -231,7 +234,7 @@ async function storeConflicts(conflicts: ConflictMatch[]): Promise<void> {
     })));
 
   if (error) {
-    console.error('Failed to store conflicts:', error);
+    log.error('Failed to store conflicts:', error);
     // Don't throw - conflicts were detected, just couldn't store
   }
 }

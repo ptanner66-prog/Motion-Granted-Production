@@ -17,6 +17,9 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-unpublished-handler');
 // import { searchCitations } from '@/lib/workflow/courtlistener-client'; // TODO: Function not yet implemented
 
 // ============================================================================
@@ -65,8 +68,8 @@ export interface AttorneyApproval {
 
 // Citation format indicators of unpublished opinions
 const UNPUBLISHED_CITATION_PATTERNS = [
-  /\bWL\s+\d+/i, // Westlaw citation (often unpublished)
-  /\bLEXIS\s+\d+/i, // LexisNexis citation (often unpublished)
+  /\bWL\s+\d+/i, // WL-format citation (often unpublished)
+  /\bLEXIS\s+\d+/i, // LEXIS-format citation (often unpublished)
   /\d{4}\s+U\.?S\.?\s+Dist\.?\s+LEXIS/i, // U.S. Dist. LEXIS
   /\d{4}\s+U\.?S\.?\s+App\.?\s+LEXIS/i, // U.S. App. LEXIS
   /\bFed\.?\s*Appx\.?\b/i, // Federal Appendix (unpublished)
@@ -301,13 +304,13 @@ async function checkAttorneyApproval(citation: string, orderId: string): Promise
       .limit(1);
 
     if (error) {
-      console.warn('[UnpublishedHandler] Error checking approval:', error);
+      log.warn('[UnpublishedHandler] Error checking approval:', error);
       return false;
     }
 
     return data && data.length > 0;
   } catch (error) {
-    console.error('[UnpublishedHandler] Error checking approval:', error);
+    log.error('[UnpublishedHandler] Error checking approval:', error);
     return false;
   }
 }
@@ -334,14 +337,14 @@ export async function recordAttorneyApproval(
     });
 
     if (error) {
-      console.error('[UnpublishedHandler] Error recording approval:', error);
+      log.error('[UnpublishedHandler] Error recording approval:', error);
       return { success: false, error: error.message };
     }
 
-    console.log(`[UnpublishedHandler] Recorded approval for: ${citation}`);
+    log.info(`[UnpublishedHandler] Recorded approval for: ${citation}`);
     return { success: true };
   } catch (error) {
-    console.error('[UnpublishedHandler] Error recording approval:', error);
+    log.error('[UnpublishedHandler] Error recording approval:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -367,14 +370,14 @@ export async function revokeAttorneyApproval(
       .eq('approval_type', 'unpublished');
 
     if (error) {
-      console.error('[UnpublishedHandler] Error revoking approval:', error);
+      log.error('[UnpublishedHandler] Error revoking approval:', error);
       return { success: false, error: error.message };
     }
 
-    console.log(`[UnpublishedHandler] Revoked approval for: ${citation}`);
+    log.info(`[UnpublishedHandler] Revoked approval for: ${citation}`);
     return { success: true };
   } catch (error) {
-    console.error('[UnpublishedHandler] Error revoking approval:', error);
+    log.error('[UnpublishedHandler] Error revoking approval:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -416,9 +419,9 @@ async function findPublishedAlternatives(citation: string): Promise<AlternativeC
     //     });
     //   }
     // }
-    console.log(`[UnpublishedHandler] Alternative search not yet implemented for: ${caseName}`);
+    log.info(`[UnpublishedHandler] Alternative search not yet implemented for: ${caseName}`);
   } catch (error) {
-    console.warn('[UnpublishedHandler] Error finding alternatives:', error);
+    log.warn('[UnpublishedHandler] Error finding alternatives:', error);
   }
 
   return alternatives.slice(0, 3); // Return top 3

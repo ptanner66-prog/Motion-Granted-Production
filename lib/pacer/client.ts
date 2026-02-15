@@ -13,6 +13,9 @@
 
 import type { PACERLookupResult } from './types';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('pacer-client');
 // PACER API endpoints
 const PACER_LOGIN_URL = 'https://pacer.login.uscourts.gov/csologin/login.jsf';
 const PACER_PCL_BASE = 'https://pcl.uscourts.gov/pcl-public-api/rest';
@@ -55,7 +58,7 @@ async function getPACERSession(): Promise<string> {
     throw new Error('PACER credentials not configured. Set PACER_USERNAME and PACER_PASSWORD environment variables.');
   }
 
-  console.log('[PACER] Authenticating...');
+  log.info('[PACER] Authenticating...');
 
   try {
     // PACER uses form-based authentication
@@ -90,11 +93,11 @@ async function getPACERSession(): Promise<string> {
     // Sessions typically last 30 minutes - refresh after 25
     pacerSessionExpiry = new Date(Date.now() + 25 * 60 * 1000);
 
-    console.log('[PACER] Authentication successful');
+    log.info('[PACER] Authentication successful');
     return pacerSessionToken;
 
   } catch (error) {
-    console.error('[PACER] Authentication failed:', error);
+    log.error('[PACER] Authentication failed:', error);
     throw error;
   }
 }
@@ -104,12 +107,12 @@ async function getPACERSession(): Promise<string> {
 // ============================================================================
 
 export async function lookupPACER(citation: string): Promise<PACERLookupResult> {
-  console.log(`[PACER] Looking up: ${citation} (cost: ~$${PACER_LOOKUP_COST})`);
+  log.info(`[PACER] Looking up: ${citation} (cost: ~$${PACER_LOOKUP_COST})`);
 
   // Check credentials first
   const credentials = getPACERCredentials();
   if (!credentials) {
-    console.log('[PACER] Credentials not configured - skipping PACER lookup');
+    log.info('[PACER] Credentials not configured - skipping PACER lookup');
     return {
       found: false,
       error: 'PACER credentials not configured',
@@ -150,7 +153,7 @@ export async function lookupPACER(citation: string): Promise<PACERLookupResult> 
     if (!response.ok) {
       if (response.status === 401) {
         // Session expired - clear and retry once
-        console.log('[PACER] Session expired, refreshing...');
+        log.info('[PACER] Session expired, refreshing...');
         pacerSessionToken = null;
         pacerSessionExpiry = null;
         return lookupPACER(citation);
@@ -178,7 +181,7 @@ export async function lookupPACER(citation: string): Promise<PACERLookupResult> 
     };
 
   } catch (error) {
-    console.error('[PACER] Lookup failed:', error);
+    log.error('[PACER] Lookup failed:', error);
 
     // Track cost even on error (PACER may have charged)
     totalPACERCost += PACER_LOOKUP_COST;

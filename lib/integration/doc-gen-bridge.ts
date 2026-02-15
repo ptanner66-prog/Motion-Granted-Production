@@ -19,6 +19,9 @@ import { assembleFilingPackage, type AssemblerInput, type FilingPackage } from '
 import { convertDocxBufferToPDF } from '../pdf/generator';
 import { uploadDocument, ensureBucketExists } from './storage-manager';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('integration-doc-gen-bridge');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -244,7 +247,7 @@ export async function generateAndStoreFilingPackage(
   const warnings: string[] = [];
   const uploadedDocuments: UploadedDocument[] = [];
 
-  console.log(`[doc-gen-bridge] Starting filing package generation for order ${input.orderId}`);
+  log.info(`[doc-gen-bridge] Starting filing package generation for order ${input.orderId}`);
 
   try {
     // ── 1. Fetch order from database ──────────────────────────────────────
@@ -282,7 +285,7 @@ export async function generateAndStoreFilingPackage(
       return { success: false, uploadedDocuments, errors, warnings };
     }
 
-    console.log(`[doc-gen-bridge] Using motion from Phase ${source}`, {
+    log.info(`[doc-gen-bridge] Using motion from Phase ${source}`, {
       orderId: input.orderId,
       hasCaptionContent: !!sections.caption,
       hasIntroduction: !!sections.introduction,
@@ -374,7 +377,7 @@ export async function generateAndStoreFilingPackage(
       return { success: false, uploadedDocuments, errors, warnings };
     }
 
-    console.log(`[doc-gen-bridge] Filing package assembled:`, {
+    log.info(`[doc-gen-bridge] Filing package assembled:`, {
       orderId: input.orderId,
       documentCount: filingPackage.documents.length,
       totalPages: filingPackage.metadata.totalPages,
@@ -460,7 +463,7 @@ export async function generateAndStoreFilingPackage(
       warnings.push(`Failed to update order metadata: ${updateErr instanceof Error ? updateErr.message : 'Unknown'}`);
     }
 
-    console.log(`[doc-gen-bridge] Filing package generation complete:`, {
+    log.info(`[doc-gen-bridge] Filing package generation complete:`, {
       orderId: input.orderId,
       uploadedCount: uploadedDocuments.length,
       errorCount: errors.length,
@@ -477,7 +480,7 @@ export async function generateAndStoreFilingPackage(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error in doc gen bridge';
     errors.push(message);
-    console.error(`[doc-gen-bridge] Fatal error:`, { orderId: input.orderId, error: message });
+    log.error(`[doc-gen-bridge] Fatal error:`, { orderId: input.orderId, error: message });
     return { success: false, uploadedDocuments, errors, warnings };
   }
 }
@@ -492,7 +495,8 @@ function normalizeTier(tier: unknown): 'A' | 'B' | 'C' | 'D' {
     if (tier <= 1) return 'A';
     if (tier === 2) return 'B';
     if (tier === 3) return 'C';
-    return 'D';
+    if (tier === 4) return 'D';
+    return 'C';
   }
   if (typeof tier === 'string') {
     const upper = tier.toUpperCase();

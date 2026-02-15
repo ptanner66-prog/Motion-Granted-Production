@@ -30,6 +30,9 @@ import { getCourtListenerClient } from '@/lib/workflow/courtlistener-client';
 import { courtlistenerCircuit } from '@/lib/circuit-breaker';
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-steps-step-6-strength');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -229,7 +232,7 @@ async function collectMetrics(
     );
 
   } catch (error) {
-    console.error('[Step6] Error collecting metrics:', error);
+    log.error('[Step6] Error collecting metrics:', error);
   }
 
   return metrics;
@@ -490,7 +493,7 @@ export async function assessAuthorityStrength(
     result.error = error instanceof Error ? error.message : 'Unknown error';
     result.recommendation = `Error assessing authority: ${result.error}`;
 
-    console.error('[Step6] Authority strength error:', result.error);
+    log.error('[Step6] Authority strength error:', result.error);
   }
 
   result.duration_ms = Date.now() - startTime;
@@ -500,7 +503,7 @@ export async function assessAuthorityStrength(
     await logStep6Result(orderId, citationText, result);
   }
 
-  console.log(`[Step6] ${citationText.slice(0, 40)}...: ${result.classification} (score: ${result.strength_score}, ${result.duration_ms}ms)`);
+  log.info(`[Step6] ${citationText.slice(0, 40)}...: ${result.classification} (score: ${result.strength_score}, ${result.duration_ms}ms)`);
 
   return result;
 }
@@ -534,7 +537,7 @@ async function logStep6Result(
       },
     });
   } catch (error) {
-    console.error('[Step6] Failed to log result to database:', error);
+    log.error('[Step6] Failed to log result to database:', error);
   }
 }
 

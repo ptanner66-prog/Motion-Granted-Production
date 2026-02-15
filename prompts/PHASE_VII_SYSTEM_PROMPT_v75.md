@@ -140,7 +140,53 @@ Minimum passing grade: B+ (87%)
 >
 > "loop_count": 1,
 >
-> "next_phase": "VIII.5 | VIII"
+> "next_phase": "VIII.5 | VIII",
+>
+> "tentative_ruling": {
+>
+> "ruling": "GRANTED | DENIED | GRANTED IN PART | TAKEN UNDER SUBMISSION",
+>
+> "ruling_summary": "One-sentence summary of the tentative ruling",
+>
+> "reasoning": ["Key reasoning point 1", "Key reasoning point 2"]
+>
+> },
+>
+> "argument_assessment": [
+>
+> {
+>
+> "argument_number": 1,
+>
+> "argument_title": "Title of the argument section",
+>
+> "legal_standard_correct": true,
+>
+> "authority_appropriate": true,
+>
+> "facts_supported": true,
+>
+> "reasoning_persuasive": true,
+>
+> "sub_grade": "A-",
+>
+> "notes": "Specific feedback for this argument"
+>
+> }
+>
+> ],
+>
+> "checkpoint_event": {
+>
+> "type": "NOTIFICATION",
+>
+> "checkpoint_id": "CP2",
+>
+> "message": "Judge simulation complete. Grade: [grade]. Motion [passes/requires revision].",
+>
+> "blocking": false
+>
+> }
 >
 > }
 

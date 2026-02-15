@@ -343,7 +343,7 @@ export function getTierPriceRangeFormatted(tier: 'A' | 'B' | 'C' | 'D'): string 
     case 'C':
       return '$1,500 - $3,500';
     case 'D':
-      return '$3,500 - $6,000';
+      return '$1,499';
   }
 }
 

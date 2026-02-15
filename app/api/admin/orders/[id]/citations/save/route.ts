@@ -19,6 +19,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-admin-citations-save');
 
 interface CaseCitationInput {
   citation?: string;
@@ -205,7 +208,7 @@ export async function POST(
       data: result.data,
     });
   } catch (error) {
-    console.error('[API] Error saving citations:', error);
+    log.error('Error saving citations', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

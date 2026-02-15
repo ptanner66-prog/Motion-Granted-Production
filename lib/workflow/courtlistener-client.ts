@@ -10,6 +10,10 @@
  * - Max per Request: 128 citations, 64,000 characters
  */
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-courtlistener-client');
+
 import {
   COURTLISTENER_BASE_URL,
   COURTLISTENER_CITATION_LOOKUP,
@@ -59,6 +63,16 @@ export interface CourtListenerOpinion {
 export interface RateLimitState {
   requestCount: number;
   windowStart: number;
+}
+
+export interface CourtListenerSearchResult {
+  id: string;
+  caseName: string;
+  citation: string;
+  snippet: string;
+  court: string;
+  dateFiled: string;
+  relevanceScore: number;
 }
 
 // ============================================================================
@@ -118,7 +132,7 @@ class RateLimiter {
       const waitTime = RATE_LIMIT_WINDOW_MS - (now - this.state.minuteWindowStart);
       if (waitTime > 0) {
         this.logRateLimitEvent('minute');
-        console.log(`[CourtListener] Minute rate limit (${REQUESTS_PER_MINUTE}/min) reached, waiting ${waitTime}ms`);
+        log.info('Minute rate limit reached', { limit: REQUESTS_PER_MINUTE, waitMs: waitTime });
         await this.waitWithJitter(waitTime);
         this.state.minuteCount = 0;
         this.state.minuteWindowStart = Date.now();
@@ -130,7 +144,7 @@ class RateLimiter {
       const waitTime = HOUR_WINDOW_MS - (now - this.state.hourWindowStart);
       if (waitTime > 0) {
         this.logRateLimitEvent('hour');
-        console.warn(`[CourtListener] Hour rate limit (${REQUESTS_PER_HOUR}/hr) reached, waiting ${Math.ceil(waitTime / 1000)}s`);
+        log.warn('Hour rate limit reached', { limit: REQUESTS_PER_HOUR, waitSeconds: Math.ceil(waitTime / 1000) });
         await this.waitWithJitter(waitTime);
         this.state.hourCount = 0;
         this.state.hourWindowStart = Date.now();
@@ -198,7 +212,7 @@ export class CourtListenerClient {
     this.rateLimiter = new RateLimiter();
 
     if (!this.apiKey) {
-      console.warn('[CourtListener] No API key configured');
+      log.warn('No API key configured');
     }
   }
 
@@ -252,7 +266,7 @@ export class CourtListenerClient {
         citations: data.citations || [],
       };
     } catch (error) {
-      console.error('[CourtListener] Citation lookup error:', error);
+      log.error('Citation lookup error', { error: error instanceof Error ? error.message : String(error) });
       return {
         found: false,
         citations: [],
@@ -301,7 +315,7 @@ export class CourtListenerClient {
         plainText: opinion.plain_text || this.stripHtml(opinion.html || ''),
       };
     } catch (error) {
-      console.error('[CourtListener] Opinion retrieval error:', error);
+      log.error('Opinion retrieval error', { error: error instanceof Error ? error.message : String(error) });
       return {
         retrieved: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -461,7 +475,7 @@ export class CourtListenerClient {
             // Add jitter to backoff
             const jitter = backoffMs * JITTER_PERCENT * (Math.random() * 2 - 1);
             const waitTime = Math.min(backoffMs + jitter, MAX_BACKOFF_MS);
-            console.log(`[CourtListener] Rate limited (429), backing off ${Math.round(waitTime)}ms (attempt ${attempt + 1}/${retries + 1})`);
+            log.info('Rate limited (429), backing off', { waitMs: Math.round(waitTime), attempt: attempt + 1, maxAttempts: retries + 1 });
             await new Promise(resolve => setTimeout(resolve, waitTime));
             backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
             continue;
@@ -475,7 +489,7 @@ export class CourtListenerClient {
           if (attempt < retries) {
             const jitter = backoffMs * JITTER_PERCENT * (Math.random() * 2 - 1);
             const waitTime = Math.min(backoffMs + jitter, MAX_BACKOFF_MS);
-            console.log(`[CourtListener] Server error (${response.status}), retrying in ${Math.round(waitTime)}ms`);
+            log.info('Server error, retrying', { status: response.status, waitMs: Math.round(waitTime) });
             await new Promise(resolve => setTimeout(resolve, waitTime));
             backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
             continue;
@@ -495,7 +509,7 @@ export class CourtListenerClient {
         if (attempt < retries) {
           const jitter = backoffMs * JITTER_PERCENT * (Math.random() * 2 - 1);
           const waitTime = Math.min(backoffMs + jitter, MAX_BACKOFF_MS);
-          console.log(`[CourtListener] Request failed (${lastError.message}), retrying in ${Math.round(waitTime)}ms`);
+          log.info('Request failed, retrying', { error: lastError.message, waitMs: Math.round(waitTime) });
           await new Promise(resolve => setTimeout(resolve, waitTime));
           backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
         }
@@ -519,6 +533,70 @@ export class CourtListenerClient {
       .replace(/\s+/g, ' ')
       .trim();
   }
+
+  /**
+   * Search CourtListener for cases matching a query.
+   * Uses the search endpoint for keyword/topic-based case discovery.
+   * Used by re-research service to find citations for [CITATION NEEDED] gaps.
+   */
+  async searchCases(params: {
+    query: string;
+    jurisdiction?: string;
+    maxResults?: number;
+  }): Promise<CourtListenerSearchResult[]> {
+    const { query, jurisdiction, maxResults = 5 } = params;
+
+    try {
+      await this.rateLimiter.waitForSlot();
+
+      const searchParams = new URLSearchParams({
+        q: query,
+        type: 'o', // opinions
+        order_by: 'score desc',
+        page_size: String(maxResults),
+      });
+
+      if (jurisdiction) {
+        searchParams.set('court', jurisdiction);
+      }
+
+      const response = await this.fetchWithRetry(
+        `${COURTLISTENER_BASE_URL}search/?${searchParams.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Token ${this.apiKey}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        log.error('CourtListener search failed', { status: response.status, query });
+        return [];
+      }
+
+      const data = await response.json();
+      const results: CourtListenerSearchResult[] = (data.results || [])
+        .slice(0, maxResults)
+        .map((r: Record<string, unknown>) => ({
+          id: String(r.cluster_id || r.id || ''),
+          caseName: String(r.caseName || r.case_name || ''),
+          citation: String(Array.isArray(r.citation) ? r.citation[0] : (r.citation || '')),
+          snippet: String(r.snippet || r.text || '').slice(0, 500),
+          court: String(r.court || ''),
+          dateFiled: String(r.dateFiled || r.date_filed || ''),
+          relevanceScore: typeof r.score === 'number' ? r.score : 50,
+        }));
+
+      return results;
+    } catch (error) {
+      log.error('CourtListener search error', {
+        error: error instanceof Error ? error.message : String(error),
+        query,
+      });
+      return [];
+    }
+  }
 }
 
 // ============================================================================
@@ -532,6 +610,23 @@ export function getCourtListenerClient(): CourtListenerClient {
     clientInstance = new CourtListenerClient();
   }
   return clientInstance;
+}
+
+// ============================================================================
+// SEARCH HELPER
+// ============================================================================
+
+/**
+ * Convenience function for searching CourtListener.
+ * Used by re-research-service.ts.
+ */
+export async function searchCourtListener(params: {
+  query: string;
+  jurisdiction?: string;
+  maxResults?: number;
+}): Promise<CourtListenerSearchResult[]> {
+  const client = getCourtListenerClient();
+  return client.searchCases(params);
 }
 
 // ============================================================================

@@ -13,6 +13,9 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-process');
 import {
   startOrderAutomation,
   resumeOrderAutomation,
@@ -124,7 +127,7 @@ export async function POST(request: Request) {
         );
     }
   } catch (error) {
-    console.error('Automation process error:', error);
+    log.error('Automation process error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Automation failed. Please try again.' },
       { status: 500 }
@@ -183,7 +186,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(result.data);
   } catch (error) {
-    console.error('Get progress error:', error);
+    log.error('Get progress error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Failed to get progress. Please try again.' },
       { status: 500 }

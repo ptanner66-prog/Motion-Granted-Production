@@ -645,10 +645,15 @@ async function handleCheckoutSessionCompleted(
     return;
   }
 
-  // NULL CHECK 5: Payment status
-  if (session.payment_status !== 'paid') {
-    console.log(`[Stripe Webhook] Checkout session payment not completed: ${session.payment_status}`);
+  // NULL CHECK 5: Payment status — accept both 'paid' and 'no_payment_required' (100% coupon)
+  const validPaymentStatuses = ['paid', 'no_payment_required'];
+  if (!validPaymentStatuses.includes(session.payment_status)) {
+    console.log(`[Stripe Webhook] Checkout session status '${session.payment_status}' not valid, skipping`);
     return;
+  }
+
+  if (session.payment_status === 'no_payment_required') {
+    console.log(`[Stripe Webhook] Processing fully-discounted order (100% coupon applied)`);
   }
 
   // Handle other checkout sessions (e.g., order payments)

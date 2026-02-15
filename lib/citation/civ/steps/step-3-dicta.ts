@@ -11,6 +11,9 @@ import { callCIVAnthropic as callAnthropic, getTierFromMotionType } from '@/lib/
 import { DEFAULT_CIV_CONFIG, DICTA_DETECTION_PROMPT, type DictaDetectionOutput, type DictaClassification, type PropositionType } from '../types';
 import { getCitationModelWithLogging, type Tier } from '@/lib/config/citation-models';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-civ-steps-step-3-dicta');
 /**
  * Execute Step 3: Dicta Detection
  *
@@ -63,7 +66,7 @@ export async function executeDictaDetection(
 
     return result;
   } catch (error) {
-    console.error('Dicta detection error:', error);
+    log.error('Dicta detection error:', error);
     result.reasoning = `Detection error: ${error instanceof Error ? error.message : 'Unknown'}`;
     return result;
   }
@@ -97,7 +100,7 @@ function parseDictaResponse(responseText: string): {
       reasoning: parsed.REASONING || 'No reasoning provided',
     };
   } catch (error) {
-    console.error('Failed to parse dicta response:', error);
+    log.error('Failed to parse dicta response:', error);
     return {
       classification: 'UNCLEAR',
       confidence: 0.5,

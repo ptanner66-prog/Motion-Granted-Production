@@ -34,7 +34,7 @@
  *   1. Immutable at runtime — no accidental production changes
  *   2. Version-controlled — every change is in git history
  *   3. Type-safe — compiler catches misconfigurations
- *   4. Testable — unit tests verify all 42 combinations
+ *   4. Testable — unit tests verify all 56 combinations (14 phases × 4 tiers)
  *   5. No DB dependency — works even if Supabase is down
  *   6. Reviewable — one file to understand the entire routing system
  */
@@ -45,7 +45,7 @@ import { MODELS, validateModelString, type ModelId } from './models';
 // TYPES
 // ============================================================================
 
-/** Motion complexity tiers. NEVER use 1/2/3. */
+/** Motion complexity tiers. NEVER use 1/2/3/4. */
 export type Tier = 'A' | 'B' | 'C' | 'D';
 
 /** All 14 workflow phases in execution order. */
@@ -176,13 +176,19 @@ const OPUS_ET_10K: RouteConfig = {
   maxTokens: 64_000,
 };
 
+const OPUS_ET_16K: RouteConfig = {
+  model: MODELS.OPUS,
+  thinkingBudget: 16_000,
+  maxTokens: 64_000,
+};
+
 // ============================================================================
 // THE REGISTRY — Every phase × tier combination
 // ============================================================================
 //
 // READ THIS TABLE LIKE A SPREADSHEET:
 //   Row    = Phase
-//   Column = Tier (A, B, C)
+//   Column = Tier (A, B, C, D)
 //   Cell   = { model, thinkingBudget?, maxTokens }
 //
 // If you need to change routing, change it HERE and ONLY here.
@@ -237,8 +243,10 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
   },
 
   // ── Phase IV: Deep Research ───────────────────────────────────────
-  // MODE: CHAT. Sonnet A, Opus B/C.
+  // MODE: CHAT. Sonnet A, Opus B/C, Opus+ET 16K D.
   // CourtListener authority search, case analysis, authority ranking.
+  // Tier D gets 16K extended thinking — unique to D for exhaustive
+  // authority research on dispositive motions.
   'IV': {
     name: 'Deep Research',
     mode: 'CHAT',
@@ -246,7 +254,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: OPUS_STANDARD,
       C: OPUS_STANDARD,
-      D: OPUS_STANDARD,
+      D: OPUS_ET_16K,
     },
   },
 
@@ -308,7 +316,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
   },
 
   // ── Phase VI: Opposition Analysis ─────────────────────────────────
-  // MODE: CHAT. SKIP A, Opus+ET 8K B/C.
+  // MODE: CHAT. SKIP A, Opus+ET 8K B/C/D.
   // Anticipates opposing arguments and prepares responses.
   // Tier A procedural motions skip opposition analysis entirely.
   'VI': {
@@ -477,7 +485,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
  * Returns null for CODE phases without LLM or SKIP (Phase VI Tier A).
  *
  * @param phase - Workflow phase (I through X)
- * @param tier - Motion complexity tier (A, B, C)
+ * @param tier - Motion complexity tier (A, B, C, D)
  * @param stage - Optional CIV stage for V.1/VII.1/IX.1 (stage1, stage2, steps3-5)
  * @returns Model string or null
  *
@@ -579,7 +587,7 @@ export function getMaxTokens(
 /**
  * Get citation batch size for a phase/tier combination.
  * CIV phases (V.1, VII.1, IX.1) always return 2.
- * Standard phases return tier-specific: A=5, B=4, C=3.
+ * Standard phases return tier-specific: A=5, B=4, C=3, D=2.
  */
 export function getBatchSize(phase: WorkflowPhase, tier: Tier): number {
   const CIV_PHASES: WorkflowPhase[] = ['V.1', 'VII.1', 'IX.1'];

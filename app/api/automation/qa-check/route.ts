@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { runQACheck, overrideQACheck, getQAHistory } from '@/lib/automation';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-automation-qa-check');
 
 /**
  * POST /api/automation/qa-check
@@ -60,7 +63,7 @@ export async function POST(request: Request) {
       approvalRequired: result.data?.recommendation !== 'deliver',
     });
   } catch (error) {
-    console.error('[API] QA check error:', error);
+    log.error('QA check error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -104,7 +107,7 @@ export async function GET(request: Request) {
       history: result.data,
     });
   } catch (error) {
-    console.error('[API] Get QA history error:', error);
+    log.error('Get QA history error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

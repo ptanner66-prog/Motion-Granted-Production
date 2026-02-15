@@ -605,7 +605,7 @@ export function getFailureThreshold(tier: 'A' | 'B' | 'C' | 'D'): number {
     A: 0.20, // 20% citation failure allowed (procedural)
     B: 0.15, // 15% citation failure allowed (intermediate)
     C: 0.10, // 10% citation failure allowed (dispositive)
-    D: 0.08, // 8% citation failure allowed (specialized)
+    D: 0.10, // 10% citation failure allowed (highly complex / dispositive)
   };
   return thresholds[tier];
 }

@@ -16,6 +16,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('monitoring-error-logger');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -309,24 +312,24 @@ class ErrorLogger {
     // Log to console
     switch (entry.level) {
       case 'DEBUG':
-        console.debug(consoleMessage, entry.metadata || '');
+        log.debug(consoleMessage, entry.metadata || '');
         break;
       case 'INFO':
-        console.info(consoleMessage, entry.metadata || '');
+        log.info(consoleMessage, entry.metadata || '');
         break;
       case 'WARN':
-        console.warn(consoleMessage, entry.metadata || '');
+        log.warn(consoleMessage, entry.metadata || '');
         break;
       case 'ERROR':
       case 'FATAL':
-        console.error(consoleMessage, entry.metadata || '', stack || '');
+        log.error(consoleMessage, { metadata: entry.metadata || '', stack: stack || '' });
         break;
     }
 
     // Store in database for ERROR and FATAL
     if (entry.level === 'ERROR' || entry.level === 'FATAL') {
       this.storeLog(entry, stack).catch((err) => {
-        console.error('[ErrorLogger] Failed to store log:', err);
+        log.error('[ErrorLogger] Failed to store log:', err);
       });
 
       // Track for threshold alerting
@@ -358,7 +361,7 @@ class ErrorLogger {
       });
     } catch (error) {
       // Don't throw - just log to console
-      console.error('[ErrorLogger] Database insert failed:', error);
+      log.error('[ErrorLogger] Database insert failed:', error);
     }
   }
 
@@ -440,7 +443,7 @@ class ErrorLogger {
         stack,
       });
     } catch (error) {
-      console.error('[ErrorLogger] Failed to send alert:', error);
+      log.error('[ErrorLogger] Failed to send alert:', error);
     }
   }
 
@@ -471,7 +474,7 @@ class ErrorLogger {
         },
       });
     } catch (error) {
-      console.error('[ErrorLogger] Failed to send threshold alert:', error);
+      log.error('[ErrorLogger] Failed to send threshold alert:', error);
     }
   }
 
@@ -513,13 +516,13 @@ class ErrorLogger {
       const { data, error } = await query;
 
       if (error) {
-        console.error('[ErrorLogger] Failed to fetch errors:', error);
+        log.error('[ErrorLogger] Failed to fetch errors:', error);
         return [];
       }
 
       return data || [];
     } catch (error) {
-      console.error('[ErrorLogger] Failed to fetch errors:', error);
+      log.error('[ErrorLogger] Failed to fetch errors:', error);
       return [];
     }
   }
@@ -577,7 +580,7 @@ class ErrorLogger {
           .sort((a, b) => a.hour.localeCompare(b.hour)),
       };
     } catch (error) {
-      console.error('[ErrorLogger] Failed to get stats:', error);
+      log.error('[ErrorLogger] Failed to get stats:', error);
       return {
         total: 0,
         byLevel: { DEBUG: 0, INFO: 0, WARN: 0, ERROR: 0, FATAL: 0 },

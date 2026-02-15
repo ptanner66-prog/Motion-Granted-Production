@@ -3,6 +3,9 @@
 // VERSION: 1.0 — January 28, 2026
 
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('services-conflict-conflict-check-service');
 import {
   ConflictCheckRequest,
   ConflictCheckResult,
@@ -135,7 +138,7 @@ export async function runConflictCheck(
       .single();
 
     if (insertError) {
-      console.error('[ConflictCheck] Failed to store result:', insertError);
+      log.error('[ConflictCheck] Failed to store result:', insertError);
     }
 
     // Store new parties for future checks
@@ -234,7 +237,7 @@ async function storeParties(orderId: string, parties: PartyInfo[]): Promise<void
     .insert(partyRecords);
 
   if (error) {
-    console.error('[ConflictCheck] Failed to store parties:', error);
+    log.error('[ConflictCheck] Failed to store parties:', error);
   }
 }
 
@@ -312,7 +315,7 @@ export async function checkForConflicts(
     .single();
 
   if (orderError || !order) {
-    console.error('[ConflictCheck] Failed to fetch order:', orderError);
+    log.error('[ConflictCheck] Failed to fetch order:', orderError);
     // Return safe default - allow to proceed but log error
     return {
       action: 'PROCEED',
@@ -350,7 +353,7 @@ export async function checkForConflicts(
   const checkResult = await runConflictCheck(internalRequest);
 
   if (!checkResult.success || !checkResult.result) {
-    console.error('[ConflictCheck] Internal check failed:', checkResult.error);
+    log.error('[ConflictCheck] Internal check failed:', checkResult.error);
     return {
       action: 'PROCEED',
       severity: 'NONE',

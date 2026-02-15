@@ -17,6 +17,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-flag-manager');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -311,7 +314,7 @@ export class FlagManager {
     this.flags.set(key, flag);
     this.modified = true;
 
-    console.log(`[FlagManager] Added flag: ${code} (${definition.category})`);
+    log.info(`[FlagManager] Added flag: ${code} (${definition.category})`);
     return flag;
   }
 
@@ -324,7 +327,7 @@ export class FlagManager {
     this.flags.delete(key);
     if (existed) {
       this.modified = true;
-      console.log(`[FlagManager] Removed flag: ${code}`);
+      log.info(`[FlagManager] Removed flag: ${code}`);
     }
     return existed;
   }
@@ -350,7 +353,7 @@ export class FlagManager {
     flag.resolution = resolution;
     this.modified = true;
 
-    console.log(`[FlagManager] Resolved flag: ${code} by ${resolvedBy}`);
+    log.info(`[FlagManager] Resolved flag: ${code} by ${resolvedBy}`);
     return true;
   }
 
@@ -514,10 +517,10 @@ export class FlagManager {
       }
 
       this.modified = false;
-      console.log(`[FlagManager] Saved ${this.flags.size} flags for order ${this.orderId}`);
+      log.info(`[FlagManager] Saved ${this.flags.size} flags for order ${this.orderId}`);
       return { success: true };
     } catch (error) {
-      console.error('[FlagManager] Save error:', error);
+      log.error('[FlagManager] Save error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -539,14 +542,14 @@ export class FlagManager {
         .single();
 
       if (error) {
-        console.warn(`[FlagManager] Could not load flags for ${orderId}:`, error);
+        log.warn(`[FlagManager] Could not load flags for ${orderId}:`, error);
         return new FlagManager(orderId);
       }
 
       const flags = (data.verification_flags || []) as Flag[];
       return new FlagManager(orderId, flags);
     } catch (error) {
-      console.error('[FlagManager] Load error:', error);
+      log.error('[FlagManager] Load error:', error);
       return new FlagManager(orderId);
     }
   }

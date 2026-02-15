@@ -34,20 +34,31 @@ export const MOTION_TIERS = {
     ]
   },
   tierC: {
-    name: "Tier C — Complex / Dispositive",
+    name: "Tier C — Complex",
     turnaround: "4-5 business days",
     motions: [
-      { id: "in_limine_complex", name: "Motion in Limine (multiple/complex)", price: 1500 },
-      { id: "preliminary_injunction", name: "Motion for Preliminary Injunction", price: 2500 },
-      { id: "tro", name: "Motion for Temporary Restraining Order", price: 2000 },
-      { id: "msj_simple", name: "Motion for Summary Judgment (straightforward)", price: 2000 },
-      { id: "msj_complex", name: "Motion for Summary Judgment (complex/multi-issue)", price: 3200 },
-      { id: "opp_msj", name: "Opposition to Motion for Summary Judgment", price: 2200, priceMax: 3400 },
-      { id: "partial_sj", name: "Motion for Partial Summary Judgment", price: 1700 },
-      { id: "jnov", name: "Motion for JNOV", price: 2500 },
-      { id: "new_trial", name: "Motion for New Trial", price: 1700 },
-      { id: "remittitur", name: "Motion for Remittitur/Additur", price: 1500 },
-      { id: "post_trial_brief", name: "Post-Trial Brief", price: 2800, requiresQuote: true },
+      { id: "in_limine_complex", name: "Motion in Limine (multiple/complex)", price: 999 },
+      { id: "anti_slapp", name: "Anti-SLAPP Motion", price: 999 },
+      { id: "jnov", name: "Motion for JNOV", price: 999 },
+      { id: "new_trial", name: "Motion for New Trial", price: 999 },
+      { id: "remittitur", name: "Motion for Remittitur/Additur", price: 999 },
+      { id: "sanctions_complex", name: "Motion for Sanctions (Complex)", price: 999 },
+      { id: "peremptory_exception", name: "Peremptory Exception", price: 999 },
+    ]
+  },
+  tierD: {
+    name: "Tier D — Highly Complex / Dispositive",
+    turnaround: "5-7 business days",
+    motions: [
+      { id: "msj", name: "Motion for Summary Judgment", price: 1499 },
+      { id: "msa", name: "Motion for Summary Adjudication", price: 1499 },
+      { id: "partial_sj", name: "Motion for Partial Summary Judgment", price: 1499 },
+      { id: "class_cert", name: "Motion for Class Certification", price: 1499 },
+      { id: "decertify_class", name: "Motion to Decertify Class", price: 1499 },
+      { id: "preliminary_injunction", name: "Motion for Preliminary Injunction", price: 1499 },
+      { id: "tro", name: "Temporary Restraining Order", price: 1499 },
+      { id: "daubert", name: "Daubert/Sargent Motion", price: 1499 },
+      { id: "anti_slapp_complex", name: "Anti-SLAPP Motion (Complex)", price: 1499 },
     ]
   },
   other: {
@@ -122,6 +133,7 @@ export function getTierForMotion(motionId: string): 'A' | 'B' | 'C' | 'D' | null
   if (MOTION_TIERS.tierA.motions.some(m => m.id === motionId)) return 'A';
   if (MOTION_TIERS.tierB.motions.some(m => m.id === motionId)) return 'B';
   if (MOTION_TIERS.tierC.motions.some(m => m.id === motionId)) return 'C';
+  if (MOTION_TIERS.tierD.motions.some(m => m.id === motionId)) return 'D';
   return null;
 }
 

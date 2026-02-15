@@ -18,6 +18,9 @@ import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
 import { formatDisclosureForEmail, getDisclosure } from '@/lib/compliance/customer-disclosures';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('notifications-email-service');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -355,7 +358,7 @@ export async function logEmailSend(
       error_message: errorMessage || null,
     });
   } catch (error) {
-    console.error('[EmailService] Failed to log email:', error);
+    log.error('[EmailService] Failed to log email:', error);
   }
 }
 
@@ -367,7 +370,7 @@ export async function logEmailSend(
  * Send an email notification
  */
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
-  console.log(`[EmailService] Sending ${input.type} email to ${input.to} for order ${input.orderId}`);
+  log.info(`[EmailService] Sending ${input.type} email to ${input.to} for order ${input.orderId}`);
 
   try {
     const template = await getEmailTemplate(input.type, input.data);
@@ -382,7 +385,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     });
 
     if (error) {
-      console.error('[EmailService] Resend error:', error);
+      log.error('[EmailService] Resend error:', error);
       await logEmailSend(
         input.orderId,
         input.type,
@@ -402,7 +405,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     const messageId = data?.id || null;
     await logEmailSend(input.orderId, input.type, input.to, template.subject, true, messageId);
 
-    console.log(`[EmailService] Email sent successfully: ${messageId}`);
+    log.info(`[EmailService] Email sent successfully: ${messageId}`);
     return {
       success: true,
       messageId,
@@ -410,7 +413,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[EmailService] Error sending email:', error);
+    log.error('[EmailService] Error sending email:', error);
 
     await logEmailSend(
       input.orderId,
@@ -435,7 +438,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
  */
 export function sendEmailAsync(input: SendEmailInput): void {
   sendEmail(input).catch((error) => {
-    console.error('[EmailService] Async email send failed:', error);
+    log.error('[EmailService] Async email send failed:', error);
   });
 }
 

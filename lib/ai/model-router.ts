@@ -13,6 +13,9 @@
 import OpenAI from 'openai';
 import { createClient } from '@/lib/supabase/server';
 import { askOpenAI } from '@/lib/ai/openai-client';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('model-router');
 import { askClaude, getAnthropicClient } from '@/lib/automation/claude';
 import { getOpenAIAPIKey } from '@/lib/api-keys';
 import { getCitationModel, CITATION_GPT_MODELS } from '@/lib/config/citation-models';
@@ -141,7 +144,7 @@ export function getModelProvider(modelString: string): ModelProvider {
   }
 
   // Default to Anthropic for unknown models
-  console.warn(`[ModelRouter] Unknown model provider for: ${modelString}, defaulting to anthropic`);
+  log.warn(`[ModelRouter] Unknown model provider for: ${modelString}, defaulting to anthropic`);
   return 'anthropic';
 }
 
@@ -173,7 +176,7 @@ async function fetchConfigsFromDB(tier: MotionTier): Promise<Map<string, string>
       .eq('tier', tier);
 
     if (error) {
-      console.error(`[ModelRouter] DB error fetching configs for tier ${tier}:`, error);
+      log.error(`[ModelRouter] DB error fetching configs for tier ${tier}:`, error);
       return configs;
     }
 
@@ -183,9 +186,9 @@ async function fetchConfigsFromDB(tier: MotionTier): Promise<Map<string, string>
       }
     }
 
-    console.log(`[ModelRouter] Loaded ${configs.size} configs for tier ${tier} from DB`);
+    log.info(`[ModelRouter] Loaded ${configs.size} configs for tier ${tier} from DB`);
   } catch (error) {
-    console.error(`[ModelRouter] Error fetching configs:`, error);
+    log.error(`[ModelRouter] Error fetching configs:`, error);
   }
 
   return configs;
@@ -235,12 +238,12 @@ export async function getModelForTask(tier: MotionTier, taskType: TaskType): Pro
   const model = configs[taskType];
 
   if (!model) {
-    console.warn(`[ModelRouter] No config for tier ${tier}, task ${taskType}, using default`);
+    log.warn(`[ModelRouter] No config for tier ${tier}, task ${taskType}, using default`);
     return DEFAULT_CONFIGS[tier][taskType] || 'claude-sonnet-4-20250514';
   }
 
   // Log model selection for audit
-  console.log(`[ModelRouter] Selected model for tier ${tier}, task ${taskType}: ${model}`);
+  log.info(`[ModelRouter] Selected model for tier ${tier}, task ${taskType}: ${model}`);
 
   return model;
 }
@@ -266,7 +269,7 @@ export async function callModel(
   const provider = getModelProvider(modelString);
   const startTime = Date.now();
 
-  console.log(`[ModelRouter] Calling ${provider} model: ${modelString}`);
+  log.info(`[ModelRouter] Calling ${provider} model: ${modelString}`);
 
   try {
     if (provider === 'openai') {
@@ -317,7 +320,7 @@ export async function callModel(
     }
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`[ModelRouter] Model call failed after ${duration}ms:`, error);
+    log.error(`[ModelRouter] Model call failed after ${duration}ms:`, error);
     throw error;
   }
 }
@@ -351,7 +354,7 @@ export async function callModelForTask(
  */
 export function clearModelCache(): void {
   configCache.clear();
-  console.log('[ModelRouter] Cache cleared');
+  log.info('[ModelRouter] Cache cleared');
 }
 
 /**
@@ -360,7 +363,7 @@ export function clearModelCache(): void {
 export async function refreshTierCache(tier: MotionTier): Promise<void> {
   configCache.delete(tier);
   await getModelsForTier(tier);
-  console.log(`[ModelRouter] Cache refreshed for tier ${tier}`);
+  log.info(`[ModelRouter] Cache refreshed for tier ${tier}`);
 }
 
 // ============================================================================
@@ -392,7 +395,7 @@ export async function logModelSelection(
       },
     });
   } catch (error) {
-    console.error('[ModelRouter] Failed to log model selection:', error);
+    log.error('[ModelRouter] Failed to log model selection:', error);
     // Don't throw - logging failure shouldn't break the pipeline
   }
 }
@@ -421,6 +424,11 @@ export const CIV_MODEL_ROUTING = {
     stage_2_adversarial: MODELS.OPUS,
     steps_3_5: MODELS.SONNET,
   },
+  tier_d: {
+    stage_1_holding: CITATION_GPT_MODELS.STAGE_1_TIER_C,
+    stage_2_adversarial: MODELS.OPUS,
+    steps_3_5: MODELS.SONNET,
+  },
 } as const;
 
 /** Motion type to tier mapping for CIV */
@@ -440,13 +448,19 @@ export const MOTION_TYPE_TO_TIER: Record<string, MotionTier> = {
   'anti_slapp': 'B',
   'motion_to_dismiss': 'B',
 
-  // Tier C - Complex/high-stakes
-  'motion_for_summary_judgment': 'C',
-  'msj': 'C',
-  'preliminary_injunction': 'C',
-  'tro': 'C',
-  'class_certification': 'C',
-  'daubert_motion': 'C',
+  // Tier C - Complex
+  'anti_slapp_complex': 'C',
+  'motion_in_limine_complex': 'C',
+  'jnov': 'C',
+  'new_trial': 'C',
+
+  // Tier D - Highly Complex/Dispositive
+  'motion_for_summary_judgment': 'D',
+  'msj': 'D',
+  'preliminary_injunction': 'D',
+  'tro': 'D',
+  'class_certification': 'D',
+  'daubert_motion': 'D',
 };
 
 /** Get tier from motion type string */

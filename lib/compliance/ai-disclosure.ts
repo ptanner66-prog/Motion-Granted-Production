@@ -20,6 +20,9 @@
 import { createClient } from '@/lib/supabase/client';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('compliance-ai-disclosure');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -382,7 +385,7 @@ export async function generateAIDisclosure(
     .single();
 
   if (!order) {
-    console.error('[AIDisclosure] Order not found:', orderId);
+    log.error('[AIDisclosure] Order not found:', orderId);
     return null;
   }
 
@@ -476,7 +479,7 @@ export async function recordDisclosureAcceptance(
   const supabase = getAdminClient();
 
   if (!supabase) {
-    console.error('[AIDisclosure] No admin client available');
+    log.error('[AIDisclosure] No admin client available');
     return null;
   }
 
@@ -490,7 +493,7 @@ export async function recordDisclosureAcceptance(
     .single();
 
   if (!disclosure) {
-    console.error('[AIDisclosure] No disclosure found for order:', orderId);
+    log.error('[AIDisclosure] No disclosure found for order:', orderId);
     return null;
   }
 
@@ -509,11 +512,11 @@ export async function recordDisclosureAcceptance(
     .single();
 
   if (error || !data) {
-    console.error('[AIDisclosure] Failed to record acceptance:', error);
+    log.error('[AIDisclosure] Failed to record acceptance:', error);
     return null;
   }
 
-  console.log(`[AIDisclosure] Recorded acceptance for order ${orderId} by user ${userId}`);
+  log.info(`[AIDisclosure] Recorded acceptance for order ${orderId} by user ${userId}`);
 
   return {
     id: data.id,

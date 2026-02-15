@@ -362,9 +362,9 @@ export function getTierThresholds(tier: 'A' | 'B' | 'C' | 'D'): {
     case 'D':
       // Tier D: Highest stakes, strictest thresholds
       return {
-        verificationPass: 0.85,
-        highConfidence: 0.93,
-        criticalStepMin: 0.75,
+        verificationPass: 0.85, // 85% minimum
+        highConfidence: 0.92, // 92% for high
+        criticalStepMin: 0.75, // 75% min for critical
       };
     case 'C':
       // Tier C: Higher stakes, stricter thresholds

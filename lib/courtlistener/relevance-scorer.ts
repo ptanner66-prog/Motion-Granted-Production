@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('courtlistener-relevance-scorer');
+
 /**
  * Topical Relevance Scorer for CourtListener Search Results
  *
@@ -279,9 +283,9 @@ export function scoreRelevance(
 
   // Log
   const statusIcon = passesThreshold ? '✅' : '⛔';
-  console.log(`[RelevanceScorer] ${statusIcon} ${input.caseName?.substring(0, 50)}... → ${result.score} (${passesThreshold ? 'PASS' : 'REJECT'})`);
+  log.info(`[RelevanceScorer] ${statusIcon} ${input.caseName?.substring(0, 50)}... → ${result.score} (${passesThreshold ? 'PASS' : 'REJECT'})`);
   if (!passesThreshold) {
-    console.log(`[RelevanceScorer]   Reason: ${result.reasoning.substring(0, 200)}`);
+    log.info(`[RelevanceScorer]   Reason: ${result.reasoning.substring(0, 200)}`);
   }
 
   return result;
@@ -636,12 +640,12 @@ export function filterByRelevance(
       results.push({ candidate, result });
     } else {
       rejected++;
-      console.log(`[RelevanceScorer] ⛔ REJECTED: "${candidate.caseName?.substring(0, 50)}..." — score ${result.score} < ${TOPICAL_RELEVANCE_THRESHOLD}`);
-      console.log(`[RelevanceScorer]   Reason: ${result.reasoning.substring(0, 200)}`);
+      log.info(`[RelevanceScorer] ⛔ REJECTED: "${candidate.caseName?.substring(0, 50)}..." — score ${result.score} < ${TOPICAL_RELEVANCE_THRESHOLD}`);
+      log.info(`[RelevanceScorer]   Reason: ${result.reasoning.substring(0, 200)}`);
     }
   }
 
-  console.log(`[RelevanceScorer] Batch result: ${results.length} passed, ${rejected} rejected out of ${candidates.length} candidates`);
+  log.info(`[RelevanceScorer] Batch result: ${results.length} passed, ${rejected} rejected out of ${candidates.length} candidates`);
 
   return results;
 }
@@ -747,7 +751,7 @@ export function filterByMinimumScore(
   const filtered = scored.filter(s => s.relevanceScore >= minScore);
   const rejected = scored.length - filtered.length;
   if (rejected > 0) {
-    console.log(`[SearchScorer] Filtered out ${rejected} results below ${minScore} threshold`);
+    log.info(`[SearchScorer] Filtered out ${rejected} results below ${minScore} threshold`);
   }
   return filtered;
 }

@@ -8,6 +8,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { MAX_REVISION_LOOPS } from '@/types/workflow';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-request-changes');
 
 export async function POST(request: NextRequest) {
   try {
@@ -104,7 +107,7 @@ export async function POST(request: NextRequest) {
       maxLoops: MAX_REVISION_LOOPS,
     });
   } catch (error) {
-    console.error('[Workflow Request Changes] Error:', error);
+    log.error('Workflow request changes error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }

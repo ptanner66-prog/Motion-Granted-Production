@@ -39,6 +39,9 @@ import { countByCourtType } from './scoring';
 import { validateCourtListenerConfig } from '@/lib/courtlistener/client';
 import { logger } from '@/lib/logger';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-phase-iv-index');
 // ============================================================================
 // GRACEFUL DEGRADATION HELPER
 // ============================================================================
@@ -58,7 +61,7 @@ async function flagForManualReview(
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.warn('[Phase IV] Cannot flag for manual review: Supabase not configured');
+    log.warn('[Phase IV] Cannot flag for manual review: Supabase not configured');
     return false;
   }
 
@@ -83,7 +86,7 @@ async function flagForManualReview(
       return false;
     }
 
-    console.warn(`[Phase IV] ⚠️ Order ${orderId} flagged for manual review: ${reason}`);
+    log.warn(`[Phase IV] ⚠️ Order ${orderId} flagged for manual review: ${reason}`);
     return true;
   } catch (error) {
     logger.error('[Phase IV] Error flagging for manual review:', error);
@@ -220,7 +223,7 @@ export async function executeLegalGradeResearch(
       // MARGINAL: Flag but continue - document can proceed with warning
       const reason = `Marginal citation count (${citationCount}/6 target)`;
       await flagForManualReview(input.orderId, reason, citationCount);
-      console.warn(`[Phase IV-C] ⚠️ ${reason} - proceeding with flagged order`);
+      log.warn(`[Phase IV-C] ⚠️ ${reason} - proceeding with flagged order`);
     } else {
       // 6+ citations - proceed normally
       logger.info(`[Phase IV-C] ✓ Citation count OK: ${citationCount} citations`);

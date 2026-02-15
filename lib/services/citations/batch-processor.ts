@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('services-citations-batch-processor');
+
 // /lib/services/citations/batch-processor.ts
 // Citation batch processing with HARD STOP protocol
 // VERSION: 1.0 — January 28, 2026
@@ -28,7 +32,7 @@ export async function processCitationsInBatches<T>(
     const batch = citations.slice(i, i + batchSize);
     const batchNumber = Math.floor(i / batchSize) + 1;
 
-    console.log(`[${phase}] Processing citation batch ${batchNumber}/${totalBatches}`);
+    log.info(`[${phase}] Processing citation batch ${batchNumber}/${totalBatches}`);
 
     await processor(batch);
   }
@@ -51,7 +55,7 @@ export async function processCitationsInBatchesWithProgress<T, R>(
     const batch = citations.slice(i, i + batchSize);
     const batchNumber = Math.floor(i / batchSize) + 1;
 
-    console.log(`[${phase}] Processing citation batch ${batchNumber}/${totalBatches}`);
+    log.info(`[${phase}] Processing citation batch ${batchNumber}/${totalBatches}`);
 
     const batchResults = await processor(batch, batchNumber, totalBatches);
     results.push(...batchResults);

@@ -42,10 +42,11 @@ export const EXTENDED_THINKING_PHASES = [
  * null means extended thinking is not enabled for that combination
  */
 export const THINKING_BUDGETS: Record<string, Record<MotionTier, number | null>> = {
-  'III': { A: null, B: null, C: 10000, D: 16000 },
-  'V': { A: null, B: null, C: 10000, D: 16000 },
-  'VII': { A: 5000, B: 5000, C: 10000, D: 16000 },
-  'VII.1': { A: 5000, B: 5000, C: 10000, D: 16000 },
+  'III': { A: null, B: null, C: 10000, D: 10000 },
+  'IV': { A: null, B: null, C: null, D: 16000 },
+  'V': { A: null, B: null, C: 10000, D: 10000 },
+  'VII': { A: 5000, B: 5000, C: 10000, D: 10000 },
+  'VII.1': { A: 5000, B: 5000, C: 10000, D: 10000 },
 };
 
 // ============================================================================

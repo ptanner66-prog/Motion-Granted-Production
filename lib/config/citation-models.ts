@@ -98,7 +98,7 @@ export function getCitationModel(
 
     if (resolvedStage === 'stage_1') {
       return {
-        model: tier === 'C' ? CITATION_GPT_MODELS.STAGE_1_TIER_C : CITATION_GPT_MODELS.STAGE_1_DEFAULT,
+        model: (tier === 'C' || tier === 'D') ? CITATION_GPT_MODELS.STAGE_1_TIER_C : CITATION_GPT_MODELS.STAGE_1_DEFAULT,
         isAI: true,
         provider: 'openai',
         maxTokens: 4096,
@@ -129,9 +129,9 @@ export function getCitationModel(
     };
   }
 
-  // Steps 3-5: Haiku (A/B), Sonnet (C)
+  // Steps 3-5: Haiku (A/B), Sonnet (C/D)
   if (step >= 3 && step <= 5) {
-    const isTierC = tier === 'C';
+    const isTierC = tier === 'C' || tier === 'D';
     const stepNames: Record<number, string> = {
       3: 'Dicta Detection',
       4: 'Quote Verification',
@@ -247,10 +247,10 @@ export function isHighStakes(input: HighStakesInput): {
     reasons.push('Dispositive element — determines case outcome');
   }
 
-  // Rule 3: Complex motion (Tier C)
-  if (input.motionTier === 'C') {
+  // Rule 3: Complex motion (Tier C or D)
+  if (input.motionTier === 'C' || input.motionTier === 'D') {
     triggeredRules.push(3);
-    reasons.push('Tier C complex motion — highest malpractice exposure');
+    reasons.push(`Tier ${input.motionTier} complex motion — highest malpractice exposure`);
   }
 
   // Rule 4: Sole authority
@@ -307,7 +307,7 @@ export const PROTOCOL_7_THRESHOLDS: Record<Tier, number> = {
   A: 2,  // 2+ failures → PAUSE
   B: 4,  // 4+ failures → PAUSE
   C: 6,  // 6+ failures → PAUSE
-  D: 8,  // 8+ failures → PAUSE
+  D: 6,  // 6+ failures → PAUSE (same as C)
 };
 
 // ============================================================================
@@ -545,15 +545,17 @@ export interface ProtocolResult {
     throw new Error(`[CIV_CONFIG] Relevance weights must sum to 1.0, got ${totalWeight}`);
   }
 
-  // Verify Protocol 7 thresholds increase with tier complexity
+  // Verify Protocol 7 thresholds increase with tier complexity (D >= C)
   if (PROTOCOL_7_THRESHOLDS.A >= PROTOCOL_7_THRESHOLDS.B ||
-      PROTOCOL_7_THRESHOLDS.B >= PROTOCOL_7_THRESHOLDS.C) {
-    throw new Error('[CIV_CONFIG] Protocol 7 thresholds must increase A < B < C');
+      PROTOCOL_7_THRESHOLDS.B >= PROTOCOL_7_THRESHOLDS.C ||
+      PROTOCOL_7_THRESHOLDS.D < PROTOCOL_7_THRESHOLDS.C) {
+    throw new Error('[CIV_CONFIG] Protocol 7 thresholds must increase A < B < C <= D');
   }
 
-  // Verify batch sizes decrease with tier complexity
+  // Verify batch sizes decrease with tier complexity (D <= C)
   if (CITATION_BATCH_SIZES.A <= CITATION_BATCH_SIZES.B ||
-      CITATION_BATCH_SIZES.B <= CITATION_BATCH_SIZES.C) {
-    throw new Error('[CIV_CONFIG] Batch sizes must decrease A > B > C');
+      CITATION_BATCH_SIZES.B <= CITATION_BATCH_SIZES.C ||
+      CITATION_BATCH_SIZES.D > CITATION_BATCH_SIZES.C) {
+    throw new Error('[CIV_CONFIG] Batch sizes must decrease A > B > C >= D');
   }
 })();

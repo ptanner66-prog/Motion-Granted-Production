@@ -70,10 +70,10 @@ export function calculatePricing(params: PricingParams): PricingBreakdown {
  */
 function getDefaultPriceForTier(tier: Tier): number {
   const tierPrices: Record<Tier, number> = {
-    A: 500,
-    B: 1000,
-    C: 2000,
-    D: 3500,
+    A: 299,
+    B: 599,
+    C: 999,
+    D: 1499,
   };
   return tierPrices[tier];
 }

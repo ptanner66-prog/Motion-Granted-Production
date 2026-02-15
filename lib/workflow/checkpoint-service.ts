@@ -19,6 +19,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { HOLD_TIMEOUTS } from '@/lib/config/workflow-config';
 import type { OperationResult } from '@/types/automation';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-checkpoint-service');
 
 // ============================================================================
 // TYPES
@@ -143,7 +146,7 @@ export async function triggerCheckpoint(
     await createCheckpointHandoff(workflowId, checkpoint, checkpointData);
 
     // Send notification email to customer
-    console.log(`[CHECKPOINT] ${checkpoint} triggered for workflow ${workflowId}`);
+    log.info('Checkpoint triggered', { checkpoint, workflowId });
     try {
       const { data: workflow } = await supabase
         .from('order_workflows')
@@ -168,7 +171,7 @@ export async function triggerCheckpoint(
       }
     } catch (emailError) {
       // Email failure must not block checkpoint creation
-      console.warn(`[CHECKPOINT] Failed to queue notification for ${checkpoint}:`, emailError);
+      log.warn('Failed to queue checkpoint notification', { checkpoint, error: emailError instanceof Error ? emailError.message : String(emailError) });
     }
 
     return { success: true };
@@ -361,7 +364,7 @@ async function processCP1Response(
     return { success: false, error: error.message };
   }
 
-  console.log(`[CP1] Processed: action=${response.action}, nextPhase=${nextPhase}`);
+  log.info('CP1 processed', { action: response.action, nextPhase });
   return { success: true, data: { nextPhase } };
 }
 
@@ -415,7 +418,7 @@ async function processCP2Response(
       return { success: false, error: error.message };
     }
 
-    console.log(`[CP2] Approved: proceeding to phase 10`);
+    log.info('CP2 approved, proceeding to phase 10');
     return { success: true, data: { nextPhase: 10 } };
   } else {
     // Customer requested revisions
@@ -502,7 +505,7 @@ async function processCP2Response(
         return { success: false, error: error.message };
       }
 
-      console.log(`[CP2] Free revision: proceeding to phase 9`);
+      log.info('CP2 free revision, proceeding to phase 9');
       return { success: true, data: { nextPhase: 9 } };
     } else {
       // Paid revision - require payment first
@@ -549,7 +552,7 @@ async function processCP2Response(
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com';
       const paymentUrl = `${baseUrl}/api/workflow/revisions/checkout?workflowId=${workflow.id}`;
 
-      console.log(`[CP2] Paid revision required: $${revisionPrice}, revisionId=${revision.id}`);
+      log.info('CP2 paid revision required', { revisionPrice, revisionId: revision.id });
       return {
         success: true,
         data: {
@@ -579,6 +582,22 @@ async function processCP3Response(
 
   if (response.action !== 'confirm_receipt') {
     return { success: false, error: 'Invalid CP3 action. Must confirm receipt.' };
+  }
+
+  // SP-15/TASK-23: Idempotency guard — prevent duplicate completion events
+  // If order is already completed, skip to avoid duplicate delivery notifications
+  const { data: currentOrder } = await supabase
+    .from('orders')
+    .select('status')
+    .eq('id', workflow.order_id)
+    .single();
+
+  if (currentOrder?.status === 'completed') {
+    log.warn('CP3 duplicate completion prevented — order already completed', {
+      workflowId: workflow.id,
+      orderId: workflow.order_id,
+    });
+    return { success: true, data: { nextPhase: -1 } };
   }
 
   const checkpointData = workflow.checkpoint_data as CheckpointData;
@@ -613,7 +632,7 @@ async function processCP3Response(
     return { success: false, error: error.message };
   }
 
-  // Also mark the order as completed
+  // Mark the order as completed
   await supabase
     .from('orders')
     .update({
@@ -622,7 +641,7 @@ async function processCP3Response(
     })
     .eq('id', workflow.order_id);
 
-  console.log(`[CP3] Order completed: workflow=${workflow.id}`);
+  log.info('CP3 order completed', { workflowId: workflow.id, orderId: workflow.order_id });
   return { success: true, data: { nextPhase: -1 } }; // -1 indicates complete
 }
 
@@ -686,7 +705,7 @@ export async function processRevisionPayment(
       return { success: false, error: error.message };
     }
 
-    console.log(`[PAYMENT] Revision payment processed: workflow=${workflowId}, revision=${revisionId}`);
+    log.info('Revision payment processed', { workflowId, revisionId });
     return { success: true };
   } catch (error) {
     return {
@@ -859,7 +878,7 @@ export async function triggerHoldCheckpoint(
         ts: autoCancelAt.getTime(),
       });
     } catch (inngestError) {
-      console.error('[HOLD] Failed to schedule timers:', inngestError);
+      log.error('Failed to schedule HOLD timers', { error: inngestError instanceof Error ? inngestError.message : String(inngestError) });
       // Continue - timers are nice-to-have, not critical
     }
 
@@ -881,17 +900,17 @@ export async function triggerHoldCheckpoint(
           reason,
           missingEvidence || []
         );
-        console.log(`[HOLD] Notification email sent to ${customerEmail}`);
+        log.info('HOLD notification email sent', { customerEmail });
       }
     } catch (emailError) {
-      console.error('[HOLD] Failed to send notification email:', emailError);
+      log.error('Failed to send HOLD notification email', { error: emailError instanceof Error ? emailError.message : String(emailError) });
       // Non-blocking — email failure should never prevent HOLD from working
     }
 
     // Create handoff file
     await createCheckpointHandoff(workflowId, 'HOLD', holdData);
 
-    console.log(`[HOLD] Triggered for workflow ${workflowId}: ${reason}`);
+    log.info('HOLD checkpoint triggered', { workflowId, reason });
     return { success: true };
   } catch (error) {
     return {
@@ -927,7 +946,7 @@ export async function processHoldResponse(
 
     // Phase-lock: HOLD checkpoint is only valid during Phase III
     if (workflow.current_phase !== 3 && workflow.current_phase_code !== 'III') {
-      console.error(`[HOLD] Stale HOLD response — workflow ${workflowId} is now in Phase ${workflow.current_phase_code || workflow.current_phase}, not Phase III`);
+      log.error('Stale HOLD response, workflow no longer in Phase III', { workflowId, currentPhase: workflow.current_phase_code || workflow.current_phase });
       return { success: false, error: 'HOLD_PHASE_MISMATCH' };
     }
 
@@ -973,7 +992,7 @@ export async function processHoldResponse(
           },
         });
 
-        console.log(`[HOLD] Additional evidence provided for workflow ${workflowId}`);
+        log.info('Additional evidence provided for HOLD', { workflowId });
         return { success: true, data: { nextAction: 'resume_phase_3' } };
       }
 
@@ -1017,7 +1036,7 @@ export async function processHoldResponse(
           },
         });
 
-        console.log(`[HOLD] Risk acknowledged for workflow ${workflowId}`);
+        log.info('Risk acknowledged for HOLD', { workflowId });
         return { success: true, data: { nextAction: 'proceed_phase_4' } };
       }
 
@@ -1075,7 +1094,7 @@ export async function processHoldResponse(
           },
         });
 
-        console.log(`[HOLD] Order cancelled at HOLD checkpoint for workflow ${workflowId}`);
+        log.info('Order cancelled at HOLD checkpoint', { workflowId });
         return { success: true, data: { nextAction: 'cancelled', refundInitiated: true } };
       }
 

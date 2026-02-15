@@ -28,6 +28,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { askClaude } from '@/lib/automation/claude';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-orchestrator');
 import { extractOrderDocuments, getCombinedDocumentText } from './document-extractor';
 import { parseOrderDocuments, getOrderParsedDocuments } from './document-parser';
 import { startWorkflow } from './workflow-state';
@@ -48,13 +51,16 @@ import type { WorkflowPath, MotionTier } from '@/types/workflow';
 // ============================================================================
 
 /**
- * Normalize motion tier to letter format (A, B, C).
- * Database may store as numeric (0/1/2/3) or letter - this ensures letter output.
+ * Normalize motion tier to letter format (A, B, C, D).
+ * Database may store as numeric (0/1/2/3/4) or letter - this ensures letter output.
  *
- * Mapping: 0→A, 1→A, 2→B, 3→C (0 treated as A for safety)
+ * Mapping: 0→A, 1→A, 2→B, 3→C, 4→D (0 treated as A for safety)
  * Already-letter values pass through unchanged.
+ *
+ * P0 FIX: THROWS on unknown tiers instead of silently defaulting to 'B'.
+ * Silent defaults caused Tier D ($1,499) motions to be processed as Tier B ($599).
  */
-function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' | 'D' {
+function normalizeMotionTier(tier: unknown): MotionTier {
   // If already a valid letter, return it
   if (tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D') {
     return tier;
@@ -68,7 +74,7 @@ function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' | 'D' {
     if (tier === 4) return 'D';
   }
 
-  // Handle string numbers
+  // Handle string numbers and lowercase letters
   if (typeof tier === 'string') {
     if (tier === '1' || tier === '0') return 'A';
     if (tier === '2') return 'B';
@@ -77,13 +83,17 @@ function normalizeMotionTier(tier: unknown): 'A' | 'B' | 'C' | 'D' {
     // Check for lowercase letters
     const upper = tier.toUpperCase();
     if (upper === 'A' || upper === 'B' || upper === 'C' || upper === 'D') {
-      return upper as 'A' | 'B' | 'C' | 'D';
+      return upper as MotionTier;
     }
   }
 
-  // Default to B (Motion to Compel tier)
-  console.warn(`[normalizeMotionTier] Unknown tier value: ${tier}, defaulting to B`);
-  return 'B';
+  // P0 FIX: THROW instead of defaulting. Silent defaults are how
+  // Tier D motions get processed as Tier B, costing $900 per incident.
+  throw new Error(
+    `[TIER_NORMALIZATION] Unknown tier value: ${JSON.stringify(tier)}. ` +
+    `Valid tiers are A, B, C, D (or numeric 0-4). ` +
+    `This error prevents silent misrouting of orders.`
+  );
 }
 
 // Create admin client with service role key (bypasses RLS for server-side operations)
@@ -221,8 +231,7 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
     if (!firmName) missingFields.push('firm_name');
     if (!firmAddress) missingFields.push('firm_address');
     if (missingFields.length > 0) {
-      console.warn(`[OrderContext] WARNING: Missing attorney profile fields: ${missingFields.join(', ')}`);
-      console.warn(`[OrderContext] Signature block will be incomplete. Client ID: ${order.client_id}`);
+      log.warn('Missing attorney profile fields, signature block will be incomplete', { missingFields, clientId: order.client_id });
     }
 
     // Extract document content
@@ -441,7 +450,7 @@ export async function initializeWorkflow(
 ): Promise<OperationResult<OrchestrationResult>> {
   const supabase = await createClient();
 
-  console.log(`[ORCHESTRATOR] Initializing workflow for order ${orderId}`);
+  log.info('Initializing workflow', { orderId });
 
   try {
     // Step 1: Gather all order context
@@ -555,7 +564,7 @@ export async function initializeWorkflow(
       .eq('id', orderId);
 
     // Fire-and-forget confirmation email
-    notifyWorkflowEvent('order_confirmed', orderId).catch(err => console.warn('[Workflow] Order confirmation notification failed:', err instanceof Error ? err.message : err));
+    notifyWorkflowEvent('order_confirmed', orderId).catch(err => log.warn('Order confirmation notification failed', { error: err instanceof Error ? err.message : String(err) }));
 
     return {
       success: true,
@@ -585,10 +594,7 @@ export async function orchestrateWorkflow(
     workflowPath?: WorkflowPath;
   } = {}
 ): Promise<OperationResult<OrchestrationResult>> {
-  console.error(
-    '[ORCHESTRATOR] orchestrateWorkflow() is DEPRECATED. ' +
-    'Use initializeWorkflow() + Inngest "order/submitted" event.'
-  );
+  log.error('orchestrateWorkflow() is DEPRECATED. Use initializeWorkflow() + Inngest event.');
   return {
     success: false,
     error: 'DEPRECATED: orchestrateWorkflow() has been removed. Use initializeWorkflow() + Inngest event.',
@@ -685,7 +691,7 @@ function mapMotionTypeToCode(motionType: string, tier: MotionTier): string {
     'A': 'MTD_12B6',
     'B': 'MTC',
     'C': 'MEXT',
-    'D': 'MEXT',
+    'D': 'MSJ',
   };
 
   return tierDefaults[tier] || 'MTC';
@@ -776,16 +782,16 @@ export async function notifyWorkflowEvent(
     const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!sbUrl || !sbKey) {
-      console.warn(`[orchestrator] Email trigger skipped (no Supabase creds): ${event}`);
+      log.warn('Email trigger skipped, no Supabase creds', { event });
       return;
     }
 
     const adminClient = createSbClient(sbUrl, sbKey);
     triggerEmail(adminClient, event as Parameters<typeof triggerEmail>[1], orderId).catch(err =>
-      console.error('[orchestrator] Email trigger failed:', { orderId, event, error: err instanceof Error ? err.message : err })
+      log.error('Email trigger failed', { orderId, event, error: err instanceof Error ? err.message : String(err) })
     );
   } catch (err) {
-    console.error('[orchestrator] Email trigger import failed:', { orderId, event, error: err instanceof Error ? err.message : err });
+    log.error('Email trigger import failed', { orderId, event, error: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -798,5 +804,5 @@ export async function notifyWorkflowEvent(
 export function notifyPhaseComplete(phase: string, orderId: string): void {
   const event = PHASE_EMAIL_MAP[phase];
   if (!event) return;
-  notifyWorkflowEvent(event, orderId).catch(err => console.warn(`[Workflow] Phase notification failed for ${event}:`, err instanceof Error ? err.message : err));
+  notifyWorkflowEvent(event, orderId).catch(err => log.warn('Phase notification failed', { event, error: err instanceof Error ? err.message : String(err) }));
 }

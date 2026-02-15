@@ -16,6 +16,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('monitoring-metrics-collector');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -98,7 +101,7 @@ class MetricsCollector {
     if (typeof setInterval !== 'undefined') {
       this.flushInterval = setInterval(() => {
         this.flush().catch((err) => {
-          console.error('[MetricsCollector] Flush error:', err);
+          log.error('[MetricsCollector] Flush error:', err);
         });
       }, this.FLUSH_INTERVAL_MS);
     }
@@ -113,7 +116,7 @@ class MetricsCollector {
     // Flush if buffer is full
     if (this.buffer.length >= this.BUFFER_SIZE) {
       this.flush().catch((err) => {
-        console.error('[MetricsCollector] Flush error:', err);
+        log.error('[MetricsCollector] Flush error:', err);
       });
     }
   }
@@ -295,12 +298,12 @@ class MetricsCollector {
       const { error } = await supabase.from('workflow_metrics').insert(rows);
 
       if (error) {
-        console.error('[MetricsCollector] Insert error:', error);
+        log.error('[MetricsCollector] Insert error:', error);
         // Re-add to buffer for retry
         this.buffer.push(...entries);
       }
     } catch (error) {
-      console.error('[MetricsCollector] Flush failed:', error);
+      log.error('[MetricsCollector] Flush failed:', error);
       // Re-add to buffer for retry
       this.buffer.push(...entries);
     }
@@ -361,7 +364,7 @@ class MetricsCollector {
         p99: values[Math.floor(count * 0.99)],
       };
     } catch (error) {
-      console.error('[MetricsCollector] Aggregation error:', error);
+      log.error('[MetricsCollector] Aggregation error:', error);
       return null;
     }
   }
@@ -417,7 +420,7 @@ class MetricsCollector {
         citationsFailed: (citations?.metadata as Record<string, number>)?.failed || 0,
       };
     } catch (error) {
-      console.error('[MetricsCollector] Performance query error:', error);
+      log.error('[MetricsCollector] Performance query error:', error);
       return null;
     }
   }
@@ -526,7 +529,7 @@ class MetricsCollector {
         apiLatencyByProvider,
       };
     } catch (error) {
-      console.error('[MetricsCollector] Summary error:', error);
+      log.error('[MetricsCollector] Summary error:', error);
       return {
         totalOrders: 0,
         avgWorkflowTimeMs: 0,
@@ -553,13 +556,13 @@ class MetricsCollector {
         .select('id');
 
       if (error) {
-        console.error('[MetricsCollector] Cleanup error:', error);
+        log.error('[MetricsCollector] Cleanup error:', error);
         return 0;
       }
 
       return data?.length || 0;
     } catch (error) {
-      console.error('[MetricsCollector] Cleanup error:', error);
+      log.error('[MetricsCollector] Cleanup error:', error);
       return 0;
     }
   }
@@ -574,7 +577,7 @@ class MetricsCollector {
     }
     // Final flush
     this.flush().catch((err) => {
-      console.error('[MetricsCollector] Final flush error:', err);
+      log.error('[MetricsCollector] Final flush error:', err);
     });
   }
 }

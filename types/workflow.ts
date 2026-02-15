@@ -495,8 +495,12 @@ export const TIER_DESCRIPTIONS: Record<MotionTier, { name: string; description: 
     description: 'Standard motions with moderate complexity - Motion to Compel, Demurrer, Motion to Dismiss',
   },
   C: {
-    name: 'Complex/Dispositive',
-    description: 'Complex dispositive motions - MSJ, MSA, Preliminary Injunction, TRO',
+    name: 'Complex',
+    description: 'Complex motions requiring deep analysis - Anti-SLAPP, JNOV, New Trial',
+  },
+  D: {
+    name: 'Highly Complex/Dispositive',
+    description: 'Dispositive and highest-complexity motions - MSJ, MSA, Preliminary Injunction, TRO, Class Certification',
   },
   D: {
     name: 'Specialized/Enterprise',
@@ -934,9 +938,10 @@ export interface TierPricing {
 }
 
 export const TIER_PRICING: TierPricing[] = [
-  { tier: 'A', louisiana: { min: 150, max: 400 }, california: { min: 180, max: 480 }, turnaroundDays: '2-3' },
-  { tier: 'B', louisiana: { min: 500, max: 1400 }, california: { min: 600, max: 1680 }, turnaroundDays: '3-4' },
-  { tier: 'C', louisiana: { min: 1500, max: 3500 }, california: { min: 1800, max: 4200 }, turnaroundDays: '4-5' },
+  { tier: 'A', louisiana: { min: 299, max: 299 }, california: { min: 359, max: 359 }, turnaroundDays: '2-3' },
+  { tier: 'B', louisiana: { min: 599, max: 599 }, california: { min: 719, max: 719 }, turnaroundDays: '3-4' },
+  { tier: 'C', louisiana: { min: 999, max: 999 }, california: { min: 1199, max: 1199 }, turnaroundDays: '4-5' },
+  { tier: 'D', louisiana: { min: 1499, max: 1499 }, california: { min: 1799, max: 1799 }, turnaroundDays: '5-7' },
 ];
 
 // ============================================================================

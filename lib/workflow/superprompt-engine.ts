@@ -20,6 +20,9 @@ import { generateMotion, MOTION_MAX_TOKENS } from '@/lib/automation/claude';
 import { gatherOrderContext } from './orchestrator';
 import type { OperationResult } from '@/types/automation';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-superprompt-engine');
 // Create admin client with service role key (bypasses RLS for reading superprompt templates)
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -417,7 +420,7 @@ export async function generateMotionWithSuperprompt(
 
   // Log if there are missing placeholders
   if (merged.placeholdersMissing.length > 0) {
-    console.warn('Superprompt has unrecognized placeholders:', merged.placeholdersMissing);
+    log.warn('Superprompt has unrecognized placeholders:', merged.placeholdersMissing);
   }
 
   // 3. Execute with Claude
@@ -501,7 +504,7 @@ export async function getSuperpromptTemplate(
   const supabase = getAdminClient();
 
   if (!supabase) {
-    console.error('Supabase not configured - missing URL or service role key');
+    log.error('Supabase not configured - missing URL or service role key');
     return { success: false, error: 'Database not configured. Please check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.' };
   }
 
@@ -518,7 +521,7 @@ export async function getSuperpromptTemplate(
   const { data, error } = await query.single();
 
   if (error) {
-    console.error('Error fetching superprompt template:', error);
+    log.error('Error fetching superprompt template:', error);
     // If no specific template found, try to get default
     if (motionType) {
       return getSuperpromptTemplate(); // Recursively get default

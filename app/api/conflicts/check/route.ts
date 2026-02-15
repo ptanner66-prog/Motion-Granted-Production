@@ -6,6 +6,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { runConflictCheck, getConflictCheckResult } from '@/lib/services/conflict/conflict-check-service';
 import { ConflictCheckRequest, PartyInfo } from '@/types/conflict';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-conflicts-check');
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,7 +92,7 @@ export async function POST(request: NextRequest) {
       result: result.result,
     });
   } catch (error) {
-    console.error('[ConflictCheck API] Error:', error);
+    log.error('Conflict check error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -145,7 +148,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ result });
   } catch (error) {
-    console.error('[ConflictCheck API] Error:', error);
+    log.error('Conflict check error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

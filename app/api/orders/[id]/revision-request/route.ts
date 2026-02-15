@@ -7,6 +7,9 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-orders-revision-request');
 
 export async function POST(
   request: Request,
@@ -96,7 +99,7 @@ export async function POST(
       .single();
 
     if (createError || !revisionRequest) {
-      console.error('Failed to create revision request:', createError);
+      log.error('Failed to create revision request', { error: createError });
       return NextResponse.json({ error: 'Failed to submit revision request' }, { status: 500 });
     }
 
@@ -126,7 +129,7 @@ export async function POST(
       requestId: revisionRequest.id,
     });
   } catch (error) {
-    console.error('Revision request error:', error);
+    log.error('Revision request error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Failed to submit revision request',
     }, { status: 500 });
@@ -198,7 +201,7 @@ export async function GET(
       revisionsAllowed: 1,
     });
   } catch (error) {
-    console.error('Get revision requests error:', error);
+    log.error('Get revision requests error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Failed to get revision requests',
     }, { status: 500 });

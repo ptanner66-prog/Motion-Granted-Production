@@ -7,6 +7,9 @@
 
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-civ-database');
 import type {
   PropositionType,
   HoldingVerificationResult,
@@ -737,7 +740,7 @@ async function logCacheHit(propositionVerificationId: string): Promise<void> {
     });
   } catch {
     // Non-fatal - just log to console
-    console.error('Failed to log cache hit');
+    log.error('Failed to log cache hit');
   }
 }
 

@@ -14,6 +14,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
 import type { NotificationType } from '@/types/automation';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('api-workflow-approve');
 
 type ApprovalAction = 'approve' | 'reject' | 'request_revision';
 
@@ -155,7 +158,7 @@ export async function POST(request: Request) {
         created_at: new Date().toISOString(),
       }).catch(() => {
         // Table might not exist yet - that's ok, log covers it
-        console.log('order_feedback table not available, feedback logged in automation_logs');
+        log.info('order_feedback table not available, feedback logged in automation_logs');
       });
     }
 
@@ -165,8 +168,8 @@ export async function POST(request: Request) {
         deliverableReady: true,
         clientName: order.profiles?.full_name || 'Client',
         clientEmail: order.profiles?.email,
-      }).catch((err: unknown) => {
-        console.error('Failed to queue client notification:', err);
+      }).catch(err => {
+        log.error('Failed to queue client notification', { error: err instanceof Error ? err.message : err });
       });
     }
 
@@ -187,7 +190,7 @@ export async function POST(request: Request) {
       message: getActionMessage(action, order.profiles?.full_name),
     });
   } catch (error) {
-    console.error('Approval error:', error);
+    log.error('Approval error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Approval failed. Please try again.',
     }, { status: 500 });
@@ -282,7 +285,7 @@ export async function GET(request: Request) {
       status,
     });
   } catch (error) {
-    console.error('Get pending orders error:', error);
+    log.error('Get pending orders error', { error: error instanceof Error ? error.message : error });
     return NextResponse.json({
       error: 'Failed to fetch orders. Please try again.',
     }, { status: 500 });

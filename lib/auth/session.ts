@@ -4,6 +4,9 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('auth-session');
 /**
  * Session configuration:
  * - Inactivity timeout: 4 hours
@@ -79,7 +82,7 @@ export async function getUserSessions(userId: string, currentSessionId?: string)
     .order('last_activity_at', { ascending: false });
 
   if (error || !sessions) {
-    console.error('[Session] Error fetching sessions:', error);
+    log.error('[Session] Error fetching sessions:', error);
     return [];
   }
 
@@ -118,7 +121,7 @@ export async function invalidateSession(sessionId: string): Promise<void> {
     })
     .eq('id', sessionId);
 
-  console.log(`[Session] Invalidated session: ${sessionId}`);
+  log.info(`[Session] Invalidated session: ${sessionId}`);
 }
 
 /**
@@ -144,12 +147,12 @@ export async function invalidateAllSessions(userId: string, exceptSessionId?: st
   const { data, error } = await query.select();
 
   if (error) {
-    console.error('[Session] Error invalidating sessions:', error);
+    log.error('[Session] Error invalidating sessions:', error);
     return 0;
   }
 
   const count = data?.length || 0;
-  console.log(`[Session] Invalidated ${count} sessions for user: ${userId}`);
+  log.info(`[Session] Invalidated ${count} sessions for user: ${userId}`);
 
   // Log security event
   await supabase.from('security_events').insert({
@@ -179,7 +182,7 @@ export async function onPasswordChange(userId: string, currentSessionId?: string
     created_at: new Date().toISOString(),
   });
 
-  console.log(`[Session] Password changed for user ${userId}, invalidated ${count} sessions`);
+  log.info(`[Session] Password changed for user ${userId}, invalidated ${count} sessions`);
 }
 
 /**
@@ -213,6 +216,6 @@ export async function createSession(
     throw new Error(`Failed to create session: ${error?.message}`);
   }
 
-  console.log(`[Session] Created session ${data.id} for user ${userId}`);
+  log.info(`[Session] Created session ${data.id} for user ${userId}`);
   return data.id;
 }

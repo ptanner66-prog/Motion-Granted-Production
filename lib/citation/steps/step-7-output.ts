@@ -31,6 +31,9 @@ import type { Step4Result } from './step-4-quotes';
 import type { Step5Result } from './step-5-bad-law';
 import type { Step6Result } from './step-6-strength';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('citation-steps-step-7-output');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -424,11 +427,11 @@ export async function compileVerificationOutput(
       await logFinalVerification(orderId, result);
       result.logged_to_db = true;
     } catch (error) {
-      console.error('[Step7] Failed to log to database:', error);
+      log.error('[Step7] Failed to log to database:', error);
     }
   }
 
-  console.log(`[Step7] ${citationString.slice(0, 40)}...: ${status} (confidence: ${Math.round(compositeConfidence * 100)}%, cost: $${metrics.totalCost.toFixed(4)})`);
+  log.info(`[Step7] ${citationString.slice(0, 40)}...: ${status} (confidence: ${Math.round(compositeConfidence * 100)}%, cost: $${metrics.totalCost.toFixed(4)})`);
 
   return result;
 }

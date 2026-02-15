@@ -98,7 +98,7 @@ export function getHoldStageAndNextAction(holdTriggeredAt: Date): {
 
 export const FAILURE_THRESHOLDS = {
   CITATION_FAILURE: { A: 0.20, B: 0.15, C: 0.10, D: 0.08 },
-  JUDGE_GRADE_MINIMUM: { A: 0.83, B: 0.87, C: 0.87, D: 0.90 },
+  JUDGE_GRADE_MINIMUM: { A: 0.83, B: 0.87, C: 0.87, D: 0.87 },
   MAX_REVISION_LOOPS: 3,
   QUALITY_PASSING: 0.87,
 } as const;

@@ -5,6 +5,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
 
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('activity-activity-logger');
 export interface ActivityLogEntry {
   user_id?: string;
   user_email?: string;
@@ -68,11 +71,11 @@ export async function logActivity(entry: ActivityLogEntry): Promise<void> {
       });
 
     if (error) {
-      console.error('[Activity] Failed to log activity:', error);
+      log.error('[Activity] Failed to log activity:', error);
       // Don't throw - logging should never break main flow
     }
   } catch (error) {
-    console.error('[Activity] Unexpected error logging activity:', error);
+    log.error('[Activity] Unexpected error logging activity:', error);
     // Don't throw - logging should never break main flow
   }
 }
