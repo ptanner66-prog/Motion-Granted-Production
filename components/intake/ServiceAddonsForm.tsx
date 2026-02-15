@@ -12,7 +12,25 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useIntakeForm } from '@/lib/intake/context';
 import type { AddOn } from '@/lib/intake/types';
-import { calculatePricing } from '@/lib/intake/pricing';
+import { getMotionBySlug, getMotionBasePrice } from '@/lib/workflow/motion-type-registry';
+
+function calculatePricing(params: { tier: string; motionType: string; rushDelivery: boolean; addOns: { id: string; selected: boolean; price: number }[] }) {
+  const { tier, motionType, rushDelivery, addOns } = params;
+  const registryMotion = getMotionBySlug(motionType);
+  const basePrice = registryMotion?.basePrice ?? getMotionBasePrice(0) ?? getDefaultPriceForTier(tier);
+  const rushFee = rushDelivery ? Math.round(basePrice * 0.5) : 0;
+  let addOnTotal = 0;
+  for (const addon of addOns) {
+    if (addon.selected) {
+      addOnTotal += addon.id === 'reply' ? Math.round(basePrice * 0.6) : addon.price;
+    }
+  }
+  return { basePrice, rushFee, addOnTotal, total: basePrice + rushFee + addOnTotal };
+}
+function getDefaultPriceForTier(tier: string): number {
+  const prices: Record<string, number> = { A: 299, B: 599, C: 999, D: 1499 };
+  return prices[tier] ?? 599;
+}
 import { FormSection } from './shared/FormSection';
 import { FieldLabel } from './shared/FieldLabel';
 import { Zap, Plus, Trash2, Users } from 'lucide-react';

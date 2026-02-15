@@ -406,14 +406,16 @@ async function handlePaymentSucceeded(
   }
 
   // Queue order for draft generation via Inngest
-  if (autoGenerationEnabled && order?.filing_deadline) {
+  if (autoGenerationEnabled) {
     try {
       await inngest.send({
         name: "order/submitted",
         data: {
           orderId,
-          priority: calculatePriority(order.filing_deadline),
-          filingDeadline: order.filing_deadline,
+          priority: order.filing_deadline
+            ? calculatePriority(order.filing_deadline)
+            : 5000,
+          filingDeadline: order.filing_deadline || null,
         },
       });
 
@@ -429,7 +431,7 @@ async function handlePaymentSucceeded(
         status: 'pending',
         payload: {
           source: 'webhook_fallback',
-          filingDeadline: order.filing_deadline,
+          filingDeadline: order.filing_deadline || null,
           error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
         },
       });

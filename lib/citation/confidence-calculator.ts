@@ -97,6 +97,14 @@ export function calculateCompositeConfidence(
   confidences: StepConfidences,
   weights: ConfidenceWeights = DEFAULT_WEIGHTS
 ): ConfidenceResult {
+  // Normalize any 0-100 scale values to 0.0-1.0 decimal scale
+  for (const [key, value] of Object.entries(confidences)) {
+    if (typeof value === 'number' && value > 1.0) {
+      (confidences as unknown as Record<string, number>)[key] = value / 100;
+      console.warn(`[ConfidenceCalc] Normalized ${key} from ${value} to ${value / 100}`);
+    }
+  }
+
   const breakdown: ConfidenceResult['weightedBreakdown'] = [];
   let weightedSum = 0;
   let totalWeight = 0;
