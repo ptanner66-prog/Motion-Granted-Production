@@ -97,7 +97,12 @@ export function generateSection5C(
     }
 
     const stars = formatStarRating(score.rating);
-    const recommendation = getStrengthRecommendation(score.rating);
+    let recommendation = getStrengthRecommendation(score.rating);
+
+    // ST-013: Add pre-2000 caveat if applicable
+    if (score.pre2000Caveat) {
+      recommendation += ' (Note: Limited citation network data available for cases decided before 2000. Strength rating reflects data availability, not case quality.)';
+    }
 
     rows.push(
       `| ${citation.shortCitation} | ${stars} | ${score.citingOpinionCount} | ${recommendation} |`
