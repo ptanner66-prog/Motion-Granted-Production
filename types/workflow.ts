@@ -502,10 +502,6 @@ export const TIER_DESCRIPTIONS: Record<MotionTier, { name: string; description: 
     name: 'Highly Complex/Dispositive',
     description: 'Dispositive and highest-complexity motions - MSJ, MSA, Preliminary Injunction, TRO, Class Certification',
   },
-  D: {
-    name: 'Specialized/Enterprise',
-    description: 'Multi-party, cross-border, or enterprise-scale motions',
-  },
 };
 
 // ============================================================================

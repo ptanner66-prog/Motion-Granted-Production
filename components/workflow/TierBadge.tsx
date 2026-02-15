@@ -56,12 +56,6 @@ const TIER_STYLES: Record<MotionTier, {
     border: 'border-amber-200',
     tooltip: 'Highly Complex/Dispositive - MSJ, MSA, PI, TRO, Class Cert',
   },
-  D: {
-    bg: 'bg-amber-100',
-    text: 'text-amber-700',
-    border: 'border-amber-200',
-    tooltip: 'Specialized/Enterprise - Multi-party, cross-border, enterprise-scale',
-  },
 };
 
 const SIZE_STYLES = {
