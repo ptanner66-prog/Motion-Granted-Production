@@ -525,25 +525,58 @@ export default function SubmitNewMatterPage() {
 
       setUploadProgress(null);
 
-      // Trigger the 14-phase Inngest workflow
-      // CRITICAL: /api/automation/start — NOT /api/chat/start
+      if (failedFiles.length > 0) {
+        console.error('Some documents failed to upload:', failedFiles);
+      }
+
+      // Redirect to Stripe Checkout for payment
       try {
-        await fetch('/api/automation/start', {
+        const checkoutResponse = await fetch('/api/payments/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderId }),
         });
-      } catch (automationErr) {
-        // Non-fatal — admin can start manually from admin dashboard
-        console.error('Failed to start workflow automation:', automationErr);
-      }
 
-      // Redirect to order confirmation
-      if (failedFiles.length > 0) {
-        console.error('Some documents failed to upload:', failedFiles);
+        const checkoutData = await checkoutResponse.json();
+
+        if (!checkoutResponse.ok) {
+          if (checkoutResponse.status === 503) {
+            setErrors(prev => ({
+              ...prev,
+              submit: 'Payment system temporarily unavailable. Please try again.',
+            }));
+            return;
+          }
+          throw new Error(checkoutData.error || 'Failed to create checkout session');
+        }
+
+        // Handle bypass mode (STRIPE_PAYMENT_REQUIRED=false)
+        if (checkoutData.bypassed) {
+          // Payment is bypassed — trigger automation directly
+          await fetch('/api/automation/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId }),
+          });
+          router.push(`/orders/${orderId}?payment=bypassed`);
+          return;
+        }
+
+        // Redirect to Stripe hosted checkout page
+        if (checkoutData.url) {
+          window.location.href = checkoutData.url;
+        } else {
+          throw new Error('No checkout URL returned');
+        }
+      } catch (checkoutError) {
+        console.error('Checkout error:', checkoutError);
+        // Order was created but checkout failed — redirect to order page
+        setErrors(prev => ({
+          ...prev,
+          submit: 'Failed to redirect to payment. Please try again.',
+        }));
+        router.push(`/orders/${orderId}?payment=error`);
       }
-      router.push(`/orders/${orderId}`);
-      router.refresh();
     } catch (error) {
       console.error('Submit error:', error);
       setErrors(prev => ({
