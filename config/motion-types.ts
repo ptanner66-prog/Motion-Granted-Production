@@ -113,6 +113,7 @@ export const ORDER_STATUSES = {
   on_hold: { label: "On Hold", color: "red", bgColor: "bg-red-100", textColor: "text-red-800" },
   cancelled: { label: "Cancelled", color: "gray", bgColor: "bg-gray-100", textColor: "text-gray-800" },
   refunded: { label: "Refunded", color: "gray", bgColor: "bg-gray-100", textColor: "text-gray-500" },
+  pending_conflict_review: { label: "Under Review", color: "yellow", bgColor: "bg-amber-100", textColor: "text-amber-800" },
 } as const;
 
 export type MotionTier = keyof typeof MOTION_TIERS;

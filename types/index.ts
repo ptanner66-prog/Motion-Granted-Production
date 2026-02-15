@@ -74,6 +74,20 @@ export interface Order {
   court_type?: string | null;
   federal_district?: string | null;
   pricing_multiplier_applied?: number | null;
+  // SP-D: 7-Status Model fields
+  amount_paid?: number | null;
+  hold_response?: string | null;
+  cp3_change_notes?: string | null;
+  revision_notes?: string | null;
+  cancel_reason?: string | null;
+  refund_amount?: number | null;
+  refund_status?: string | null;
+  delivered_at?: string | null;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
+  hold_expires_at?: string | null;
+  status_version?: number;
+  retention_expires_at?: string | null;
 }
 
 export type OrderStatus =
@@ -89,7 +103,8 @@ export type OrderStatus =
   | 'completed'
   | 'on_hold'
   | 'cancelled'
-  | 'refunded';
+  | 'refunded'
+  | 'pending_conflict_review';
 
 export interface Party {
   id: string;

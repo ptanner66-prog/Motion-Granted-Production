@@ -57,7 +57,7 @@ export const conflictCheckJob = inngest.createFunction(
         await supabase
           .from('orders')
           .update({
-            status: 'CONFLICT_REVIEW',
+            status: 'pending_conflict_review',
             updated_at: new Date().toISOString()
           })
           .eq('id', orderId);

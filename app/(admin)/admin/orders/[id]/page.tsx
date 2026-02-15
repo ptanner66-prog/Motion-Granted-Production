@@ -197,6 +197,51 @@ export default async function AdminOrderDetailPage({
         </div>
       </div>
 
+      {/* CC-R3-08: Conflict Review Admin Banner */}
+      {order.status === 'pending_conflict_review' && (
+        <Card className={`mb-6 ${
+          order.filing_deadline && (new Date(order.filing_deadline).getTime() - Date.now()) < 14 * 24 * 60 * 60 * 1000
+            ? 'border-red-300 bg-red-50'
+            : 'border-amber-300 bg-amber-50'
+        }`}>
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <Scale className={`h-6 w-6 flex-shrink-0 mt-0.5 ${
+                order.filing_deadline && (new Date(order.filing_deadline).getTime() - Date.now()) < 14 * 24 * 60 * 60 * 1000
+                  ? 'text-red-600'
+                  : 'text-amber-600'
+              }`} />
+              <div className="flex-1">
+                <h3 className={`font-semibold ${
+                  order.filing_deadline && (new Date(order.filing_deadline).getTime() - Date.now()) < 14 * 24 * 60 * 60 * 1000
+                    ? 'text-red-900'
+                    : 'text-amber-900'
+                }`}>
+                  Conflict Review Required
+                  {order.filing_deadline && (new Date(order.filing_deadline).getTime() - Date.now()) < 14 * 24 * 60 * 60 * 1000 && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-200 text-red-800">
+                      DEADLINE {'<'} 14 DAYS
+                    </span>
+                  )}
+                </h3>
+                <p className="text-sm text-gray-700 mt-1">
+                  This order was flagged for a potential case number conflict during checkout. Review and resolve before proceeding.
+                </p>
+                {order.filing_deadline && (
+                  <p className="text-sm mt-2 font-medium text-gray-600">
+                    Filing deadline: {formatDate(order.filing_deadline)}
+                    {' '}({Math.ceil((new Date(order.filing_deadline).getTime() - Date.now()) / (24 * 60 * 60 * 1000))} days away)
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  Auto-cancels on: {formatDate(new Date(new Date(order.created_at).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString())}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Workflow Progress Tracker */}
       {workflow && (
         <Card className="mb-6 bg-white border-gray-200">
@@ -598,7 +643,16 @@ export default async function AdminOrderDetailPage({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Filing Deadline</span>
-                <span className="text-orange-400 font-medium">{formatDate(order.filing_deadline)}</span>
+                <span className={`font-medium ${
+                  order.filing_deadline && (new Date(order.filing_deadline).getTime() - Date.now()) < 14 * 24 * 60 * 60 * 1000
+                    ? 'text-red-600'
+                    : 'text-orange-400'
+                }`}>
+                  {formatDate(order.filing_deadline)}
+                  {order.filing_deadline && (new Date(order.filing_deadline).getTime() - Date.now()) < 14 * 24 * 60 * 60 * 1000 && (
+                    <span className="ml-1 text-xs text-red-600 font-bold">URGENT</span>
+                  )}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Turnaround</span>

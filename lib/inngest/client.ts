@@ -74,6 +74,14 @@ export type WorkflowCheckpointApprovedEvent = {
   };
 };
 
+// CC-R3-04: Conflict review event
+export type ConflictReviewStartedEvent = {
+  name: "conflict/review-started";
+  data: {
+    orderId: string;
+  };
+};
+
 export type Events = {
   "order/submitted": OrderSubmittedEvent;
   "order/generate-draft": OrderGenerationEvent;
@@ -81,6 +89,7 @@ export type Events = {
   "workflow/execute-phase": WorkflowExecutePhaseEvent;
   "workflow/checkpoint-reached": WorkflowCheckpointReachedEvent;
   "workflow/checkpoint-approved": WorkflowCheckpointApprovedEvent;
+  "conflict/review-started": ConflictReviewStartedEvent;
 };
 
 /**
@@ -90,11 +99,19 @@ export type Events = {
  * @param filingDeadline - The filing deadline date
  * @returns Priority score (higher = more urgent)
  */
-export function calculatePriority(filingDeadline: Date | string): number {
+export function calculatePriority(
+  filingDeadline: Date | string | null | undefined
+): number {
+  if (!filingDeadline) return 5000; // Default: middle of queue
+
   const deadline = typeof filingDeadline === 'string'
     ? new Date(filingDeadline)
     : filingDeadline;
-  const hoursUntilDeadline = (deadline.getTime() - Date.now()) / (1000 * 60 * 60);
-  // Max priority of 10000 for orders due now, decreasing by 1 per hour
-  return Math.max(0, Math.floor(10000 - hoursUntilDeadline));
+
+  if (isNaN(deadline.getTime())) return 5000; // Invalid date guard
+
+  const hoursUntilDeadline =
+    (deadline.getTime() - Date.now()) / (1000 * 60 * 60);
+  return Math.max(0, Math.min(10000,
+    Math.floor(10000 - hoursUntilDeadline)));
 }
