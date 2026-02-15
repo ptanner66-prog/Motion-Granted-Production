@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { inngest } from '@/lib/inngest/client';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
 import type { NotificationType } from '@/types/automation';
 import { createLogger } from '@/lib/security/logger';
@@ -131,6 +132,35 @@ export async function POST(request: Request) {
 
     if (updateError) {
       return NextResponse.json({ error: 'Failed to update order status' }, { status: 500 });
+    }
+
+    // Send Inngest event to unblock the workflow's waitForEvent step
+    const inngestActionMap: Record<ApprovalAction, 'APPROVE' | 'REQUEST_CHANGES' | 'CANCEL'> = {
+      approve: 'APPROVE',
+      reject: 'REQUEST_CHANGES',
+      request_revision: 'REQUEST_CHANGES',
+    };
+
+    try {
+      await inngest.send({
+        name: 'workflow/checkpoint-approved',
+        data: {
+          orderId,
+          action: inngestActionMap[action],
+          feedback: feedback || undefined,
+          notes: internalNotes || undefined,
+          approvedBy: user.id,
+          approvedAt: new Date().toISOString(),
+        },
+      });
+      log.info(`[CP3] Sent Inngest approval event: ${inngestActionMap[action]} for order ${orderId}`);
+    } catch (inngestError) {
+      log.error('[CP3] Failed to send Inngest approval event', {
+        error: inngestError instanceof Error ? inngestError.message : inngestError,
+        orderId,
+        action,
+      });
+      // Don't fail the request — the DB update succeeded, and the event can be retried
     }
 
     // Log the approval action

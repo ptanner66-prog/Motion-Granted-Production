@@ -2585,7 +2585,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       "wait-for-cp3-approval",
       {
         event: "workflow/checkpoint-approved",
-        match: "data.workflowId",
+        match: "data.orderId",
         timeout: "7d",
       }
     );

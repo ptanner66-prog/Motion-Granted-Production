@@ -33,6 +33,7 @@ import type { OrderStatus } from '@/types'
 import { ClaudeChat } from '@/components/admin/claude-chat'
 import { AdminRevisionRequests } from '@/components/admin/admin-revision-requests'
 import { QuickApproveButton } from '@/components/admin/quick-approve-button'
+import { MotionApprovalPanel } from '@/components/admin/motion-approval-panel'
 import { RetryGenerationButton } from '@/components/admin/retry-generation-button'
 import { RestartWorkflowButton } from '@/components/admin/restart-workflow-button'
 import { MotionReview } from '@/components/admin/motion-review'
@@ -548,6 +549,16 @@ export default async function AdminOrderDetailPage({
             <JudgeSimulationCard
               result={judgeSimulationResult}
               isLoading={workflow.status === 'in_progress' && workflow.current_phase === 8}
+            />
+          )}
+
+          {/* CP3 Approval Panel - shown when draft needs review */}
+          {order.status === 'pending_review' && (
+            <MotionApprovalPanel
+              orderId={order.id}
+              orderNumber={order.order_number}
+              clientName={client?.full_name || undefined}
+              hasDeliverable={deliverables.length > 0}
             />
           )}
 
