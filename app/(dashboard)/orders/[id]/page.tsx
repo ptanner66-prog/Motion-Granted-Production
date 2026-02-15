@@ -133,7 +133,6 @@ export default async function OrderDetailPage({
 
   // Party string for header
   const partyString = parties.map(p => p.party_name).join(' v. ')
-  const progress = getOrderProgress(order.status)
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
