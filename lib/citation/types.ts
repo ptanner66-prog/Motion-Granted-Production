@@ -2,10 +2,22 @@
  * Citation Pipeline Types
  *
  * Shared types for the citation verification pipeline, including
- * batch lookup results and pre-fetch map types.
+ * batch lookup results, pre-fetch map types, and citation network types.
  *
- * @version BATCH_09 — ST-001/ST-002
+ * @version BATCH_10 — ST-004
  */
+
+// ============================================================================
+// CITATION NETWORK TYPES (re-exported from unified module)
+// ============================================================================
+
+export type {
+  CitationNetworkResult,
+  StrengthScore,
+  NegativeTreatmentResult,
+  TreatmentSignal,
+  TreatmentType,
+} from '@/lib/courtlistener/citation-network';
 
 // ============================================================================
 // COURTLISTENER BATCH LOOKUP TYPES
