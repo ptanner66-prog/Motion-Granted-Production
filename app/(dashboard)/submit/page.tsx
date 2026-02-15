@@ -529,7 +529,10 @@ export default function SubmitNewMatterPage() {
         console.error('Some documents failed to upload:', failedFiles);
       }
 
-      // Redirect to Stripe Checkout for payment
+      // BD-XD-003: Call /api/payments/checkout and handle THREE response types:
+      // 1. Conflict hold (409 + conflict: true)
+      // 2. Payment bypass (bypassed: true)
+      // 3. Stripe redirect (url)
       try {
         const checkoutResponse = await fetch('/api/payments/checkout', {
           method: 'POST',
@@ -539,6 +542,29 @@ export default function SubmitNewMatterPage() {
 
         const checkoutData = await checkoutResponse.json();
 
+        // Handle conflict hold (CC-R3-02) — 409 with conflict flag
+        if (checkoutData.conflict) {
+          setErrors(prev => ({
+            ...prev,
+            submit: 'A potential conflict was detected. Your order is under review.',
+          }));
+          router.push(`/orders/${checkoutData.orderId}`);
+          return;
+        }
+
+        // Handle payment bypass (Stripe C.1)
+        if (checkoutData.bypassed) {
+          // Payment is bypassed — trigger automation directly
+          await fetch('/api/automation/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: checkoutData.orderId || orderId }),
+          });
+          router.push('/dashboard');
+          return;
+        }
+
+        // Handle checkout error
         if (!checkoutResponse.ok) {
           if (checkoutResponse.status === 503) {
             setErrors(prev => ({
@@ -547,33 +573,22 @@ export default function SubmitNewMatterPage() {
             }));
             return;
           }
-          throw new Error(checkoutData.error || 'Failed to create checkout session');
+          throw new Error(checkoutData.error || 'Unable to process checkout. Please try again.');
         }
 
-        // Handle bypass mode (STRIPE_PAYMENT_REQUIRED=false)
-        if (checkoutData.bypassed) {
-          // Payment is bypassed — trigger automation directly
-          await fetch('/api/automation/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderId }),
-          });
-          router.push(`/orders/${orderId}?payment=bypassed`);
+        // Handle Stripe redirect (Stripe C.1)
+        if (checkoutData.url) {
+          window.location.href = checkoutData.url;
           return;
         }
 
-        // Redirect to Stripe hosted checkout page
-        if (checkoutData.url) {
-          window.location.href = checkoutData.url;
-        } else {
-          throw new Error('No checkout URL returned');
-        }
+        throw new Error('No checkout URL returned');
       } catch (checkoutError) {
         console.error('Checkout error:', checkoutError);
         // Order was created but checkout failed — redirect to order page
         setErrors(prev => ({
           ...prev,
-          submit: 'Failed to redirect to payment. Please try again.',
+          submit: checkoutError instanceof Error ? checkoutError.message : 'Failed to redirect to payment. Please try again.',
         }));
         router.push(`/orders/${orderId}?payment=error`);
       }

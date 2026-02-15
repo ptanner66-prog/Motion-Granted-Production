@@ -1096,14 +1096,142 @@ export const handleCheckpointApproval = inngest.createFunction(
   }
 );
 
+// ============================================================================
+// CC-R3-04: Conflict Auto-Cancel (7-day timeout)
+// ============================================================================
+
+/**
+ * Conflict Auto-Cancel
+ *
+ * When an order enters pending_conflict_review, this function waits 7 days.
+ * If the order is still in conflict review after 7 days, it auto-cancels
+ * and triggers a full Stripe refund.
+ */
+export const conflictAutoCancel = inngest.createFunction(
+  {
+    id: "conflict-auto-cancel",
+    retries: 2,
+  },
+  { event: "conflict/review-started" },
+  async ({ event, step }) => {
+    const { orderId } = event.data as { orderId: string };
+    const supabase = getSupabase();
+
+    // Wait 7 days for manual resolution
+    await step.sleep("wait-for-resolution", "7d");
+
+    // Check if still in conflict review
+    const order = await step.run("check-status", async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, status, stripe_payment_intent_id, total_price, order_number')
+        .eq('id', orderId)
+        .single();
+
+      if (error) {
+        throw new Error(`Failed to fetch order: ${error.message}`);
+      }
+      return data;
+    });
+
+    if (order?.status !== 'pending_conflict_review') {
+      // Already resolved — no action needed
+      return { orderId, action: 'skipped', reason: `Status is ${order?.status}` };
+    }
+
+    // Auto-cancel the order
+    await step.run("auto-cancel", async () => {
+      await supabase
+        .from('orders')
+        .update({
+          status: 'cancelled',
+          conflict_notes: 'Auto-cancelled: conflict review timed out after 7 days',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+
+      // Log the auto-cancel
+      await supabase.from('automation_logs').insert({
+        order_id: orderId,
+        action_type: 'conflict_auto_cancelled',
+        action_details: {
+          reason: 'conflict_timeout',
+          timeoutDays: 7,
+          orderNumber: order.order_number,
+        },
+      });
+    });
+
+    // Trigger Stripe refund if payment was made
+    if (order.stripe_payment_intent_id) {
+      await step.run("process-refund", async () => {
+        try {
+          if (!process.env.STRIPE_SECRET_KEY) {
+            log.warn('Stripe not configured, skipping refund', { orderId });
+            return;
+          }
+          const Stripe = (await import('stripe')).default;
+          const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY, {
+            apiVersion: '2025-01-27.acacia' as Stripe.LatestApiVersion,
+          });
+
+          await stripeClient.refunds.create({
+            payment_intent: order.stripe_payment_intent_id,
+            reason: 'requested_by_customer',
+          });
+
+          await supabase
+            .from('orders')
+            .update({ stripe_payment_status: 'refunded' })
+            .eq('id', orderId);
+
+          await supabase.from('automation_logs').insert({
+            order_id: orderId,
+            action_type: 'conflict_refund_processed',
+            action_details: {
+              paymentIntentId: order.stripe_payment_intent_id,
+              amount: order.total_price,
+              reason: 'conflict_timeout',
+            },
+          });
+        } catch (refundError) {
+          log.error('Failed to process conflict refund', {
+            orderId,
+            error: refundError instanceof Error ? refundError.message : String(refundError),
+          });
+          // Don't throw — the order is already cancelled, refund can be retried manually
+        }
+      });
+    }
+
+    // Send notification
+    await step.run("notify-admin", async () => {
+      await supabase.from('notification_queue').insert({
+        notification_type: 'conflict_auto_cancelled',
+        recipient_email: ADMIN_EMAIL,
+        order_id: orderId,
+        template_data: {
+          orderNumber: order.order_number,
+          reason: 'Conflict review timed out after 7 days',
+        },
+        priority: 8,
+        status: 'pending',
+      });
+    });
+
+    return { orderId, action: 'auto_cancelled', reason: 'conflict_timeout' };
+  }
+);
+
 // Export all functions for registration
 // v7.4.1: generateOrderWorkflow (from workflowFunctions) now handles order/submitted directly
 export const functions = [
   handleGenerationFailure,
   // New 14-phase workflow - PRIMARY HANDLER for order/submitted
-  ...workflowFunctions,    // Includes: generateOrderWorkflow, handleWorkflowFailure, handleWorkflowTimeout
+  ...workflowFunctions,    // Source: workflow-orchestration.ts
   // Supporting functions
   deadlineCheck,
   updateQueuePositions,
-  handleCheckpointApproval,
+  handleCheckpointApproval, // Source: checkpoint handling
+  conflictAutoCancel,       // Source: CC-R3-04 (conflict check 7-day timeout)
 ];

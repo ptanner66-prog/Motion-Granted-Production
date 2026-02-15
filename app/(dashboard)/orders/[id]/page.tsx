@@ -74,6 +74,7 @@ function getOrderProgress(status: string) {
     completed: 100,
     on_hold: 20,
     cancelled: 0,
+    pending_conflict_review: 10,
   }
   return progressMap[status] ?? 15
 }
@@ -220,6 +221,26 @@ export default async function OrderDetailPage({
               generationStartedAt={order.generation_started_at}
             />
           </div>
+        )}
+
+        {/* CC-R3-07: Conflict Review Notice */}
+        {order.status === 'pending_conflict_review' && (
+          <Card className="mt-6 border-amber-200 bg-amber-50">
+            <CardContent className="flex items-start gap-4 py-5">
+              <AlertCircle className="h-6 w-6 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-amber-900">Order Under Review</h3>
+                <p className="text-sm text-amber-800 mt-1">
+                  This order is under review for a potential scheduling conflict. You will be notified within 5 business days.
+                </p>
+                {order.created_at && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    Expected resolution by: {formatDate(new Date(new Date(order.created_at).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString())}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 

@@ -83,7 +83,8 @@ export type OrderStatus =
   | 'completed'
   | 'on_hold'
   | 'cancelled'
-  | 'refunded';
+  | 'refunded'
+  | 'pending_conflict_review';
 
 export interface Party {
   id: string;

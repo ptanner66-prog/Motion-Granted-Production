@@ -39,7 +39,7 @@ export async function checkForConflicts(
   const normalizedParty = normalizePartyName(input.partyName);
   const normalizedOpposing = normalizePartyName(input.opposingParty);
 
-  // Fetch existing orders (exclude current order)
+  // Fetch existing orders (exclude current order and terminal statuses — CC-R3-06)
   const { data: existingOrders, error } = await supabase
     .from('orders')
     .select(`
@@ -53,6 +53,7 @@ export async function checkForConflicts(
       created_at
     `)
     .neq('id', input.orderId)
+    .not('status', 'in', '("cancelled","cancelled_timeout","completed")')
     .order('created_at', { ascending: false })
     .limit(1000);  // Check against last 1000 orders
 
