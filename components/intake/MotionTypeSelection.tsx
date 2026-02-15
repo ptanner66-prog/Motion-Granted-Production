@@ -185,7 +185,7 @@ export function MotionTypeSelection() {
         <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
           {displayedGroups.length === 0 ? (
             <div className="p-6 text-center text-gray-500">
-              No motions found matching "{searchTerm}"
+              No motions found matching &quot;{searchTerm}&quot;
             </div>
           ) : (
             displayedGroups.map((group) => (

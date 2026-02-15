@@ -66,10 +66,9 @@ export interface PhaseIIOutput {
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
     // Dynamic import to handle server-side only module
-    // @ts-ignore - pdf-parse has type issues with ESM imports
     const { PDFParse } = await import('pdf-parse');
 
-    // @ts-ignore - pdf-parse constructor signature varies
+    // @ts-expect-error - pdf-parse constructor signature varies
     const data = await new PDFParse().parse(buffer);
     return data.text;
   } catch (error) {
@@ -83,9 +82,8 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
  */
 export async function getPDFPageCount(buffer: Buffer): Promise<number> {
   try {
-    // @ts-ignore - pdf-parse has type issues with ESM imports
     const { PDFParse } = await import('pdf-parse');
-    // @ts-ignore - pdf-parse constructor signature varies
+    // @ts-expect-error - pdf-parse constructor signature varies
     const data = await new PDFParse().parse(buffer);
     return data.numpages;
   } catch (error) {

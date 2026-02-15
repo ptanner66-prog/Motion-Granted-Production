@@ -84,7 +84,7 @@ export async function GET() {
 
     // SP-08: Use user-scoped client instead of service_role for metadata.
     // Requires admin RLS policies on phase_prompts (see Task 10 migration).
-    let dbMetadata: Record<string, { editVersion: number; updatedBy: string | null; updatedAt: string | null }> = {};
+    const dbMetadata: Record<string, { editVersion: number; updatedBy: string | null; updatedAt: string | null }> = {};
     try {
       const { data: dbRows } = await supabase
         .from('phase_prompts')

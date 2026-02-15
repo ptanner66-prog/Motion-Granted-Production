@@ -173,7 +173,7 @@ async function getCourtListenerCitingData(opinionId: string): Promise<CitingData
   const fiveYearsAgo = currentYear - 5;
   const tenYearsAgo = currentYear - 10;
 
-  let total = citingResult.data.length;
+  const total = citingResult.data.length;
   let last5Years = 0;
   let last10Years = 0;
   let distinguishCount = 0;

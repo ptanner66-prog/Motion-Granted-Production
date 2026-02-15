@@ -92,7 +92,7 @@ export function RestartWorkflowButton({ orderId, orderNumber, orderStatus }: Res
                 <li>All workflow phases will be reset</li>
                 <li>Previous phase executions will be cleared</li>
                 <li>Judge simulation results will be removed</li>
-                <li>Order status will be reset to "submitted"</li>
+                <li>Order status will be reset to &quot;submitted&quot;</li>
                 <li>Original order details will be preserved</li>
               </ul>
               <p className="text-sm font-medium text-orange-600 mt-3">

@@ -193,7 +193,7 @@ export function extractIndividualParties(partyString: string): string[] {
 
   // Split by common separators
   const separators = [' and ', ' & ', '; ', ', et al', ' et al.', ' et al'];
-  let remaining = partyString;
+  const remaining = partyString;
 
   for (const sep of separators) {
     if (remaining.toLowerCase().includes(sep.toLowerCase())) {

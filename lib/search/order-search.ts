@@ -302,7 +302,7 @@ export async function searchOrders(
       : [];
 
     // Transform results
-    let results: OrderSearchResult[] = (data || []).map((order) => {
+    const results: OrderSearchResult[] = (data || []).map((order) => {
       // Build parties string
       const parties = order.case_caption || '';
 

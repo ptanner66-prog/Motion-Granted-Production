@@ -390,7 +390,7 @@ export async function verifyBatch(
   const runId = runResult.data?.runId;
 
   const results: FinalVerificationOutput[] = [];
-  let cacheHits = 0;
+  const cacheHits = 0;
 
   // CIV-008: Protocol 7 failure tracking
   let failureCount = 0;
