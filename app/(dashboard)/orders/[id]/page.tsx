@@ -129,6 +129,7 @@ export default async function OrderDetailPage({
   const displayStatus = mapToDisplayStatus(order.status)
   const statusVersion = order.status_version || 1
   const amountPaid = order.amount_paid || 0
+  const progress = getOrderProgress(order.status)
 
   // Party string for header
   const partyString = parties.map(p => p.party_name).join(' v. ')
