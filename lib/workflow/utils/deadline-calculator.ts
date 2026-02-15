@@ -1,8 +1,12 @@
 /**
- * Deadline Calculator — BUG-02 Production Fix
+ * Deadline Calculator — BUG-02 Production Fix + SP-15 TASK-03 Enhancements
  *
  * Fixes the year boundary error and calendar-day-vs-business-day confusion
  * discovered in Richardson v. Bayou test run.
+ *
+ * SP-15 TASK-03: Added validateDeadlineYear() to detect year mismatches
+ * between intake-provided deadline and calculated deadline. Logs
+ * DEADLINE_ANOMALY and DEADLINE_YEAR_MISMATCH for monitoring.
  *
  * BINDING RULES:
  * 1. Parse filingDeadline directly from ISO string — NEVER extract year/month/day separately
@@ -13,6 +17,9 @@
  */
 
 import { TIMEZONE, toChicagoTime } from '@/lib/utils/timezone';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('workflow-deadline-calculator');
 
 // Re-export for backward compatibility — existing imports from this file still work
 export { TIMEZONE, toChicagoTime };
@@ -184,6 +191,14 @@ export function calculateInternalDeadline(
   const chicagoHourOffset = toChicagoTime(internalWithTime).getTimezoneOffset();
   internalWithTime.setUTCHours(17 - (chicagoHourOffset / -60), 0, 0, 0);
 
+  // SP-15 TASK-03: Log DEADLINE_ANOMALY if filing deadline is in the past
+  if (isExpired) {
+    log.warn('DEADLINE_ANOMALY: Filing deadline is in the past', {
+      filingDeadline: filingDeadlineISO,
+      now: now.toISOString(),
+    });
+  }
+
   return {
     filingDeadline: filingDeadlineISO,
     internalDeadline: formatChicagoISO(internalWithTime),
@@ -193,4 +208,53 @@ export function calculateInternalDeadline(
     isExpired,
     warnings,
   };
+}
+
+// ============================================================================
+// DEADLINE YEAR VALIDATION (SP-15 TASK-03)
+// ============================================================================
+
+/**
+ * Validate that a deadline year is reasonable.
+ *
+ * Compares the year of the intake-provided deadline against the year
+ * in the calculated deadline result. If they differ, this indicates
+ * the year derivation bug that caused 2025/2026 mismatches.
+ *
+ * @param calculatedDeadline - The result from calculateInternalDeadline
+ * @param intakeDeadline - The raw deadline string from intake
+ * @returns Validation result with optional warning
+ */
+export function validateDeadlineYear(
+  calculatedDeadline: DeadlineCalculationResult,
+  intakeDeadline: string | undefined
+): { valid: boolean; warning?: string } {
+  if (!intakeDeadline) {
+    return { valid: true };
+  }
+
+  const intakeDate = new Date(intakeDeadline);
+  const calculatedDate = new Date(calculatedDeadline.filingDeadline);
+
+  if (isNaN(intakeDate.getTime()) || isNaN(calculatedDate.getTime())) {
+    return { valid: true }; // Can't compare invalid dates
+  }
+
+  const intakeYear = intakeDate.getFullYear();
+  const calculatedYear = calculatedDate.getFullYear();
+
+  if (intakeYear !== calculatedYear) {
+    const warning = `DEADLINE_YEAR_MISMATCH: Intake year (${intakeYear}) differs from calculated year (${calculatedYear})`;
+
+    log.error('DEADLINE_YEAR_MISMATCH detected', {
+      intakeDeadline,
+      calculatedDeadline: calculatedDeadline.filingDeadline,
+      intakeYear,
+      calculatedYear,
+    });
+
+    return { valid: false, warning };
+  }
+
+  return { valid: true };
 }

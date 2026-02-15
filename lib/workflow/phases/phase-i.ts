@@ -13,6 +13,8 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { validateMandatoryFields, type MandatoryFieldData } from '../intake-validation';
+import { calculateInternalDeadline, validateDeadlineYear } from '../utils/deadline-calculator';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -616,12 +618,48 @@ export async function saveIntakeData(
 
 /**
  * Complete Phase I and advance workflow
+ *
+ * SP-15 TASK-02: Validates mandatory fields (bar_number, firm_name,
+ * firm_address, firm_phone) and triggers HOLD if any are missing.
+ *
+ * SP-15 TASK-03: Validates deadline year to detect year calculation bugs.
  */
 export async function completePhaseI(
   orderId: string,
-  intakeData: IntakeData
-): Promise<{ success: boolean; nextPhase: string; error?: string }> {
-  // Validate intake data
+  intakeData: IntakeData,
+  additionalFields?: MandatoryFieldData
+): Promise<{ success: boolean; nextPhase: string; error?: string; holdTriggered?: boolean }> {
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 1: Validate mandatory fields (SP-15 TASK-02)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  const mandatoryFieldData: MandatoryFieldData = {
+    bar_number: additionalFields?.bar_number,
+    firm_name: additionalFields?.firm_name,
+    firm_address: additionalFields?.firm_address,
+    firm_phone: additionalFields?.firm_phone,
+    ...additionalFields,
+  };
+
+  const mandatoryValidation = await validateMandatoryFields(mandatoryFieldData, orderId);
+
+  if (!mandatoryValidation.complete) {
+    log.warn(`[Phase I] HOLD triggered for order ${orderId} — missing mandatory fields`, {
+      missingFields: mandatoryValidation.missingFields,
+    });
+
+    return {
+      success: false,
+      nextPhase: 'I',
+      error: mandatoryValidation.holdReason,
+      holdTriggered: true,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 2: Validate standard intake data
+  // ═══════════════════════════════════════════════════════════════════════
+
   const validation = await validateIntake(intakeData);
   if (!validation.valid) {
     return {
@@ -630,6 +668,43 @@ export async function completePhaseI(
       error: Object.values(validation.errors).join(', '),
     };
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 3: Validate deadline year (SP-15 TASK-03)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  const filingDeadline = (additionalFields as Record<string, unknown>)?.filing_deadline as string | undefined;
+
+  if (filingDeadline) {
+    try {
+      const deadlineResult = calculateInternalDeadline(filingDeadline);
+      const yearValidation = validateDeadlineYear(deadlineResult, filingDeadline);
+
+      if (!yearValidation.valid) {
+        log.warn('[Phase I] Deadline year anomaly detected', {
+          orderId,
+          warning: yearValidation.warning,
+        });
+      }
+
+      if (deadlineResult.isExpired) {
+        log.warn('[Phase I] DEADLINE_ANOMALY: Filing deadline is in the past', {
+          orderId,
+          filingDeadline: deadlineResult.filingDeadline,
+        });
+      }
+    } catch (error) {
+      log.error('[Phase I] Deadline calculation error', {
+        orderId,
+        filingDeadline,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 4: Save intake data and advance
+  // ═══════════════════════════════════════════════════════════════════════
 
   // Save intake data
   const saveResult = await saveIntakeData(orderId, intakeData);

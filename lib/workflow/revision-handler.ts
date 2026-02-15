@@ -1,10 +1,16 @@
 // /lib/workflow/revision-handler.ts
-// Revision loop tracking and Protocol 10 handling
-// VERSION: 1.0 — January 28, 2026
+// Revision loop tracking, Protocol 10 handling, and re-research integration
+// VERSION: 1.1 — February 15, 2026 (SP-15: added re-research capability)
 
 import { createClient } from '@/lib/supabase/server';
 import { MAX_REVISION_LOOPS, type LetterGrade as Grade } from '@/types/workflow';
 import { FAILURE_THRESHOLDS, isProtocol10Triggered } from '@/lib/config/workflow-config';
+import {
+  detectCitationGaps,
+  reResearchAllGaps,
+  type ReResearchResult,
+  type ReResearchCitation,
+} from './re-research-service';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -405,4 +411,141 @@ export async function recordRevisionRequest(
 
   log.info(`[RevisionHandler] Revision requested for order ${orderId}`);
   return { success: true, canRevise: true };
+}
+
+// ============================================================================
+// RE-RESEARCH INTEGRATION (SP-15 TASK-01)
+// ============================================================================
+
+export interface RevisionWithReResearchContext {
+  orderId: string;
+  tier: 'A' | 'B' | 'C' | 'D';
+  jurisdiction: string;
+  motionText: string;
+  revisionLoop: number;
+}
+
+export interface RevisionWithReResearchResult {
+  revisedText: string;
+  newCitations: ReResearchCitation[];
+  unresolvedGaps: string[];
+  reResearchResults: ReResearchResult[];
+}
+
+/**
+ * Execute a revision pass with re-research capability.
+ *
+ * When [CITATION NEEDED] placeholders are detected:
+ * 1. Trigger targeted CourtListener searches
+ * 2. Verify results through CourtListener Stage 1+2
+ * 3. Insert verified citations into the motion
+ * 4. Flag unresolved gaps for audit
+ *
+ * SP-15 TASK-01: Resolves the issue where Phase VIII revision loops
+ * consumed all 3 iterations without resolving [CITATION NEEDED] gaps
+ * because no re-research mechanism existed.
+ */
+export async function executeRevisionWithReResearch(
+  context: RevisionWithReResearchContext
+): Promise<RevisionWithReResearchResult> {
+  const { orderId, tier, jurisdiction, motionText, revisionLoop } = context;
+
+  // Detect citation gaps
+  const gaps = detectCitationGaps(motionText);
+
+  log.info('[REVISION] Citation gaps detected', {
+    orderId,
+    revisionLoop,
+    gapCount: gaps.length,
+    gaps: gaps.map(g => ({ element: g.element, section: g.location.section })),
+  });
+
+  if (gaps.length === 0) {
+    return {
+      revisedText: motionText,
+      newCitations: [],
+      unresolvedGaps: [],
+      reResearchResults: [],
+    };
+  }
+
+  // Execute re-research
+  const reResearchResults = await reResearchAllGaps(gaps, {
+    jurisdiction,
+    tier,
+    orderId,
+    revisionLoop,
+  });
+
+  log.info('[REVISION] Re-research complete', {
+    orderId,
+    revisionLoop,
+    resolved: reResearchResults.totalResolved,
+    unresolved: reResearchResults.totalUnresolved,
+    newCitations: reResearchResults.newCitations.length,
+  });
+
+  // Replace resolved gaps with citations
+  let revisedText = motionText;
+
+  for (const result of reResearchResults.results) {
+    if (result.resolved && result.citationsFound.length > 0) {
+      const bestCitation = result.citationsFound[0]; // Use highest relevance
+      const citationText = `${bestCitation.caseName}, ${bestCitation.citation}`;
+
+      // Replace first occurrence of this placeholder
+      revisedText = revisedText.replace(
+        result.gap.placeholder,
+        citationText
+      );
+
+      log.info('[REVISION] Gap resolved', {
+        orderId,
+        element: result.gap.element,
+        citation: citationText,
+      });
+    }
+  }
+
+  // Collect unresolved gaps for audit trail
+  const unresolvedGaps = reResearchResults.results
+    .filter(r => !r.resolved)
+    .map(r =>
+      `${r.gap.element} in ${r.gap.location.section}: ${r.failureReason}`
+    );
+
+  // Log re-research event to workflow_events
+  try {
+    const supabase = await createClient();
+    await supabase.from('workflow_events').insert({
+      order_id: orderId,
+      event_type: 'RE_RESEARCH_COMPLETED',
+      phase: 'VIII',
+      data: {
+        revision_loop: revisionLoop,
+        gaps_found: gaps.length,
+        gaps_resolved: reResearchResults.totalResolved,
+        gaps_unresolved: reResearchResults.totalUnresolved,
+        new_citations: reResearchResults.newCitations.map(c => ({
+          caseName: c.caseName,
+          citation: c.citation,
+          verificationMethod: c.verificationMethod,
+        })),
+        unresolved_gaps: unresolvedGaps,
+      },
+      created_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    log.error('[REVISION] Failed to log re-research event', {
+      orderId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return {
+    revisedText,
+    newCitations: reResearchResults.newCitations,
+    unresolvedGaps,
+    reResearchResults: reResearchResults.results,
+  };
 }

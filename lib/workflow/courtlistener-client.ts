@@ -65,6 +65,16 @@ export interface RateLimitState {
   windowStart: number;
 }
 
+export interface CourtListenerSearchResult {
+  id: string;
+  caseName: string;
+  citation: string;
+  snippet: string;
+  court: string;
+  dateFiled: string;
+  relevanceScore: number;
+}
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -523,6 +533,70 @@ export class CourtListenerClient {
       .replace(/\s+/g, ' ')
       .trim();
   }
+
+  /**
+   * Search CourtListener for cases matching a query.
+   * Uses the search endpoint for keyword/topic-based case discovery.
+   * Used by re-research service to find citations for [CITATION NEEDED] gaps.
+   */
+  async searchCases(params: {
+    query: string;
+    jurisdiction?: string;
+    maxResults?: number;
+  }): Promise<CourtListenerSearchResult[]> {
+    const { query, jurisdiction, maxResults = 5 } = params;
+
+    try {
+      await this.rateLimiter.waitForSlot();
+
+      const searchParams = new URLSearchParams({
+        q: query,
+        type: 'o', // opinions
+        order_by: 'score desc',
+        page_size: String(maxResults),
+      });
+
+      if (jurisdiction) {
+        searchParams.set('court', jurisdiction);
+      }
+
+      const response = await this.fetchWithRetry(
+        `${COURTLISTENER_BASE_URL}search/?${searchParams.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Token ${this.apiKey}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        log.error('CourtListener search failed', { status: response.status, query });
+        return [];
+      }
+
+      const data = await response.json();
+      const results: CourtListenerSearchResult[] = (data.results || [])
+        .slice(0, maxResults)
+        .map((r: Record<string, unknown>) => ({
+          id: String(r.cluster_id || r.id || ''),
+          caseName: String(r.caseName || r.case_name || ''),
+          citation: String(Array.isArray(r.citation) ? r.citation[0] : (r.citation || '')),
+          snippet: String(r.snippet || r.text || '').slice(0, 500),
+          court: String(r.court || ''),
+          dateFiled: String(r.dateFiled || r.date_filed || ''),
+          relevanceScore: typeof r.score === 'number' ? r.score : 50,
+        }));
+
+      return results;
+    } catch (error) {
+      log.error('CourtListener search error', {
+        error: error instanceof Error ? error.message : String(error),
+        query,
+      });
+      return [];
+    }
+  }
 }
 
 // ============================================================================
@@ -536,6 +610,23 @@ export function getCourtListenerClient(): CourtListenerClient {
     clientInstance = new CourtListenerClient();
   }
   return clientInstance;
+}
+
+// ============================================================================
+// SEARCH HELPER
+// ============================================================================
+
+/**
+ * Convenience function for searching CourtListener.
+ * Used by re-research-service.ts.
+ */
+export async function searchCourtListener(params: {
+  query: string;
+  jurisdiction?: string;
+  maxResults?: number;
+}): Promise<CourtListenerSearchResult[]> {
+  const client = getCourtListenerClient();
+  return client.searchCases(params);
 }
 
 // ============================================================================
