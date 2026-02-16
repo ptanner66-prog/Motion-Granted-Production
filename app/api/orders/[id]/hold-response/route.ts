@@ -1,149 +1,110 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-
 /**
+ * Hold Response API
+ *
  * POST /api/orders/[id]/hold-response
  *
- * Submit a response to a hold placed on an order (e.g., evidence gap hold at CP1).
- * Auth: Must be the order owner.
- * Body: { response: string, status_version: number }
+ * Attorney responds to a HOLD checkpoint (Phase III evidence gap).
+ * Three response types:
+ *   - EVIDENCE_PROVIDED: Attorney uploaded evidence, continue workflow
+ *   - ACKNOWLEDGED: Attorney acknowledges gap, continue anyway
+ *   - CANCEL: Attorney cancels due to hold
  *
- * Transitions: HOLD_PENDING/on_hold -> IN_PROGRESS/in_progress
+ * Uses three-gate auth: authenticate → verify ownership → validate IN_PROGRESS.
+ * Also verifies an active HOLD checkpoint exists.
+ *
+ * SP-4 Task 3 (R4-11): BD-R3-02
  */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { authenticateAndLoadOrder, validateOptimisticLock } from '@/lib/orders/status-guards';
+import { logCheckpointEvent } from '@/lib/workflow/checkpoint-logger';
+import { getServiceSupabase } from '@/lib/supabase/admin';
+
+const VALID_RESPONSE_TYPES = ['EVIDENCE_PROVIDED', 'ACKNOWLEDGED', 'CANCEL'] as const;
+type ResponseType = typeof VALID_RESPONSE_TYPES[number];
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: orderId } = await params;
+
+  let body: {
+    status_version?: unknown;
+    response_type?: unknown;
+    evidence_notes?: unknown;
+    evidence_file_keys?: unknown;
+  };
   try {
-    const { id: orderId } = await params;
-    const supabase = await createClient();
-
-    // Authenticate
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Parse body
-    let body: { response?: unknown; status_version?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid request body' },
-        { status: 400 }
-      );
-    }
-
-    // Validate response
-    const response =
-      typeof body.response === 'string' ? body.response.trim() : '';
-    if (response.length === 0) {
-      return NextResponse.json(
-        { error: 'A response is required.' },
-        { status: 400 }
-      );
-    }
-
-    // Validate status_version
-    const statusVersion =
-      typeof body.status_version === 'number' ? body.status_version : undefined;
-    if (statusVersion === undefined) {
-      return NextResponse.json(
-        { error: 'status_version is required' },
-        { status: 400 }
-      );
-    }
-
-    // Fetch the order
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select('id, client_id, status, order_number, status_version')
-      .eq('id', orderId)
-      .single();
-
-    if (orderError || !order) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-    }
-
-    // Verify ownership
-    if (order.client_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    // Verify the order is on hold
-    const holdStatuses = ['HOLD_PENDING', 'on_hold'];
-    if (!holdStatuses.includes(order.status)) {
-      return NextResponse.json(
-        {
-          error: `This order is not on hold. Current status: ${order.status}`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // Optimistic concurrency check
-    const currentVersion = order.status_version ?? 0;
-    if (statusVersion !== currentVersion) {
-      return NextResponse.json(
-        {
-          error:
-            'Version conflict. The order has been modified by another request.',
-          current_version: currentVersion,
-        },
-        { status: 409 }
-      );
-    }
-
-    const now = new Date().toISOString();
-
-    // Update order: move back to in_progress and store hold response
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: 'in_progress',
-        hold_response: response,
-        status_version: currentVersion + 1,
-        updated_at: now,
-      })
-      .eq('id', orderId)
-      .eq('status_version', currentVersion)
-      .select('id')
-      .single();
-
-    if (updateError || !updatedOrder) {
-      return NextResponse.json(
-        {
-          error:
-            'Failed to submit hold response. The order may have been modified concurrently.',
-        },
-        { status: 409 }
-      );
-    }
-
-    // Log to automation_logs
-    await supabase.from('automation_logs').insert({
-      order_id: orderId,
-      action_type: 'hold_response_submitted',
-      action_details: {
-        respondedBy: user.id,
-        previousStatus: order.status,
-        response: response.substring(0, 500), // Truncate for log
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      orderNumber: order.order_number,
-      status_version: currentVersion + 1,
-    });
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'Internal server error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
+
+  // Validate required fields
+  if (typeof body.status_version !== 'number') {
+    return NextResponse.json({ error: 'status_version is required (number)' }, { status: 400 });
+  }
+
+  const responseType = body.response_type as string;
+  if (!responseType || !VALID_RESPONSE_TYPES.includes(responseType as ResponseType)) {
+    return NextResponse.json(
+      { error: `Invalid response_type. Must be one of: ${VALID_RESPONSE_TYPES.join(', ')}` },
+      { status: 400 }
+    );
+  }
+
+  // HOLD status is IN_PROGRESS with an active HOLD checkpoint
+  // Also accept legacy hold statuses
+  const result = await authenticateAndLoadOrder(orderId, [
+    'IN_PROGRESS', 'in_progress', 'HOLD_PENDING', 'on_hold',
+  ]);
+  if (result instanceof NextResponse) return result;
+  const { order, userId } = result;
+
+  // Optimistic lock
+  const lockError = validateOptimisticLock(order, body.status_version);
+  if (lockError) return lockError;
+
+  const adminClient = getServiceSupabase();
+
+  // Verify there's an active HOLD checkpoint
+  const { data: activeHold } = await adminClient
+    .from('checkpoints')
+    .select('id, phase, hold_reason')
+    .match({ order_id: orderId, type: 'HOLD', status: 'PENDING' })
+    .single();
+
+  if (!activeHold) {
+    return NextResponse.json({ error: 'No active HOLD checkpoint found' }, { status: 404 });
+  }
+
+  // Process response
+  const resolution = responseType === 'CANCEL' ? 'CANCELLED' : 'RESOLVED';
+
+  await adminClient.from('checkpoints').update({
+    status: resolution,
+    resolved_at: new Date().toISOString(),
+    resolved_by: userId,
+    resolution_data: {
+      response_type: responseType,
+      evidence_notes: typeof body.evidence_notes === 'string' ? body.evidence_notes : null,
+      evidence_file_keys: Array.isArray(body.evidence_file_keys) ? body.evidence_file_keys : [],
+    },
+  }).eq('id', activeHold.id);
+
+  // Log checkpoint event (immutable audit)
+  await logCheckpointEvent(adminClient, {
+    orderId,
+    checkpointId: activeHold.id,
+    eventType: `HOLD_${responseType}`,
+    actor: 'customer',
+    metadata: { phase: activeHold.phase, responseType },
+  });
+
+  return NextResponse.json({
+    success: true,
+    status: resolution.toLowerCase(),
+    checkpoint_id: activeHold.id,
+  });
 }

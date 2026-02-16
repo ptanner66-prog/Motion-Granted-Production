@@ -1,7 +1,7 @@
 /**
  * Order Status Machine
  *
- * D6 C-007: Canonical status guard with optimistic locking.
+ * D6 C-007 + SP-4 R4-06: Canonical status guard with optimistic locking.
  * Every status change in the system MUST go through updateOrderStatus().
  *
  * Uses status_version column (D1-021 migration) for optimistic concurrency:
@@ -13,10 +13,9 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
-  OrderStatus,
+  type OrderStatus,
   isValidStatus,
   isValidTransition,
-  isTerminalStatus,
 } from '@/lib/config/status-transitions';
 
 // ============================================================================
@@ -25,15 +24,10 @@ import {
 
 export interface StatusUpdateResult {
   success: boolean;
-  previousStatus?: OrderStatus;
+  previousStatus?: string;
   newStatus?: OrderStatus;
+  statusVersion?: number;
   error?: string;
-}
-
-interface OrderStatusRow {
-  id: string;
-  status: string;
-  status_version: number;
 }
 
 // ============================================================================
@@ -43,26 +37,31 @@ interface OrderStatusRow {
 /**
  * Update an order's status with transition validation and optimistic locking.
  *
- * Steps:
- * 1. Read current status + status_version
- * 2. Validate the transition is allowed
- * 3. Attempt UPDATE with WHERE status_version = expected
- * 4. If 0 rows affected → concurrent modification, return error
+ * Caller is responsible for:
+ * 1. Authenticating the user (Gate 1)
+ * 2. Loading the order and verifying ownership (Gate 2)
+ * 3. Validating status precondition (Gate 3)
+ * 4. Verifying optimistic lock (validateOptimisticLock)
  *
- * The status_version column auto-increments via the DB trigger
- * (20260216100004_status_version_trigger.sql), so we don't set it here.
+ * This function:
+ * 1. Reads current status for transition validation
+ * 2. Validates the transition is allowed
+ * 3. Attempts UPDATE with WHERE status_version = expectedVersion
+ * 4. Returns the new status_version from the DB trigger
  *
  * @param supabase - Supabase client (service_role for Inngest, user-scoped for API)
  * @param orderId - The order to update
  * @param newStatus - Target status (must be a valid OrderStatus)
- * @param actor - Who is making the change (for audit trail)
- * @returns StatusUpdateResult with success/failure details
+ * @param expectedVersion - The status_version from the caller's read (optimistic lock)
+ * @param extraFields - Optional additional fields to set on the order row
+ * @returns StatusUpdateResult with success/failure details and new statusVersion
  */
 export async function updateOrderStatus(
   supabase: SupabaseClient,
   orderId: string,
   newStatus: OrderStatus,
-  actor: string
+  expectedVersion: number,
+  extraFields?: Record<string, unknown>
 ): Promise<StatusUpdateResult> {
   // 1. Validate target status
   if (!isValidStatus(newStatus)) {
@@ -72,12 +71,12 @@ export async function updateOrderStatus(
     };
   }
 
-  // 2. Read current state
+  // 2. Read current status for transition validation
   const { data: order, error: readError } = await supabase
     .from('orders')
     .select('id, status, status_version')
     .eq('id', orderId)
-    .single<OrderStatusRow>();
+    .single();
 
   if (readError || !order) {
     return {
@@ -86,66 +85,55 @@ export async function updateOrderStatus(
     };
   }
 
-  const currentStatus = order.status as OrderStatus;
+  const currentStatus = order.status;
 
-  // 3. Validate current status is known
-  if (!isValidStatus(currentStatus)) {
-    return {
-      success: false,
-      previousStatus: currentStatus,
-      error: `Order has unknown status: '${currentStatus}'`,
-    };
+  // 3. Validate transition (if current status is in our canonical model)
+  if (isValidStatus(currentStatus)) {
+    if (!isValidTransition(currentStatus as OrderStatus, newStatus)) {
+      return {
+        success: false,
+        previousStatus: currentStatus,
+        error: `Invalid transition: '${currentStatus}' → '${newStatus}'`,
+      };
+    }
   }
+  // If current status is a legacy value (e.g. 'draft_delivered'), allow transition
+  // since the route already validated the precondition via allowedStatuses
 
-  // 4. Check terminal state
-  if (isTerminalStatus(currentStatus)) {
-    return {
-      success: false,
-      previousStatus: currentStatus,
-      error: `Cannot transition from terminal status '${currentStatus}'`,
-    };
-  }
+  // 4. Optimistic lock: UPDATE only if status_version matches expected
+  const updatePayload: Record<string, unknown> = {
+    status: newStatus,
+    updated_at: new Date().toISOString(),
+    ...extraFields,
+  };
 
-  // 5. Validate transition
-  if (!isValidTransition(currentStatus, newStatus)) {
-    return {
-      success: false,
-      previousStatus: currentStatus,
-      error: `Invalid transition: '${currentStatus}' → '${newStatus}'`,
-    };
-  }
-
-  // 6. Optimistic lock: UPDATE only if status_version hasn't changed
   const { data: updated, error: updateError } = await supabase
     .from('orders')
-    .update({
-      status: newStatus,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .match({
       id: orderId,
-      status_version: order.status_version,
+      status_version: expectedVersion,
     })
-    .select('id, status')
+    .select('id, status, status_version')
     .single();
 
   if (updateError || !updated) {
-    // Concurrent modification — another process changed status first
     return {
       success: false,
       previousStatus: currentStatus,
       error: `Concurrent modification detected on order '${orderId}'. ` +
-        `Expected version ${order.status_version}. Retry the operation.`,
+        `Expected version ${expectedVersion}. Retry the operation.`,
     };
   }
 
   console.info(
-    `[status-machine] ${orderId}: ${currentStatus} → ${newStatus} (actor: ${actor})`
+    `[status-machine] ${orderId}: ${currentStatus} → ${newStatus} (v${expectedVersion} → v${updated.status_version})`
   );
 
   return {
     success: true,
     previousStatus: currentStatus,
     newStatus,
+    statusVersion: updated.status_version,
   };
 }

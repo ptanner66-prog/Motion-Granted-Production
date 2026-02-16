@@ -1,146 +1,145 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-
-const MAX_NOTES_LENGTH = 5000
-
 /**
+ * CP3 Request Changes API
+ *
  * POST /api/orders/[id]/request-changes
  *
- * Submits a CP3 change request for an order awaiting customer approval.
- * This is a free CP3 rework — does NOT increment revision_count.
- * Auth: Must be the order owner.
- * Body: { notes: string, status_version: number }
- * Returns: { success: true }
+ * Attorney requests changes to a delivered motion at CP3.
+ * Three-gate auth: authenticate → verify ownership → validate status.
+ * Transitions AWAITING_APPROVAL → REVISION_REQ (NOT REVISION_REQUESTED).
+ *
+ * Guards:
+ * - Protocol 10 block: If cost cap triggered, changes not allowed.
+ * - Rework cap: Maximum 3 rework cycles (BD-04).
+ * - Notes required.
+ *
+ * SP-4 Task 2 (R4-06)
  */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { authenticateAndLoadOrder, validateOptimisticLock } from '@/lib/orders/status-guards';
+import { updateOrderStatus } from '@/lib/orders/status-machine';
+import { logCheckpointEvent } from '@/lib/workflow/checkpoint-logger';
+import { cancelCP3Timeouts } from '@/lib/workflow/cp3-timeouts';
+import { getServiceSupabase } from '@/lib/supabase/admin';
+import { inngest } from '@/lib/inngest/client';
+import { CP3_REWORK_CAP } from '@/lib/workflow/checkpoint-types';
+
+const MAX_NOTES_LENGTH = 5000;
+
 export async function POST(
-  request: Request,
-  props: { params: Promise<{ id: string }> }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: orderId } = await params;
+
+  let body: { notes?: unknown; status_version?: unknown; package_id?: unknown };
   try {
-    const { id: orderId } = await props.params
-    const supabase = await createClient()
-
-    // Authenticate
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Parse and validate body
-    let body: { notes?: unknown; status_version?: unknown }
-    try {
-      body = (await request.json()) as { notes?: unknown; status_version?: unknown }
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid request body' },
-        { status: 400 }
-      )
-    }
-
-    const notes =
-      typeof body.notes === 'string' ? body.notes.trim() : ''
-
-    if (notes.length === 0) {
-      return NextResponse.json(
-        { error: 'Revision notes are required. Please describe the changes needed.' },
-        { status: 400 }
-      )
-    }
-
-    if (notes.length > MAX_NOTES_LENGTH) {
-      return NextResponse.json(
-        {
-          error: `Revision notes must be ${MAX_NOTES_LENGTH} characters or fewer. Current length: ${notes.length}`,
-        },
-        { status: 400 }
-      )
-    }
-
-    // Validate status_version
-    const statusVersion = typeof body.status_version === 'number' ? body.status_version : undefined
-    if (statusVersion === undefined) {
-      return NextResponse.json(
-        { error: 'status_version is required' },
-        { status: 400 }
-      )
-    }
-
-    // Fetch the order and verify ownership
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select('id, client_id, status, order_number, status_version')
-      .eq('id', orderId)
-      .single()
-
-    if (orderError || !order) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
-    }
-
-    if (order.client_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    // Verify the order is in a reviewable state (7-status + legacy)
-    const reviewableStatuses = ['AWAITING_APPROVAL', 'draft_delivered', 'pending_review']
-    if (!reviewableStatuses.includes(order.status)) {
-      return NextResponse.json(
-        {
-          error:
-            order.status === 'completed' || order.status === 'COMPLETED'
-              ? 'This order has already been approved and cannot be revised.'
-              : 'This order is not in a state that accepts change requests.',
-        },
-        { status: 400 }
-      )
-    }
-
-    // Optimistic concurrency check
-    const currentVersion = order.status_version ?? 0
-    if (statusVersion !== currentVersion) {
-      return NextResponse.json(
-        {
-          error: 'Version conflict. The order has been modified by another request.',
-          current_version: currentVersion,
-        },
-        { status: 409 }
-      )
-    }
-
-    const now = new Date().toISOString()
-
-    // Update order status to in_progress with CP3 change notes
-    // This does NOT increment revision_count (free CP3 rework)
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: 'in_progress',
-        cp3_change_notes: notes,
-        status_version: currentVersion + 1,
-        updated_at: now,
-      })
-      .eq('id', orderId)
-      .eq('status_version', currentVersion)
-      .select('id')
-      .single()
-
-    if (updateError || !updatedOrder) {
-      return NextResponse.json(
-        { error: 'Failed to submit change request. The order may have been modified concurrently.' },
-        { status: 409 }
-      )
-    }
-
-    return NextResponse.json({
-      success: true,
-      orderNumber: order.order_number,
-      status_version: currentVersion + 1,
-    })
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'Internal server error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
+
+  // Validate status_version
+  const statusVersion = typeof body.status_version === 'number' ? body.status_version : undefined;
+  if (statusVersion === undefined) {
+    return NextResponse.json({ error: 'status_version is required' }, { status: 400 });
+  }
+
+  // Validate notes
+  const notes = typeof body.notes === 'string' ? body.notes.trim() : '';
+  if (notes.length === 0) {
+    return NextResponse.json(
+      { error: 'Change notes are required' },
+      { status: 400 }
+    );
+  }
+  if (notes.length > MAX_NOTES_LENGTH) {
+    return NextResponse.json(
+      { error: `Notes must be ${MAX_NOTES_LENGTH} characters or fewer. Current: ${notes.length}` },
+      { status: 400 }
+    );
+  }
+
+  // Three-gate auth (accepts legacy statuses)
+  const result = await authenticateAndLoadOrder(orderId, [
+    'AWAITING_APPROVAL', 'draft_delivered', 'pending_review',
+  ]);
+  if (result instanceof NextResponse) return result;
+  const { order, userId } = result;
+
+  // Optimistic lock
+  const lockError = validateOptimisticLock(order, statusVersion);
+  if (lockError) return lockError;
+
+  // Protocol 10 check
+  if (order.protocol_10_triggered) {
+    return NextResponse.json(
+      { error: 'Request Changes blocked by Protocol 10', code: 'P10_BLOCKED' },
+      { status: 422 }
+    );
+  }
+
+  // Rework cap check (BD-04: max 3)
+  if (order.attorney_rework_count >= CP3_REWORK_CAP) {
+    return NextResponse.json(
+      { error: `Maximum rework cycles (${CP3_REWORK_CAP}) reached`, code: 'REWORK_CAP_REACHED' },
+      { status: 422 }
+    );
+  }
+
+  const adminClient = getServiceSupabase();
+
+  // Transition to REVISION_REQ (NOT REVISION_REQUESTED)
+  const statusResult = await updateOrderStatus(
+    adminClient, orderId, 'REVISION_REQ', order.status_version
+  );
+
+  if (!statusResult.success) {
+    return NextResponse.json({ error: statusResult.error }, { status: 409 });
+  }
+
+  // Update rework metadata
+  await adminClient.from('orders').update({
+    attorney_rework_count: order.attorney_rework_count + 1,
+    cp3_change_notes: notes,
+  }).eq('id', orderId);
+
+  // Record rejection in cp3_rejections
+  const packageId = typeof body.package_id === 'string' ? body.package_id : null;
+  await adminClient.from('cp3_rejections').insert({
+    order_id: orderId,
+    package_id: packageId,
+    attorney_id: userId,
+    change_notes: notes,
+    rejection_number: order.attorney_rework_count + 1,
+  });
+
+  // Cancel CP3 timeouts
+  await cancelCP3Timeouts(adminClient, orderId);
+
+  // Log checkpoint event (immutable audit)
+  await logCheckpointEvent(adminClient, {
+    orderId,
+    eventType: 'CP3_CHANGES_REQUESTED',
+    actor: 'attorney',
+    metadata: { notes, rejectionNumber: order.attorney_rework_count + 1 },
+  });
+
+  // Emit revision event — separate from DB ops (D5 W3-2 durability rule)
+  await inngest.send({
+    name: 'order/revision-requested',
+    data: {
+      orderId,
+      workflowId: order.workflow_id,
+      action: 'REQUEST_CHANGES',
+      notes,
+      attorneyId: userId,
+    },
+  });
+
+  return NextResponse.json({
+    success: true,
+    status: 'revision_requested',
+    status_version: statusResult.statusVersion,
+  });
 }

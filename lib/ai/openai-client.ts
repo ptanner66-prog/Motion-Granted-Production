@@ -9,6 +9,7 @@
 
 import OpenAI from 'openai';
 import { createLogger } from '@/lib/security/logger';
+import { normalizeOpenAIUsage, type NormalizedUsage } from '@/lib/ai/normalize-usage';
 
 const log = createLogger('openai-client');
 
@@ -39,6 +40,8 @@ export interface OpenAIResponse {
     completion: number;
     total: number;
   };
+  /** Normalized usage for cost_tracking pipeline (D3 Task 7) */
+  normalizedUsage?: NormalizedUsage;
   cost?: number;
   model?: string;
   error?: string;
@@ -301,6 +304,9 @@ class OpenAIClient {
         // Track cost
         const cost = this.costTracker.record(model, promptTokens, completionTokens);
 
+        // D3 Task 7: Normalize usage for cost_tracking pipeline
+        const normalized = normalizeOpenAIUsage(response.usage as Parameters<typeof normalizeOpenAIUsage>[0]);
+
         const latencyMs = Date.now() - startTime;
 
         log.info(`[OpenAI] Request completed: model=${model}, tokens=${totalTokens}, cost=$${cost.toFixed(4)}, latency=${latencyMs}ms`);
@@ -313,6 +319,7 @@ class OpenAIClient {
             completion: completionTokens,
             total: totalTokens,
           },
+          normalizedUsage: normalized,
           cost,
           model,
           latencyMs,

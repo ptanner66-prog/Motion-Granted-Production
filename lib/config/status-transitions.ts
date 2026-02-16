@@ -1,13 +1,14 @@
 /**
  * Canonical Order Status Transitions
  *
- * D6 C-007: Single source of truth for valid order status transitions.
+ * D6 C-007 + SP-4 R4-06: Single source of truth for valid order status transitions.
  * Uses 'REVISION_REQ' (never 'REVISION_REQUESTED') per binding rule.
+ * Uses 'AWAITING_APPROVAL' for CP3 attorney review state.
  *
  * 7-state model:
- *   SUBMITTED → PAID → IN_PROGRESS → REVIEW → REVISION_REQ → IN_PROGRESS (loop)
- *                                           → COMPLETED
- *                                           → CANCELLED (from any non-terminal)
+ *   SUBMITTED → PAID → IN_PROGRESS → AWAITING_APPROVAL → REVISION_REQ → IN_PROGRESS (loop)
+ *                                                       → COMPLETED
+ *                                                       → CANCELLED (from any non-terminal)
  *                                   → CANCELLED
  *            → CANCELLED
  *   SUBMITTED → CANCELLED
@@ -30,7 +31,7 @@ export const ORDER_STATUSES = [
   'SUBMITTED',
   'PAID',
   'IN_PROGRESS',
-  'REVIEW',
+  'AWAITING_APPROVAL',
   'REVISION_REQ',
   'COMPLETED',
   'CANCELLED',
@@ -54,16 +55,16 @@ export const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set([
  * Rules:
  * - SUBMITTED can go to PAID or CANCELLED (payment failed / user cancel)
  * - PAID can go to IN_PROGRESS or CANCELLED (refund before work starts)
- * - IN_PROGRESS can go to REVIEW or CANCELLED
- * - REVIEW can go to COMPLETED, REVISION_REQ, or CANCELLED
+ * - IN_PROGRESS can go to AWAITING_APPROVAL or CANCELLED
+ * - AWAITING_APPROVAL can go to COMPLETED, REVISION_REQ, or CANCELLED
  * - REVISION_REQ can go to IN_PROGRESS or CANCELLED
  * - COMPLETED and CANCELLED are terminal (empty sets)
  */
 export const VALID_TRANSITIONS: Record<OrderStatus, ReadonlySet<OrderStatus>> = {
   SUBMITTED: new Set(['PAID', 'CANCELLED']),
   PAID: new Set(['IN_PROGRESS', 'CANCELLED']),
-  IN_PROGRESS: new Set(['REVIEW', 'CANCELLED']),
-  REVIEW: new Set(['COMPLETED', 'REVISION_REQ', 'CANCELLED']),
+  IN_PROGRESS: new Set(['AWAITING_APPROVAL', 'CANCELLED']),
+  AWAITING_APPROVAL: new Set(['COMPLETED', 'REVISION_REQ', 'CANCELLED']),
   REVISION_REQ: new Set(['IN_PROGRESS', 'CANCELLED']),
   COMPLETED: new Set(),
   CANCELLED: new Set(),

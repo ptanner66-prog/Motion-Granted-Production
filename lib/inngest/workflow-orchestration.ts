@@ -1323,6 +1323,47 @@ export const generateOrderWorkflow = inngest.createFunction(
     });
 
     // ========================================================================
+    // STEP 1.5: DST-07 — Conflict Check Completeness Gate
+    // Ensures conflict check ran before Phase I. Halts workflow on failure.
+    // ========================================================================
+    const conflictGate = await step.run('conflict-completeness-gate', async () => {
+      const { data: orderConflict } = await supabase
+        .from('orders')
+        .select('conflict_check_completed_at, conflict_flagged')
+        .eq('id', orderId)
+        .single();
+
+      if (orderConflict?.conflict_check_completed_at) {
+        return { passed: true, flagged: orderConflict.conflict_flagged };
+      }
+
+      // Synchronous retry — run conflict check inline
+      try {
+        const { runConflictCheck } = await import('@/lib/automation/conflict-checker');
+        await runConflictCheck(orderId);
+        return { passed: true, retried: true };
+      } catch (err) {
+        console.error('[conflict-gate] Retry failed:', err);
+        return { passed: false, error: String(err) };
+      }
+    });
+
+    if (!conflictGate.passed) {
+      // HALT workflow — escalate to admin
+      await step.run('conflict-gate-escalate', async () => {
+        await supabase.from('admin_activity_log').insert({
+          action: 'CONFLICT_GATE_HALT',
+          details: { orderId, error: 'error' in conflictGate ? conflictGate.error : 'unknown' },
+        });
+        await supabase.from('orders').update({
+          status: 'CANCELLED',
+          cancellation_type: 'ADMIN_CANCEL',
+        }).eq('id', orderId);
+      });
+      return; // Stop workflow
+    }
+
+    // ========================================================================
     // STEP 2: Phase I - Document Parsing
     // ========================================================================
     const phaseIResult = await step.run("phase-i-document-parsing", async () => {

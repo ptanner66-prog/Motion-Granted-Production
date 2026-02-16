@@ -86,13 +86,49 @@ export type ConflictReviewStartedEvent = {
   };
 };
 
+// SP-4 R4-06: Attorney revision request event
+export type OrderRevisionRequestedEvent = {
+  name: "order/revision-requested";
+  data: {
+    orderId: string;
+    workflowId: string;
+    action: "REQUEST_CHANGES";
+    notes: string;
+    attorneyId: string;
+  };
+};
+
+// SP-4 D3 Task 6: Protocol 10 exit event
+export type OrderProtocol10ExitEvent = {
+  name: "order/protocol-10-exit";
+  data: {
+    orderId: string;
+    tier: string;
+    totalCost: number;
+    cap: number;
+  };
+};
+
+// SP-4 D5 W3-1: CP3 reached event
+export type CheckpointCP3ReachedEvent = {
+  name: "checkpoint/cp3.reached";
+  data: {
+    orderId: string;
+    workflowId: string;
+    packageId?: string;
+  };
+};
+
 export type Events = {
   "order/submitted": OrderSubmittedEvent;
   "order/generate-draft": OrderGenerationEvent;
+  "order/revision-requested": OrderRevisionRequestedEvent;
+  "order/protocol-10-exit": OrderProtocol10ExitEvent;
   "deadline/check": DeadlineCheckEvent;
   "workflow/execute-phase": WorkflowExecutePhaseEvent;
   "workflow/checkpoint-reached": WorkflowCheckpointReachedEvent;
   "workflow/checkpoint-approved": WorkflowCheckpointApprovedEvent;
+  "checkpoint/cp3.reached": CheckpointCP3ReachedEvent;
   "conflict/review-started": ConflictReviewStartedEvent;
 };
 
