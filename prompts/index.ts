@@ -190,12 +190,34 @@ export async function refreshPhasePrompts(): Promise<void> {
   await loadPhasePrompts();
 }
 
-// ── Sync initialization ─────────────────────────────────────────────────────
-// Load from files synchronously on import so the module never fails.
-// loadPhasePrompts() can upgrade to DB versions later.
+// ── Lazy initialization (V-006) ─────────────────────────────────────────────
+// File-based prompts are loaded lazily on first access instead of at module
+// import time. This avoids unnecessary filesystem I/O during Vercel cold starts
+// for routes that never touch the workflow engine.
+//
+// The validated Set tracks which phase keys have been checked for non-empty
+// content. Safe to keep in module scope — warm instances benefit from the cache,
+// cold starts simply re-validate on first access.
 
-cachedPrompts = loadAllFromFiles();
-cacheLoadedAt = Date.now();
+const validated = new Set<string>();
+let lazyLoaded = false;
+
+function ensureLoaded(): void {
+  if (lazyLoaded) return;
+  cachedPrompts = loadAllFromFiles();
+  cacheLoadedAt = Date.now();
+  lazyLoaded = true;
+}
+
+function validatePhasePrompt(key: string): void {
+  if (validated.has(key)) return;
+  ensureLoaded();
+  const content = cachedPrompts[key];
+  if (!content || content.trim().length === 0) {
+    console.error(`[PROMPTS] Phase prompt "${key}" is empty or missing`);
+  }
+  validated.add(key);
+}
 
 // ── PHASE_PROMPTS export (backward-compatible) ──────────────────────────────
 //
@@ -209,18 +231,27 @@ export const PHASE_PROMPTS: Record<PhaseKey, string> = new Proxy(
   {} as Record<PhaseKey, string>,
   {
     get(_target, prop: string) {
+      // V-006: Lazy load + validate on first access per phase key
+      if (typeof prop === 'string' && prop.startsWith('PHASE_')) {
+        validatePhasePrompt(prop);
+      } else {
+        ensureLoaded();
+      }
       return cachedPrompts[prop] ?? '';
     },
     ownKeys() {
+      ensureLoaded();
       return Object.keys(cachedPrompts);
     },
     getOwnPropertyDescriptor(_target, prop: string) {
+      ensureLoaded();
       if (prop in cachedPrompts) {
         return { configurable: true, enumerable: true, value: cachedPrompts[prop] };
       }
       return undefined;
     },
     has(_target, prop: string) {
+      ensureLoaded();
       return prop in cachedPrompts;
     },
   }

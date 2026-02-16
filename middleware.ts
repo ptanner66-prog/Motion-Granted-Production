@@ -1,48 +1,11 @@
 // /middleware.ts
 // Security middleware per SECURITY_IMPLEMENTATION_CHECKLIST_v1
-// VERSION: 1.0 — January 28, 2026
+// VERSION: 2.0 — V-001: Redis-backed rate limiting via Upstash
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { validateCSRF } from '@/lib/security/csrf';
-
-// ============================================================================
-// RATE LIMIT CONFIGURATION
-// ============================================================================
-
-// In-memory rate limit store (per-instance)
-// For full distributed rate limiting, see lib/redis.ts
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
-
-const RATE_LIMITS = {
-  api: { limit: 100, window: 60000 },      // 100 requests per minute
-  generate: { limit: 5, window: 60000 },   // 5 generations per minute
-  auth: { limit: 10, window: 60000 },      // 10 auth attempts per minute
-};
-
-function checkRateLimit(
-  identifier: string,
-  type: keyof typeof RATE_LIMITS
-): { allowed: boolean; remaining: number; retryAfter?: number } {
-  const config = RATE_LIMITS[type];
-  const now = Date.now();
-  const key = `${type}:${identifier}`;
-
-  const entry = rateLimitStore.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(key, { count: 1, resetAt: now + config.window });
-    return { allowed: true, remaining: config.limit - 1 };
-  }
-
-  if (entry.count >= config.limit) {
-    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-    return { allowed: false, remaining: 0, retryAfter };
-  }
-
-  entry.count++;
-  return { allowed: true, remaining: config.limit - entry.count };
-}
+import { checkRateLimit, getClientIP, type RateLimitTier } from '@/lib/security/rate-limiter';
 
 // ============================================================================
 // REQUEST ID GENERATION
@@ -137,15 +100,12 @@ export async function middleware(request: NextRequest) {
   // which only reads the cookie without verification.
   const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-  // Get client identifier for rate limiting
-  // Prefer Vercel's platform-injected header (not spoofable) over standard x-forwarded-for
-  const clientId = request.headers.get('x-vercel-forwarded-for')?.split(',')[0] ||
-    request.headers.get('x-forwarded-for')?.split(',')[0] ||
-    request.headers.get('x-real-ip') ||
-    'unknown';
+  // V-001: Redis-backed rate limiting via Upstash Sliding Window
+  // Use authenticated user ID when available; fall back to IP
+  const clientId = user?.id || getClientIP(request);
 
   // ============================================================================
-  // RATE LIMITING FOR API ROUTES
+  // RATE LIMITING FOR API ROUTES (V-001: Redis-backed, fail-open)
   // ============================================================================
 
   if (pathname.startsWith('/api/')) {
@@ -155,27 +115,28 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    // Determine rate limit type
-    let limitType: keyof typeof RATE_LIMITS = 'api';
+    // Determine rate limit tier
+    let limitTier: RateLimitTier = 'api';
     if (pathname.includes('/generate') || pathname.includes('/workflow/')) {
-      limitType = 'generate';
+      limitTier = 'generate';
     } else if (pathname.includes('/auth') || pathname.includes('/login')) {
-      limitType = 'auth';
+      limitTier = 'auth';
     }
 
-    const rateLimit = checkRateLimit(clientId, limitType);
+    const rateLimit = await checkRateLimit(clientId, limitTier);
 
     if (!rateLimit.allowed) {
+      const retryAfter = Math.ceil((rateLimit.reset - Date.now()) / 1000);
       return NextResponse.json(
         {
           error: 'Too many requests',
-          retryAfter: rateLimit.retryAfter,
+          retryAfter,
         },
         {
           status: 429,
           headers: {
-            'Retry-After': String(rateLimit.retryAfter),
-            'X-RateLimit-Limit': String(RATE_LIMITS[limitType].limit),
+            'Retry-After': String(retryAfter),
+            'X-RateLimit-Limit': String(rateLimit.limit),
             'X-RateLimit-Remaining': '0',
             'X-Request-Id': requestId,
           },
@@ -183,7 +144,7 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    response.headers.set('X-RateLimit-Limit', String(RATE_LIMITS[limitType].limit));
+    response.headers.set('X-RateLimit-Limit', String(rateLimit.limit));
     response.headers.set('X-RateLimit-Remaining', String(rateLimit.remaining));
   }
 

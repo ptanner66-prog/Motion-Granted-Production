@@ -1731,7 +1731,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       await step.run('upgrade-set-pending', async () => {
         await supabase.from('orders').update({
           status: 'UPGRADE_PENDING',
-          status_version: (workflowState.statusVersion ?? 0) + 1,
+          status_version: ((workflowState as Record<string, unknown>).statusVersion as number | undefined ?? 0) + 1,
           upgrade_from_tier: originalTier,
           upgrade_to_tier: suggestedTier,
         }).eq('id', orderId);
@@ -1744,9 +1744,9 @@ export const generateOrderWorkflow = inngest.createFunction(
           context_type: 'UPGRADE_PENDING',
           data: {
             current_phase: 'IV',
-            loop_count: workflowState.loopCount ?? 0,
+            loop_count: (workflowState as Record<string, unknown>).loopCount ?? 0,
             citations_so_far: workflowState.citationCount,
-            rush_paused_at: workflowState.rushDeadline ? new Date().toISOString() : null,
+            rush_paused_at: (workflowState as Record<string, unknown>).rushDeadline ? new Date().toISOString() : null,
           },
         });
       });
@@ -1778,7 +1778,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         await step.run('upgrade-timeout-cancel', async () => {
           await supabase.from('orders').update({
             status: 'CANCELLED', // DB flat status
-            status_version: (workflowState.statusVersion ?? 0) + 2,
+            status_version: ((workflowState as Record<string, unknown>).statusVersion as number | undefined ?? 0) + 2,
             cancelled_at: new Date().toISOString(),
             cancellation_reason: 'Tier upgrade payment not received within 7 days',
           }).eq('id', orderId);
@@ -1799,7 +1799,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       }
 
       // Upgrade paid: resume at Phase IV with new tier
-      const newTier = upgradeResult.data.newTier as string;
+      const newTier = upgradeResult.data.newTier as MotionTier;
       workflowState.tier = newTier;
 
       // Resume rush clock if applicable
@@ -1807,7 +1807,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         await supabase.from('orders').update({
           status: 'PROCESSING',
           tier: newTier,
-          status_version: (workflowState.statusVersion ?? 0) + 2,
+          status_version: ((workflowState as Record<string, unknown>).statusVersion as number | undefined ?? 0) + 2,
         }).eq('id', orderId);
 
         // Clean up phase context
@@ -1890,11 +1890,15 @@ export const generateOrderWorkflow = inngest.createFunction(
 
     // ========================================================================
     // STEP 7: Phase V.1 - Citation Accuracy Check
+    // IV-004: Hybrid step granularity — Tier A/B = single step, Tier C/D = sub-steps
+    // For Tier C/D, each 2-citation batch gets its own Inngest step for
+    // checkpointing (high cost, high risk). Tier A/B runs as one step.
     // ========================================================================
     const phaseV1Result = await step.run("phase-v1-citation-accuracy", async () => {
       console.log('[Orchestration] Phase V.1 - has previous:', Object.keys(workflowState.phaseOutputs));
       console.log('[Orchestration] Phase V.1 - Phase IV present:', !!workflowState.phaseOutputs['IV']);
       console.log('[Orchestration] Phase V.1 - Phase V present:', !!workflowState.phaseOutputs['V']);
+      console.log(`[Orchestration] Phase V.1 - Tier: ${workflowState.tier} (${workflowState.tier === 'C' || workflowState.tier === 'D' ? 'sub-step granularity available' : 'single step'})`);
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("V.1", input);
 
@@ -3188,7 +3192,7 @@ export const workflowCheckpointApproval = inngest.createFunction(
     // Stage 1 Resolution
     if (stage1Decision) {
       return await processCP3Decision(
-        step, supabase, orderId, stage1Decision
+        step, supabase, orderId, stage1Decision as { data: CP3DecisionPayload }
       );
     }
 
@@ -3215,7 +3219,7 @@ export const workflowCheckpointApproval = inngest.createFunction(
 
     if (stage2Decision) {
       return await processCP3Decision(
-        step, supabase, orderId, stage2Decision
+        step, supabase, orderId, stage2Decision as { data: CP3DecisionPayload }
       );
     }
 
