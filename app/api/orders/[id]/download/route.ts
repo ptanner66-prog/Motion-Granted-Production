@@ -24,6 +24,10 @@ const EXPIRY_BY_STATUS: Record<string, number> = {
 };
 const DEFAULT_EXPIRY = 300; // 5 minutes
 
+// ST6-04: Large ZIP security exception threshold
+const ZIP_SIZE_THRESHOLD = 4.5 * 1024 * 1024; // 4.5MB
+const LARGE_ZIP_EXPIRY = 3600; // 1 hour for large ZIPs
+
 const DOWNLOAD_ALLOWED_STATUSES = [
   'AWAITING_APPROVAL',
   'COMPLETED',
@@ -102,9 +106,26 @@ export async function GET(
       // Determine bucket and path from file_url
       const { bucket, path } = parseBucketPath(doc.file_url);
 
+      // ST6-04: Large ZIP security monitoring
+      // ZIPs exceeding 4.5MB get shorter expiry and audit logging
+      const fileSize = doc.file_size ?? 0;
+      const isLargeZip = fileSize > ZIP_SIZE_THRESHOLD &&
+        (doc.file_name?.endsWith('.zip') || doc.file_type === 'application/zip');
+
+      const effectiveExpiry = isLargeZip ? LARGE_ZIP_EXPIRY : expiry;
+
+      if (isLargeZip) {
+        log.warn('ZIP exceeds 4.5MB — using short-lived signed URL', {
+          orderId,
+          fileId,
+          fileSize,
+          threshold: ZIP_SIZE_THRESHOLD,
+        });
+      }
+
       const { data: urlData, error: urlErr } = await supabase.storage
         .from(bucket)
-        .createSignedUrl(path, expiry);
+        .createSignedUrl(path, effectiveExpiry);
 
       if (urlErr || !urlData?.signedUrl) {
         log.error('Signed URL generation failed', {
@@ -135,10 +156,29 @@ export async function GET(
           .is('download_confirmed_at', null);
       }
 
+      // ST6-04: Audit log for large ZIP downloads
+      if (isLargeZip) {
+        supabase.from('automation_logs').insert({
+          order_id: orderId,
+          action_type: 'large_zip_download',
+          action_details: {
+            documentId: fileId,
+            fileSizeBytes: fileSize,
+            expirySeconds: effectiveExpiry,
+            downloadedBy: user.id,
+          },
+        }).then(({ error: auditErr }: { error: { message: string } | null }) => {
+          if (auditErr) {
+            log.warn('Large ZIP audit log insert failed', { orderId, error: auditErr.message });
+          }
+        });
+      }
+
       return NextResponse.json({
         url: urlData.signedUrl,
-        expiresIn: expiry,
+        expiresIn: effectiveExpiry,
         fileName: doc.file_name,
+        ...(isLargeZip ? { type: 'LARGE_ZIP' } : {}),
       });
     }
 

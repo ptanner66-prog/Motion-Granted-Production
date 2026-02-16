@@ -180,7 +180,13 @@ export async function extendRetention(
 }
 
 /**
- * Get orders due for deletion reminder (14 days before expiry)
+ * Get orders due for deletion reminder (14 days before expiry).
+ *
+ * ST6-05: Only sends reminders for orders in terminal states.
+ * Do NOT send reminders to orders in active states like REVISION_REQ,
+ * PROCESSING, HOLD_PENDING, AWAITING_APPROVAL, INTAKE, etc.
+ * An attorney receiving "your data will be deleted" while actively
+ * revising is confusing and alarming.
  */
 export async function getOrdersDueForReminder(): Promise<Array<{
   id: string;
@@ -200,7 +206,8 @@ export async function getOrdersDueForReminder(): Promise<Array<{
     .lte('retention_expires_at', reminderCutoff.toISOString())
     .is('deleted_at', null)
     .eq('deletion_reminder_sent', false)
-    .not('retention_expires_at', 'is', null);
+    .not('retention_expires_at', 'is', null)
+    .in('status', [...DELETABLE_STATUSES]); // ST6-05: terminal states only
 
   if (error) {
     log.error('[Retention] Error fetching orders for reminder:', error);
@@ -226,20 +233,66 @@ export async function markReminderSent(orderId: string): Promise<void> {
 }
 
 /**
- * Get orders past retention date (ready for deletion)
+ * Terminal statuses safe for auto-deletion.
+ * Any order in a non-terminal state is actively being processed
+ * or awaiting user action and MUST NOT be deleted.
+ *
+ * ST6-01: P0 fix — prevents deletion of actively-processing orders.
  */
-export async function getExpiredOrders(): Promise<Array<{ id: string }>> {
+export const DELETABLE_STATUSES = [
+  'COMPLETED', 'CANCELLED', 'CANCELLED_USER', 'CANCELLED_SYSTEM',
+  'CANCELLED_CONFLICT', 'REFUNDED',
+] as const;
+
+/**
+ * Get orders past retention date (ready for deletion).
+ * Only returns orders in terminal states (DELETABLE_STATUSES).
+ *
+ * ST6-01: Added status guard to prevent deletion of active orders.
+ */
+export async function getExpiredOrders(): Promise<Array<{ id: string; status: string }>> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('orders')
-    .select('id')
+    .select('id, status')
     .lte('retention_expires_at', new Date().toISOString())
     .is('deleted_at', null)
-    .not('retention_expires_at', 'is', null);
+    .not('retention_expires_at', 'is', null)
+    .in('status', [...DELETABLE_STATUSES]);
 
   if (error) {
     log.error('[Retention] Error fetching expired orders:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
+ * Detect non-terminal orders with expired retention.
+ * These are anomalies requiring admin investigation — an active order
+ * should never have an expired retention date.
+ *
+ * ST6-01: Anomaly detection layer for stuck orders.
+ */
+export async function getStuckExpiredOrders(): Promise<Array<{
+  id: string;
+  status: string;
+  retention_expires_at: string;
+}>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, status, retention_expires_at')
+    .lte('retention_expires_at', new Date().toISOString())
+    .is('deleted_at', null)
+    .not('retention_expires_at', 'is', null)
+    .not('status', 'in', `(${[...DELETABLE_STATUSES].join(',')})`);
+
+  if (error) {
+    log.error('[Retention] Error fetching stuck expired orders:', error);
     return [];
   }
 

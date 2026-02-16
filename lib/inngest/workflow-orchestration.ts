@@ -43,6 +43,7 @@ import { scheduleCP3Timeouts, cancelCP3Timeouts } from "@/lib/workflow/cp3-timeo
 import { acquireRefundLock, releaseRefundLock } from "@/lib/payments/refund-lock";
 import { generateSignedUrls } from "@/lib/delivery/signed-urls";
 import { getServiceSupabase } from "@/lib/supabase/admin";
+import { extendRetentionOnReentry } from "@/lib/retention/extend-retention-on-reentry";
 
 // Workflow infrastructure imports
 import { gatherOrderContext, type OrderContext } from "@/lib/workflow/orchestrator";
@@ -1336,6 +1337,39 @@ export const generateOrderWorkflow = inngest.createFunction(
           throw new Error(`Unknown trigger event: ${event.name}`);
       }
     });
+
+    // ST6-01: Extend retention on re-entry (revision or P10)
+    if (event.name === 'order/revision-requested' || event.name === 'order/protocol-10-exit') {
+      await step.run('extend-retention-reentry', async () => {
+        const supa = getSupabase();
+        await extendRetentionOnReentry(supa, orderId);
+      });
+
+      // ST6-02: Check if raw uploads have been purged, log warning for revision context
+      if (event.name === 'order/revision-requested') {
+        await step.run('check-raw-uploads-purged', async () => {
+          const supa = getSupabase();
+          const { data: order } = await supa
+            .from('orders')
+            .select('raw_uploads_purged')
+            .eq('id', orderId)
+            .single();
+
+          if (order?.raw_uploads_purged) {
+            console.warn(`[WORKFLOW] Revision requested after raw upload purge for order ${orderId}`);
+            await supa.from('automation_logs').insert({
+              order_id: orderId,
+              action_type: 'revision_raw_uploads_purged',
+              action_details: {
+                disclaimer: 'Original uploaded evidence files have been purged per 7-day retention policy. '
+                  + 'This revision is based on previously extracted content and phase outputs only. '
+                  + 'Attorney may need to re-upload original evidence if substantial changes are needed.',
+              },
+            });
+          }
+        });
+      }
+    }
 
     // SP-13 AP-2: Protocol 10 re-assembly event validation
     if (event.name === 'order/protocol-10-exit') {
@@ -4016,6 +4050,11 @@ async function handleRequestChanges(
     await supabase.from('cost_tracking').update({
       is_rework_reset: true,
     }).match({ order_id: orderId, is_rework_reset: false });
+  });
+
+  // Step 4b: ST6-01 — Extend retention on CP3 rework re-entry
+  await step.run('extend-retention-rework', async () => {
+    await extendRetentionOnReentry(supabase, orderId);
   });
 
   // Step 5: Record rejection

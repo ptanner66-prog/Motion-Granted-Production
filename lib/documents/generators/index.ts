@@ -110,41 +110,49 @@ export interface GeneratorDataMap {
 // ============================================================================
 
 /**
- * Required documents by tier and motion characteristics
+ * Required documents by tier and motion characteristics.
+ *
+ * ST6-03 FIX: Correct filing order. Proof of Service / Certificate of Service
+ * MUST be the LAST filed document in every tier. Previous order placed POS first,
+ * which caused it to appear before the table of authorities and exhibits.
+ *
+ * Filing order per court convention:
+ *   Notice of Motion (if required) → Table of Authorities → Proposed Order →
+ *   Exhibit Index → Case Appendix → Proof of Service (ALWAYS LAST)
  */
 const TIER_REQUIREMENTS: Record<string, DocumentType[]> = {
   // Tier A: Basic package
   A: [
-    'proof_of_service',
     'table_of_authorities',
+    'proof_of_service',          // LAST — ST6-03 fix
   ],
 
   // Tier B: Standard package
   B: [
-    'proof_of_service',
     'table_of_authorities',
-    'exhibit_index',
     'proposed_order',
+    'exhibit_index',
+    'proof_of_service',          // LAST — ST6-03 fix
   ],
 
   // Tier C: Full package
   C: [
-    'proof_of_service',
-    'table_of_authorities',
-    'exhibit_index',
-    'proposed_order',
     'notice_of_motion',
+    'table_of_authorities',
+    'proposed_order',
+    'exhibit_index',
     'case_appendix',
+    'proof_of_service',          // LAST — ST6-03 fix
   ],
 
   // Tier D: Comprehensive package (dispositive motions)
   D: [
-    'proof_of_service',
-    'table_of_authorities',
-    'exhibit_index',
-    'proposed_order',
     'notice_of_motion',
+    'table_of_authorities',
+    'proposed_order',
+    'exhibit_index',
     'case_appendix',
+    'proof_of_service',          // LAST — ST6-03 fix
   ],
 };
 

@@ -6,11 +6,15 @@ import { inngest } from './client';
 import {
   getOrdersDueForReminder,
   markReminderSent,
-  getExpiredOrders
+  getExpiredOrders,
+  getStuckExpiredOrders,
 } from '@/lib/retention';
 import { deleteOrderData } from '@/lib/retention';
 import { sendDeletionReminderEmail } from '@/lib/email/retention-emails';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/security/logger';
+
+const log = createLogger('retention-jobs');
 
 /**
  * Daily: Send deletion reminders (9 AM Central)
@@ -128,8 +132,22 @@ export const autoDeleteExpired = inngest.createFunction(
       }
     }
 
-    logger.info(`Auto-delete complete: ${results.deleted} deleted, ${results.failed} failed`);
-    return results;
+    // ST6-01: Detect non-terminal orders with expired retention (anomalies)
+    const stuckOrders = await step.run('detect-stuck-orders', async () => {
+      return getStuckExpiredOrders();
+    });
+
+    if (stuckOrders.length > 0) {
+      log.warn('[AUTO-DELETE] Stuck orders detected — active orders with expired retention', {
+        count: stuckOrders.length,
+        orders: stuckOrders.map((o: { id: string; status: string; retention_expires_at: string }) => ({
+          id: o.id, status: o.status, expires: o.retention_expires_at,
+        })),
+      });
+    }
+
+    logger.info(`Auto-delete complete: ${results.deleted} deleted, ${results.failed} failed, ${stuckOrders.length} stuck`);
+    return { ...results, stuck: stuckOrders.length };
   }
 );
 
