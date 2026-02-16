@@ -12,6 +12,11 @@ import { logWebhookFailure } from '@/lib/services/webhook-logger';
 import { populateOrderFromCheckoutMetadata } from '@/lib/payments/order-creation';
 import { validateCheckoutMetadata } from '@/lib/payments/checkout-validation';
 import { createOrderFromCheckout, processUpgradePayment } from '@/lib/payments/order-creation-v2';
+import {
+  handleDisputeCreated,
+  handleDisputeUpdated,
+  handleDisputeClosed,
+} from '@/lib/payments/dispute-handler';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -187,6 +192,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
+  // AF-2: Staleness detection — reject events older than 72 hours
+  const eventAgeSeconds = Math.floor(Date.now() / 1000) - event.created;
+  if (event.created && eventAgeSeconds > 259200) {
+    console.warn(`[WEBHOOK] Stale event detected: ${event.id}, type: ${event.type}, age: ${eventAgeSeconds}s`);
+    // Return 200 — do not trigger Stripe retry for stale events
+    return NextResponse.json({ received: true, stale: true });
+  }
+
   // NULL CHECK 2: Event data object
   if (!event.data?.object) {
     console.error('[Stripe Webhook] Missing event.data.object');
@@ -221,6 +234,19 @@ export async function POST(req: Request) {
       // v6.3: Handle revision checkout session completion
       case 'checkout.session.completed':
         await handleCheckoutSessionCompleted(supabase, event.data.object as Stripe.Checkout.Session);
+        break;
+
+      // SP-11 AE-3: Dispute lifecycle handlers
+      case 'charge.dispute.created':
+        await handleDisputeCreated(event.data.object as Stripe.Dispute);
+        break;
+
+      case 'charge.dispute.updated':
+        await handleDisputeUpdated(event.data.object as Stripe.Dispute);
+        break;
+
+      case 'charge.dispute.closed':
+        await handleDisputeClosed(event.data.object as Stripe.Dispute);
         break;
 
       default:

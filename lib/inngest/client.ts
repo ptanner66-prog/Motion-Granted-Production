@@ -119,17 +119,39 @@ export type CheckpointCP3ReachedEvent = {
   };
 };
 
+// SP-11 AE-1: Upgrade completed event
+export type OrderUpgradeCompletedEvent = {
+  name: "order/upgrade-completed";
+  data: {
+    orderId: string;
+    previousTier: string;
+    newTier: string;
+    differentialCents: number;
+  };
+};
+
+// SP-11 AE-3: Dispute evidence compilation event
+export type DisputeEvidenceCompileEvent = {
+  name: "dispute/evidence-compile";
+  data: {
+    orderId: string;
+    disputeId: string;
+  };
+};
+
 export type Events = {
   "order/submitted": OrderSubmittedEvent;
   "order/generate-draft": OrderGenerationEvent;
   "order/revision-requested": OrderRevisionRequestedEvent;
   "order/protocol-10-exit": OrderProtocol10ExitEvent;
+  "order/upgrade-completed": OrderUpgradeCompletedEvent;
   "deadline/check": DeadlineCheckEvent;
   "workflow/execute-phase": WorkflowExecutePhaseEvent;
   "workflow/checkpoint-reached": WorkflowCheckpointReachedEvent;
   "workflow/checkpoint-approved": WorkflowCheckpointApprovedEvent;
   "checkpoint/cp3.reached": CheckpointCP3ReachedEvent;
   "conflict/review-started": ConflictReviewStartedEvent;
+  "dispute/evidence-compile": DisputeEvidenceCompileEvent;
 };
 
 /**

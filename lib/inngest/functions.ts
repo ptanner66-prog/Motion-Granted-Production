@@ -32,6 +32,10 @@ import type Stripe from 'stripe';
 // Import the new 14-phase workflow orchestration
 import { generateOrderWorkflow, handleWorkflowFailure, workflowFunctions } from "./workflow-orchestration";
 
+// SP-11: D7 Wave 5-8 Inngest functions
+import { stripeHealthMonitor } from './functions/stripe-health-monitor';
+import { webhookArchival } from './functions/webhook-archival';
+
 // SP-10: D7 Wave 2+ Inngest functions
 import { paymentReconciliation } from './functions/payment-reconciliation';
 import { conflictAutoCancelV2 } from './functions/conflict-auto-cancel';
@@ -1180,4 +1184,7 @@ export const functions = [
   // SP-10: D7 Wave 2+ functions
   paymentReconciliation,    // D7-R3-001: Daily Stripe-to-Supabase reconciliation sweep
   conflictAutoCancelV2,     // CC-R3-04: 7-day conflict auto-cancel (v2, no refund)
+  // SP-11: D7 Wave 5-8 functions
+  stripeHealthMonitor,      // D7-R3-013: Weekly Monday 6:00 AM CT health check
+  webhookArchival,          // D7-NEW-011: Daily 3:30 AM CT webhook archival
 ];
