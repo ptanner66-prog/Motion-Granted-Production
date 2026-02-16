@@ -107,5 +107,5 @@ export function parseEvent<T extends EventName>(
   data: unknown
 ): z.infer<(typeof EventSchemas)[T]> {
   const schema = EventSchemas[name];
-  return schema.parse(data);
+  return schema.parse(data) as z.infer<(typeof EventSchemas)[T]>;
 }
