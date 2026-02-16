@@ -1,5 +1,5 @@
 /**
- * Cost Tracker — D3 Task 14 + IV-005
+ * Cost Tracker — D3 Task 14 + IV-005 + SP-12 AK-2/AK-5
  *
  * Records AI API costs per phase execution. Validates tier before INSERT.
  * Invalid or missing tiers are recorded as 'UNKNOWN' rather than rejected —
@@ -9,10 +9,15 @@
  * Budget enforcement: primaryCost <= cap (soft), totalCost <= cap * 1.5 (hard).
  * If retry overhead > 20% of order total: fire admin alert.
  *
+ * SP-12 AK-2: Per-cycle cost cap checks (A=$5, B=$35, C=$75, D=$125).
+ * SP-12 AK-5: Order-level cost ceiling (per_cycle_cap × maxRevisionLoops × 1.5).
+ *
  * The alert-unknown-tier Inngest cron (hourly) monitors for UNKNOWN entries.
  */
 
 import { getServiceSupabase } from '@/lib/supabase/admin';
+import { getCostCap } from '@/lib/config/cost-caps';
+import { getTierConfig } from '@/lib/config/tier-config';
 
 const VALID_TIERS = ['A', 'B', 'C', 'D'];
 
@@ -137,4 +142,90 @@ export async function getOrderCostBySource(orderId: string): Promise<{
   const retryOverheadPercent = totalCost > 0 ? (retryCost / totalCost) * 100 : 0;
 
   return { primaryCost, retryCost, totalCost, retryOverheadPercent };
+}
+
+// ============================================================================
+// SP-12 AK-2: PER-CYCLE COST CAP CHECKS
+// ============================================================================
+
+export interface CostTrackingResult {
+  currentCycleCost: number;  // cents
+  totalOrderCost: number;    // cents across all cycles
+  cap: number;               // per-cycle cap in cents
+  capExceeded: boolean;
+  budgetRemaining: number;   // cents remaining in current cycle
+}
+
+/**
+ * Check if the current cycle cost exceeds the per-cycle cap.
+ * Binding: A=$5, B=$35, C=$75, D=$125
+ *
+ * @param currentCycleCost - Cost in cents for current revision cycle
+ * @param tier - Motion tier (A, B, C, D)
+ * @returns Whether cap is exceeded, the cap value, and remaining budget
+ */
+export function checkCostCap(
+  currentCycleCost: number,
+  tier: string
+): { exceeded: boolean; cap: number; remaining: number } {
+  const capDollars = getCostCap(tier);
+  const capCents = capDollars * 100;
+
+  return {
+    exceeded: currentCycleCost >= capCents,
+    cap: capCents,
+    remaining: Math.max(0, capCents - currentCycleCost),
+  };
+}
+
+/**
+ * SP-9 Y-5 budget enforcement:
+ *   primaryCost ≤ cap
+ *   totalCost (primary + retry) ≤ cap × 1.5
+ *
+ * @param primaryCost - Primary (non-retry) cost in cents
+ * @param retryCost - Retry cost in cents
+ * @param tier - Motion tier
+ */
+export function checkBudgetEnforcement(
+  primaryCost: number,
+  retryCost: number,
+  tier: string
+): { primaryOk: boolean; totalOk: boolean; retryOverheadPercent: number } {
+  const capDollars = getCostCap(tier);
+  const capCents = capDollars * 100;
+
+  const totalCost = primaryCost + retryCost;
+  const retryOverheadPercent = primaryCost > 0 ? (retryCost / primaryCost) * 100 : 0;
+
+  return {
+    primaryOk: primaryCost <= capCents,
+    totalOk: totalCost <= capCents * 1.5,
+    retryOverheadPercent,
+  };
+}
+
+// ============================================================================
+// SP-12 AK-5: ORDER-LEVEL COST CEILING
+// ============================================================================
+
+/**
+ * Get the order-level cost ceiling (across ALL cycles for one order).
+ * Distinct from per-cycle cap (AK-2).
+ * ceiling = per_cycle_cap × maxRevisionLoops × 1.5
+ *
+ * Check values:
+ *   A = $5 × 2 × 1.5 = $15 ceiling
+ *   B = $35 × 3 × 1.5 = $157.50 ceiling
+ *   C = $75 × 3 × 1.5 = $337.50 ceiling
+ *   D = $125 × 4 × 1.5 = $750 ceiling
+ *
+ * @param tier - Motion tier
+ * @returns Order ceiling in cents
+ */
+export function getOrderCostCeiling(tier: string): number {
+  const config = getTierConfig(tier);
+  const perCycleCapDollars = getCostCap(tier);
+  const perCycleCapCents = perCycleCapDollars * 100;
+  return perCycleCapCents * config.maxRevisionLoops * 1.5;
 }
