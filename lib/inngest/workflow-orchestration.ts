@@ -152,13 +152,47 @@ const TIERED_MAX_LOOPS: Record<string, number> = {
   D: 4,
 };
 
-// SP-05: Helper functions for revision loop thresholds
+// BINDING 02/15/26 (ING-015R): Pure numeric scoring on 0-100 percentage scale.
+// Thresholds: Tier A >= 83 (B), Tier B/C/D >= 87 (B+).
 function getQualityThreshold(tier: string): number {
-  return tier === 'A' ? TIER_A_PASSING_VALUE : MINIMUM_PASSING_VALUE;
+  return tier === 'A' ? 83 : 87;
 }
 
 function getMaxRevisionLoops(tier: string): number {
   return TIERED_MAX_LOOPS[tier] ?? MAX_REVISION_LOOPS;
+}
+
+/**
+ * Convert GPA (0.0-4.0) to 0-100 percentage score.
+ * Used as fallback when Phase VII output contains legacy GPA values.
+ * Key mappings: GPA 3.0 → 83%, GPA 3.3 → 87%.
+ */
+function gpaToPercentageScore(gpa: number): number {
+  if (Number.isNaN(gpa) || gpa <= 0) return 0;
+  if (gpa >= 4.0) return 97;
+  const boundaries: [number, number][] = [
+    [4.0, 97], [3.7, 90], [3.3, 87], [3.0, 83],
+    [2.7, 80], [2.3, 77], [2.0, 73], [0.0, 0],
+  ];
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const [highGPA, highPct] = boundaries[i];
+    const [lowGPA, lowPct] = boundaries[i + 1];
+    if (gpa >= lowGPA) {
+      const t = (gpa - lowGPA) / (highGPA - lowGPA);
+      return lowPct + t * (highPct - lowPct);
+    }
+  }
+  return 0;
+}
+
+/**
+ * Normalize a numeric score to 0-100 percentage scale.
+ * Handles both GPA (0-4.0) and percentage (0-100) inputs.
+ */
+function normalizeToPercentage(raw: number): number {
+  if (Number.isNaN(raw)) return 0;
+  if (raw > 4.0) return raw; // Already percentage scale
+  return gpaToPercentageScore(raw);
 }
 
 // SP-11: Extract draft text from phase output for Protocol 5
@@ -958,19 +992,40 @@ async function generateDeliverables(
     // 3. Generate Citation Accuracy Report
     console.log('[generateDeliverables] Generating citation report...');
     try {
-      // Build verification results from citation banks (Phase IV uses caseCitationBank, not verificationResults)
-      const allCitations: Array<{ citation: string; status: string; confidence: number }> = [
-        ...caseCitationBank.map((c: unknown) => ({
-          citation: String((c as Record<string, unknown>)?.citation ?? 'Unknown case citation'),
-          status: 'VERIFIED',
-          confidence: 1.0,
-        })),
-        ...statutoryCitationBank.map((c: unknown) => ({
-          citation: String((c as Record<string, unknown>)?.citation ?? 'Unknown statute citation'),
-          status: 'VERIFIED',
-          confidence: 1.0,
-        })),
-      ];
+      // BINDING 02/16/26 (ING-011R): Use REAL verification results from Phase V.1/VII.1.
+      // NEVER hardcode status:'VERIFIED' or confidence:1.0.
+      const phaseV1Output = (phaseOutputs?.["V.1"] ?? {}) as Record<string, unknown>;
+      const phaseVII1Output = (phaseOutputs?.["VII.1"] ?? {}) as Record<string, unknown>;
+
+      // Extract real verification results from CIV pipeline output
+      const v1Results = (phaseV1Output?.verificationResults ?? phaseV1Output?.citations ?? []) as Array<Record<string, unknown>>;
+      const vii1Results = (phaseVII1Output?.verificationResults ?? phaseVII1Output?.citations ?? []) as Array<Record<string, unknown>>;
+
+      // Build citation report from actual pipeline results
+      const allCitations: Array<{ citation: string; status: string; confidence: number }> = [];
+
+      // Map CIV pipeline results to report format
+      for (const r of [...v1Results, ...vii1Results]) {
+        const civResult = r.civResult as Record<string, unknown> | undefined;
+        const compositeResult = civResult?.compositeResult as Record<string, unknown> | undefined;
+        allCitations.push({
+          citation: String(r.citation ?? r.citationString ?? 'Unknown citation'),
+          status: String(compositeResult?.status ?? r.status ?? (r.verified ? 'VERIFIED' : 'UNVERIFIED')),
+          confidence: Number(compositeResult?.confidence ?? r.confidence ?? 0),
+        });
+      }
+
+      // Fallback: if CIV results are empty, build from citation banks with UNVERIFIED status
+      if (allCitations.length === 0) {
+        console.warn('[generateDeliverables] No CIV results found — using citation bank with UNVERIFIED status');
+        for (const c of [...caseCitationBank, ...statutoryCitationBank]) {
+          allCitations.push({
+            citation: String((c as Record<string, unknown>)?.citation ?? 'Unknown citation'),
+            status: 'UNVERIFIED',
+            confidence: 0,
+          });
+        }
+      }
 
       const citationReportContent = generateCitationReportContent(
         allCitations,
@@ -2224,25 +2279,25 @@ export const generateOrderWorkflow = inngest.createFunction(
     // SP23 BUG-1: Initialize currentDraft from Phase V output
     let currentDraft: unknown = workflowState.phaseOutputs["V"];
 
-    // SP23 BUG-2 / SC-002: Extract numericGrade from initial Phase VII.
-    // This is the SOLE quality determinant — NOT evaluation.passes.
+    // BINDING 02/15/26 (ING-015R): Pure numeric scoring on 0-100 percentage scale.
+    // LLM booleans (evaluation.passes, passes_threshold) are DIAGNOSTIC ONLY.
     const initialVIIOutput = phaseVIIResult.output as Record<string, unknown> | null;
-    // SP-05: Prefer numeric_score (new field from Bug 04 fix), fall back to numericGrade (legacy)
-    let currentNumericGrade: number = (
+    // Read numeric_score (now 0-100 percentage). Legacy fallback: numericGrade (GPA).
+    let currentNumericGrade: number = normalizeToPercentage(Number(
       (initialVIIOutput?.numeric_score as number | undefined) ??
       (initialVIIOutput?.numericGrade as number | undefined) ??
       ((initialVIIOutput?.evaluation as Record<string, unknown> | undefined)?.numericGrade as number | undefined) ??
       0
-    );
+    ));
 
-    // SP-05 Bug 03: Check if initial Phase VII already passed — skip loop entirely
-    const initialPassesThreshold = initialVIIOutput?.passes_threshold as boolean | undefined;
-    if (initialPassesThreshold === true && currentNumericGrade >= (workflowState.tier === 'A' ? TIER_A_PASSING_VALUE : MINIMUM_PASSING_VALUE)) {
-      console.log(`[Orchestration] Initial Phase VII passes_threshold=true (grade ${currentNumericGrade}). Skipping revision loop.`);
-    }
-
-    // SP23 SC-001: Tiered quality threshold (GPA scale)
+    // Pure numeric check: does initial Phase VII already pass?
     const qualityThreshold = getQualityThreshold(workflowState.tier);
+    if (currentNumericGrade >= qualityThreshold) {
+      console.log(
+        `[Orchestration] Initial Phase VII numericScore=${currentNumericGrade} >= threshold ${qualityThreshold}. ` +
+        `Skipping revision loop.`
+      );
+    }
 
     // SP23: Tiered max loops — Tier A=2, B/C=3, D=4
     const maxLoopsForTier = getMaxRevisionLoops(workflowState.tier);
@@ -2265,7 +2320,7 @@ export const generateOrderWorkflow = inngest.createFunction(
     ) {
       const loopNum = workflowState.revisionLoopCount + 1;
       console.log(`[Orchestration] ===== REVISION LOOP ${loopNum}/${maxLoopsForTier} =====`);
-      console.log(`[Orchestration] Current numericGrade: ${currentNumericGrade}, threshold: ${qualityThreshold} (Tier ${workflowState.tier}: needs ${workflowState.tier === 'A' ? 'B / 3.0' : 'B+ / 3.3'})`);
+      console.log(`[Orchestration] Current numericScore: ${currentNumericGrade}, threshold: ${qualityThreshold} (Tier ${workflowState.tier}: needs ${workflowState.tier === 'A' ? 'B / 83%' : 'B+ / 87%'})`);
 
       // STEP A: Phase VIII — Apply revisions based on Phase VII feedback
       const phaseVIIIRevisionResult = await step.run(`phase-viii-revision-loop-${loopNum}`, async () => {
@@ -2582,25 +2637,27 @@ export const generateOrderWorkflow = inngest.createFunction(
         const grade = (judgeOutput?.evaluation as Record<string, unknown> | undefined)?.grade || judgeOutput?.grade;
         workflowState.currentGrade = grade as LetterGrade;
 
-        // SP-05: Update numericGrade — prefer numeric_score (new field from Bug 04 fix),
-        // fall back to numericGrade (legacy), then evaluation.numericGrade (nested).
-        // The numeric grade is the SOLE quality determinant (SC-002).
-        currentNumericGrade = (
+        // BINDING 02/15/26 (ING-015R): Pure numeric scoring on 0-100 percentage scale.
+        // Read numeric_score (now 0-100). Legacy fallback: numericGrade (GPA → converted).
+        currentNumericGrade = normalizeToPercentage(Number(
           (judgeOutput?.numeric_score as number | undefined) ??
           (judgeOutput?.numericGrade as number | undefined) ??
           ((judgeOutput?.evaluation as Record<string, unknown> | undefined)?.numericGrade as number | undefined) ??
           0
-        );
+        ));
 
-        // SP-05 Bug 03 FIX: Explicit passes_threshold check.
-        // If Phase VII output says passes_threshold=true, break immediately.
-        // This is a belt-and-suspenders check — the while condition also checks numericGrade,
-        // but this ensures we honor the executor's grade-based determination directly.
-        const passesThreshold = judgeOutput?.passes_threshold as boolean | undefined;
-        if (passesThreshold === true) {
+        // Pure numeric break: if score >= threshold, exit revision loop
+        if (currentNumericGrade >= qualityThreshold) {
           console.log(
-            `[Orchestration] Loop ${loopNum}: passes_threshold=true (grade ${currentNumericGrade} >= ${qualityThreshold}). ` +
+            `[Orchestration] Loop ${loopNum}: numericScore=${currentNumericGrade} >= threshold ${qualityThreshold}. ` +
             `Exiting revision loop.`
+          );
+          // diagnostic: log LLM boolean for audit trail (NOT used for control flow)
+          const llmPasses = (judgeOutput?.evaluation as Record<string, unknown> | undefined)?.passes; // diagnostic only
+          const llmPassesThreshold = judgeOutput?.passes_threshold; // diagnostic only
+          console.log( // diagnostic only — LLM booleans not used for control flow
+            `[Orchestration] [diagnostic] LLM llmPassesThreshold=${llmPassesThreshold}, ` +
+            `LLM llmPasses=${llmPasses}. Numeric check controls.`
           );
           break;
         }
@@ -2642,7 +2699,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           }
         }
       }
-      console.log(`[Orchestration] Loop ${loopNum} complete. Grade: ${workflowState.currentGrade}, numericGrade: ${currentNumericGrade}, threshold: ${qualityThreshold}, gradeHistory: [${loopGrades.join(', ')}]`);
+      console.log(`[Orchestration] Loop ${loopNum} complete. Grade: ${workflowState.currentGrade}, numericScore: ${currentNumericGrade}, threshold: ${qualityThreshold}, gradeHistory: [${loopGrades.join(', ')}]`);
     }
 
     // SP23: Revision loop summary
@@ -3399,7 +3456,7 @@ async function handleApprovalFailure({
 export const workflowCheckpointApproval = inngest.createFunction(
   {
     id: 'workflow-checkpoint-approval',
-    retries: 2,
+    retries: 3, // BINDING 02/15/26 (ING-CP3T): 3 retries per spec
     concurrency: [{ limit: 1, key: 'event.data.orderId' }],
     onFailure: handleApprovalFailure as any,
   },
