@@ -9,9 +9,13 @@ export {
   getOrdersDueForReminder,
   markReminderSent,
   getExpiredOrders,
+  getStuckExpiredOrders,
+  DELETABLE_STATUSES,
   type RetentionStatus,
   type RetentionExtendResult,
 } from './retention-service';
+
+export { extendRetentionOnReentry } from './extend-retention-on-reentry';
 
 export {
   deleteOrderData,

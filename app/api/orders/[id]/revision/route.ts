@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/server';
 import { authenticateAndLoadOrder, validateOptimisticLock } from '@/lib/orders/status-guards';
 import { updateOrderStatus } from '@/lib/orders/status-machine';
 import { getServiceSupabase } from '@/lib/supabase/admin';
+import { extendRetentionOnReentry } from '@/lib/retention/extend-retention-on-reentry';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('api-orders-revision');
@@ -58,6 +59,17 @@ export async function POST(
 
   if (!statusResult.success) {
     return NextResponse.json({ error: statusResult.error }, { status: 409 });
+  }
+
+  // ST6-01: Extend retention on re-entry to prevent deletion during active revision
+  try {
+    await extendRetentionOnReentry(adminClient, orderId);
+  } catch (retentionError) {
+    // Non-blocking: log but don't fail the revision transition
+    log.error('Failed to extend retention on revision re-entry', {
+      orderId,
+      error: retentionError instanceof Error ? retentionError.message : retentionError,
+    });
   }
 
   return NextResponse.json({
