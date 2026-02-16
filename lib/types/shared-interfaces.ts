@@ -116,3 +116,25 @@ export type PhaseId =
 export type WorkflowStatus =
   | 'pending' | 'processing' | 'completed' | 'failed'
   | 'on_hold' | 'cancelled' | 'revision';
+
+// ============================================================================
+// LOOP TRIGGER (D3 Task 11)
+// ============================================================================
+
+/**
+ * Sub-loop trigger sources — must match the loop_sources CHECK constraint
+ * in 20260216100005_loop_sources_check_update.sql.
+ *
+ * These are the 5 reasons a workflow sub-loop can be entered:
+ *   PHASE_VII_GRADE_FAILURE  — Phase VII judge simulation returned grade < B+ (0.87)
+ *   CP3_REJECTION            — Attorney rejected delivery at CP3
+ *   COST_CAP_EXCEEDED        — Sub-loop AI cost exceeded tier cap
+ *   TIER_RECLASSIFICATION    — Motion was reclassified to a different tier mid-workflow
+ *   ATTORNEY_REWORK_RESET    — Attorney requested rework reset (R2v2 ST9-01)
+ */
+export type LoopTrigger =
+  | 'PHASE_VII_GRADE_FAILURE'
+  | 'CP3_REJECTION'
+  | 'COST_CAP_EXCEEDED'
+  | 'TIER_RECLASSIFICATION'
+  | 'ATTORNEY_REWORK_RESET';
