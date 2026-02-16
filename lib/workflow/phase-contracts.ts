@@ -47,7 +47,7 @@ export const PhaseIXOutputSchema = z.object({
     content: z.string(),
   })).optional(),
   qualityScore: z.number().min(0).max(1),
-  phaseTimings: z.record(z.number()).optional(),
+  phaseTimings: z.record(z.string(), z.number()).optional(),
 });
 
 export type PhaseIXOutput = z.infer<typeof PhaseIXOutputSchema>;
