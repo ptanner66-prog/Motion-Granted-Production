@@ -25,7 +25,24 @@
 import { inngest } from "./client";
 import { NonRetriableError } from "inngest";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
+import Stripe from "stripe";
+
+// SP-5: CP3 approval flow imports
+import {
+  CP3_REWORK_CAP,
+  CP3_REFUND_PERCENTAGE,
+  RETENTION_DAYS,
+  CANONICAL_EVENTS,
+  type CP3DecisionPayload,
+  type CP3Action,
+} from "@/lib/workflow/checkpoint-types";
+import { logCheckpointEvent } from "@/lib/workflow/checkpoint-logger";
+import { scheduleCP3Timeouts, cancelCP3Timeouts } from "@/lib/workflow/cp3-timeouts";
+import { acquireRefundLock, releaseRefundLock } from "@/lib/payments/refund-lock";
+import { generateSignedUrls } from "@/lib/delivery/signed-urls";
+import { getServiceSupabase } from "@/lib/supabase/admin";
 
 // Workflow infrastructure imports
 import { gatherOrderContext, type OrderContext } from "@/lib/workflow/orchestrator";
@@ -156,6 +173,12 @@ function extractDraftText(phaseOutput: unknown): string | null {
   }
   return null;
 }
+
+// ============================================================================
+// STRIPE CLIENT (SP-5: CP3 refund processing)
+// ============================================================================
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-04-10' as Stripe.LatestApiVersion });
 
 // ============================================================================
 // SUPABASE CLIENT
@@ -2503,185 +2526,16 @@ export const generateOrderWorkflow = inngest.createFunction(
     console.log('[Orchestration] FINAL - All accumulated phases:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
-    // MB-03: CP3 Checkpoint — BLOCKING (requires approval before delivery)
-    // ========================================================================
-    await step.run("checkpoint-cp3-blocking", async () => {
-      // Set order status to PENDING_REVIEW — documents NOT delivered
-      await supabase
-        .from("orders")
-        .update({
-          status: "pending_review",
-          generation_completed_at: new Date().toISOString(),
-        })
-        .eq("id", orderId);
-
-      // SP-09: Include quality gate results in CP3 checkpoint for admin review
-      const phaseXOutput = phaseXResult.output as Record<string, unknown> | null;
-      const isReadyForDelivery = phaseXOutput?.ready_for_delivery === true;
-
-      await triggerCheckpoint(workflowState.workflowId, "CP3", {
-        checkpoint: "CP3",
-        status: "pending",
-        triggeredAt: new Date().toISOString(),
-        finalQA: phaseXResult.output,
-        requiresAdminApproval: true,
-        blocking: true,
-        ready_for_delivery: isReadyForDelivery,
-        blocking_reason: phaseXOutput?.blocking_reason ?? null,
-        citationPlaceholderScan: phaseXOutput?.citationPlaceholderScan ?? null,
-        aisCompliance: phaseXOutput?.aisCompliance ?? null,
-      });
-
-      // Queue admin notification
-      await supabase.from("notification_queue").insert({
-        notification_type: "approval_needed",
-        recipient_email: ADMIN_EMAIL,
-        order_id: orderId,
-        template_data: {
-          checkpoint: "CP3",
-          orderNumber: workflowState.orderContext.orderNumber,
-          motionType: workflowState.orderContext.motionType,
-          caseCaption: workflowState.orderContext.caseCaption,
-          finalGrade: workflowState.currentGrade,
-          citationCount: workflowState.citationCount,
-          revisionLoops: workflowState.revisionLoopCount,
-          reviewUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://motiongranted.com"}/admin/orders/${orderId}`,
-        },
-        priority: 10,
-        status: "pending",
-      });
-
-      // MB-02: Send CP3 review email to customer
-      const customerEmail = workflowState.orderContext.firmEmail;
-      if (customerEmail) {
-        try {
-          const documentList = [
-            'Motion Document',
-            'Attorney Instruction Sheet',
-            'Citation Accuracy Report',
-            'Caption QC Report',
-          ];
-          await sendCP3ReviewNotification(
-            {
-              orderId,
-              orderNumber: workflowState.orderContext.orderNumber,
-              customerEmail,
-              motionType: workflowState.orderContext.motionType,
-            },
-            documentList
-          );
-        } catch (emailErr) {
-          console.error('[CP3] Email notification failed (non-fatal):', emailErr);
-        }
-      }
-
-      console.log(`[Orchestration] CP3 BLOCKING checkpoint triggered — awaiting approval`);
-    });
-
-    // ========================================================================
-    // STEP 15.5: Wait for CP3 Admin Approval (BLOCKING)
-    // ========================================================================
-    const approvalResult = await step.waitForEvent(
-      "wait-for-cp3-approval",
-      {
-        event: "workflow/checkpoint-approved",
-        match: "data.orderId",
-        timeout: "7d",
-      }
-    );
-
-    if (!approvalResult) {
-      await step.run("cp3-timeout-handler", async () => {
-        await supabase.from('orders')
-          .update({ status: 'approval_timeout' })
-          .eq('id', orderId);
-        console.error(`[Orchestration] CP3 approval timed out after 7 days for order ${orderId}`);
-      });
-      throw new Error('CP3 approval timed out after 7 days');
-    }
-
-    if (approvalResult.data.action === 'CANCEL') {
-      await step.run("cp3-cancel-handler", async () => {
-        await supabase.from('orders')
-          .update({ status: 'cancelled' })
-          .eq('id', orderId);
-        console.log(`[Orchestration] Order ${orderId} cancelled via CP3`);
-      });
-      return { status: 'cancelled', orderId };
-    }
-
-    if (approvalResult.data.action === 'REQUEST_CHANGES') {
-      // Route back to Phase VIII revision loop with existing state
-      console.log(`[Orchestration] CP3 requested changes — routing back to Phase VIII`);
-      await step.run("cp3-revision-requested", async () => {
-        await supabase.from('orders')
-          .update({ status: 'in_progress' })
-          .eq('id', orderId);
-      });
-      // Re-send the workflow event to re-enter the revision loop
-      await step.sendEvent("cp3-revision-reentry", {
-        name: "workflow/execute-phase",
-        data: {
-          workflowId: workflowState.workflowId,
-          orderId,
-          phase: "VIII",
-          reason: "CP3_REQUEST_CHANGES",
-          adminFeedback: approvalResult.data.feedback || '',
-        },
-      });
-      return { status: 'revision_requested', orderId };
-    }
-
-    // Only APPROVE reaches generate-deliverables below
-    console.log(`[Orchestration] CP3 APPROVED — proceeding to deliverables`);
-
-    // ========================================================================
-    // STEP 16: Generate Deliverables
+    // STEP 15: Generate Deliverables (before CP3 handoff)
     // ========================================================================
     const deliverables = await step.run("generate-deliverables", async () => {
       return await generateDeliverables(workflowState, supabase);
     });
 
     // ========================================================================
-    // STEP 16.5: MB-02 — Send delivery notification to customer
-    // ========================================================================
-    await step.run("send-delivery-notification", async () => {
-      const customerEmail = workflowState.orderContext.firmEmail;
-      if (customerEmail) {
-        try {
-          const deliverableTypes = deliverables
-            ? Object.keys(deliverables as Record<string, unknown>).filter(k => k !== 'success')
-            : ['Motion Document'];
-
-          await sendDeliveryNotification(
-            {
-              orderId,
-              orderNumber: workflowState.orderContext.orderNumber,
-              customerEmail,
-              motionType: workflowState.orderContext.motionType,
-            },
-            {
-              documentCount: deliverableTypes.length,
-              documentTypes: deliverableTypes.map(t =>
-                t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-              ),
-              downloadUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://motiongranted.com"}/orders/${orderId}`,
-            }
-          );
-        } catch (emailErr) {
-          console.error('[Delivery] Email notification failed (non-fatal):', emailErr);
-        }
-      }
-    });
-
-    // ========================================================================
-    // STEP 17: Finalize Workflow
+    // STEP 15.5: Finalize Workflow — persist motion & conversation records
     // ========================================================================
     const finalResult = await step.run("finalize-workflow", async () => {
-      // CRITICAL FIX: Extract final motion using CORRECT keys
-      // Phase X outputs: { finalPackage: { motion: "..." } }
-      // Phase VIII outputs: { revisedMotion: {...} }
-      // Phase V outputs: { draftMotion: {...} }
       console.log('[Workflow Finalization] Extracting motion from phase outputs...');
       console.log('[Workflow Finalization] Available phases:', Object.keys(workflowState.phaseOutputs));
 
@@ -2693,7 +2547,6 @@ export const generateOrderWorkflow = inngest.createFunction(
       console.log('[Workflow Finalization] Phase VIII keys:', Object.keys(phaseVIIIOutput));
       console.log('[Workflow Finalization] Phase V keys:', Object.keys(phaseVOutput));
 
-      // Try to get motion text from best source
       const finalPackage = phaseXOutput?.finalPackage as Record<string, unknown> | undefined;
       const revisedMotion = phaseVIIIOutput?.revisedMotion as Record<string, unknown> | undefined;
       const draftMotion = phaseVOutput?.draftMotion as Record<string, unknown> | undefined;
@@ -2701,18 +2554,13 @@ export const generateOrderWorkflow = inngest.createFunction(
       let motionContent: string = '';
       let motionSource: string = 'none';
 
-      // Priority 1: Phase X finalPackage.motion (fully assembled)
       if (finalPackage?.motion && typeof finalPackage.motion === 'string') {
         motionContent = finalPackage.motion;
         motionSource = 'Phase X finalPackage.motion';
-      }
-      // Priority 2: Phase VIII revisedMotion
-      else if (revisedMotion) {
+      } else if (revisedMotion) {
         motionContent = formatMotionObjectToText(revisedMotion);
         motionSource = 'Phase VIII revisedMotion';
-      }
-      // Priority 3: Phase V draftMotion
-      else if (draftMotion) {
+      } else if (draftMotion) {
         motionContent = formatMotionObjectToText(draftMotion);
         motionSource = 'Phase V draftMotion';
       }
@@ -2720,7 +2568,6 @@ export const generateOrderWorkflow = inngest.createFunction(
       console.log(`[Workflow Finalization] Motion source: ${motionSource}`);
       console.log(`[Workflow Finalization] Motion content length: ${motionContent.length} chars`);
 
-      // Get citation count from Phase IV
       const phaseIVOutput = (workflowState.phaseOutputs?.["IV"] ?? {}) as Record<string, unknown>;
       const caseCitations = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
       const statuteCitations = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
@@ -2729,7 +2576,6 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       if (!motionContent || motionContent.length < 100) {
         console.warn('[Workflow Finalization] WARNING: Motion content is empty or too short!');
-
         await supabase.from("automation_logs").insert({
           order_id: orderId,
           action_type: "workflow_warning",
@@ -2745,7 +2591,6 @@ export const generateOrderWorkflow = inngest.createFunction(
         });
       }
 
-      // Get or create conversation for this order
       let conversation;
       const { data: existingConv } = await supabase
         .from("conversations")
@@ -2754,7 +2599,6 @@ export const generateOrderWorkflow = inngest.createFunction(
         .single();
 
       if (existingConv) {
-        // Update existing conversation with generated motion
         await supabase
           .from("conversations")
           .update({
@@ -2763,11 +2607,9 @@ export const generateOrderWorkflow = inngest.createFunction(
             updated_at: new Date().toISOString(),
           })
           .eq("id", existingConv.id);
-
         conversation = existingConv;
         console.log('[Workflow Finalization] Updated conversation', existingConv.id, 'with motion');
       } else {
-        // Create new conversation with generated motion
         const { data: newConv, error: convError } = await supabase
           .from("conversations")
           .insert({
@@ -2791,16 +2633,6 @@ export const generateOrderWorkflow = inngest.createFunction(
         }
       }
 
-      // Update order status to pending_review (awaiting admin approval)
-      await supabase
-        .from("orders")
-        .update({
-          status: "pending_review",
-          generation_completed_at: new Date().toISOString(),
-          generation_error: null,
-        })
-        .eq("id", orderId);
-
       // Update workflow status with ACTUAL citation count from Phase IV
       await supabase
         .from("order_workflows")
@@ -2812,8 +2644,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         })
         .eq("id", workflowState.workflowId);
 
-      // BUG-17: Log completion with idempotency check (prevent duplicate records)
-      // Use upsert-like approach: check before insert
+      // BUG-17: Log completion with idempotency check
       const { data: existingCompletion } = await supabase
         .from("automation_logs")
         .select("id")
@@ -2848,12 +2679,94 @@ export const generateOrderWorkflow = inngest.createFunction(
         finalGrade: workflowState.currentGrade,
         citationCount: actualCitationCount,
         revisionLoops: workflowState.revisionLoopCount,
-        status: "pending_review",
         motionSaved: !!motionContent && motionContent.length > 100,
         conversationId: conversation?.id,
       };
     });
 
+    // ========================================================================
+    // FN1 COMPLETION STEPS: CP3 Package Ready Notification + Handoff to Fn2
+    // (W4-6) — Send T+0 email, update status, emit checkpoint/cp3.reached
+    // ========================================================================
+
+    // Step: Send package ready notification (T+0)
+    await step.run('send-cp3-package-ready', async () => {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('id, client_id, motion_type, workflow_id')
+        .eq('id', orderId)
+        .single();
+
+      if (!order) throw new Error(`Order ${orderId} not found for CP3 notification`);
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('email, display_name')
+        .eq('id', order.client_id)
+        .single();
+
+      if (profile?.email) {
+        await fn2QueueEmail(supabase, orderId, 'cp3-package-ready', {
+          attorneyName: profile.display_name ?? 'Counselor',
+          attorneyEmail: profile.email,
+          motionType: order.motion_type,
+          dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/dashboard/orders/${orderId}/review`,
+        });
+      }
+
+      await logCheckpointEvent(supabase, {
+        orderId,
+        eventType: 'CP3_PACKAGE_READY',
+        actor: 'system',
+        metadata: { notificationSent: !!profile?.email },
+      });
+    });
+
+    // Step: Update order status to AWAITING_APPROVAL
+    await step.run('update-status-awaiting-approval', async () => {
+      await supabase.from('orders').update({
+        status: 'AWAITING_APPROVAL',
+        cp3_entered_at: new Date().toISOString(),
+        generation_completed_at: new Date().toISOString(),
+        generation_error: null,
+      }).eq('id', orderId);
+    });
+
+    // Step: Emit checkpoint/cp3.reached — Fn2 takes over from here
+    await step.run('emit-cp3-reached', async () => {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('workflow_id, tier, client_id')
+        .eq('id', orderId)
+        .single();
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', order?.client_id)
+        .single();
+
+      const { data: pkg } = await supabase
+        .from('delivery_packages')
+        .select('id')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      await inngest.send({
+        name: CANONICAL_EVENTS.CHECKPOINT_CP3_REACHED,
+        data: {
+          orderId,
+          workflowId: order?.workflow_id ?? workflowState.workflowId,
+          packageId: pkg?.id,
+          tier: order?.tier ?? workflowState.tier,
+          attorneyEmail: profile?.email,
+        },
+      });
+    });
+
+    // Fn1 TERMINATES here. Fn2 handles approval lifecycle.
     return finalResult;
   }
 );
@@ -3056,7 +2969,692 @@ Admin Dashboard: ${process.env.NEXT_PUBLIC_APP_URL || "https://motiongranted.com
 );
 
 // ============================================================================
+// FUNCTION 2: WORKFLOW CHECKPOINT APPROVAL (SP-5 W4-1 through W4-6)
+// ============================================================================
+//
+// BINDING REFERENCE — CP3 Approval Flow (Domain 5)
+//
+// CP3 Location: Phase X Stage 6 (NOT Phase IX)
+// CP3 Actor: Attorney-only. NO admin gate.
+// Rework Cap: 3 attorney cycles. Re-entry Phase VII.
+// Cost Tracking: RESETS on attorney rework (binding 02/15/26)
+// Timeout: 14d Stage 1 + 7d Stage 2 = 21d total
+// Reminder Sequence: T+48h, T+72h, T+14d FINAL NOTICE, T+21d auto-cancel
+// Refund: 50% flat (CP3_CANCEL and CP3_TIMEOUT_CANCEL)
+// Status Flow: AWAITING_APPROVAL → COMPLETED (no APPROVED intermediate)
+// Canonical Events (5 ONLY):
+//   order/submitted, order/revision-requested, order/protocol-10-exit,
+//   checkpoint/cp3.reached, workflow/checkpoint-approved
+// Fn2 Wait Match: data.orderId (NOT data.workflowId)
+// Protocol 10: Disables Request Changes. Clears on pass.
+// Retention: 365 days from delivery
+// Status Model (7): PAID, HOLD_PENDING, IN_PROGRESS, AWAITING_APPROVAL,
+//   REVISION_REQ, COMPLETED, CANCELLED
+//
+
+/**
+ * onFailure handler for Fn2. Logs to audit trail and sends admin alert
+ * when Fn2 exhausts all retries.
+ */
+async function handleApprovalFailure({
+  event,
+  error,
+}: {
+  event: { data: { orderId?: string } };
+  error: Error;
+}): Promise<void> {
+  const orderId = event?.data?.orderId;
+  console.error(`[Fn2 FAILURE] Order ${orderId}:`, error.message);
+
+  if (orderId) {
+    const supabase = getServiceSupabase();
+
+    await logCheckpointEvent(supabase, {
+      orderId,
+      eventType: 'FN2_FAILURE',
+      actor: 'system',
+      metadata: {
+        error: error.message,
+        stack: error.stack?.slice(0, 500),
+      },
+    });
+
+    await fn2SendAdminAlert(
+      supabase,
+      orderId,
+      'FN2_EXHAUSTED',
+      `Function 2 exhausted all retries: ${error.message}`
+    );
+  }
+}
+
+export const workflowCheckpointApproval = inngest.createFunction(
+  {
+    id: 'workflow-checkpoint-approval',
+    retries: 2,
+    concurrency: [{ limit: 1, key: 'event.data.orderId' }],
+    onFailure: handleApprovalFailure as any,
+  },
+  { event: 'checkpoint/cp3.reached' },
+  async ({ event, step }) => {
+    const { orderId, workflowId } = event.data;
+    const supabase = getServiceSupabase();
+
+    // Record CP3 entry
+    await step.run('record-cp3-entry', async () => {
+      await scheduleCP3Timeouts(supabase, orderId);
+      await logCheckpointEvent(supabase, {
+        orderId,
+        eventType: 'CP3_ENTERED',
+        actor: 'system',
+        metadata: { triggeredBy: 'fn1_completion', workflowId },
+      });
+    });
+
+    // STAGE 1: 14-day wait with reminders
+    const [stage1Decision] = await Promise.all([
+      step.waitForEvent('wait-for-cp3-approval-stage1', {
+        event: 'workflow/checkpoint-approved',
+        match: 'data.orderId',
+        timeout: '14d',
+      }),
+      // 48h reminder
+      step.sleep('reminder-48h', '48h').then(() =>
+        step.run('send-48h-reminder', async () => {
+          await sendCP3ReminderEmail(supabase, orderId, '48h');
+          await logCheckpointEvent(supabase, {
+            orderId, eventType: 'CP3_REMINDER_48H', actor: 'system',
+          });
+        })
+      ),
+      // 72h reminder
+      step.sleep('reminder-72h', '72h').then(() =>
+        step.run('send-72h-reminder', async () => {
+          await sendCP3ReminderEmail(supabase, orderId, '72h');
+          await logCheckpointEvent(supabase, {
+            orderId, eventType: 'CP3_REMINDER_72H', actor: 'system',
+          });
+        })
+      ),
+    ]);
+
+    // Stage 1 Resolution
+    if (stage1Decision) {
+      return await processCP3Decision(
+        step, supabase, orderId, stage1Decision
+      );
+    }
+
+    // Stage 1 TIMEOUT: Send FINAL NOTICE
+    await step.run('send-final-notice', async () => {
+      await sendCP3FinalNoticeEmail(supabase, orderId);
+      await logCheckpointEvent(supabase, {
+        orderId,
+        eventType: 'CP3_FINAL_NOTICE_14D',
+        actor: 'system',
+        metadata: { message: '7 days until auto-cancel' },
+      });
+    });
+
+    // STAGE 2: 7-day grace period
+    const stage2Decision = await step.waitForEvent(
+      'wait-for-cp3-approval-stage2',
+      {
+        event: 'workflow/checkpoint-approved',
+        match: 'data.orderId',
+        timeout: '7d',
+      }
+    );
+
+    if (stage2Decision) {
+      return await processCP3Decision(
+        step, supabase, orderId, stage2Decision
+      );
+    }
+
+    // Stage 2 TIMEOUT: Auto-cancel with 50% refund
+    return await handleCancel(
+      step, supabase, orderId, 'system', 'CP3_TIMEOUT_CANCEL'
+    );
+  }
+);
+
+// ============================================================================
+// FN2 DECISION ROUTER (W4-1)
+// ============================================================================
+
+async function processCP3Decision(
+  step: any,
+  supabase: SupabaseClient,
+  orderId: string,
+  decision: { data: CP3DecisionPayload }
+): Promise<void> {
+  const { action, notes, attorneyId } = decision.data;
+
+  // Guard: verify order is still AWAITING_APPROVAL
+  const order = await step.run('verify-order-status', async () => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('status, workflow_id, tier, protocol_10_triggered, attorney_rework_count, stripe_payment_intent_id, amount_paid')
+      .eq('id', orderId)
+      .single();
+
+    if (error || !data) {
+      throw new Error(`Order ${orderId} not found: ${error?.message}`);
+    }
+    if (data.status !== 'AWAITING_APPROVAL') {
+      throw new Error(
+        `Order ${orderId} is ${data.status}, not AWAITING_APPROVAL. Stale event.`
+      );
+    }
+    return data;
+  });
+
+  switch (action) {
+    case 'APPROVE':
+      return await handleApprove(step, supabase, orderId, attorneyId);
+    case 'REQUEST_CHANGES':
+      return await handleRequestChanges(
+        step, supabase, orderId, attorneyId, notes, order
+      );
+    case 'CANCEL':
+      return await handleCancel(
+        step, supabase, orderId, attorneyId, 'CP3_CANCEL'
+      );
+    default:
+      throw new Error(`Unknown CP3 action: ${action}`);
+  }
+}
+
+// ============================================================================
+// HANDLE APPROVE — Full Delivery Inline (W4-1, Conflict 2 Fix)
+// Status goes directly AWAITING_APPROVAL → COMPLETED. No APPROVED intermediate.
+// ============================================================================
+
+async function handleApprove(
+  step: any,
+  supabase: SupabaseClient,
+  orderId: string,
+  attorneyId: string
+): Promise<void> {
+  // Step 1: Cancel all reminders
+  await step.run('cancel-reminders-approve', async () => {
+    await cancelCP3Timeouts(supabase, orderId);
+  });
+
+  // Step 2: Generate signed download URLs (7-day expiry)
+  const urls = await step.run('generate-signed-urls', async () => {
+    const { data: pkg } = await supabase
+      .from('delivery_packages')
+      .select('id')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!pkg) throw new Error(`No delivery package found for order ${orderId}`);
+
+    const { data: deliverables } = await supabase
+      .from('order_deliverables')
+      .select('file_key')
+      .eq('order_id', orderId);
+
+    const fileKeys = (deliverables ?? []).map((d: { file_key: string }) => d.file_key);
+    if (fileKeys.length === 0) {
+      throw new Error(`No deliverable files found for order ${orderId}`);
+    }
+
+    return await generateSignedUrls(orderId, pkg.id, fileKeys);
+  });
+
+  // Step 3: Write delivery records
+  await step.run('write-delivery-records', async () => {
+    const { data: pkg } = await supabase
+      .from('delivery_packages')
+      .select('id')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (pkg) {
+      await supabase.from('delivery_packages').update({
+        delivered_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        signed_urls: urls.urls
+          .filter((u: { signedUrl: string | null }) => u.signedUrl)
+          .map((u: { fileKey: string; signedUrl: string | null }) => ({ key: u.fileKey, url: u.signedUrl })),
+        signed_urls_generated_at: new Date().toISOString(),
+        signed_urls_expire_at: new Date(
+          Date.now() + 7 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+      }).eq('id', pkg.id);
+    }
+  });
+
+  // Step 4: Send delivery notification email
+  await step.run('send-delivery-email', async () => {
+    await sendFn2DeliveryEmail(supabase, orderId, urls);
+  });
+
+  // Step 5: Update order status to COMPLETED (NO intermediate APPROVED status)
+  await step.run('update-order-completed', async () => {
+    const retentionDate = new Date();
+    retentionDate.setDate(retentionDate.getDate() + RETENTION_DAYS);
+
+    const { error } = await supabase.from('orders').update({
+      status: 'COMPLETED',
+      completed_at: new Date().toISOString(),
+      retention_expires_at: retentionDate.toISOString(),
+    }).eq('id', orderId);
+
+    if (error) {
+      throw new Error(`Failed to complete order ${orderId}: ${error.message}`);
+    }
+  });
+
+  // Step 6: Log approval event (own step.run per W3-2)
+  await step.run('log-approval-event', async () => {
+    await logCheckpointEvent(supabase, {
+      orderId,
+      eventType: 'CP3_APPROVED',
+      actor: attorneyId,
+      metadata: {
+        deliveryUrlCount: urls.urls.filter((u: { signedUrl: string | null }) => u.signedUrl).length,
+        retentionDays: RETENTION_DAYS,
+        allUrlsSucceeded: urls.allSucceeded,
+      },
+    });
+  });
+}
+
+// ============================================================================
+// HANDLE REQUEST CHANGES (W4-2)
+// Protocol 10 block check, rework cap, cost reset, re-entry at Phase VII
+// ============================================================================
+
+async function handleRequestChanges(
+  step: any,
+  supabase: SupabaseClient,
+  orderId: string,
+  attorneyId: string,
+  notes: string | null,
+  order: {
+    protocol_10_triggered: boolean;
+    attorney_rework_count: number;
+    workflow_id: string;
+    tier: string;
+  }
+): Promise<void> {
+  // Step 1: Cancel reminders
+  await step.run('cancel-reminders-rework', async () => {
+    await cancelCP3Timeouts(supabase, orderId);
+  });
+
+  // Step 2: Check Protocol 10 block
+  await step.run('check-p10-block', async () => {
+    if (order.protocol_10_triggered) {
+      throw new NonRetriableError('REQUEST_CHANGES blocked: Protocol 10 active on order ' + orderId);
+    }
+  });
+
+  // Step 3: Check rework cap
+  await step.run('check-rework-cap', async () => {
+    if ((order.attorney_rework_count ?? 0) >= CP3_REWORK_CAP) {
+      throw new NonRetriableError(
+        `Rework cap (${CP3_REWORK_CAP}) reached for order ${orderId}. ` +
+        `Current count: ${order.attorney_rework_count}`
+      );
+    }
+  });
+
+  // Step 4: Database updates (status + loop reset + cost reset)
+  await step.run('update-order-rework', async () => {
+    const newReworkCount = (order.attorney_rework_count ?? 0) + 1;
+
+    // Update orders table
+    await supabase.from('orders').update({
+      status: 'REVISION_REQ',
+      attorney_rework_count: newReworkCount,
+      cp3_change_notes: notes,
+      cp3_entered_at: null,
+    }).eq('id', orderId);
+
+    // Reset loop counter (D4-007)
+    await supabase.from('loop_counters').update({
+      revision_loop_count: 0,
+    }).eq('order_id', orderId);
+
+    // CONFLICT 5 FIX: Reset cost_tracking for this order
+    // Soft-delete via is_rework_reset flag (D4 Task D-5 pattern)
+    await supabase.from('cost_tracking').update({
+      is_rework_reset: true,
+    }).match({ order_id: orderId, is_rework_reset: false });
+  });
+
+  // Step 5: Record rejection
+  await step.run('record-rejection', async () => {
+    const { data: pkg } = await supabase
+      .from('delivery_packages')
+      .select('id')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    await supabase.from('cp3_rejections').insert({
+      order_id: orderId,
+      package_id: pkg?.id ?? null,
+      attorney_id: attorneyId,
+      change_notes: notes,
+      rejection_number: (order.attorney_rework_count ?? 0) + 1,
+    });
+  });
+
+  // Step 6: Emit revision event (own step.run per W3-2 durability rule)
+  await step.run('emit-revision-requested', async () => {
+    await inngest.send({
+      name: CANONICAL_EVENTS.ORDER_REVISION_REQUESTED,
+      data: {
+        orderId,
+        workflowId: order.workflow_id,
+        revision_source: 'cp3_rejection',
+        notes,
+        attorneyId,
+        reworkCount: (order.attorney_rework_count ?? 0) + 1,
+      },
+    });
+  });
+
+  // Step 7: Log + email (own step.run per W3-2 durability rule)
+  await step.run('log-and-email-rework', async () => {
+    await logCheckpointEvent(supabase, {
+      orderId,
+      eventType: 'CP3_REQUEST_CHANGES',
+      actor: attorneyId,
+      metadata: {
+        reworkCount: (order.attorney_rework_count ?? 0) + 1,
+        notes,
+        tier: order.tier,
+      },
+    });
+    await fn2QueueEmail(supabase, orderId, 'cp3-rework-confirmation');
+  });
+}
+
+// ============================================================================
+// HANDLE CANCEL (W4-3) — Attorney cancel + auto-cancel at T+21d
+// Refund lock prevents double-refund race (Conflict 4 fix)
+// ============================================================================
+
+async function handleCancel(
+  step: any,
+  supabase: SupabaseClient,
+  orderId: string,
+  actorId: string,
+  cancellationType: 'CP3_CANCEL' | 'CP3_TIMEOUT_CANCEL'
+): Promise<void> {
+  // Step 1: Acquire refund lock (CONFLICT 4 FIX)
+  const lock = await step.run('acquire-refund-lock', async () => {
+    return await acquireRefundLock(supabase, orderId);
+  });
+
+  if (!lock.acquired) {
+    // Another process already processing cancel/refund — exit gracefully
+    await step.run('log-lock-contention', async () => {
+      await logCheckpointEvent(supabase, {
+        orderId,
+        eventType: 'CP3_CANCEL_LOCK_CONTENTION',
+        actor: 'system',
+        metadata: { cancellationType, currentStatus: lock.currentStatus },
+      });
+    });
+    return;
+  }
+
+  try {
+    // Step 2: Cancel reminders
+    await step.run('cancel-reminders-cancel', async () => {
+      await cancelCP3Timeouts(supabase, orderId);
+    });
+
+    // Step 3: Process refund (50% flat)
+    await step.run('process-refund', async () => {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('stripe_payment_intent_id, amount_paid')
+        .eq('id', orderId)
+        .single();
+
+      if (order?.amount_paid && order?.stripe_payment_intent_id) {
+        const refundAmount = Math.round(
+          order.amount_paid * (CP3_REFUND_PERCENTAGE / 100)
+        );
+        if (refundAmount > 0) {
+          await stripe.refunds.create({
+            payment_intent: order.stripe_payment_intent_id,
+            amount: refundAmount,
+            metadata: {
+              orderId,
+              cancellationType,
+              refundPercentage: String(CP3_REFUND_PERCENTAGE),
+            },
+          });
+        }
+      }
+    });
+
+    // Step 4: Update order status
+    await step.run('update-order-cancelled', async () => {
+      await supabase.from('orders').update({
+        status: 'CANCELLED',
+        cancellation_type: cancellationType,
+        cancelled_at: new Date().toISOString(),
+      }).eq('id', orderId);
+    });
+
+    // Step 5: Log + notify
+    await step.run('log-and-notify-cancel', async () => {
+      await logCheckpointEvent(supabase, {
+        orderId,
+        eventType: 'CP3_CANCELLED',
+        actor: actorId,
+        metadata: {
+          cancellationType,
+          refundPercentage: CP3_REFUND_PERCENTAGE,
+        },
+      });
+
+      const templateName = cancellationType === 'CP3_CANCEL'
+        ? 'cp3-cancellation-cp3_cancel'
+        : 'cp3-cancellation-cp3_timeout_cancel';
+      await fn2QueueEmail(supabase, orderId, templateName);
+
+      // Admin alert for auto-cancel
+      if (cancellationType === 'CP3_TIMEOUT_CANCEL') {
+        await fn2SendAdminAlert(
+          supabase,
+          orderId,
+          'CP3_AUTO_CANCEL',
+          'Order auto-cancelled after 21-day timeout'
+        );
+      }
+    });
+
+  } finally {
+    // ALWAYS release refund lock
+    await step.run('release-refund-lock', async () => {
+      await releaseRefundLock(supabase, orderId);
+    });
+  }
+}
+
+// ============================================================================
+// FN2 EMAIL HELPERS (W4-5/5a/5b)
+// ============================================================================
+
+/**
+ * Send CP3 reminder email at a specific interval.
+ * Templates: cp3-reminder-48h, cp3-reminder-72h
+ */
+async function sendCP3ReminderEmail(
+  supabase: SupabaseClient,
+  orderId: string,
+  interval: '48h' | '72h'
+): Promise<void> {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, client_id, motion_type, status')
+    .eq('id', orderId)
+    .single();
+
+  // Guard: don't send if order is no longer AWAITING_APPROVAL
+  if (!order || order.status !== 'AWAITING_APPROVAL') {
+    console.log(`[cp3-reminder] Skipping ${interval} reminder — order ${orderId} is ${order?.status}`);
+    return;
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('email, display_name')
+    .eq('id', order.client_id)
+    .single();
+
+  if (!profile?.email) {
+    console.error(`[cp3-reminder] No email for client ${order.client_id}`);
+    return;
+  }
+
+  await fn2QueueEmail(supabase, orderId, `cp3-reminder-${interval}`, {
+    attorneyName: profile.display_name ?? 'Counselor',
+    attorneyEmail: profile.email,
+    motionType: order.motion_type,
+    interval,
+  });
+}
+
+/**
+ * Send CP3 FINAL NOTICE at T+14d.
+ * Template: cp3-final-notice
+ */
+async function sendCP3FinalNoticeEmail(
+  supabase: SupabaseClient,
+  orderId: string
+): Promise<void> {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, client_id, motion_type, status, cp3_entered_at')
+    .eq('id', orderId)
+    .single();
+
+  if (!order || order.status !== 'AWAITING_APPROVAL') {
+    console.log(`[cp3-final-notice] Skipping — order ${orderId} is ${order?.status}`);
+    return;
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('email, display_name')
+    .eq('id', order.client_id)
+    .single();
+
+  if (!profile?.email) return;
+
+  // Calculate auto-cancel date (cp3_entered_at + 21 days)
+  const autoCancelDate = order.cp3_entered_at
+    ? new Date(new Date(order.cp3_entered_at).getTime() + 21 * 24 * 60 * 60 * 1000)
+    : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  await fn2QueueEmail(supabase, orderId, 'cp3-final-notice', {
+    attorneyName: profile.display_name ?? 'Counselor',
+    attorneyEmail: profile.email,
+    motionType: order.motion_type,
+    autoCancelDate: autoCancelDate.toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    }),
+  });
+}
+
+/**
+ * Send delivery email on APPROVE.
+ * Template: cp3-delivery
+ */
+async function sendFn2DeliveryEmail(
+  supabase: SupabaseClient,
+  orderId: string,
+  urls: { urls: Array<{ fileKey: string; signedUrl: string | null }>; allSucceeded: boolean }
+): Promise<void> {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, client_id, motion_type')
+    .eq('id', orderId)
+    .single();
+
+  if (!order) return;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('email, display_name')
+    .eq('id', order.client_id)
+    .single();
+
+  if (!profile?.email) return;
+
+  await fn2QueueEmail(supabase, orderId, 'cp3-delivery', {
+    attorneyName: profile.display_name ?? 'Counselor',
+    attorneyEmail: profile.email,
+    motionType: order.motion_type,
+    downloadUrls: urls.urls.filter((u) => u.signedUrl),
+    urlExpiryDays: 7,
+  });
+}
+
+/**
+ * Generic email queue function.
+ * Uses the email_queue table (schema: template TEXT, data JSONB).
+ */
+async function fn2QueueEmail(
+  supabase: SupabaseClient,
+  orderId: string,
+  templateId: string,
+  data?: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabase.from('email_queue').insert({
+    order_id: orderId,
+    template: templateId,
+    data: data ?? {},
+    status: 'pending',
+  });
+
+  if (error) {
+    console.error(`[email-queue] Failed to queue ${templateId} for order ${orderId}:`, error);
+  }
+}
+
+/**
+ * Send admin alert for urgent situations.
+ */
+async function fn2SendAdminAlert(
+  supabase: SupabaseClient,
+  orderId: string,
+  alertType: string,
+  message: string
+): Promise<void> {
+  console.warn(`[ADMIN ALERT] ${alertType} — Order ${orderId}: ${message}`);
+  await fn2QueueEmail(supabase, orderId, 'admin-alert', {
+    alertType,
+    message,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
-export const workflowFunctions = [generateOrderWorkflow, handleWorkflowFailure, handleWorkflowTimeout];
+export const workflowFunctions = [
+  generateOrderWorkflow,
+  handleWorkflowFailure,
+  handleWorkflowTimeout,
+  workflowCheckpointApproval,
+];
