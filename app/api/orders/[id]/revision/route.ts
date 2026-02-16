@@ -1,7 +1,7 @@
 /**
  * Revision API
  *
- * POST /api/orders/[id]/revision — Resume workflow from REVISION_REQ → IN_PROGRESS
+ * POST /api/orders/[id]/revision — Resume workflow from REVISION_REQ → PROCESSING
  * GET  /api/orders/[id]/revision — Revision history for the order
  *
  * SP-4 Task 2 (R4-06): POST rewritten with three-gate pattern.
@@ -20,7 +20,7 @@ const log = createLogger('api-orders-revision');
 /**
  * POST /api/orders/[id]/revision
  *
- * Transitions REVISION_REQ → IN_PROGRESS to resume workflow after CP3 changes.
+ * Transitions REVISION_REQ → PROCESSING to resume workflow after CP3 changes.
  * Uses three-gate auth pattern + optimistic locking.
  */
 export async function POST(
@@ -53,7 +53,7 @@ export async function POST(
   const adminClient = getServiceSupabase();
 
   const statusResult = await updateOrderStatus(
-    adminClient, orderId, 'IN_PROGRESS', order.status_version
+    adminClient, orderId, 'PROCESSING', order.status_version
   );
 
   if (!statusResult.success) {
