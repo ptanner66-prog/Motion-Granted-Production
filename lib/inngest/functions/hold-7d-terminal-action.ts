@@ -130,7 +130,7 @@ export const hold7dTerminalAction = inngest.createFunction(
         .single();
 
       const profileData = orderWithProfile?.profiles;
-      const attorneyEmail = Array.isArray(profileData) ? profileData[0]?.email : (profileData as { email?: string } | null)?.email;
+      const attorneyEmail = Array.isArray(profileData) ? profileData[0]?.email : (profileData as { email?: string } | null | undefined)?.email;
 
       if (attorneyEmail) {
         await supabase.from('email_queue').insert({

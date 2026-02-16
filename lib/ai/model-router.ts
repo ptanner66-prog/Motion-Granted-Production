@@ -25,7 +25,8 @@ import { MODELS } from '@/lib/config/models';
 // TYPES
 // ============================================================================
 
-export type MotionTier = 'A' | 'B' | 'C' | 'D';
+import type { MotionTier } from '@/types/workflow';
+export type { MotionTier };
 
 export type TaskType =
   | 'stage_1_holding'

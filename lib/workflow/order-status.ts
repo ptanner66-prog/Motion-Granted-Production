@@ -24,7 +24,7 @@ export const STATUS_DISPLAY_MAP: Record<OrderStatus, string> = {
   'UPGRADE_PENDING': 'UPGRADE_PENDING',  // Amber badge (v5-XDC-012)
   'PENDING_CONFLICT_REVIEW': 'PENDING_CONFLICT_REVIEW', // Amber badge (DELTA-001)
   'AWAITING_APPROVAL': 'AWAITING_APPROVAL',
-  'REVISION_REQUESTED': 'REVISION_REQ',  // Purple badge
+  'REVISION_REQ': 'REVISION_REQ',  // Purple badge
   'COMPLETED': 'COMPLETED',
   'CANCELLED_USER': 'CANCELLED',
   'CANCELLED_SYSTEM': 'CANCELLED',
@@ -38,7 +38,7 @@ export const STATUS_DISPLAY_MAP: Record<OrderStatus, string> = {
 // DB uses compact names for CHECK constraint compatibility
 export function toDbStatus(status: OrderStatus): string {
   switch (status) {
-    case 'REVISION_REQUESTED': return 'REVISION_REQ';
+    case 'REVISION_REQ': return 'REVISION_REQ';
     case 'CANCELLED_USER':
     case 'CANCELLED_SYSTEM':
     case 'CANCELLED_CONFLICT':
@@ -71,7 +71,7 @@ export type D4WorkflowStatus =
   | 'PROTOCOL_10_EXIT'    // Max loops or cost cap reached, transitioning
   | 'UPGRADE_PENDING'     // [v5-XDC-012] Tier upgrade detected
   | 'AWAITING_APPROVAL'   // CP3 reached, attorney review
-  | 'REVISION_REQUESTED'  // Post-approval revision requested
+  | 'REVISION_REQ'  // Post-approval revision requested
   | 'COMPLETED'           // Delivered, attorney approved
   | 'CANCELLED_USER'      // Customer-initiated cancellation
   | 'CANCELLED_SYSTEM'    // System cancellation (timeout, conflict)
@@ -90,7 +90,7 @@ export const D4_STATUS_DISPLAY_MAP: Record<D4WorkflowStatus, string> = {
   PROTOCOL_10_EXIT: 'IN_PROGRESS',      // Transient
   UPGRADE_PENDING: 'UPGRADE_PENDING',   // [v5-XDC-012] Amber badge
   AWAITING_APPROVAL: 'AWAITING_APPROVAL',
-  REVISION_REQUESTED: 'REVISION_REQ',   // [v5-XDC-001] Purple badge
+  REVISION_REQ: 'REVISION_REQ',   // [v5-XDC-001] Purple badge
   COMPLETED: 'COMPLETED',
   CANCELLED_USER: 'CANCELLED',
   CANCELLED_SYSTEM: 'CANCELLED',

@@ -1,8 +1,8 @@
-import { ORDER_STATUSES, type OrderStatus } from '@/config/motion-types'
+import { ORDER_STATUSES, type OrderDisplayKey } from '@/config/motion-types'
 import { cn, mapToDisplayStatus } from '@/lib/utils'
 
 interface OrderStatusBadgeProps {
-  status: OrderStatus | string
+  status: OrderDisplayKey | string
   className?: string
   size?: 'sm' | 'default'
   showDot?: boolean
@@ -66,7 +66,7 @@ export function OrderStatusBadge({
   useDisplayStatus = false
 }: OrderStatusBadgeProps) {
   const resolvedStatus = useDisplayStatus ? mapToDisplayStatus(status) : status
-  const statusConfig = ORDER_STATUSES[resolvedStatus as OrderStatus] || ORDER_STATUSES.submitted
+  const statusConfig = ORDER_STATUSES[resolvedStatus as OrderDisplayKey] || ORDER_STATUSES.submitted
   const styles = statusStyles[statusConfig.color] || statusStyles.gray
 
   return (

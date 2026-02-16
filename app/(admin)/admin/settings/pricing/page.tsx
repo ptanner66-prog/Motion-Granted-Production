@@ -130,14 +130,14 @@ export default function PricingSettingsPage() {
                 <FileText className="h-5 w-5 text-emerald-500" />
               </div>
               <div>
-                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.tierA.name}</CardTitle>
-                <CardDescription className="text-gray-400">{MOTION_TIERS.tierA.turnaround}</CardDescription>
+                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.A.name}</CardTitle>
+                <CardDescription className="text-gray-400">{MOTION_TIERS.A.turnaround}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
-              {MOTION_TIERS.tierA.motions.map((motion) => (
+              {MOTION_TIERS.A.motions.map((motion) => (
                 <div key={motion.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="text-navy font-medium">{motion.name}</span>
                   <div className="flex items-center gap-2">
@@ -163,14 +163,14 @@ export default function PricingSettingsPage() {
                 <FileText className="h-5 w-5 text-blue-500" />
               </div>
               <div>
-                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.tierB.name}</CardTitle>
-                <CardDescription className="text-gray-400">{MOTION_TIERS.tierB.turnaround}</CardDescription>
+                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.B.name}</CardTitle>
+                <CardDescription className="text-gray-400">{MOTION_TIERS.B.turnaround}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
-              {MOTION_TIERS.tierB.motions.map((motion) => (
+              {MOTION_TIERS.B.motions.map((motion) => (
                 <div key={motion.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div>
                     <span className="text-navy font-medium">{motion.name}</span>
@@ -201,14 +201,14 @@ export default function PricingSettingsPage() {
                 <FileText className="h-5 w-5 text-purple-500" />
               </div>
               <div>
-                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.tierC.name}</CardTitle>
-                <CardDescription className="text-gray-400">{MOTION_TIERS.tierC.turnaround}</CardDescription>
+                <CardTitle className="text-lg font-semibold text-navy">{MOTION_TIERS.C.name}</CardTitle>
+                <CardDescription className="text-gray-400">{MOTION_TIERS.C.turnaround}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
-              {MOTION_TIERS.tierC.motions.map((motion) => (
+              {MOTION_TIERS.C.motions.map((motion) => (
                 <div key={motion.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="text-navy font-medium">{motion.name}</span>
                   <div className="flex items-center gap-2">

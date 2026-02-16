@@ -76,7 +76,7 @@ export const EventSchemas = {
     holdReason: z.enum(['evidence_gap', 'tier_reclassification', 'revision_stall', 'citation_critical_failure']),
     customerEmail: z.string(),
     createdAt: z.string(),
-    details: z.record(z.unknown()),
+    details: z.record(z.string(), z.unknown()),
   }),
 
   'checkpoint/hold.resolved': z.object({

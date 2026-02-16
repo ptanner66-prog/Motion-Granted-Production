@@ -2,7 +2,7 @@ import { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import type { OrderStatus } from '@/config/motion-types'
+import type { OrderDisplayKey } from '@/config/motion-types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { OrderStatusBadge } from '@/components/orders/order-status-badge'
 import { StatusTimeline } from '@/components/orders/status-timeline'
@@ -165,7 +165,7 @@ export default async function OrderDetailPage({
               <span className="font-mono text-sm text-gray-400">
                 {order.order_number}
               </span>
-              <OrderStatusBadge status={displayStatus as OrderStatus} />
+              <OrderStatusBadge status={displayStatus as OrderDisplayKey} />
             </div>
           </div>
         </div>

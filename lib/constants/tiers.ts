@@ -9,7 +9,8 @@
  * DO NOT reverse these descriptions. A is simple, C is complex.
  */
 
-export type MotionTier = 'A' | 'B' | 'C' | 'D';
+import type { MotionTier } from '@/types/workflow';
+export type { MotionTier };
 
 // ============================================================================
 // TIER DEFINITIONS

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { formatCurrencyFromCents, formatRelativeTime, truncateString, mapToDisplayStatus } from '@/lib/utils'
 import { formatMotionType } from '@/config/motion-types'
-import type { OrderStatus } from '@/config/motion-types'
+import type { OrderDisplayKey } from '@/config/motion-types'
 
 interface Order {
   id: string
@@ -275,7 +275,7 @@ export default async function DashboardPage() {
                           <span className="font-mono text-xs text-gray-400 tracking-wide">
                             {order.order_number}
                           </span>
-                          <OrderStatusBadge status={displayStatus as OrderStatus} size="sm" />
+                          <OrderStatusBadge status={displayStatus as OrderDisplayKey} size="sm" />
                         </div>
                         <p className="font-semibold text-navy truncate">
                           {formatMotionType(order.motion_type)}

@@ -15,7 +15,8 @@
 // TYPES
 // ============================================================================
 
-export type MotionTier = 'A' | 'B' | 'C' | 'D';
+import type { MotionTier } from '@/types/workflow';
+export type { MotionTier };
 
 export type RushType = 'standard' | 'rush_72' | 'rush_48' | 'rush_48hr' | 'rush_24hr';
 
