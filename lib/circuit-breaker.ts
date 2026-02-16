@@ -1,20 +1,19 @@
 /**
- * Circuit Breaker Pattern Implementation
+ * Circuit Breaker Pattern Implementation — V-002
  *
- * Prevents cascading failures by:
- * - Tracking failure rates for external services
- * - Opening circuit after threshold failures
- * - Allowing periodic testing when open
- * - Auto-recovery after success
+ * Redis-backed via Upstash. State persists across Vercel cold starts.
+ * In-memory Map removed — dead on serverless.
  *
  * States:
  * - CLOSED: Normal operation, all requests pass through
- * - OPEN: Failures exceeded threshold, requests fail fast
+ * - OPEN: Failures exceeded threshold, requests fail fast (TTL auto-expires to HALF_OPEN)
  * - HALF_OPEN: Testing recovery, limited requests pass through
+ *
+ * Fail-open: If Redis is unavailable, all requests are allowed.
+ * Inngest retries handle transient failures.
  */
 
-import { getRedis, isRedisAvailable } from './redis';
-import { logger } from './logger';
+import { Redis } from '@upstash/redis';
 
 // ============================================================================
 // TYPES
@@ -23,10 +22,10 @@ import { logger } from './logger';
 export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
 
 export interface CircuitBreakerConfig {
-  failureThreshold: number;     // Failures before opening (default: 5)
-  successThreshold: number;     // Successes to close from half-open (default: 2)
-  timeout: number;              // Time in open state before half-open (ms, default: 30000)
-  monitorWindow: number;        // Window to count failures (ms, default: 60000)
+  failureThreshold: number;
+  successThreshold: number;
+  timeout: number;              // Time in OPEN state before implicit HALF_OPEN (ms)
+  monitorWindow: number;        // Window to count failures (ms)
 }
 
 export interface CircuitStats {
@@ -74,33 +73,44 @@ export const CIRCUIT_CONFIGS: Record<string, Partial<CircuitBreakerConfig>> = {
 };
 
 // ============================================================================
-// IN-MEMORY FALLBACK
+// REDIS CLIENT (lazy init)
 // ============================================================================
 
-const memoryState: Map<string, CircuitStats> = new Map();
+let redis: Redis | null = null;
 
-function getMemoryState(service: string): CircuitStats {
-  if (!memoryState.has(service)) {
-    memoryState.set(service, {
-      state: 'CLOSED',
-      failures: 0,
-      successes: 0,
-      lastFailure: null,
-      lastSuccess: null,
-      openedAt: null,
+function getRedis(): Redis | null {
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    return null;
+  }
+  if (!redis) {
+    redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
     });
   }
-  return memoryState.get(service)!;
+  return redis;
 }
 
+function redisKey(service: string): string {
+  return `circuit:${service}`;
+}
+
+const DEFAULT_STATS: CircuitStats = {
+  state: 'CLOSED',
+  failures: 0,
+  successes: 0,
+  lastFailure: null,
+  lastSuccess: null,
+  openedAt: null,
+};
+
 // ============================================================================
-// CIRCUIT BREAKER CLASS
+// CIRCUIT BREAKER CLASS (Redis-backed)
 // ============================================================================
 
 export class CircuitBreaker {
   private service: string;
   private config: CircuitBreakerConfig;
-  private log: typeof logger;
 
   constructor(service: string, config?: Partial<CircuitBreakerConfig>) {
     this.service = service;
@@ -109,84 +119,62 @@ export class CircuitBreaker {
       ...CIRCUIT_CONFIGS[service],
       ...config,
     };
-    this.log = logger.child({ service, action: 'circuit-breaker' });
   }
 
-  /**
-   * Get current circuit state
-   */
   async getState(): Promise<CircuitStats> {
-    const redis = getRedis();
-
-    if (!redis) {
-      return getMemoryState(this.service);
-    }
+    const r = getRedis();
+    if (!r) return { ...DEFAULT_STATS };
 
     try {
-      const key = `circuit:${this.service}`;
-      const data = await redis.get<CircuitStats>(key);
-      return data || getMemoryState(this.service);
-    } catch {
-      return getMemoryState(this.service);
-    }
-  }
+      const data = await r.get<CircuitStats>(redisKey(this.service));
+      if (!data) return { ...DEFAULT_STATS };
 
-  /**
-   * Update circuit state
-   */
-  private async setState(stats: CircuitStats): Promise<void> {
-    const redis = getRedis();
-    const key = `circuit:${this.service}`;
-
-    // Always update memory state
-    memoryState.set(this.service, stats);
-
-    if (redis) {
-      try {
-        await redis.set(key, stats, { ex: 3600 }); // 1 hour TTL
-      } catch (error) {
-        this.log.warn('Failed to update Redis circuit state', { error });
+      // Check if OPEN state has expired → implicit HALF_OPEN
+      if (data.state === 'OPEN' && data.openedAt) {
+        if (Date.now() - data.openedAt >= this.config.timeout) {
+          const halfOpen: CircuitStats = { ...data, state: 'HALF_OPEN', successes: 0 };
+          await this.setState(halfOpen);
+          return halfOpen;
+        }
       }
+
+      return data;
+    } catch {
+      // Fail open
+      return { ...DEFAULT_STATS };
     }
   }
 
-  /**
-   * Check if request should be allowed
-   */
+  private async setState(stats: CircuitStats): Promise<void> {
+    const r = getRedis();
+    if (!r) return;
+
+    try {
+      // TTL = 2x timeout for auto-cleanup of stale keys
+      const ttl = Math.ceil((this.config.timeout * 2) / 1000);
+      await r.set(redisKey(this.service), stats, { ex: Math.max(ttl, 3600) });
+    } catch (error) {
+      console.warn(`[CircuitBreaker:${this.service}] Failed to update Redis state`, {
+        error: error instanceof Error ? error.message : 'Unknown',
+      });
+    }
+  }
+
   async canExecute(): Promise<boolean> {
     const stats = await this.getState();
-    const now = Date.now();
 
     switch (stats.state) {
       case 'CLOSED':
         return true;
-
       case 'OPEN':
-        // Check if timeout has passed
-        if (stats.openedAt && now - stats.openedAt >= this.config.timeout) {
-          // Transition to half-open
-          this.log.info('Circuit transitioning to HALF_OPEN');
-          await this.setState({
-            ...stats,
-            state: 'HALF_OPEN',
-            successes: 0,
-          });
-          return true;
-        }
         return false;
-
       case 'HALF_OPEN':
-        // Allow limited requests for testing
         return true;
-
       default:
         return true;
     }
   }
 
-  /**
-   * Record a successful call
-   */
   async recordSuccess(): Promise<void> {
     const stats = await this.getState();
     const now = Date.now();
@@ -195,8 +183,7 @@ export class CircuitBreaker {
       const newSuccesses = stats.successes + 1;
 
       if (newSuccesses >= this.config.successThreshold) {
-        // Close the circuit
-        this.log.info('Circuit closing after successful recovery');
+        console.info(`[CircuitBreaker:${this.service}] Circuit CLOSED after successful recovery`);
         await this.setState({
           state: 'CLOSED',
           failures: 0,
@@ -213,7 +200,6 @@ export class CircuitBreaker {
         });
       }
     } else if (stats.state === 'CLOSED') {
-      // Reset failures on success
       await this.setState({
         ...stats,
         failures: 0,
@@ -222,19 +208,13 @@ export class CircuitBreaker {
     }
   }
 
-  /**
-   * Record a failed call
-   */
   async recordFailure(error?: Error): Promise<void> {
     const stats = await this.getState();
     const now = Date.now();
-
-    // Clean up old failures outside the monitor window
     const recentFailures = stats.failures + 1;
 
     if (stats.state === 'HALF_OPEN') {
-      // Immediately open on failure in half-open
-      this.log.warn('Circuit reopening after failure in HALF_OPEN', {
+      console.warn(`[CircuitBreaker:${this.service}] Circuit REOPENED after failure in HALF_OPEN`, {
         error: error?.message,
       });
       await this.setState({
@@ -247,9 +227,7 @@ export class CircuitBreaker {
       });
     } else if (stats.state === 'CLOSED') {
       if (recentFailures >= this.config.failureThreshold) {
-        // Open the circuit
-        this.log.error('Circuit opening due to failure threshold', {
-          failures: recentFailures,
+        console.error(`[CircuitBreaker:${this.service}] Circuit OPENED after ${recentFailures} failures`, {
           threshold: this.config.failureThreshold,
           error: error?.message,
         });
@@ -271,13 +249,10 @@ export class CircuitBreaker {
     }
   }
 
-  /**
-   * Execute a function with circuit breaker protection
-   */
   async execute<T>(fn: () => Promise<T>): Promise<T> {
-    const canExecute = await this.canExecute();
+    const canExec = await this.canExecute();
 
-    if (!canExecute) {
+    if (!canExec) {
       const stats = await this.getState();
       const retryAfter = stats.openedAt
         ? Math.ceil((this.config.timeout - (Date.now() - stats.openedAt)) / 1000)
@@ -296,24 +271,11 @@ export class CircuitBreaker {
     }
   }
 
-  /**
-   * Force reset the circuit to closed state
-   */
   async reset(): Promise<void> {
-    this.log.info('Circuit manually reset');
-    await this.setState({
-      state: 'CLOSED',
-      failures: 0,
-      successes: 0,
-      lastFailure: null,
-      lastSuccess: null,
-      openedAt: null,
-    });
+    console.info(`[CircuitBreaker:${this.service}] Circuit manually reset`);
+    await this.setState({ ...DEFAULT_STATS });
   }
 
-  /**
-   * Get health status for monitoring
-   */
   async getHealth(): Promise<{
     service: string;
     state: CircuitState;
@@ -347,7 +309,8 @@ export class CircuitOpenError extends Error {
 }
 
 // ============================================================================
-// SINGLETON INSTANCES
+// SINGLETON INSTANCES (class instances are fine — they hold no mutable state,
+// all state is in Redis)
 // ============================================================================
 
 const circuits: Map<string, CircuitBreaker> = new Map();

@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withCronAuth } from '@/lib/security/cron-auth';
 import { cleanupEmailDedup } from '@/lib/email/client';
-import { cleanupRateLimits } from '@/lib/security/rate-limiter';
+// V-001: Rate limit cleanup no longer needed — Upstash Redis handles TTL automatically
 import { createClient } from '@supabase/supabase-js';
 import { createLogger } from '@/lib/security/logger';
 
@@ -43,15 +43,8 @@ export const GET = withCronAuth(async (_request: NextRequest) => {
     results.emailDedup = { success: false, error: msg };
   }
 
-  // 2. Rate limit store cleanup
-  try {
-    cleanupRateLimits();
-    results.rateLimits = { success: true };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    errors.push(`Rate limit cleanup failed: ${msg}`);
-    results.rateLimits = { success: false, error: msg };
-  }
+  // 2. Rate limit store cleanup — V-001: handled by Upstash Redis TTL
+  results.rateLimits = { success: true, note: 'Redis TTL auto-cleanup' };
 
   // 3. Stale workflow detection
   try {

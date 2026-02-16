@@ -25,7 +25,8 @@ export type CitationStatus =
   | 'verified'
   | 'invalid'
   | 'needs_update'
-  | 'flagged';
+  | 'flagged'
+  | 'VERIFICATION_DEFERRED';  // V-003: OpenAI circuit breaker OPEN — deferred, not failed
 
 export type CitationType = 'case' | 'statute' | 'regulation' | 'secondary';
 

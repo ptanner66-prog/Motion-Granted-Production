@@ -14,7 +14,6 @@ export const retryAuditTrail = inngest.createFunction(
   {
     id: 'retry-audit-trail',
     retries: 3,
-    backoff: { type: 'exponential', initialDelay: '30s' },
   },
   { event: 'order/audit-trail-retry' },
   async ({ event, step }) => {
