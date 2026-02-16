@@ -399,7 +399,7 @@ export async function recordRevisionRequest(
     .from('workflow_events')
     .insert({
       order_id: orderId,
-      event_type: 'REVISION_REQUESTED',
+      event_type: 'REVISION_REQ',
       phase: 'USER',
       data: {
         requested_by: requestedBy,
