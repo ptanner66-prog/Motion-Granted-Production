@@ -46,9 +46,10 @@ export const EventSchemas = {
   'checkpoint/cp3.reached': z.object({
     orderId: z.string().uuid(),
     workflowId: z.string(),
-    packageId: z.string().uuid(),
-    tier: z.enum(['A', 'B', 'C', 'D']).optional(),
-    attorneyEmail: z.string().email().optional(),
+    packageId: z.string(),
+    grade: z.number().min(0).max(100),
+    tier: z.string(),
+    protocol10Triggered: z.boolean(),
   }),
 
   'workflow/checkpoint-approved': z.object({

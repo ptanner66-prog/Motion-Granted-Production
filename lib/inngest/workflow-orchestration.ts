@@ -143,6 +143,9 @@ import type { CLCitationResult } from "@/lib/citation/types";
 // SP24: Load DB-backed phase prompts at workflow start
 import { loadPhasePrompts } from "@/prompts";
 
+// SP-20 D5: Checkpoint event types (shared across Fn1, Fn2, dashboard)
+import type { CP3ApprovalEvent } from "@/lib/types/checkpoint-events";
+
 // SP23: Tiered max revision loops per XDC-004 / WF-04-A
 // Tier A (procedural) = 2, Tier B/C (substantive) = 3, Tier D (complex) = 4
 const TIERED_MAX_LOOPS: Record<string, number> = {
@@ -241,6 +244,40 @@ function getSupabase() {
   }
 
   return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
+
+// ============================================================================
+// SP-20 D5: Durable Event Emission Helper
+// ============================================================================
+
+/**
+ * Emit an Inngest event with retry and persist to checkpoint_events for audit trail.
+ * Wraps all event emissions in try-catch with single retry.
+ */
+async function emitDurableEvent(
+  name: string,
+  data: Record<string, any>,
+  orderId: string,
+  checkpointType: 'CP1' | 'CP2' | 'CP3',
+  supabaseClient: SupabaseClient
+): Promise<void> {
+  try {
+    await inngest.send({ name, data });
+  } catch (error) {
+    console.error('Event emission failed — retrying', { name, orderId, error });
+    // Retry once
+    await inngest.send({ name, data });
+  }
+
+  // Always persist to checkpoint_events for audit trail
+  await supabaseClient.from('checkpoint_events').insert({
+    order_id: orderId,
+    event_name: name,
+    event_data: data,
+    checkpoint_type: checkpointType,
+  }).catch((err: unknown) => {
+    console.error('Checkpoint event persistence failed', { name, orderId, error: err });
+  });
 }
 
 // ============================================================================
@@ -1616,6 +1653,18 @@ export const generateOrderWorkflow = inngest.createFunction(
     }
     console.log('[Orchestration] Accumulated after I:', Object.keys(workflowState.phaseOutputs));
 
+    // SP-20 D5: CP1 — Non-blocking intake confirmed event
+    await step.run('cp1-intake-confirmed', async () => {
+      await emitDurableEvent(
+        'checkpoint/cp1.intake-confirmed',
+        { phase: 'I', status: 'complete', tier: workflowState.tier },
+        orderId,
+        'CP1',
+        supabase
+      );
+      console.log('CP1 intake confirmed', { orderId });
+    });
+
     // ========================================================================
     // STEP 3: Phase II - Legal Framework
     // ========================================================================
@@ -2104,6 +2153,18 @@ export const generateOrderWorkflow = inngest.createFunction(
       workflowState.phaseOutputs["V"] = phaseVResult.output;
     }
     console.log('[Orchestration] Accumulated after V:', Object.keys(workflowState.phaseOutputs));
+
+    // SP-20 D5: CP2 — Non-blocking draft ready event
+    await step.run('cp2-draft-ready', async () => {
+      await emitDurableEvent(
+        'checkpoint/cp2.draft-ready',
+        { phase: 'V', status: 'complete', tier: workflowState.tier },
+        orderId,
+        'CP2',
+        supabase
+      );
+      console.log('CP2 draft ready', { orderId });
+    });
 
     // ========================================================================
     // STEP 6.5: Pre-fetch citation existence via batch CL lookup (ST-002)
@@ -3222,17 +3283,12 @@ export const generateOrderWorkflow = inngest.createFunction(
     });
 
     // Step: Emit checkpoint/cp3.reached — Fn2 takes over from here
-    await step.run('emit-cp3-reached', async () => {
+    // SP-20 D5: CP3 event MUST include all 6 fields from CP3ApprovalEvent type
+    await step.run('cp3-emit-event', async () => {
       const { data: order } = await supabase
         .from('orders')
-        .select('workflow_id, tier, client_id')
+        .select('workflow_id, tier, client_id, protocol_10_triggered')
         .eq('id', orderId)
-        .single();
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('id', order?.client_id)
         .single();
 
       const { data: pkg } = await supabase
@@ -3243,16 +3299,25 @@ export const generateOrderWorkflow = inngest.createFunction(
         .limit(1)
         .single();
 
-      await inngest.send({
-        name: CANONICAL_EVENTS.CHECKPOINT_CP3_REACHED,
-        data: {
-          orderId,
-          workflowId: order?.workflow_id ?? workflowState.workflowId,
-          packageId: pkg?.id,
-          tier: order?.tier ?? workflowState.tier,
-          attorneyEmail: profile?.email,
-        },
-      });
+      // Build CP3ApprovalEvent with all 6 required fields
+      const phaseXOutput = (workflowState.phaseOutputs?.["X"] ?? {}) as Record<string, unknown>;
+      const gradeObj = phaseXOutput?.grade as Record<string, unknown> | undefined;
+      const eventData: CP3ApprovalEvent = {
+        orderId,
+        packageId: pkg?.id ?? '',
+        workflowId: order?.workflow_id ?? workflowState.workflowId,
+        grade: (gradeObj?.numeric_score as number) ?? 0,
+        tier: (order?.tier ?? workflowState.tier) as string,
+        protocol10Triggered: order?.protocol_10_triggered ?? false,
+      };
+
+      await emitDurableEvent(
+        CANONICAL_EVENTS.CHECKPOINT_CP3_REACHED,
+        eventData,
+        orderId,
+        'CP3',
+        supabase
+      );
     });
 
     // Fn1 TERMINATES here. Fn2 handles approval lifecycle.

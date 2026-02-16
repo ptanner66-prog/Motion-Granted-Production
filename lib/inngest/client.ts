@@ -109,13 +109,16 @@ export type OrderProtocol10ExitEvent = {
   };
 };
 
-// SP-4 D5 W3-1: CP3 reached event
+// SP-4 D5 W3-1: CP3 reached event (SP-20 D5: updated to match CP3ApprovalEvent)
 export type CheckpointCP3ReachedEvent = {
   name: "checkpoint/cp3.reached";
   data: {
     orderId: string;
+    packageId: string;
     workflowId: string;
-    packageId?: string;
+    grade: number;
+    tier: string;
+    protocol10Triggered: boolean;
   };
 };
 
