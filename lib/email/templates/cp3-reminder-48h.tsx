@@ -1,30 +1,23 @@
 /**
- * HOLD Notification Email Template — D5 W5-2
- * Initial HOLD notification with evidence gap details and magic link.
- * Sent when Phase III HOLD checkpoint triggers.
+ * CP3 48-Hour Reminder Email Template — D5 W5-4
+ * T+48h gentle nudge. Documents awaiting attorney review.
  */
 
 import { Html, Head, Body, Container, Section, Text, Link, Hr } from '@react-email/components';
 
-interface HoldNotificationProps {
+interface CP3Reminder48hProps {
   attorneyName: string;
   orderNumber: string;
   motionType: string;
-  holdReason: string;
-  evidenceGapDetails: string;
-  magicLinkUrl: string;
   dashboardUrl: string;
 }
 
-export default function HoldNotification({
+export default function CP3Reminder48h({
   attorneyName = 'Counselor',
   orderNumber = 'MG-000000',
   motionType = 'Motion',
-  holdReason = 'Additional information needed',
-  evidenceGapDetails = 'Please provide the required documentation.',
-  magicLinkUrl = '#',
   dashboardUrl = '#',
-}: HoldNotificationProps) {
+}: CP3Reminder48hProps) {
   return (
     <Html>
       <Head />
@@ -38,22 +31,18 @@ export default function HoldNotification({
           <Section style={contentSection}>
             <Text style={greeting}>Dear {attorneyName},</Text>
             <Text style={paragraph}>
-              Your order <strong>{orderNumber}</strong> ({motionType}) has been placed
-              on <strong>HOLD</strong> pending additional information from you.
+              Just a reminder that your documents for order{' '}
+              <strong>{orderNumber}</strong> ({motionType}) are ready for your
+              review.
             </Text>
-            <Text style={subheading}>What We Need:</Text>
-            <Text style={paragraph}>{holdReason}</Text>
-            <Text style={detailBox}>{evidenceGapDetails}</Text>
             <Text style={paragraph}>
-              Please respond at your earliest convenience so we can continue
-              drafting your motion.
+              Your completed filing package is waiting in your dashboard.
+              Please take a moment to review and approve your documents so
+              we can finalize delivery.
             </Text>
-            <Link href={magicLinkUrl} style={button}>
-              Respond to Hold Request
+            <Link href={dashboardUrl} style={button}>
+              Review Your Documents
             </Link>
-            <Text style={smallText}>
-              Or view your order on the <Link href={dashboardUrl}>dashboard</Link>.
-            </Text>
           </Section>
           <Hr style={divider} />
           <Section style={footerSection}>
@@ -75,9 +64,6 @@ const divider = { borderColor: '#e6e6e6', margin: '20px 0' };
 const contentSection = { padding: '0 20px' };
 const greeting = { fontSize: '16px', color: '#333' };
 const paragraph = { fontSize: '14px', color: '#555', lineHeight: '1.6' };
-const subheading = { fontSize: '15px', fontWeight: 'bold', color: '#333', margin: '16px 0 8px 0' };
-const detailBox = { backgroundColor: '#fff8e7', border: '1px solid #f0d060', borderRadius: '6px', padding: '12px 16px', fontSize: '14px', color: '#444', margin: '8px 0 16px 0' };
 const button = { backgroundColor: '#b8860b', color: '#ffffff', padding: '12px 24px', borderRadius: '6px', textDecoration: 'none', display: 'inline-block', fontSize: '14px', fontWeight: 'bold', margin: '16px 0' };
-const smallText = { fontSize: '12px', color: '#999' };
 const footerSection = { padding: '0 20px' };
 const footer = { fontSize: '12px', color: '#999', textAlign: 'center' as const };

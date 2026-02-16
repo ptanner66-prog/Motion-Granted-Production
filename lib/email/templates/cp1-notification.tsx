@@ -1,30 +1,26 @@
 /**
- * HOLD Notification Email Template — D5 W5-2
- * Initial HOLD notification with evidence gap details and magic link.
- * Sent when Phase III HOLD checkpoint triggers.
+ * CP1 Notification Email Template — D5 W5-1
+ * Non-blocking notification for Phase IV (Research Complete).
+ * Workflow continues without waiting for attorney response.
  */
 
 import { Html, Head, Body, Container, Section, Text, Link, Hr } from '@react-email/components';
 
-interface HoldNotificationProps {
+interface CP1NotificationProps {
   attorneyName: string;
   orderNumber: string;
   motionType: string;
-  holdReason: string;
-  evidenceGapDetails: string;
-  magicLinkUrl: string;
+  tier: string;
   dashboardUrl: string;
 }
 
-export default function HoldNotification({
+export default function CP1Notification({
   attorneyName = 'Counselor',
   orderNumber = 'MG-000000',
   motionType = 'Motion',
-  holdReason = 'Additional information needed',
-  evidenceGapDetails = 'Please provide the required documentation.',
-  magicLinkUrl = '#',
+  tier = 'B',
   dashboardUrl = '#',
-}: HoldNotificationProps) {
+}: CP1NotificationProps) {
   return (
     <Html>
       <Head />
@@ -38,27 +34,29 @@ export default function HoldNotification({
           <Section style={contentSection}>
             <Text style={greeting}>Dear {attorneyName},</Text>
             <Text style={paragraph}>
-              Your order <strong>{orderNumber}</strong> ({motionType}) has been placed
-              on <strong>HOLD</strong> pending additional information from you.
+              Your order <strong>{orderNumber}</strong> ({motionType}) has completed
+              the research and analysis phase. Our team is now preparing the initial
+              draft based on the legal research findings.
             </Text>
-            <Text style={subheading}>What We Need:</Text>
-            <Text style={paragraph}>{holdReason}</Text>
-            <Text style={detailBox}>{evidenceGapDetails}</Text>
             <Text style={paragraph}>
-              Please respond at your earliest convenience so we can continue
-              drafting your motion.
+              <strong>Current Status:</strong> Research Complete — Drafting in Progress
             </Text>
-            <Link href={magicLinkUrl} style={button}>
-              Respond to Hold Request
+            <Text style={paragraph}>
+              No action is required from you at this time. You will receive another
+              notification when your documents are ready for review.
+            </Text>
+            <Link href={dashboardUrl} style={button}>
+              View Order Status
             </Link>
-            <Text style={smallText}>
-              Or view your order on the <Link href={dashboardUrl}>dashboard</Link>.
-            </Text>
           </Section>
           <Hr style={divider} />
           <Section style={footerSection}>
-            <Text style={footer}>Motion Granted | Legal Process Outsourcing</Text>
-            <Text style={footer}>Questions? Reply to this email or contact support@motiongranted.com</Text>
+            <Text style={footer}>
+              Motion Granted | Legal Process Outsourcing
+            </Text>
+            <Text style={footer}>
+              Questions? Reply to this email or contact support@motiongranted.com
+            </Text>
           </Section>
         </Container>
       </Body>
@@ -75,9 +73,6 @@ const divider = { borderColor: '#e6e6e6', margin: '20px 0' };
 const contentSection = { padding: '0 20px' };
 const greeting = { fontSize: '16px', color: '#333' };
 const paragraph = { fontSize: '14px', color: '#555', lineHeight: '1.6' };
-const subheading = { fontSize: '15px', fontWeight: 'bold', color: '#333', margin: '16px 0 8px 0' };
-const detailBox = { backgroundColor: '#fff8e7', border: '1px solid #f0d060', borderRadius: '6px', padding: '12px 16px', fontSize: '14px', color: '#444', margin: '8px 0 16px 0' };
 const button = { backgroundColor: '#b8860b', color: '#ffffff', padding: '12px 24px', borderRadius: '6px', textDecoration: 'none', display: 'inline-block', fontSize: '14px', fontWeight: 'bold', margin: '16px 0' };
-const smallText = { fontSize: '12px', color: '#999' };
 const footerSection = { padding: '0 20px' };
 const footer = { fontSize: '12px', color: '#999', textAlign: 'center' as const };

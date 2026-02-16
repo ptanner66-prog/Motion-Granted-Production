@@ -1,12 +1,12 @@
 /**
- * HOLD Notification Email Template — D5 W5-2
- * Initial HOLD notification with evidence gap details and magic link.
- * Sent when Phase III HOLD checkpoint triggers.
+ * HOLD Reminder 24h Email Template — D5 W5-2
+ * Sent 24 hours after initial HOLD notification.
+ * Gentle reminder tone — attorney has not yet responded.
  */
 
 import { Html, Head, Body, Container, Section, Text, Link, Hr } from '@react-email/components';
 
-interface HoldNotificationProps {
+interface HoldReminder24hProps {
   attorneyName: string;
   orderNumber: string;
   motionType: string;
@@ -16,7 +16,7 @@ interface HoldNotificationProps {
   dashboardUrl: string;
 }
 
-export default function HoldNotification({
+export default function HoldReminder24h({
   attorneyName = 'Counselor',
   orderNumber = 'MG-000000',
   motionType = 'Motion',
@@ -24,7 +24,7 @@ export default function HoldNotification({
   evidenceGapDetails = 'Please provide the required documentation.',
   magicLinkUrl = '#',
   dashboardUrl = '#',
-}: HoldNotificationProps) {
+}: HoldReminder24hProps) {
   return (
     <Html>
       <Head />
@@ -38,15 +38,15 @@ export default function HoldNotification({
           <Section style={contentSection}>
             <Text style={greeting}>Dear {attorneyName},</Text>
             <Text style={paragraph}>
-              Your order <strong>{orderNumber}</strong> ({motionType}) has been placed
-              on <strong>HOLD</strong> pending additional information from you.
+              This is a reminder that your order <strong>{orderNumber}</strong> ({motionType})
+              remains on <strong>HOLD</strong>. Please respond so we can continue working
+              on your motion.
             </Text>
             <Text style={subheading}>What We Need:</Text>
             <Text style={paragraph}>{holdReason}</Text>
             <Text style={detailBox}>{evidenceGapDetails}</Text>
             <Text style={paragraph}>
-              Please respond at your earliest convenience so we can continue
-              drafting your motion.
+              Your prompt response will help us keep your order on track.
             </Text>
             <Link href={magicLinkUrl} style={button}>
               Respond to Hold Request

@@ -1,30 +1,26 @@
 /**
- * HOLD Notification Email Template — D5 W5-2
- * Initial HOLD notification with evidence gap details and magic link.
- * Sent when Phase III HOLD checkpoint triggers.
+ * CP3 Final Notice Email Template — D5 W5-4
+ * T+14d URGENT final notice. Bold/highlighted warning text.
+ * Explicitly states auto-cancel date and 50% refund.
  */
 
 import { Html, Head, Body, Container, Section, Text, Link, Hr } from '@react-email/components';
 
-interface HoldNotificationProps {
+interface CP3FinalNoticeProps {
   attorneyName: string;
   orderNumber: string;
   motionType: string;
-  holdReason: string;
-  evidenceGapDetails: string;
-  magicLinkUrl: string;
+  autoCancelDate: string;
   dashboardUrl: string;
 }
 
-export default function HoldNotification({
+export default function CP3FinalNotice({
   attorneyName = 'Counselor',
   orderNumber = 'MG-000000',
   motionType = 'Motion',
-  holdReason = 'Additional information needed',
-  evidenceGapDetails = 'Please provide the required documentation.',
-  magicLinkUrl = '#',
+  autoCancelDate = '',
   dashboardUrl = '#',
-}: HoldNotificationProps) {
+}: CP3FinalNoticeProps) {
   return (
     <Html>
       <Head />
@@ -37,23 +33,32 @@ export default function HoldNotification({
           <Hr style={divider} />
           <Section style={contentSection}>
             <Text style={greeting}>Dear {attorneyName},</Text>
-            <Text style={paragraph}>
-              Your order <strong>{orderNumber}</strong> ({motionType}) has been placed
-              on <strong>HOLD</strong> pending additional information from you.
+            <Text style={urgentBanner}>
+              FINAL NOTICE — Action Required Within 7 Days
             </Text>
-            <Text style={subheading}>What We Need:</Text>
-            <Text style={paragraph}>{holdReason}</Text>
-            <Text style={detailBox}>{evidenceGapDetails}</Text>
             <Text style={paragraph}>
-              Please respond at your earliest convenience so we can continue
-              drafting your motion.
+              Your order <strong>{orderNumber}</strong> ({motionType}) has been
+              awaiting your review for 14 days. This is your final notice
+              before automatic cancellation.
             </Text>
-            <Link href={magicLinkUrl} style={button}>
-              Respond to Hold Request
+            <Text style={criticalWarning}>
+              If no action is taken by <strong>{autoCancelDate}</strong>, your
+              order will be automatically cancelled and a 50% refund will be
+              issued to your original payment method.
+            </Text>
+            <Text style={subheading}>Your Options:</Text>
+            <Text style={paragraph}>
+              1. <strong>Approve</strong> — Accept the documents for delivery<br />
+              2. <strong>Request Changes</strong> — Submit revision notes for rework<br />
+              3. <strong>Cancel</strong> — Cancel the order and receive a 50% refund
+            </Text>
+            <Text style={paragraph}>
+              Please take action before the deadline to avoid automatic
+              cancellation.
+            </Text>
+            <Link href={dashboardUrl} style={urgentButton}>
+              Take Action Now
             </Link>
-            <Text style={smallText}>
-              Or view your order on the <Link href={dashboardUrl}>dashboard</Link>.
-            </Text>
           </Section>
           <Hr style={divider} />
           <Section style={footerSection}>
@@ -74,10 +79,10 @@ const headerSubtext = { fontSize: '12px', letterSpacing: '3px', color: '#666', m
 const divider = { borderColor: '#e6e6e6', margin: '20px 0' };
 const contentSection = { padding: '0 20px' };
 const greeting = { fontSize: '16px', color: '#333' };
+const urgentBanner = { backgroundColor: '#f8d7da', border: '2px solid #dc3545', borderRadius: '6px', padding: '14px 16px', fontSize: '16px', fontWeight: 'bold', color: '#721c24', margin: '8px 0 16px 0', textAlign: 'center' as const };
 const paragraph = { fontSize: '14px', color: '#555', lineHeight: '1.6' };
 const subheading = { fontSize: '15px', fontWeight: 'bold', color: '#333', margin: '16px 0 8px 0' };
-const detailBox = { backgroundColor: '#fff8e7', border: '1px solid #f0d060', borderRadius: '6px', padding: '12px 16px', fontSize: '14px', color: '#444', margin: '8px 0 16px 0' };
-const button = { backgroundColor: '#b8860b', color: '#ffffff', padding: '12px 24px', borderRadius: '6px', textDecoration: 'none', display: 'inline-block', fontSize: '14px', fontWeight: 'bold', margin: '16px 0' };
-const smallText = { fontSize: '12px', color: '#999' };
+const criticalWarning = { backgroundColor: '#fff3cd', border: '2px solid #ffc107', borderRadius: '6px', padding: '14px 16px', fontSize: '14px', color: '#856404', margin: '12px 0', lineHeight: '1.6' };
+const urgentButton = { backgroundColor: '#dc3545', color: '#ffffff', padding: '14px 28px', borderRadius: '6px', textDecoration: 'none', display: 'inline-block', fontSize: '15px', fontWeight: 'bold', margin: '16px 0' };
 const footerSection = { padding: '0 20px' };
 const footer = { fontSize: '12px', color: '#999', textAlign: 'center' as const };

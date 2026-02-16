@@ -1,12 +1,12 @@
 /**
- * HOLD Notification Email Template — D5 W5-2
- * Initial HOLD notification with evidence gap details and magic link.
- * Sent when Phase III HOLD checkpoint triggers.
+ * HOLD Escalation 72h Email Template — D5 W5-2
+ * Sent 72 hours after initial HOLD notification.
+ * More urgent tone — attorney has not responded in 3 days.
  */
 
 import { Html, Head, Body, Container, Section, Text, Link, Hr } from '@react-email/components';
 
-interface HoldNotificationProps {
+interface HoldEscalation72hProps {
   attorneyName: string;
   orderNumber: string;
   motionType: string;
@@ -16,7 +16,7 @@ interface HoldNotificationProps {
   dashboardUrl: string;
 }
 
-export default function HoldNotification({
+export default function HoldEscalation72h({
   attorneyName = 'Counselor',
   orderNumber = 'MG-000000',
   motionType = 'Motion',
@@ -24,7 +24,7 @@ export default function HoldNotification({
   evidenceGapDetails = 'Please provide the required documentation.',
   magicLinkUrl = '#',
   dashboardUrl = '#',
-}: HoldNotificationProps) {
+}: HoldEscalation72hProps) {
   return (
     <Html>
       <Head />
@@ -37,19 +37,23 @@ export default function HoldNotification({
           <Hr style={divider} />
           <Section style={contentSection}>
             <Text style={greeting}>Dear {attorneyName},</Text>
-            <Text style={paragraph}>
-              Your order <strong>{orderNumber}</strong> ({motionType}) has been placed
-              on <strong>HOLD</strong> pending additional information from you.
+            <Text style={urgentBanner}>
+              ACTION REQUIRED — Your order has been on hold for 3 days
             </Text>
-            <Text style={subheading}>What We Need:</Text>
+            <Text style={paragraph}>
+              Your order <strong>{orderNumber}</strong> ({motionType}) has been on
+              <strong> HOLD</strong> for 72 hours. If we don&apos;t hear from you soon,
+              we may need to escalate this matter.
+            </Text>
+            <Text style={subheading}>Outstanding Request:</Text>
             <Text style={paragraph}>{holdReason}</Text>
             <Text style={detailBox}>{evidenceGapDetails}</Text>
             <Text style={paragraph}>
-              Please respond at your earliest convenience so we can continue
-              drafting your motion.
+              Please respond as soon as possible to avoid further delays
+              in processing your motion.
             </Text>
             <Link href={magicLinkUrl} style={button}>
-              Respond to Hold Request
+              Respond Now
             </Link>
             <Text style={smallText}>
               Or view your order on the <Link href={dashboardUrl}>dashboard</Link>.
@@ -74,6 +78,7 @@ const headerSubtext = { fontSize: '12px', letterSpacing: '3px', color: '#666', m
 const divider = { borderColor: '#e6e6e6', margin: '20px 0' };
 const contentSection = { padding: '0 20px' };
 const greeting = { fontSize: '16px', color: '#333' };
+const urgentBanner = { backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '6px', padding: '12px 16px', fontSize: '14px', fontWeight: 'bold', color: '#856404', margin: '8px 0 16px 0', textAlign: 'center' as const };
 const paragraph = { fontSize: '14px', color: '#555', lineHeight: '1.6' };
 const subheading = { fontSize: '15px', fontWeight: 'bold', color: '#333', margin: '16px 0 8px 0' };
 const detailBox = { backgroundColor: '#fff8e7', border: '1px solid #f0d060', borderRadius: '6px', padding: '12px 16px', fontSize: '14px', color: '#444', margin: '8px 0 16px 0' };
