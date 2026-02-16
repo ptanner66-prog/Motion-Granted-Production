@@ -61,7 +61,7 @@ import {
   checkCitationRequirements,
   extractCitations,
   CITATION_HARD_STOP_MINIMUM,
-} from "@/lib/workflow/citation-verifier";
+} from "@/lib/citation/citation-verifier";
 import { injectAdvisories, formatAdvisoriesForPhaseX } from "@/lib/workflow/advisory-injector";
 
 // Type imports
@@ -297,8 +297,17 @@ interface DeliverableResult {
 /**
  * Build the phase input object from workflow state
  * CRITICAL: Include ALL case data so phases can inject it into prompts
+ *
+ * SP-18 Issue 2: Accept optional prefetchedCitations for citation verification phases.
+ * Pre-fetch maps are Record<string, CLCitationResult> (NOT Map) for Inngest serialization.
  */
-function buildPhaseInput(state: WorkflowState): PhaseInput {
+function buildPhaseInput(
+  state: WorkflowState,
+  options?: {
+    prefetchedCitations?: Record<string, CLCitationResult>;
+    revisionLoop?: number;
+  }
+): PhaseInput {
   const parsedSummaries = state.orderContext.documents.parsed.map((d) => d.summary).filter(Boolean);
   const rawDocText = state.orderContext.documents.raw;
   const documents = parsedSummaries.length > 0
@@ -355,6 +364,11 @@ function buildPhaseInput(state: WorkflowState): PhaseInput {
     filingDeadline: state.orderContext.filingDeadline ?? undefined,
     orderNumber: state.orderContext.orderNumber || '',
     division: state.orderContext.courtDivision || undefined,
+
+    // SP-18 Issue 2: Pre-fetched citation existence results
+    prefetchedCitations: options?.prefetchedCitations,
+    // Revision loop number (for VII.1)
+    revisionLoop: options?.revisionLoop,
   };
 }
 
@@ -992,27 +1006,55 @@ async function generateDeliverables(
     // 3. Generate Citation Accuracy Report
     console.log('[generateDeliverables] Generating citation report...');
     try {
-      // BINDING 02/16/26 (ING-011R): Use REAL verification results from Phase V.1/VII.1.
+      // BINDING 02/16/26 (ING-011R): Use REAL verification results from Phase V.1/VII.1/IX.1.
       // NEVER hardcode status:'VERIFIED' or confidence:1.0.
+      // SP-18 Issue 3: Read actual pipeline results, merge all verification phases.
       const phaseV1Output = (phaseOutputs?.["V.1"] ?? {}) as Record<string, unknown>;
       const phaseVII1Output = (phaseOutputs?.["VII.1"] ?? {}) as Record<string, unknown>;
+      const phaseIX1Output = (phaseOutputs?.["IX.1"] ?? {}) as Record<string, unknown>;
 
       // Extract real verification results from CIV pipeline output
       const v1Results = (phaseV1Output?.verificationResults ?? phaseV1Output?.citations ?? []) as Array<Record<string, unknown>>;
       const vii1Results = (phaseVII1Output?.verificationResults ?? phaseVII1Output?.citations ?? []) as Array<Record<string, unknown>>;
 
+      // IX.1 final audit: extract rejected citations to downgrade any previously VERIFIED
+      const ix1Audit = phaseIX1Output?.finalCitationAudit as Record<string, unknown> | undefined;
+      const ix1RejectedCitations = new Set(
+        ((ix1Audit?.rejectedCitations ?? []) as string[]).map(c => c.toLowerCase().replace(/\s+/g, ' ').trim())
+      );
+
       // Build citation report from actual pipeline results
       const allCitations: Array<{ citation: string; status: string; confidence: number }> = [];
+      const seenNormalized = new Set<string>();
 
-      // Map CIV pipeline results to report format
+      // Map CIV pipeline results to report format — VII.1 results override V.1 for duplicates
       for (const r of [...v1Results, ...vii1Results]) {
         const civResult = r.civResult as Record<string, unknown> | undefined;
         const compositeResult = civResult?.compositeResult as Record<string, unknown> | undefined;
-        allCitations.push({
-          citation: String(r.citation ?? r.citationString ?? 'Unknown citation'),
-          status: String(compositeResult?.status ?? r.status ?? (r.verified ? 'VERIFIED' : 'UNVERIFIED')),
-          confidence: Number(compositeResult?.confidence ?? r.confidence ?? 0),
-        });
+        const citationStr = String(r.citation ?? r.citationString ?? 'Unknown citation');
+        const normalized = citationStr.toLowerCase().replace(/\s+/g, ' ').trim();
+
+        // De-duplicate: latest phase wins
+        if (seenNormalized.has(normalized)) {
+          // Remove previous entry so the latest (VII.1) takes precedence
+          const idx = allCitations.findIndex(
+            c => c.citation.toLowerCase().replace(/\s+/g, ' ').trim() === normalized
+          );
+          if (idx !== -1) allCitations.splice(idx, 1);
+        }
+        seenNormalized.add(normalized);
+
+        // SP-18 FIX: Read confidenceScore (CIV field name), NOT confidence
+        let status = String(compositeResult?.status ?? r.status ?? (r.verified ? 'VERIFIED' : 'UNVERIFIED'));
+        const confidence = Number(compositeResult?.confidenceScore ?? compositeResult?.confidence ?? r.confidence ?? 0);
+
+        // SP-18: IX.1 final audit rejection overrides previous VERIFIED
+        if (ix1RejectedCitations.has(normalized) && status === 'VERIFIED') {
+          status = 'REJECTED';
+          console.warn(`[generateDeliverables] Citation downgraded by IX.1 final audit: ${citationStr}`);
+        }
+
+        allCitations.push({ citation: citationStr, status, confidence });
       }
 
       // Fallback: if CIV results are empty, build from citation banks with UNVERIFIED status
@@ -2106,7 +2148,10 @@ export const generateOrderWorkflow = inngest.createFunction(
       console.log('[Orchestration] Phase V.1 - Phase IV present:', !!workflowState.phaseOutputs['IV']);
       console.log('[Orchestration] Phase V.1 - Phase V present:', !!workflowState.phaseOutputs['V']);
       console.log(`[Orchestration] Phase V.1 - Tier: ${workflowState.tier} (${workflowState.tier === 'C' || workflowState.tier === 'D' ? 'sub-step granularity available' : 'single step'})`);
-      const input = buildPhaseInput(workflowState);
+      // SP-18 Issue 2: Pass pre-fetched citation existence results to Phase V.1
+      const input = buildPhaseInput(workflowState, {
+        prefetchedCitations: prefetchV1Result.prefetchMap,
+      });
       const result = await executePhase("V.1", input);
 
       if (!result.success || !result.output) {
@@ -2127,6 +2172,11 @@ export const generateOrderWorkflow = inngest.createFunction(
     // SP-13 Step 6.5/6.6: Protocol dispatch after Phase V.1 (Decision 8)
     // ========================================================================
     if (DISPATCHER_PHASES.includes('V.1')) {
+      // SP-18: Derive verification status from actual Phase V.1 results
+      const v1Output = (phaseV1Result?.output ?? {}) as Record<string, unknown>;
+      const v1HasBlocked = !!(v1Output?.protocol7 as Record<string, unknown>)?.triggered;
+      const v1DispatchStatus = v1HasBlocked ? 'VERIFICATION_DEFERRED' as const : 'VERIFIED' as const;
+
       const v1DispatchResult = await step.run('dispatch-protocols-v1', async () => {
         return dispatchProtocols({
           orderId,
@@ -2134,7 +2184,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           tier: (workflowState.tier || 'A') as 'A' | 'B' | 'C' | 'D',
           jurisdiction: workflowState.orderContext.jurisdiction || 'LA',
           citation: { id: orderId, text: '' }, // Order-level dispatch
-          verificationResult: { status: 'VERIFIED' as const },
+          verificationResult: { status: v1DispatchStatus },
           detectionOnly: false,
         });
       });
@@ -2506,8 +2556,11 @@ export const generateOrderWorkflow = inngest.createFunction(
       const phaseVII1Result = await step.run(`phase-vii1-citation-check-loop-${loopNum}`, async () => {
         console.log(`[Orchestration] Phase VII.1 Loop ${loopNum} - citation re-verification`);
         console.log(`[Orchestration] Phase VII.1 - Phase VIII present:`, !!workflowState.phaseOutputs['VIII']);
-        const input = buildPhaseInput(workflowState);
-        input.revisionLoop = loopNum;
+        // SP-18 Issue 2: Pass pre-fetched citation existence results to Phase VII.1
+        const input = buildPhaseInput(workflowState, {
+          prefetchedCitations: prefetchVII1Result.prefetchMap,
+          revisionLoop: loopNum,
+        });
         const result = await executePhase("VII.1", input);
 
         if (!result.success || !result.output) {
@@ -2566,6 +2619,11 @@ export const generateOrderWorkflow = inngest.createFunction(
       // SP-13 Step 6.5/6.6: Protocol dispatch after Phase VII.1 (Decision 8)
       // ================================================================
       if (DISPATCHER_PHASES.includes('VII.1')) {
+        // SP-18: Derive verification status from actual Phase VII.1 results
+        const vii1Output = (phaseVII1Result?.output ?? {}) as Record<string, unknown>;
+        const vii1Escalated = !!(vii1Output?.escalated);
+        const vii1DispatchStatus = vii1Escalated ? 'VERIFICATION_DEFERRED' as const : 'VERIFIED' as const;
+
         const vii1DispatchResult = await step.run(`dispatch-protocols-vii1-loop-${loopNum}`, async () => {
           return dispatchProtocols({
             orderId,
@@ -2573,7 +2631,7 @@ export const generateOrderWorkflow = inngest.createFunction(
             tier: (workflowState.tier || 'A') as 'A' | 'B' | 'C' | 'D',
             jurisdiction: workflowState.orderContext.jurisdiction || 'LA',
             citation: { id: orderId, text: '' },
-            verificationResult: { status: 'VERIFIED' as const },
+            verificationResult: { status: vii1DispatchStatus },
             detectionOnly: false,
           });
         });
@@ -2897,6 +2955,12 @@ export const generateOrderWorkflow = inngest.createFunction(
     // SP-13 Step 6.5/6.6: Protocol dispatch after Phase IX.1 (Decision 8)
     // ========================================================================
     if (DISPATCHER_PHASES.includes('IX.1')) {
+      // SP-18: Derive verification status from actual Phase IX.1 results
+      const ix1Output = (phaseIX1Result?.output ?? {}) as Record<string, unknown>;
+      const ix1Audit = ix1Output?.finalCitationAudit as Record<string, unknown> | undefined;
+      const ix1HasRejected = ((ix1Audit?.rejected as number) ?? 0) > 0 || ((ix1Audit?.blocked as number) ?? 0) > 0;
+      const ix1DispatchStatus = ix1HasRejected ? 'VERIFICATION_DEFERRED' as const : 'VERIFIED' as const;
+
       const ix1DispatchResult = await step.run('dispatch-protocols-ix1', async () => {
         return dispatchProtocols({
           orderId,
@@ -2904,7 +2968,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           tier: (workflowState.tier || 'A') as 'A' | 'B' | 'C' | 'D',
           jurisdiction: workflowState.orderContext.jurisdiction || 'LA',
           citation: { id: orderId, text: '' },
-          verificationResult: { status: 'VERIFIED' as const },
+          verificationResult: { status: ix1DispatchStatus },
           detectionOnly: false,
         });
       });

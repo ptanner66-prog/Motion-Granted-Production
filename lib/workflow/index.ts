@@ -5,7 +5,7 @@
  * document production system.
  */
 
-// Citation Verification (via re-export shim → lib/citation/citation-verifier.ts)
+// Citation Verification (canonical location: lib/citation/citation-verifier.ts)
 export {
   extractCitations,
   verifyCitation,
@@ -14,7 +14,7 @@ export {
   storeCitations,
   manuallyVerifyCitation,
   CITATION_HARD_STOP_MINIMUM,
-} from '@/lib/workflow/citation-verifier';
+} from '@/lib/citation/citation-verifier';
 
 // Document Parsing
 export {

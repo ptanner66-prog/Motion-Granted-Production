@@ -64,6 +64,14 @@ export interface PhaseInput {
   documents?: string[];
   revisionLoop?: number;
 
+  /**
+   * Pre-fetched CourtListener existence results from batch lookup (SP-18 Issue 2).
+   * Key: normalized citation string. Value: CL existence result.
+   * Populated by orchestrator's cit-prefetch steps.
+   * MUST be Record (plain object), NOT Map — Maps don't survive Inngest serialization.
+   */
+  prefetchedCitations?: Record<string, unknown>;
+
   // Party information
   parties?: Array<{
     name: string;
