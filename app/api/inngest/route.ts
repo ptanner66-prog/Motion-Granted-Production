@@ -24,6 +24,9 @@ import { conflictCheckJob } from "@/lib/inngest/conflict-check-job";
 // Data retention cron jobs
 import { sendDeletionReminders, autoDeleteExpired } from "@/lib/inngest/retention-jobs";
 
+// Orphan sweep + retention purge (SP-17 D6 Phase 6)
+import { orphanSweepCron } from "@/lib/inngest/orphan-sweep";
+
 /**
  * Inngest API Route Handler
  *
@@ -52,6 +55,8 @@ const registeredFunctions = [
   // RETENTION: Scheduled cron jobs for data lifecycle
   sendDeletionReminders,
   autoDeleteExpired,
+  // ORPHAN SWEEP: Weekly storage cleanup + 180-day archive purge (SP-17 D6)
+  orphanSweepCron,
 ];
 
 // IV-003: Required function registration validator
@@ -66,6 +71,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
   { ref: conflictCheckJob, name: 'conflictCheckJob' },
   { ref: sendDeletionReminders, name: 'sendDeletionReminders' },
   { ref: autoDeleteExpired, name: 'autoDeleteExpired' },
+  { ref: orphanSweepCron, name: 'orphanSweepCron' },
 ] as const;
 
 const missingFns = REQUIRED_FUNCTION_EXPORTS.filter(f => !f.ref);
