@@ -11,6 +11,16 @@ const DEFAULT_RETENTION_DAYS = 365; // ST-001: CCP §340.6 — 1-year malpractic
 const MAX_RETENTION_DAYS = 730; // 2 years hard cap
 const REMINDER_DAYS_BEFORE = 14;
 
+/**
+ * ST6-01: Only terminal states are safe to delete or send deletion reminders.
+ * Any order in a non-terminal state is actively being processed
+ * or awaiting user action and MUST NOT be auto-deleted.
+ */
+const DELETABLE_STATUSES = [
+  'COMPLETED', 'CANCELLED', 'CANCELLED_USER', 'CANCELLED_SYSTEM',
+  'CANCELLED_CONFLICT', 'REFUNDED',
+] as const;
+
 export interface RetentionStatus {
   retention_expires_at: string | null;
   days_remaining: number | null;
@@ -180,7 +190,12 @@ export async function extendRetention(
 }
 
 /**
- * Get orders due for deletion reminder (14 days before expiry)
+ * Get orders due for deletion reminder (14 days before expiry).
+ *
+ * ST6-05 FIX: Only returns orders in DELETABLE_STATUSES (terminal states).
+ * Orders in active states (REVISION_REQ, PROCESSING, HOLD_PENDING, etc.)
+ * must NOT receive deletion reminder emails — the attorney is actively
+ * working with the order and the email would be confusing/alarming.
  */
 export async function getOrdersDueForReminder(): Promise<Array<{
   id: string;
@@ -200,7 +215,8 @@ export async function getOrdersDueForReminder(): Promise<Array<{
     .lte('retention_expires_at', reminderCutoff.toISOString())
     .is('deleted_at', null)
     .eq('deletion_reminder_sent', false)
-    .not('retention_expires_at', 'is', null);
+    .not('retention_expires_at', 'is', null)
+    .in('status', [...DELETABLE_STATUSES]);
 
   if (error) {
     log.error('[Retention] Error fetching orders for reminder:', error);
@@ -226,20 +242,49 @@ export async function markReminderSent(orderId: string): Promise<void> {
 }
 
 /**
- * Get orders past retention date (ready for deletion)
+ * Get orders past retention date (ready for deletion).
+ *
+ * ST6-01 FIX: Only returns orders in DELETABLE_STATUSES (terminal states).
+ * Orders in active states (REVISION_REQ, PROCESSING, HOLD_PENDING, etc.)
+ * are never returned even if their retention_expires_at has passed.
  */
-export async function getExpiredOrders(): Promise<Array<{ id: string }>> {
+export async function getExpiredOrders(): Promise<Array<{ id: string; status: string }>> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('orders')
-    .select('id')
+    .select('id, status')
     .lte('retention_expires_at', new Date().toISOString())
     .is('deleted_at', null)
-    .not('retention_expires_at', 'is', null);
+    .not('retention_expires_at', 'is', null)
+    .in('status', [...DELETABLE_STATUSES]);
 
   if (error) {
     log.error('[Retention] Error fetching expired orders:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
+ * ST6-01: Detect orders with expired retention in non-terminal (active) states.
+ * These are anomalies that require admin investigation — the retention should
+ * have been extended when the order re-entered active processing.
+ */
+export async function getStuckExpiredOrders(): Promise<Array<{ id: string; status: string; retention_expires_at: string }>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, status, retention_expires_at')
+    .lte('retention_expires_at', new Date().toISOString())
+    .is('deleted_at', null)
+    .not('retention_expires_at', 'is', null)
+    .not('status', 'in', `(${[...DELETABLE_STATUSES].join(',')})`);
+
+  if (error) {
+    log.error('[Retention] Error fetching stuck expired orders:', error);
     return [];
   }
 

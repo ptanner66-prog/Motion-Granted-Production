@@ -85,12 +85,18 @@ export const dailyRetentionJob = inngest.createFunction(
     await step.run('process-expired-orders', async () => {
       const supabase = getServiceSupabase();
 
-      // Query orders past retention — EXCLUDING legal holds
+      // ST6-01: Only terminal states are safe to delete.
+      const DELETABLE_STATUSES = [
+        'COMPLETED', 'CANCELLED', 'CANCELLED_USER', 'CANCELLED_SYSTEM',
+        'CANCELLED_CONFLICT', 'REFUNDED',
+      ];
+
+      // Query orders past retention — terminal states only, EXCLUDING legal holds
       const { data: expired } = await supabase
         .from('orders')
         .select('id, legal_hold, status')
         .lt('retention_expires_at', new Date().toISOString())
-        .eq('status', 'COMPLETED')
+        .in('status', DELETABLE_STATUSES)
         .is('deleted_at', null);
 
       let deleted = 0;

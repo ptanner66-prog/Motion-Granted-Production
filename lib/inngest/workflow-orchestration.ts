@@ -43,6 +43,7 @@ import { scheduleCP3Timeouts, cancelCP3Timeouts } from "@/lib/workflow/cp3-timeo
 import { acquireRefundLock, releaseRefundLock } from "@/lib/payments/refund-lock";
 import { generateSignedUrls } from "@/lib/delivery/signed-urls";
 import { getServiceSupabase } from "@/lib/supabase/admin";
+import { extendRetentionOnReentry } from "@/lib/retention/extend-retention-on-reentry";
 
 // Workflow infrastructure imports
 import { gatherOrderContext, type OrderContext } from "@/lib/workflow/orchestrator";
@@ -1381,6 +1382,44 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.error('[SECURITY] P10 event rejected — no legitimate trigger found', { orderId });
         return { skipped: true, reason: 'P10 event rejected — invalid trigger', startPhase };
       }
+
+      // ST6-01: Extend retention on Protocol 10 re-entry
+      await step.run('extend-retention-p10', async () => {
+        await extendRetentionOnReentry(supabase, orderId);
+      });
+    }
+
+    // ST6-01: Extend retention on attorney revision re-entry
+    if (event.name === 'order/revision-requested') {
+      await step.run('extend-retention-revision', async () => {
+        await extendRetentionOnReentry(supabase, orderId);
+      });
+
+      // ST6-02: Check if raw uploads have been purged. If so, log warning
+      // and store disclaimer for downstream phases to reference.
+      await step.run('check-raw-uploads-purged', async () => {
+        const { data: orderData } = await supabase
+          .from('orders')
+          .select('raw_uploads_purged')
+          .eq('id', orderId)
+          .single();
+
+        if (orderData?.raw_uploads_purged) {
+          console.warn('[WORKFLOW] Revision requested after raw upload purge', { orderId });
+
+          // Store disclaimer in automation_logs for audit trail
+          await supabase.from('automation_logs').insert({
+            order_id: orderId,
+            action_type: 'raw_uploads_purged_disclaimer',
+            action_details: {
+              disclaimer:
+                'Original uploaded evidence files have been purged per 7-day retention policy. ' +
+                'This revision is based on previously extracted content and phase outputs only. ' +
+                'Attorney may need to re-upload original evidence if substantial changes are needed.',
+            },
+          });
+        }
+      });
     }
 
     // SP-12 AH-5: Idempotency check (Layer 1)
@@ -4016,6 +4055,11 @@ async function handleRequestChanges(
     await supabase.from('cost_tracking').update({
       is_rework_reset: true,
     }).match({ order_id: orderId, is_rework_reset: false });
+  });
+
+  // ST6-01: Extend retention when order re-enters active processing via CP3 REQUEST_CHANGES
+  await step.run('extend-retention-rework', async () => {
+    await extendRetentionOnReentry(supabase, orderId);
   });
 
   // Step 5: Record rejection

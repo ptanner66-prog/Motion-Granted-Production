@@ -6,7 +6,8 @@ import { inngest } from './client';
 import {
   getOrdersDueForReminder,
   markReminderSent,
-  getExpiredOrders
+  getExpiredOrders,
+  getStuckExpiredOrders
 } from '@/lib/retention';
 import { deleteOrderData } from '@/lib/retention';
 import { sendDeletionReminderEmail } from '@/lib/email/retention-emails';
@@ -128,8 +129,22 @@ export const autoDeleteExpired = inngest.createFunction(
       }
     }
 
-    logger.info(`Auto-delete complete: ${results.deleted} deleted, ${results.failed} failed`);
-    return results;
+    // ST6-01: Detect non-terminal orders with expired retention.
+    // These are ANOMALIES — the retention should have been extended
+    // when the order re-entered active processing.
+    const stuckOrders = await step.run('detect-stuck-orders', async () => {
+      return getStuckExpiredOrders();
+    });
+
+    if (stuckOrders.length > 0) {
+      logger.warn(`[AUTO-DELETE] Stuck orders detected — active orders with expired retention`, {
+        count: stuckOrders.length,
+        orders: stuckOrders.map(o => ({ id: o.id, status: o.status, expires: o.retention_expires_at })),
+      });
+    }
+
+    logger.info(`Auto-delete complete: ${results.deleted} deleted, ${results.failed} failed, ${stuckOrders.length} stuck`);
+    return { ...results, stuck: stuckOrders.length };
   }
 );
 

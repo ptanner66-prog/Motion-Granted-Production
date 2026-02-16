@@ -18,6 +18,13 @@ import { STORAGE_BUCKETS } from '@/lib/config/storage';
 
 const log = createLogger('api-orders-download');
 
+/**
+ * ST6-04: Files exceeding this threshold get shorter signed URL expiry (1 hour)
+ * and generate audit log entries for security monitoring.
+ */
+const LARGE_FILE_SIZE_THRESHOLD = 4.5 * 1024 * 1024; // 4.5MB
+const LARGE_FILE_EXPIRY = 3600; // 1 hour for large files
+
 const EXPIRY_BY_STATUS: Record<string, number> = {
   AWAITING_APPROVAL: 3600, // 1 hour during review
   COMPLETED: 604800, // 7 days after completion
@@ -102,9 +109,26 @@ export async function GET(
       // Determine bucket and path from file_url
       const { bucket, path } = parseBucketPath(doc.file_url);
 
+      // ST6-04: Large file security monitoring.
+      // Files exceeding 4.5MB get shorter signed URL expiry (1 hour vs status-dependent)
+      // and generate audit log entries for security monitoring.
+      const fileSize = doc.file_size ?? 0;
+      const isLargeFile = fileSize > LARGE_FILE_SIZE_THRESHOLD;
+      const effectiveExpiry = isLargeFile ? LARGE_FILE_EXPIRY : expiry;
+
+      if (isLargeFile) {
+        log.warn('Large file download — using shorter URL expiry', {
+          orderId,
+          fileId,
+          fileSize,
+          threshold: LARGE_FILE_SIZE_THRESHOLD,
+          expirySeconds: LARGE_FILE_EXPIRY,
+        });
+      }
+
       const { data: urlData, error: urlErr } = await supabase.storage
         .from(bucket)
-        .createSignedUrl(path, expiry);
+        .createSignedUrl(path, effectiveExpiry);
 
       if (urlErr || !urlData?.signedUrl) {
         log.error('Signed URL generation failed', {
@@ -135,10 +159,31 @@ export async function GET(
           .is('download_confirmed_at', null);
       }
 
+      // ST6-04: Audit log for large file downloads (non-blocking)
+      if (isLargeFile) {
+        supabase.from('activity_logs').insert({
+          user_id: user.id,
+          action: 'download.large_file',
+          resource_type: 'document',
+          resource_id: fileId,
+          details: {
+            order_id: orderId,
+            download_type: 'LARGE_FILE_SHORT_EXPIRY',
+            file_size_bytes: fileSize,
+            url_expires_at: new Date(Date.now() + LARGE_FILE_EXPIRY * 1000).toISOString(),
+          },
+        }).then(({ error: auditError }: { error: { message: string } | null }) => {
+          if (auditError) {
+            log.warn('Download audit log insert failed', { orderId, error: auditError.message });
+          }
+        });
+      }
+
       return NextResponse.json({
         url: urlData.signedUrl,
-        expiresIn: expiry,
+        expiresIn: effectiveExpiry,
         fileName: doc.file_name,
+        ...(isLargeFile ? { type: 'LARGE_FILE', notice: 'URL expires in 1 hour' } : {}),
       });
     }
 
