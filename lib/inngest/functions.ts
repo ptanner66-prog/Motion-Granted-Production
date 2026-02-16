@@ -45,6 +45,8 @@ import { hold7dTerminalAction } from './functions/hold-7d-terminal-action';
 import { hold24hReminder } from './functions/hold-24h-reminder';
 import { hold72hEscalation } from './functions/hold-72h-escalation';
 import { holdRecoveryCron } from './functions/hold-recovery-cron';
+// SP-21: Checkpoint recovery cron
+import { checkpointRecoveryCron } from './checkpoint-recovery';
 
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
@@ -1198,4 +1200,6 @@ export const functions = [
   hold24hReminder,          // 24-hour HOLD reminder email
   hold72hEscalation,        // 72-hour HOLD escalation + admin notification
   holdRecoveryCron,         // Every 6h cron to detect stuck HOLDs
+  // SP-21: Checkpoint recovery
+  checkpointRecoveryCron,   // Every 6h: recover stuck AWAITING_APPROVAL orders
 ];

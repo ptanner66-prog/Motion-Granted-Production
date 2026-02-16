@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/admin';
 import { inngest } from '@/lib/inngest/client';
 import { CANONICAL_EVENTS, CP3_REFUND_PERCENTAGE } from '@/lib/workflow/checkpoint-types';
+import { checkRateLimit } from '@/lib/security/rate-limiter';
 
 export async function POST(
   req: NextRequest,
@@ -35,6 +36,15 @@ export async function POST(
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // CP3 rate limit: 5 decisions per minute per user
+  const rl = await checkRateLimit(user.id, 'cp3');
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded', retryAfter: rl.reset },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) } }
+    );
   }
 
   // Fetch order with service client

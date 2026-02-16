@@ -6,7 +6,7 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { NextRequest } from 'next/server';
 
-export type RateLimitTier = 'auth' | 'generate' | 'api';
+export type RateLimitTier = 'auth' | 'generate' | 'api' | 'cp3';
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -41,6 +41,7 @@ function getLimiters(): Record<RateLimitTier, Ratelimit> | null {
       auth: new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(10, '1 m'), prefix: 'rl:auth' }),
       generate: new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(5, '1 m'), prefix: 'rl:gen' }),
       api: new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(100, '1 m'), prefix: 'rl:api' }),
+      cp3: new Ratelimit({ redis: r, limiter: Ratelimit.slidingWindow(5, '1 m'), prefix: 'rl:cp3' }),
     };
   }
   return limiters;

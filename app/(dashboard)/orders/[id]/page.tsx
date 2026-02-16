@@ -240,6 +240,7 @@ export default async function OrderDetailPage({
               orderId={order.id}
               statusVersion={statusVersion}
               amountPaid={amountPaid}
+              protocol10Triggered={!!order.protocol_10_triggered}
             />
           )}
 
