@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/utils'
 import { formatMotionType } from '@/config/motion-types'
 import { StatusUpdateForm } from '@/components/admin/status-update-form'
+import { HoldResolutionPanel } from '@/components/admin/hold-resolution-panel'
 import { UploadDeliverableButton } from '@/components/admin/upload-deliverable-button'
 import { DeleteDeliverableButton } from '@/components/admin/delete-deliverable-button'
 import { DownloadAllButton } from '@/components/admin/download-all-button'
@@ -601,6 +602,17 @@ export default async function AdminOrderDetailPage({
           {/* Revision Requests - shown when client requested revision */}
           {(order.status === 'revision_requested' || order.status === 'draft_delivered' || order.status === 'revision_delivered') && (
             <AdminRevisionRequests orderId={order.id} />
+          )}
+
+          {/* SP-22: HOLD Resolution Panel — shown when order is on hold */}
+          {(order.status === 'on_hold' || order.status === 'hold_pending') && (
+            <HoldResolutionPanel
+              orderId={order.id}
+              holdReason={order.hold_reason}
+              holdTriggeredAt={order.hold_triggered_at}
+              holdEscalated={order.hold_escalated ?? false}
+              holdReminderSent={order.hold_reminder_sent ?? false}
+            />
           )}
 
           {/* Status Update */}

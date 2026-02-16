@@ -39,13 +39,19 @@ export const CP3_REMINDER_72H_MS = 72 * 60 * 60 * 1000;
 export const CP3_REFUND_PERCENTAGE = 50;
 export const RETENTION_DAYS = 365;  // California 1-year malpractice discovery statute
 
-// ── 5 Canonical Events (Inngest event names) ──
+// ── Canonical Events (Inngest event names) ──
 export const CANONICAL_EVENTS = {
   ORDER_SUBMITTED: 'order/submitted',
   ORDER_REVISION_REQUESTED: 'order/revision-requested',
   ORDER_PROTOCOL_10_EXIT: 'order/protocol-10-exit',
   CHECKPOINT_CP3_REACHED: 'checkpoint/cp3.reached',
   WORKFLOW_CHECKPOINT_APPROVED: 'workflow/checkpoint-approved',
+  // SP-22: HOLD checkpoint events
+  HOLD_CREATED: 'checkpoint/hold.created',
+  HOLD_RESOLVED: 'checkpoint/hold.resolved',
+  HOLD_24H_REMINDER: 'checkpoint/hold.24h-reminder',
+  HOLD_72H_ESCALATION: 'checkpoint/hold.72h-escalation',
+  HOLD_7D_TERMINAL: 'checkpoint/hold.7d-terminal-action',
 } as const;
 
 /**

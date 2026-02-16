@@ -69,6 +69,23 @@ export const EventSchemas = {
     orderId: z.string().uuid(),
     disputeId: z.string(),
   }),
+
+  // SP-22: HOLD checkpoint events
+  'checkpoint/hold.created': z.object({
+    orderId: z.string(),
+    holdReason: z.enum(['evidence_gap', 'tier_reclassification', 'revision_stall', 'citation_critical_failure']),
+    customerEmail: z.string(),
+    createdAt: z.string(),
+    details: z.record(z.unknown()),
+  }),
+
+  'checkpoint/hold.resolved': z.object({
+    orderId: z.string(),
+    checkpointId: z.string().optional(),
+    action: z.enum(['RESUMED', 'CANCELLED']),
+    holdReason: z.string(),
+    resolvedBy: z.string().optional(),
+  }),
 } as const;
 
 export type EventName = keyof typeof EventSchemas;
