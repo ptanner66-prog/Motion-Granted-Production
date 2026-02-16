@@ -25,6 +25,7 @@ const SERVICE_ROLE_ALLOWLIST = [
   'lib/delivery/signed-urls.ts',               // #6: Supabase Storage signed URL generation
   'app/api/webhooks/resend/route.ts',          // #7: Resend webhook handler
   'lib/retention/retention-manager.ts',        // #8: Data retention cascade (DST-04)
+  'lib/services/archive-service.ts',           // #9: Order file archival (SP-17 D6 Phase 6)
 ] as const;
 
 /**
