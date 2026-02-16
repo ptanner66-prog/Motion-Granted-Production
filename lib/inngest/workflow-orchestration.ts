@@ -2074,7 +2074,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           orderId,
           phase: 'V.1',
           tier: (workflowState.tier || 'A') as 'A' | 'B' | 'C' | 'D',
-          jurisdiction: workflowState.jurisdiction || 'LA',
+          jurisdiction: workflowState.orderContext.jurisdiction || 'LA',
           citation: { id: orderId, text: '' }, // Order-level dispatch
           verificationResult: { status: 'VERIFIED' as const },
           detectionOnly: false,
@@ -2089,7 +2089,8 @@ export const generateOrderWorkflow = inngest.createFunction(
       });
 
       if (v1DispatchResult.holdRequired) {
-        await step.sendEvent('workflow/hold-required', {
+        await step.sendEvent('send-hold-event-v1', {
+          name: 'workflow/hold-required',
           data: {
             orderId,
             holdProtocol: v1DispatchResult.holdProtocol,
@@ -2512,7 +2513,7 @@ export const generateOrderWorkflow = inngest.createFunction(
             orderId,
             phase: 'VII.1',
             tier: (workflowState.tier || 'A') as 'A' | 'B' | 'C' | 'D',
-            jurisdiction: workflowState.jurisdiction || 'LA',
+            jurisdiction: workflowState.orderContext.jurisdiction || 'LA',
             citation: { id: orderId, text: '' },
             verificationResult: { status: 'VERIFIED' as const },
             detectionOnly: false,
@@ -2527,7 +2528,8 @@ export const generateOrderWorkflow = inngest.createFunction(
         });
 
         if (vii1DispatchResult.holdRequired) {
-          await step.sendEvent('workflow/hold-required', {
+          await step.sendEvent('send-hold-event-vii1', {
+            name: 'workflow/hold-required',
             data: {
               orderId,
               holdProtocol: vii1DispatchResult.holdProtocol,
@@ -2840,7 +2842,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           orderId,
           phase: 'IX.1',
           tier: (workflowState.tier || 'A') as 'A' | 'B' | 'C' | 'D',
-          jurisdiction: workflowState.jurisdiction || 'LA',
+          jurisdiction: workflowState.orderContext.jurisdiction || 'LA',
           citation: { id: orderId, text: '' },
           verificationResult: { status: 'VERIFIED' as const },
           detectionOnly: false,
@@ -2855,7 +2857,8 @@ export const generateOrderWorkflow = inngest.createFunction(
       });
 
       if (ix1DispatchResult.holdRequired) {
-        await step.sendEvent('workflow/hold-required', {
+        await step.sendEvent('send-hold-event-ix1', {
+          name: 'workflow/hold-required',
           data: {
             orderId,
             holdProtocol: ix1DispatchResult.holdProtocol,

@@ -9,6 +9,7 @@
 // ============================================================
 
 import { createHash } from 'crypto';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createLogger } from '../logging/logger';
 import type { ProtocolResult } from './types';
 
@@ -17,7 +18,7 @@ const ORDER_LEVEL_SENTINEL = '00000000-0000-0000-0000-000000000000';
 const BATCH_SIZE = 100;
 
 export async function persistProtocolResults(
-  supabase: { from: (table: string) => { upsert: (rows: unknown[], opts?: unknown) => Promise<{ error: { message: string } | null }> } },
+  supabase: SupabaseClient,
   orderId: string,
   phase: string,
   results: ProtocolResult[],
