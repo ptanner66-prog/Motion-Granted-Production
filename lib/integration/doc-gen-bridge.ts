@@ -19,6 +19,7 @@ import { assembleFilingPackage, type AssemblerInput, type FilingPackage } from '
 import { convertDocxBufferToPDF } from '../pdf/generator';
 import { uploadDocument, ensureBucketExists } from './storage-manager';
 import { normalizeTier } from '@/lib/utils/tier-helpers';
+import { resolveBarState } from '@/lib/jurisdiction/registry';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -484,6 +485,48 @@ export async function generateAndStoreFilingPackage(
     log.error(`[doc-gen-bridge] Fatal error:`, { orderId: input.orderId, error: message });
     return { success: false, uploadedDocuments, errors, warnings };
   }
+}
+
+// ============================================================================
+// ATTORNEY PROFILE VALIDATION (ST-047)
+// ============================================================================
+
+export interface AttorneyProfile {
+  barNumber: string;
+  firmName: string;
+  firmAddress: string;
+  email: string;
+  phone?: string;
+  jurisdiction: string;
+}
+
+export interface ProfileValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+/**
+ * Validate attorney profile data before doc generation.
+ * Checks required fields and verifies jurisdiction is recognized and enabled.
+ */
+export function validateAttorneyProfile(profile: AttorneyProfile): ProfileValidationResult {
+  const errors: string[] = [];
+  if (!profile) return { valid: false, errors: ['Attorney profile is null or undefined'] };
+  if (!profile.barNumber) errors.push('Missing bar number');
+  if (!profile.firmName) errors.push('Missing firm name');
+  if (!profile.firmAddress) errors.push('Missing firm address');
+  if (!profile.email) errors.push('Missing email');
+  if (!profile.jurisdiction) errors.push('Missing jurisdiction');
+
+  if (profile.jurisdiction) {
+    try {
+      resolveBarState(profile.jurisdiction);
+    } catch {
+      errors.push(`Invalid jurisdiction: ${profile.jurisdiction}`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }
 
 // ============================================================================
