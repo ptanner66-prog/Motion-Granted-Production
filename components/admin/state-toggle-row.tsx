@@ -34,9 +34,9 @@ interface StateToggleRowProps {
 }
 
 const ALL_MOTION_TYPE_IDS = [
-  ...MOTION_TIERS.tierA.motions.map((m) => m.id),
-  ...MOTION_TIERS.tierB.motions.map((m) => m.id),
-  ...MOTION_TIERS.tierC.motions.map((m) => m.id),
+  ...MOTION_TIERS.A.motions.map((m) => m.id),
+  ...MOTION_TIERS.B.motions.map((m) => m.id),
+  ...MOTION_TIERS.C.motions.map((m) => m.id),
 ]
 
 function getMotionName(id: string): string {

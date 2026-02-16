@@ -30,8 +30,8 @@ export type PaperSize = (typeof PAPER_SIZES)[keyof typeof PAPER_SIZES];
 // TIER SYSTEM
 // ============================================================================
 
-/** Motion complexity tiers */
-export type MotionTier = 'A' | 'B' | 'C' | 'D';
+import type { MotionTier } from '@/types/workflow';
+export type { MotionTier };
 
 /** Quality grade thresholds — DO NOT MODIFY without Porter's approval */
 export const QUALITY_THRESHOLDS = {
@@ -135,7 +135,7 @@ export type OrderStatus =
   | 'UPGRADE_PENDING'
   | 'PENDING_CONFLICT_REVIEW'
   | 'AWAITING_APPROVAL'
-  | 'REVISION_REQUESTED'
+  | 'REVISION_REQ'
   | 'COMPLETED'
   | 'CANCELLED_USER'
   | 'CANCELLED_SYSTEM'

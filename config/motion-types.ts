@@ -1,5 +1,9 @@
+import type { MotionTier } from '@/types/workflow';
+
+export { type MotionTier } from '@/types/workflow';
+
 export const MOTION_TIERS = {
-  tierA: {
+  A: {
     name: "Tier A — Procedural / Routine",
     turnaround: "2-3 business days",
     motions: [
@@ -15,7 +19,7 @@ export const MOTION_TIERS = {
       { id: "set_trial", name: "Motion to Set for Trial", price: 300 },
     ]
   },
-  tierB: {
+  B: {
     name: "Tier B — Exceptions & Substantive",
     turnaround: "3-4 business days",
     motions: [
@@ -33,7 +37,7 @@ export const MOTION_TIERS = {
       { id: "recuse", name: "Motion to Recuse", price: 800 },
     ]
   },
-  tierC: {
+  C: {
     name: "Tier C — Complex",
     turnaround: "4-5 business days",
     motions: [
@@ -46,7 +50,7 @@ export const MOTION_TIERS = {
       { id: "peremptory_exception", name: "Peremptory Exception", price: 999 },
     ]
   },
-  tierD: {
+  D: {
     name: "Tier D — Highly Complex / Dispositive",
     turnaround: "5-7 business days",
     motions: [
@@ -116,11 +120,10 @@ export const ORDER_STATUSES = {
   pending_conflict_review: { label: "Under Review", color: "yellow", bgColor: "bg-amber-100", textColor: "text-amber-800" },
 } as const;
 
-export type MotionTier = keyof typeof MOTION_TIERS;
 export type RushOption = typeof RUSH_OPTIONS[number]['id'];
 export type Jurisdiction = typeof JURISDICTIONS[number]['id'];
 export type PartyRole = typeof PARTY_ROLES[number];
-export type OrderStatus = keyof typeof ORDER_STATUSES;
+export type OrderDisplayKey = keyof typeof ORDER_STATUSES;
 
 export function getMotionById(id: string) {
   for (const tier of Object.values(MOTION_TIERS)) {
@@ -130,11 +133,11 @@ export function getMotionById(id: string) {
   return null;
 }
 
-export function getTierForMotion(motionId: string): 'A' | 'B' | 'C' | 'D' | null {
-  if (MOTION_TIERS.tierA.motions.some(m => m.id === motionId)) return 'A';
-  if (MOTION_TIERS.tierB.motions.some(m => m.id === motionId)) return 'B';
-  if (MOTION_TIERS.tierC.motions.some(m => m.id === motionId)) return 'C';
-  if (MOTION_TIERS.tierD.motions.some(m => m.id === motionId)) return 'D';
+export function getTierForMotion(motionId: string): MotionTier | null {
+  if (MOTION_TIERS.A.motions.some(m => m.id === motionId)) return 'A';
+  if (MOTION_TIERS.B.motions.some(m => m.id === motionId)) return 'B';
+  if (MOTION_TIERS.C.motions.some(m => m.id === motionId)) return 'C';
+  if (MOTION_TIERS.D.motions.some(m => m.id === motionId)) return 'D';
   return null;
 }
 
@@ -143,15 +146,10 @@ export function calculatePrice(basePrice: number | null, rushMultiplier: number)
   return Math.round(basePrice * rushMultiplier);
 }
 
-/**
- * Formats a motion type ID to its display name
- * e.g., 'withdraw_counsel' -> 'Motion to Withdraw as Counsel'
- */
 export function formatMotionType(motionId: string): string {
   const motion = getMotionById(motionId);
   if (motion) return motion.name;
 
-  // Fallback: convert snake_case to Title Case
   return motionId
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))

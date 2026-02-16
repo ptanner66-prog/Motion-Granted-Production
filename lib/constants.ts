@@ -3,30 +3,6 @@
  * Centralized location for all magic numbers, strings, and configuration values
  */
 
-// Order Statuses
-export const ORDER_STATUS = {
-  SUBMITTED: 'submitted',
-  IN_PROGRESS: 'in_progress',
-  UNDER_REVIEW: 'under_review',
-  REQUIRES_REVISION: 'requires_revision',
-  APPROVED: 'approved',
-  COMPLETED: 'completed',
-  CANCELLED: 'cancelled',
-} as const
-
-export type OrderStatus = typeof ORDER_STATUS[keyof typeof ORDER_STATUS]
-
-// Order Status Display Configuration
-export const ORDER_STATUS_CONFIG = {
-  [ORDER_STATUS.SUBMITTED]: { label: 'Submitted', color: 'blue' },
-  [ORDER_STATUS.IN_PROGRESS]: { label: 'In Progress', color: 'yellow' },
-  [ORDER_STATUS.UNDER_REVIEW]: { label: 'Under Review', color: 'purple' },
-  [ORDER_STATUS.REQUIRES_REVISION]: { label: 'Requires Revision', color: 'orange' },
-  [ORDER_STATUS.APPROVED]: { label: 'Approved', color: 'green' },
-  [ORDER_STATUS.COMPLETED]: { label: 'Completed', color: 'green' },
-  [ORDER_STATUS.CANCELLED]: { label: 'Cancelled', color: 'red' },
-} as const
-
 // File Upload Configuration
 export const FILE_UPLOAD = {
   MAX_SIZE: 50 * 1024 * 1024, // 50MB in bytes

@@ -21,7 +21,8 @@ export interface ThinkingConfig {
   budgetTokens: number;
 }
 
-export type MotionTier = 'A' | 'B' | 'C' | 'D';
+import type { MotionTier } from '@/types/workflow';
+export type { MotionTier };
 
 // ============================================================================
 // CONFIGURATION
