@@ -71,7 +71,7 @@ export const DISCLOSURES: Record<DisclosureType, Disclosure> = {
     type: 'data_retention',
     shortText: 'Data retention policy',
     fullText:
-      'Motion Granted retains order data and documents for 90 days after delivery, after which they are automatically deleted. Extended retention (up to 180 days) is available upon request. Maximum retention period is 365 days. After deletion, only anonymized statistical data is retained for service improvement. You may request early deletion of your data at any time by contacting support.',
+      'Motion Granted retains order data and documents for 365 days after delivery per CCP §340.6 (California malpractice discovery statute), after which they are automatically deleted. Extended retention (up to 730 days) is available upon request. After deletion, only anonymized statistical data is retained for service improvement. You may request early deletion of your data at any time by contacting support.',
     legalCitation: 'Cal. Civ. Code § 1798.100 et seq. (CCPA)',
   },
 };

@@ -1,22 +1,12 @@
-/**
- * CP3 Approve Route — Directive 1 v2 Rewrite
- *
- * POST /api/orders/[id]/approve
- *
- * D6 C-001: NO order_workflows table — reads from orders directly
- * D6 C-002: Optimistic lock via status_version (NOT cp3_decision IS NULL)
- * D6 C-003: workflowId from DATABASE, NEVER from client request
- *
- * Attorney-only: order.client_id must match authenticated user.
- * Emits workflow/checkpoint-approved event; Fn2 handles delivery inline.
- * Status goes AWAITING_APPROVAL → COMPLETED (no APPROVED intermediate).
- */
+// app/api/orders/[id]/approve/route.ts
+// D6 Directive 1 v2 — COMPLETE REWRITE (SP-8)
+// Resolves: C-001 (no phantom table), C-002 (status_version lock), C-003 (workflowId from DB)
+// Resolves: C-008 (separate route), C-009 (canonical event payload)
+// Status flow: AWAITING_APPROVAL → COMPLETED (no APPROVED intermediate — Conflict 2)
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { getServiceSupabase } from '@/lib/supabase/admin';
+import { authenticateCP3Request } from '@/lib/api/cp3-auth';
 import { inngest } from '@/lib/inngest/client';
-import { logCheckpointEvent } from '@/lib/workflow/checkpoint-logger';
 import { CANONICAL_EVENTS } from '@/lib/workflow/checkpoint-types';
 
 export async function POST(
@@ -24,122 +14,77 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: orderId } = await params;
+  const authResult = await authenticateCP3Request(req, orderId);
+  if (authResult instanceof NextResponse) return authResult;
 
-  // === GATE 1: Authentication ===
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const { userId, order, package: pkg, supabase } = authResult;
 
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  // Parse request body — only status_version and optional reason
+  // [C-003] NO workflowId from client. EVER.
+  const body = await req.json().catch(() => ({}));
+  const statusVersion = body.status_version;
 
-  // === GATE 2: Parse request body ===
-  // C-003 FIX: Only accept status_version from client. NEVER workflowId.
-  let body: { status_version?: number } = {};
-  try {
-    body = await req.json();
-  } catch {
-    // Empty body — status_version will be validated below
-  }
-
-  const { status_version } = body;
-
-  if (typeof status_version !== 'number') {
+  if (typeof statusVersion !== 'number') {
     return NextResponse.json(
-      { error: 'status_version is required (number)' },
-      { status: 400 }
+      { error: 'status_version required' }, { status: 400 }
     );
   }
 
-  // === GATE 3: Ownership verification ===
-  const serviceClient = getServiceSupabase();
+  // [C-002] Optimistic lock via status_version
+  if (order.status_version !== statusVersion) {
+    return NextResponse.json(
+      { error: 'Concurrent modification. Please refresh and try again.' },
+      { status: 409 }
+    );
+  }
 
-  // C-001 FIX: Query orders table directly. NO order_workflows table.
-  const { data: order, error: orderError } = await serviceClient
+  // Atomic status transition: AWAITING_APPROVAL → COMPLETED
+  // No intermediate APPROVED status (Conflict 2 resolution)
+  const { data: updated, error: updateErr } = await supabase
     .from('orders')
-    .select('id, status, status_version, workflow_id, client_id, tier')
+    .update({
+      status: 'COMPLETED',
+      status_version: order.status_version + 1,
+      completed_at: new Date().toISOString(),
+    })
     .eq('id', orderId)
+    .eq('status', 'AWAITING_APPROVAL')
+    .eq('status_version', statusVersion)
+    .select()
     .single();
 
-  if (orderError || !order) {
-    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-  }
-
-  // Ownership: attorney must own the order
-  if (order.client_id !== user.id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  // Status: must be AWAITING_APPROVAL
-  if (order.status !== 'AWAITING_APPROVAL') {
+  if (updateErr || !updated) {
     return NextResponse.json(
-      { error: `Order is ${order.status}, not AWAITING_APPROVAL` },
+      { error: 'Concurrent modification. Please refresh and try again.' },
       { status: 409 }
     );
   }
 
-  // === GATE 4: Optimistic lock via status_version ===
-  // C-002 FIX: Use status_version as SOLE optimistic lock. NOT cp3_decision IS NULL.
-  if (order.status_version !== status_version) {
-    return NextResponse.json(
-      {
-        error: 'Concurrent modification detected. Please refresh and try again.',
-        expected_version: order.status_version,
-        received_version: status_version,
-      },
-      { status: 409 }
-    );
-  }
+  // Write CP3 decision to delivery_packages (AUDIT TRAIL, not lock)
+  await supabase.from('delivery_packages').update({
+    cp3_decision: 'APPROVED',
+    cp3_decision_at: new Date().toISOString(),
+    cp3_decided_by: userId,
+  }).eq('id', pkg.id);
 
-  // === EXECUTE: Emit approval event ===
-  try {
-    // C-003 FIX: workflowId from DATABASE, NEVER from client
-    await inngest.send({
-      name: CANONICAL_EVENTS.WORKFLOW_CHECKPOINT_APPROVED,
-      data: {
-        orderId,
-        workflowId: order.workflow_id, // FROM DATABASE
-        action: 'APPROVE' as const,
-        notes: null,
-        attorneyId: user.id,
-      },
-    });
-
-    // Write cp3_decision to delivery_packages (AUDIT TRAIL, not lock)
-    const { data: pkg } = await serviceClient
-      .from('delivery_packages')
-      .select('id')
-      .eq('order_id', orderId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (pkg) {
-      await serviceClient.from('delivery_packages').update({
-        cp3_decision: 'APPROVED',
-        cp3_decision_at: new Date().toISOString(),
-        cp3_decided_by: user.id,
-      }).eq('id', pkg.id);
-    }
-
-    // Log the action
-    await logCheckpointEvent(serviceClient, {
+  // [C-009] Emit workflow event with BINDING canonical payload
+  // [C-003] workflowId from order.workflow_id (FROM DB), NEVER from client
+  await inngest.send({
+    name: CANONICAL_EVENTS.WORKFLOW_CHECKPOINT_APPROVED,
+    data: {
       orderId,
-      packageId: pkg?.id,
-      eventType: 'CP3_APPROVE_REQUESTED',
-      actor: user.id,
-      metadata: { statusVersion: status_version },
-    });
+      workflowId: order.workflow_id,
+      packageId: pkg.id,
+      tier: order.tier,
+      attorneyEmail: order.attorney_email,
+      action: 'APPROVED',
+    },
+  });
 
-    return NextResponse.json({
-      success: true,
-      message: 'Approval processing. You will receive a delivery email shortly.',
-    });
-  } catch (error) {
-    console.error('[approve] Failed to process approval:', error);
-    return NextResponse.json(
-      { error: 'Internal server error processing approval' },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({
+    success: true,
+    orderId,
+    status: 'COMPLETED',
+    status_version: order.status_version + 1,
+  });
 }

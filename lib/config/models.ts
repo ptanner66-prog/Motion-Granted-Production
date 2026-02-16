@@ -18,11 +18,11 @@
 // VERSION: 7.4.1 — January 28, 2026
 
 export const MODELS = {
-  /** Complex reasoning: Phase IV B/C, VI B/C, VII all, VIII B/C, V.1/VII.1/IX.1 Stage 2 */
-  OPUS: 'claude-opus-4-5-20251101',
+  /** Complex reasoning: Phase IV B/C, VI B/C/D, VII all, VIII B/C/D, V.1/VII.1/IX.1 Stage 2 */
+  OPUS: process.env.OPUS_MODEL_VERSION || 'claude-opus-4-6',
 
-  /** Standard drafting: Phase II, III, IV A, V, VIII A, IX, V.1 Steps 3-5 Tier C */
-  SONNET: 'claude-sonnet-4-20250514',
+  /** Standard drafting: Phase II, III, IV A, V, VIII A, IX, V.1 Steps 3-5 Tier C/D */
+  SONNET: process.env.SONNET_MODEL_VERSION || 'claude-sonnet-4-5-20250929',
 
   /** Fast simple tasks: V.1/VII.1/IX.1 Steps 3-5 Tier A/B (cost optimization) */
   HAIKU: 'claude-haiku-4-5-20251001',
