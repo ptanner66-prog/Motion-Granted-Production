@@ -1,30 +1,28 @@
 /**
- * POST /api/payments/checkout
+ * POST /api/payments/checkout — FULL REWRITE (SP-10 AB-1)
  *
- * Creates a Stripe Checkout Session for order payment.
- * Togglable via STRIPE_PAYMENT_REQUIRED env var (default: true).
+ * BD-XD-001v3: 14-Step Checkout Route
  *
- * BD-XD-001: Three-way merge of 50-State spec, Conflict Check R3, and Stripe Supplemental Audit.
- *
- * 13-Step Execution Order:
- *   1. Auth
- *   2. Body parse
- *   3. Load order (client_id, NOT user_id — SA-003)
- *   4. Ownership check (client_id — SA-003)
- *   5. Duplicate session prevention (Stripe B.3)
- *   6. Already-paid guard
- *   7. Rate limiting (50-State 7.2a)
- *   8. State validation + pricing multiplier (50-State 7.2)
- *   9. Conflict check (CC-R3-02)
- *  10. Payment bypass (CC-R3-03)
- *  11. Stripe null guard
- *  12. Price guard
- *  13. Create Stripe session (12-field metadata, allow_promotion_codes)
+ * Execution Order:
+ *   STEP 1  — Auth (Supabase Auth, NOT Clerk — R4-02 binding)
+ *   STEP 2  — Body parse
+ *   STEP 3  — Load order (client_id everywhere, NEVER user_id — BD-XD-002)
+ *   STEP 4  — Ownership check
+ *   STEP 5  — Duplicate session prevention (Stripe Supplemental B.3)
+ *   STEP 6  — Already-paid guard
+ *   STEP 7  — Rate limiting (10/min per IP — Stripe Supplemental 7.2a)
+ *   STEP 8  — State validation + pricing multiplier (single states query)
+ *   STEP 9  — Conflict check (CC-R3-02)
+ *   STEP 10 — Payment bypass (AFTER conflict check — CC-R3-03)
+ *   STEP 11 — Stripe null guard
+ *   STEP 12 — Price guard
+ *   STEP 12.5 — Price consistency (BD-XD-001v3)
+ *   STEP 13 — Create Stripe session
  *
  * Returns:
- *   { url: string }                — redirect URL to Stripe Checkout
- *   { bypassed: true, orderId }    — when payment is not required
- *   { conflict: true, orderId }    — when case_number conflict detected (409)
+ *   { url: string }             — redirect URL to Stripe Checkout
+ *   { bypassed: true, orderId } — when payment is not required
+ *   409                         — conflict detected or price mismatch
  *
  * @module checkout-route
  */
@@ -33,8 +31,9 @@ import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { stripe } from '@/lib/stripe';
 import { createClient } from '@/lib/supabase/server';
-import { normalizeCaseNumber } from '@/lib/conflicts/normalize';
-import { JURISDICTIONS } from '@/lib/workflow/jurisdiction-filter';
+import { validatePriceConsistency } from '@/lib/payments/checkout-validation';
+import { calculatePriceSync } from '@/lib/payments/price-calculator-core';
+import type { RushType } from '@/lib/payments/price-calculator-core';
 import { inngest } from '@/lib/inngest/client';
 
 // ── Rate Limiting (50-State Step 7.2a) ─────────────────────────────────────
@@ -54,358 +53,460 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-/**
- * Derive state/court metadata from the order's jurisdiction field.
- * Maps jurisdiction IDs (e.g. 'LA_STATE', 'FEDERAL_5TH') to structured metadata.
- */
-function deriveJurisdictionMetadata(jurisdictionId: string): {
-  stateCode: string;
-  courtType: string;
-  federalCircuit: string;
-  federalDistrict: string;
-  legacyJurisdiction: string;
-} {
-  const jurisdiction = JURISDICTIONS.find(j => j.id === jurisdictionId);
-
-  if (jurisdiction) {
-    return {
-      stateCode: jurisdiction.stateCode,
-      courtType: jurisdiction.courtType,
-      federalCircuit: jurisdiction.courtType === 'FEDERAL'
-        ? (jurisdiction.id.includes('5TH') ? '5th' : jurisdiction.id.includes('9TH') ? '9th' : '')
-        : '',
-      federalDistrict: '', // District is stored in court_division on the order
-      legacyJurisdiction: jurisdictionId,
-    };
-  }
-
-  // Fallback: try to parse legacy jurisdiction IDs (la_state, la_ed, etc.)
-  const lower = jurisdictionId.toLowerCase();
-  if (lower.startsWith('la')) {
-    return {
-      stateCode: 'LA',
-      courtType: lower === 'la_state' ? 'STATE' : 'FEDERAL',
-      federalCircuit: lower !== 'la_state' ? '5th' : '',
-      federalDistrict: lower === 'la_ed' ? 'Eastern' : lower === 'la_md' ? 'Middle' : lower === 'la_wd' ? 'Western' : '',
-      legacyJurisdiction: jurisdictionId,
-    };
-  }
-  if (lower.startsWith('ca')) {
-    return {
-      stateCode: 'CA',
-      courtType: lower === 'ca_state' ? 'STATE' : 'FEDERAL',
-      federalCircuit: lower !== 'ca_state' ? '9th' : '',
-      federalDistrict: '',
-      legacyJurisdiction: jurisdictionId,
-    };
-  }
-
-  // Unknown jurisdiction — pass through with defaults
-  return {
-    stateCode: jurisdictionId.slice(0, 2).toUpperCase(),
-    courtType: 'STATE',
-    federalCircuit: '',
-    federalDistrict: '',
-    legacyJurisdiction: jurisdictionId,
-  };
-}
-
 export async function POST(req: Request) {
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 1: Auth (CC-R3-03 — moved up from previous position)
-  // ══════════════════════════════════════════════════════════════════════════
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  const startTime = Date.now();
+  const stepTimings: Record<string, number> = {};
+  let stepStart: number;
 
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 2: Body parse (CC-R3-03)
-  // ══════════════════════════════════════════════════════════════════════════
-  let body: { orderId?: string };
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
+    // ================================================================
+    // STEP 1 — AUTH (Supabase Auth, NOT Clerk — R4-02 binding)
+    // ================================================================
+    stepStart = Date.now();
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-  const { orderId } = body;
-  if (!orderId || typeof orderId !== 'string') {
-    return NextResponse.json(
-      { error: 'orderId is required' },
-      { status: 400 },
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 3: Load order — SA-003: use client_id, NOT user_id
-  // ══════════════════════════════════════════════════════════════════════════
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .select('id, order_number, total_price, motion_type, rush_option, client_id, stripe_payment_status, stripe_checkout_session_id, case_number, filing_deadline, tier, jurisdiction, court_division')
-    .eq('id', orderId)
-    .single();
-
-  if (orderError || !order) {
-    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 4: Ownership check — SA-003: client_id, NOT user_id
-  // BD-XD-002: The string 'user_id' must NOT appear in order queries or ownership checks.
-  // ══════════════════════════════════════════════════════════════════════════
-  if (order.client_id !== user.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 5: Duplicate session prevention — Stripe B.3
-  // ══════════════════════════════════════════════════════════════════════════
-  if (order.stripe_checkout_session_id && order.stripe_payment_status === 'pending') {
-    try {
-      // stripe may be null if not configured — guarded later in step 11
-      if (stripe) {
-        const existingSession = await stripe.checkout.sessions.retrieve(
-          order.stripe_checkout_session_id,
-        );
-        if (existingSession.status === 'open' && existingSession.url) {
-          console.log(`[Checkout] Returning existing session for order ${orderId}`);
-          return NextResponse.json({ url: existingSession.url });
-        }
-      }
-    } catch {
-      // Existing session is invalid/expired — fall through to create new one
-      console.log(`[Checkout] Existing session invalid, creating new for order ${orderId}`);
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-  }
+    stepTimings['auth'] = Date.now() - stepStart;
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 6: Already-paid guard
-  // ══════════════════════════════════════════════════════════════════════════
-  if (order.stripe_payment_status === 'succeeded') {
-    return NextResponse.json(
-      { error: 'Order already paid' },
-      { status: 409 },
-    );
-  }
+    // ================================================================
+    // STEP 2 — BODY PARSE
+    // ================================================================
+    stepStart = Date.now();
+    let body: { orderId?: string; displayed_price_cents?: number };
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 7: Rate limiting — 50-State Step 7.2a (10 req/min/IP)
-  // ══════════════════════════════════════════════════════════════════════════
-  const headersList = await headers();
-  const clientIp =
-    headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    headersList.get('x-real-ip') ||
-    'unknown';
+    const { orderId, displayed_price_cents } = body;
 
-  if (!checkRateLimit(clientIp)) {
-    return NextResponse.json(
-      { error: 'Too many requests. Please wait a moment.' },
-      { status: 429 },
-    );
-  }
+    if (!orderId || typeof orderId !== 'string') {
+      return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
+    }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 8: State validation + pricing multiplier — 50-State Step 7.2
-  // ══════════════════════════════════════════════════════════════════════════
-  const jurisdictionMeta = deriveJurisdictionMetadata(order.jurisdiction || '');
-  const stateCode = jurisdictionMeta.stateCode;
-  const courtType = jurisdictionMeta.courtType;
-  const federalCircuit = jurisdictionMeta.federalCircuit;
-  const federalDistrict = jurisdictionMeta.federalDistrict || order.court_division || '';
-  const legacyJurisdiction = jurisdictionMeta.legacyJurisdiction;
+    // UUID format validation
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(orderId)) {
+      return NextResponse.json({ error: 'Invalid orderId format' }, { status: 400 });
+    }
+    stepTimings['body_parse'] = Date.now() - stepStart;
 
-  // Validate state is enabled — query the states table
-  let pricingMultiplier = 1.0;
-  if (stateCode) {
-    const { data: stateRecord } = await supabase
-      .from('states')
-      .select('code, pricing_multiplier, enabled, federal_circuits')
-      .eq('code', stateCode)
-      .eq('enabled', true)
+    // ================================================================
+    // STEP 3 — LOAD ORDER (client_id everywhere, NEVER user_id — BD-XD-002)
+    // ================================================================
+    stepStart = Date.now();
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        id, order_number, total_price, motion_type, rush_option,
+        client_id, stripe_payment_status, stripe_checkout_session_id,
+        case_number, filing_deadline, status, state_code, tier,
+        jurisdiction, court_division
+      `)
+      .eq('id', orderId)
       .single();
 
-    if (!stateRecord) {
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+    stepTimings['load_order'] = Date.now() - stepStart;
+
+    // ================================================================
+    // STEP 4 — OWNERSHIP CHECK
+    // ================================================================
+    stepStart = Date.now();
+    if (order.client_id !== user.id) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    }
+    stepTimings['ownership'] = Date.now() - stepStart;
+
+    // ================================================================
+    // STEP 5 — DUPLICATE SESSION PREVENTION (Stripe Supplemental B.3)
+    // ================================================================
+    stepStart = Date.now();
+    if (order.stripe_checkout_session_id) {
+      try {
+        if (stripe) {
+          const existingSession = await stripe.checkout.sessions.retrieve(
+            order.stripe_checkout_session_id,
+          );
+
+          if (existingSession.status === 'open' && existingSession.url) {
+            // Session still active — return existing URL
+            stepTimings['duplicate_check'] = Date.now() - stepStart;
+            return NextResponse.json({ url: existingSession.url });
+          }
+        }
+      } catch {
+        // Session expired or not found — clear and proceed
+      }
+
+      // Clear stale session ID
+      await supabase
+        .from('orders')
+        .update({ stripe_checkout_session_id: null })
+        .eq('id', orderId);
+    }
+    stepTimings['duplicate_check'] = Date.now() - stepStart;
+
+    // ================================================================
+    // STEP 6 — ALREADY-PAID GUARD
+    // ================================================================
+    stepStart = Date.now();
+    if (order.stripe_payment_status === 'succeeded') {
+      return NextResponse.json({ error: 'Order already paid' }, { status: 400 });
+    }
+    stepTimings['paid_guard'] = Date.now() - stepStart;
+
+    // ================================================================
+    // STEP 7 — RATE LIMITING (10/min per IP — Stripe Supplemental 7.2a)
+    // ================================================================
+    stepStart = Date.now();
+    const headersList = await headers();
+    const clientIp =
+      headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      headersList.get('x-real-ip') ||
+      'unknown';
+
+    if (!checkRateLimit(clientIp)) {
       return NextResponse.json(
-        { error: `State ${stateCode} is not currently available` },
-        { status: 400 },
+        { error: 'Too many requests. Please wait a moment.' },
+        { status: 429 },
       );
     }
-    pricingMultiplier = stateRecord.pricing_multiplier ?? 1.0;
-  }
+    stepTimings['rate_limit'] = Date.now() - stepStart;
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 9: Conflict check — CC-R3-02
-  // Inline case_number matching against existing orders from other clients.
-  // ══════════════════════════════════════════════════════════════════════════
-  if (order.case_number && order.case_number !== 'NOT_YET_FILED') {
-    const normalizedCase = normalizeCaseNumber(order.case_number);
+    // ================================================================
+    // STEP 8 — STATE VALIDATION + PRICING MULTIPLIER (single states query)
+    // ================================================================
+    stepStart = Date.now();
+    // Derive state code from order (prefer state_code, fall back to jurisdiction)
+    const stateCode = order.state_code || deriveStateCode(order.jurisdiction || '');
+    let pricingMultiplier = 1.0;
 
-    if (normalizedCase) {
-      const { data: potentialConflicts } = await supabase
-        .from('orders')
-        .select('id, order_number, case_number, client_id, status')
-        .neq('client_id', user.id)
-        .not('status', 'in', '("cancelled","cancelled_timeout")')
-        .neq('id', order.id);
+    if (stateCode) {
+      const { data: stateRow, error: stateError } = await supabase
+        .from('states')
+        .select('id, name, enabled, pricing_multiplier')
+        .eq('code', stateCode)
+        .single();
 
-      const matches = (potentialConflicts || []).filter(
-        (c: { id: string; case_number: string | null; client_id: string; status: string }) =>
-          c.case_number && normalizeCaseNumber(c.case_number) === normalizedCase,
+      if (stateError || !stateRow) {
+        return NextResponse.json({ error: 'Invalid state configuration' }, { status: 400 });
+      }
+
+      if (!stateRow.enabled) {
+        return NextResponse.json(
+          { error: `Orders from ${stateRow.name} are not currently accepted.` },
+          { status: 400 },
+        );
+      }
+
+      pricingMultiplier = stateRow.pricing_multiplier ?? 1.0;
+    }
+    stepTimings['state_validation'] = Date.now() - stepStart;
+
+    // ================================================================
+    // STEP 9 — CONFLICT CHECK (CC-R3-02)
+    // ================================================================
+    stepStart = Date.now();
+    const conflictCheckStart = Date.now();
+
+    if (order.case_number && order.case_number !== 'Not Yet Filed' && order.case_number !== 'NOT_YET_FILED') {
+      // Normalize: strip spaces, hyphens, dashes → uppercase
+      const normalized = order.case_number
+        .replace(/[\s\-\u2013\u2014]/g, '')
+        .toUpperCase();
+
+      // Use service_role client for cross-user query (bypasses RLS)
+      const { createClient: createServiceClient } = await import('@supabase/supabase-js');
+      const serviceSupabase = createServiceClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
       );
 
-      if (matches.length > 0) {
-        // Hold order for conflict review
-        await supabase
-          .from('orders')
-          .update({ status: 'pending_conflict_review' })
-          .eq('id', order.id);
+      const { data: conflicts } = await serviceSupabase
+        .from('orders')
+        .select('id, order_number, client_id')
+        .eq('case_number_normalized', normalized)
+        .neq('id', orderId)
+        .neq('client_id', user.id)
+        .not('status', 'in', '("cancelled","refunded")');
 
-        // CC-R3-04: Start 7-day auto-cancel timer via Inngest
+      if (conflicts && conflicts.length > 0) {
+        // Set order to PENDING_CONFLICT_REVIEW
+        const matchingOrderNumbers = conflicts.map((c: { order_number: string }) => c.order_number).join(', ');
+        const deadlineUrgent = order.filing_deadline &&
+          new Date(order.filing_deadline).getTime() - Date.now() < 14 * 24 * 60 * 60 * 1000;
+
+        const conflictNotes = [
+          deadlineUrgent ? `URGENT: Filing deadline ${order.filing_deadline}.` : '',
+          `Case number match: ${order.case_number} matches Order(s) #${matchingOrderNumbers} (different attorney).`,
+          `Filing deadline: ${order.filing_deadline || 'none'}.`,
+        ].filter(Boolean).join(' ');
+
+        await serviceSupabase
+          .from('orders')
+          .update({
+            status: 'pending_conflict_review',
+            conflict_flagged: true,
+            conflict_notes: conflictNotes,
+          })
+          .eq('id', orderId);
+
+        // Fire Inngest event for 7-day auto-cancel timer
         try {
           await inngest.send({
             name: 'conflict/review-started',
-            data: { orderId: order.id },
+            data: {
+              orderId,
+              matchingOrderIds: conflicts.map((c: { id: string }) => c.id),
+              caseNumber: order.case_number,
+            },
           });
         } catch (inngestErr) {
           // Non-fatal: the timer failing shouldn't block the conflict response
-          console.error('[Checkout] Failed to send conflict/review-started event:', inngestErr);
+          console.error('[CHECKOUT] Failed to send conflict/review-started event:', inngestErr);
         }
 
-        console.log(
-          `[Checkout] Conflict detected for order ${orderId}: case_number matches ${matches.length} existing order(s)`,
-        );
+        stepTimings['conflict_check'] = Date.now() - stepStart;
 
+        // Return generic 409 (BD-CONFLICT-MSG — never reveal specific match details)
         return NextResponse.json(
-          { conflict: true, orderId: order.id },
+          { error: 'Your order requires additional review before processing.' },
           { status: 409 },
         );
       }
     }
-  }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 10: Payment bypass — CC-R3-03 (moved from top to after conflict check)
-  // ══════════════════════════════════════════════════════════════════════════
-  const paymentRequired =
-    process.env.STRIPE_PAYMENT_REQUIRED?.toLowerCase().trim() !== 'false';
+    // Timing equalization: pad no-conflict path to ~50ms (D7-R5-010-TIMING)
+    const conflictElapsed = Date.now() - conflictCheckStart;
+    if (conflictElapsed < 50) {
+      await new Promise(resolve => setTimeout(resolve, 50 - conflictElapsed));
+    }
+    stepTimings['conflict_check'] = Date.now() - stepStart;
 
-  if (!paymentRequired) {
-    return NextResponse.json({
-      bypassed: true,
-      orderId: order.id,
-      message: 'Payment not required',
-    });
-  }
+    // ================================================================
+    // STEP 10 — PAYMENT BYPASS (AFTER conflict check — CC-R3-03)
+    // ================================================================
+    stepStart = Date.now();
+    if (process.env.STRIPE_PAYMENT_REQUIRED?.toLowerCase().trim() === 'false') {
+      stepTimings['bypass_check'] = Date.now() - stepStart;
+      emitCheckoutLatency(orderId, stepTimings, startTime);
+      return NextResponse.json({ bypassed: true, orderId });
+    }
+    stepTimings['bypass_check'] = Date.now() - stepStart;
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 11: Stripe null guard — only runs when payment IS required
-  // ══════════════════════════════════════════════════════════════════════════
-  if (!stripe) {
-    return NextResponse.json(
-      { error: 'Stripe is not configured' },
-      { status: 503 },
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 12: Price guard
-  // ══════════════════════════════════════════════════════════════════════════
-  const amount = order.total_price;
-  if (!amount || amount <= 0) {
-    return NextResponse.json(
-      { error: 'Order has no payable amount' },
-      { status: 400 },
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 13: Create Stripe Checkout Session
-  // 12-field metadata + allow_promotion_codes + currency: 'usd'
-  // ══════════════════════════════════════════════════════════════════════════
-  const origin =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    'https://motiongranted.com';
-
-  const successUrl = `${origin}/orders/${orderId}?payment=success`;
-  const cancelUrl = `${origin}/orders/${orderId}?payment=cancelled`;
-
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      allow_promotion_codes: true, // CC-R3-05 + Stripe B.2
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd', // Gap 36
-            unit_amount: Math.round(amount * 100),
-            product_data: {
-              name: `Motion Granted — Order #${order.order_number}`,
-              description: order.motion_type
-                ? `${order.motion_type}${order.rush_option && order.rush_option !== 'standard' ? ` (${order.rush_option})` : ''}`
-                : 'Legal Motion Drafting',
-            },
-          },
-          quantity: 1,
-        },
-      ],
-      metadata: {
-        order_id: order.id,
-        order_number: order.order_number,
-        motion_type: order.motion_type || '',
-        tier: order.tier || '',
-        rush_type: order.rush_option || 'standard',
-        client_id: order.client_id, // SA-003: was user_id
-        state_code: stateCode,
-        court_type: courtType,
-        federal_circuit: federalCircuit,
-        federal_district: federalDistrict,
-        jurisdiction_legacy: legacyJurisdiction,
-        pricing_multiplier: String(pricingMultiplier),
-      },
-      client_reference_id: orderId,
-      customer_email: user.email,
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-    });
-
-    if (!session.url) {
+    // ================================================================
+    // STEP 11 — STRIPE NULL GUARD
+    // ================================================================
+    stepStart = Date.now();
+    if (!stripe) {
       return NextResponse.json(
-        { error: 'Failed to create checkout session' },
+        { error: 'Payment system not configured' },
         { status: 500 },
       );
     }
+    stepTimings['stripe_guard'] = Date.now() - stepStart;
 
-    // Store checkout session ID on the order for reconciliation and duplicate prevention
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({
-        stripe_checkout_session_id: session.id,
-        stripe_payment_status: 'pending',
-      })
-      .eq('id', orderId);
+    // ================================================================
+    // STEP 12 — PRICE GUARD
+    // ================================================================
+    stepStart = Date.now();
+    const rushOption = (order.rush_option || 'standard') as RushType;
+    const priceResult = calculatePriceSync(
+      order.motion_type || '',
+      rushOption,
+      stateCode || 'LA',
+      pricingMultiplier, // reuse stateRow.pricing_multiplier from Step 8 (D7-R5-008)
+    );
 
-    if (updateError) {
-      console.error('[Checkout] Failed to store session ID:', updateError);
-      // Continue anyway — session was created successfully
+    // Convert subtotal (dollars) to cents
+    const totalCents = Math.round(priceResult.subtotal * 100);
+
+    if (totalCents <= 0) {
+      return NextResponse.json({ error: 'Invalid order amount' }, { status: 400 });
     }
+    stepTimings['price_guard'] = Date.now() - stepStart;
 
-    return NextResponse.json({ url: session.url });
-  } catch (err) {
-    console.error('[Checkout] Stripe error:', err);
+    // ================================================================
+    // STEP 12.5 — PRICE CONSISTENCY (BD-XD-001v3)
+    // ================================================================
+    stepStart = Date.now();
+    if (displayed_price_cents !== undefined && displayed_price_cents !== null) {
+      const consistency = validatePriceConsistency(
+        displayed_price_cents,
+        totalCents,
+        100, // $1.00 tolerance
+      );
+
+      if (!consistency.consistent) {
+        stepTimings['price_consistency'] = Date.now() - stepStart;
+        return NextResponse.json(
+          { error: 'Pricing has been updated. Please refresh and try again.' },
+          { status: 409 },
+        );
+      }
+    } else {
+      // Legacy frontend: no displayed_price_cents
+      console.warn(`[CHECKOUT] Legacy frontend: displayed_price_cents not provided for order ${orderId}`);
+    }
+    stepTimings['price_consistency'] = Date.now() - stepStart;
+
+    // ================================================================
+    // STEP 13 — CREATE STRIPE SESSION
+    // ================================================================
+    stepStart = Date.now();
+
+    // Derive court metadata
+    const courtType = deriveCourtType(order.jurisdiction || '', order.court_division || '');
+    const federalDistrict = order.court_division || '';
+
+    const origin =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      'https://motiongranted.com';
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `${order.motion_type} (Tier ${order.tier || 'B'})`,
+                description: `Order #${order.order_number}`,
+              },
+              unit_amount: totalCents,
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          // 12-field metadata (D7-R5-004)
+          orderId: order.id,
+          motionType: order.motion_type || '',
+          tier: order.tier || '',
+          jurisdiction: stateCode || '',
+          rushType: order.rush_option || 'STANDARD',
+          motionPath: 'A', // Default, updated by intake if applicable
+          stateCode: stateCode || '',
+          courtType: courtType,
+          federalDistrict: federalDistrict,
+          pricingMultiplier: String(pricingMultiplier),
+          clientId: user.id,
+          orderNumber: order.order_number,
+          // Session type (D7-R5-005-META)
+          session_type: 'initial',
+        },
+        allow_promotion_codes: true, // CC-R3-05 + Stripe B.2
+        customer_email: user.email,
+        client_reference_id: orderId,
+        success_url: `${origin}/orders/${orderId}?payment=success`,
+        cancel_url: `${origin}/orders/${orderId}?payment=cancelled`,
+      });
+
+      if (!session.url) {
+        return NextResponse.json(
+          { error: 'Failed to create checkout session' },
+          { status: 500 },
+        );
+      }
+
+      // Save session ID to order
+      await supabase
+        .from('orders')
+        .update({
+          stripe_checkout_session_id: session.id,
+          stripe_payment_status: 'pending',
+        })
+        .eq('id', orderId);
+
+      stepTimings['create_session'] = Date.now() - stepStart;
+      emitCheckoutLatency(orderId, stepTimings, startTime);
+
+      return NextResponse.json({ url: session.url });
+    } catch (stripeError: unknown) {
+      stepTimings['create_session'] = Date.now() - stepStart;
+      const errorMessage = stripeError instanceof Error ? stripeError.message : 'Unknown error';
+      console.error('[CHECKOUT] Stripe session creation failed:', {
+        orderId,
+        error: errorMessage,
+      });
+      return NextResponse.json(
+        { error: 'Payment provider temporarily unavailable' },
+        { status: 502 },
+      );
+    }
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[CHECKOUT] Unexpected error:', {
+      error: errorMessage,
+    });
     return NextResponse.json(
-      {
-        error: 'Failed to create checkout session',
-        details: err instanceof Error ? err.message : 'Unknown error',
-      },
+      { error: 'An unexpected error occurred' },
       { status: 500 },
     );
+  }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+/**
+ * Derive state code from jurisdiction string.
+ * Handles legacy jurisdiction IDs (e.g., 'LA_STATE', 'CA_ED').
+ */
+function deriveStateCode(jurisdictionId: string): string {
+  if (!jurisdictionId) return '';
+  // If it looks like a 2-char state code already, return it
+  if (/^[A-Z]{2}$/.test(jurisdictionId)) return jurisdictionId;
+  // Extract first 2 chars (e.g., 'la_state' -> 'LA')
+  return jurisdictionId.slice(0, 2).toUpperCase();
+}
+
+/**
+ * Derive court type from jurisdiction string.
+ */
+function deriveCourtType(jurisdictionId: string, courtDivision: string): string {
+  if (!jurisdictionId) return '';
+  const lower = jurisdictionId.toLowerCase();
+  if (lower.includes('state') || lower === 'la_state' || lower === 'ca_state') {
+    return 'STATE';
+  }
+  if (lower.includes('federal') || lower.includes('_ed') || lower.includes('_md') || lower.includes('_wd') || courtDivision) {
+    return 'FEDERAL';
+  }
+  return 'STATE'; // Default
+}
+
+// ============================================================
+// LATENCY METRIC (D7-R5-003-METRIC)
+// ============================================================
+function emitCheckoutLatency(
+  orderId: string,
+  steps: Record<string, number>,
+  startTime: number,
+): void {
+  try {
+    const totalMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      type: 'CHECKOUT_LATENCY',
+      orderId,
+      totalMs,
+      steps,
+      timestamp: new Date().toISOString(),
+    }));
+  } catch {
+    // Timing instrumentation NEVER causes checkout failure
   }
 }
