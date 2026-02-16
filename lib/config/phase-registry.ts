@@ -655,6 +655,63 @@ export function isPhaseSkipped(phase: WorkflowPhase, tier: Tier): boolean {
 }
 
 // ============================================================================
+// MODEL CONFIG — Abstracted routing for executor consumption (SP-15 ING-017)
+// ============================================================================
+
+/**
+ * Resolved model configuration for a phase × tier combination.
+ * Abstracts the raw registry into executor-friendly categories.
+ *
+ * BINDING 02/15/26: No silent Sonnet fallback. Explicit routing only.
+ */
+export interface ModelConfig {
+  /** Resolved model category: 'SKIP' | 'CODE' | actual model string */
+  model: 'SKIP' | 'CODE' | string;
+  /** Extended thinking budget in tokens. 0 = no extended thinking. */
+  thinking_tokens: number;
+}
+
+/**
+ * Get abstracted model config for a phase/tier combination.
+ * Returns null only if the phase is unknown (registry gap).
+ *
+ * - SKIP: Phase is skipped for this tier (e.g., Phase VI Tier A)
+ * - CODE: Phase is pure TypeScript, no LLM call at phase level
+ * - Model string: Use this model for the LLM call
+ *
+ * @example
+ * getModelConfig('VI', 'A')   // → { model: 'SKIP', thinking_tokens: 0 }
+ * getModelConfig('I', 'B')    // → { model: 'CODE', thinking_tokens: 0 }
+ * getModelConfig('VII', 'C')  // → { model: 'claude-opus-4-6', thinking_tokens: 10000 }
+ */
+export function getModelConfig(
+  phase: WorkflowPhase,
+  tier: Tier,
+): ModelConfig | null {
+  const config = PHASE_REGISTRY[phase];
+  if (!config) return null;
+
+  const route = config.routing[tier];
+
+  // SKIP: CHAT mode with null model (Phase VI Tier A)
+  if (route.model === null && config.mode === 'CHAT') {
+    return { model: 'SKIP', thinking_tokens: 0 };
+  }
+
+  // CODE: CODE mode phases (I, V.1, VII.1, VIII.5, IX.1, X)
+  // CIV pipeline handles its own internal model routing via stages.
+  if (config.mode === 'CODE') {
+    return { model: 'CODE', thinking_tokens: 0 };
+  }
+
+  // CHAT mode with LLM — return actual model string
+  return {
+    model: route.model!,
+    thinking_tokens: route.thinkingBudget ?? 0,
+  };
+}
+
+// ============================================================================
 // PHASE LIST — Canonical order
 // ============================================================================
 

@@ -27,7 +27,7 @@ import type {
   LetterGrade,
 } from '@/types/workflow';
 import { PHASE_PROMPTS } from '@/prompts';
-import { getModel, getThinkingBudget, getMaxTokens, getExecutionMode } from '@/lib/config/phase-registry';
+import { getModel, getThinkingBudget, getMaxTokens, getExecutionMode, getModelConfig } from '@/lib/config/phase-registry';
 import { MODELS } from '@/lib/config/models';
 import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
@@ -226,21 +226,84 @@ function buildExtendedThinkingParams(phase: string, tier: string): Record<string
 function resolveModelForExecution(phase: string, tier: string): string {
   const p = phase as Parameters<typeof getModel>[0];
   const t = tier as Parameters<typeof getModel>[1];
-  const model = getModel(p, t);
-  if (model !== null) return model;
 
-  // CODE mode phases that still make LLM calls during migration.
-  // When the CODE mode refactor removes these LLM calls, this branch
-  // becomes unreachable and should be deleted.
-  if (getExecutionMode(p) === 'CODE') {
+  // BINDING 02/15/26 (ING-017): No silent Sonnet fallback.
+  // Explicit routing from phase-registry.ts only.
+  const modelConfig = getModelConfig(p, t);
+
+  if (!modelConfig) {
+    throw new Error(
+      `[MODEL_ROUTER] Model routing undefined for phase=${phase} tier=${tier}. ` +
+      `Check phase-registry.ts. Do NOT add a fallback.`
+    );
+  }
+
+  // SKIP phases should not reach executor — caller must check isPhaseSkipped()
+  if (modelConfig.model === 'SKIP') {
+    throw new Error(
+      `[MODEL_ROUTER] Phase ${phase} is SKIP for tier ${tier}. ` +
+      `isPhaseSkipped() should have prevented executor call.`
+    );
+  }
+
+  // CODE mode phases: CIV pipeline handles its own internal model routing.
+  // Some CODE phases (I, VIII.5, X) still make LLM calls during migration.
+  // Use registry model if available; otherwise explicit Sonnet with warning.
+  if (modelConfig.model === 'CODE') {
+    const registryModel = getModel(p, t);
+    if (registryModel !== null) return registryModel;
+    console.warn(
+      `[MODEL_ROUTER] MIGRATION BRIDGE: Phase ${phase} tier ${tier} is CODE mode ` +
+      `with null registry model but executor still makes LLM calls. ` +
+      `Using Sonnet explicitly. Migrate to pure TypeScript to remove this bridge.`
+    );
     return MODELS.SONNET;
   }
 
-  // CHAT/ET phase returned null — this is a bug.
-  throw new Error(
-    `[MODEL_ROUTER] Phase ${phase} tier ${tier} returned null model for CHAT mode. ` +
-    `Check isPhaseSkipped() before calling executor, or fix phase-registry.ts.`
-  );
+  // CHAT mode — return the model from registry directly
+  return modelConfig.model;
+}
+
+/**
+ * Convert GPA (0.0-4.0) or letter grade to 0-100 percentage score.
+ * Uses piecewise linear interpolation between standard grade boundaries.
+ *
+ * BINDING 02/15/26 (ING-015R): All grade comparisons use 0-100 percentage scale.
+ * Thresholds: Tier A >= 83 (B), Tier B/C/D >= 87 (B+).
+ *
+ * Key mappings: GPA 3.0 → 83%, GPA 3.3 → 87%, GPA 3.7 → 90%, GPA 4.0 → 97%
+ */
+function gpaToPercentage(gpa: number, letterGrade?: string): number {
+  // Prefer letter grade lookup when available
+  const GRADE_MAP: Record<string, number> = {
+    'A+': 97, 'A': 93, 'A-': 90,
+    'B+': 87, 'B': 83, 'B-': 80,
+    'C+': 77, 'C': 73,
+    'D': 65, 'F': 0,
+  };
+  if (letterGrade && GRADE_MAP[letterGrade] !== undefined) {
+    return GRADE_MAP[letterGrade];
+  }
+
+  // Piecewise linear interpolation from GPA
+  if (Number.isNaN(gpa) || gpa <= 0) return 0;
+  if (gpa >= 4.0) return 97;
+
+  const boundaries: [number, number][] = [
+    [4.0, 97], [3.7, 90], [3.3, 87], [3.0, 83],
+    [2.7, 80], [2.3, 77], [2.0, 73], [0.0, 0],
+  ];
+
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const [highGPA, highPct] = boundaries[i];
+    const [lowGPA, lowPct] = boundaries[i + 1];
+    if (gpa >= lowGPA) {
+      const t = (gpa - lowGPA) / (highGPA - lowGPA);
+      return lowPct + t * (highPct - lowPct);
+    }
+  }
+
+  return 0;
 }
 
 /**
@@ -3371,23 +3434,43 @@ Provide your judicial evaluation as JSON.`;
 
     // Extract pass/fail
     const evaluation = (phaseOutput.evaluation as Record<string, unknown>) || phaseOutput;
-    // SC-002 FIX: Grade numeric comparison is the SOLE quality determinant.
-    // DO NOT use evaluation.passes — Claude can set it to true on any grade.
-    const tierThreshold = input.tier === 'A' ? 3.0 : 3.3;
-    const numericGrade = (evaluation.numericGrade ?? evaluation.numeric_grade ?? 0) as number;
-    const passesThreshold = numericGrade >= tierThreshold;
 
-    // BUG-04 / CGA6-076: Log evaluation.passes for diagnostics but NEVER gate on it.
-    // The grade numeric comparison (passesThreshold) is the SOLE quality determinant.
+    // BINDING 02/15/26 (ING-015R): Pure numeric scoring on 0-100 percentage scale.
+    // LLM booleans (evaluation.passes, passes_threshold) are DIAGNOSTIC ONLY.
+    // Thresholds: Tier A >= 83 (B), Tier B/C/D >= 87 (B+).
+    const rawGrade = Number(evaluation.numericGrade ?? evaluation.numeric_grade ?? 0);
+    const letterGrade = evaluation.grade as string | undefined;
+
+    // Convert GPA (0-4.0) to percentage (0-100). If already > 4.0, assume percentage scale.
+    let numericScore: number;
+    if (Number.isNaN(rawGrade)) {
+      console.error('[Phase VII] Grade numeric value is NaN — treating as 0', {
+        orderId: input.orderId,
+        tier: input.tier,
+        rawValue: evaluation.numericGrade ?? evaluation.numeric_grade,
+      });
+      numericScore = 0;
+    } else if (rawGrade > 4.0) {
+      // Already on percentage scale
+      numericScore = rawGrade;
+    } else {
+      numericScore = gpaToPercentage(rawGrade, letterGrade);
+    }
+
+    const threshold = input.tier === 'A' ? 83 : 87;
+    const passes: boolean = numericScore >= threshold;
+
+    // diagnostic logging — LLM booleans NOT used for control flow
+    const llmEvalPasses = evaluation.passes; // diagnostic only — never used for control flow
     console.log(
-      `[Phase VII] [DIAGNOSTIC] evaluation.passes=${evaluation.passes}, ` +
-      `numericGrade=${numericGrade}, threshold=${tierThreshold}, ` +
-      `tier=${input.tier}, passes_threshold=${passesThreshold}`
+      `[Phase VII] [diagnostic] llmEvalPasses=${llmEvalPasses}, ` +
+      `rawGrade=${rawGrade}, numericScore=${numericScore}, threshold=${threshold}, ` +
+      `tier=${input.tier}, passes=${passes}, letterGrade=${letterGrade}`
     );
-    if (evaluation.passes === true && !passesThreshold) {
-      console.warn(
-        `[Phase VII] BACKDOOR BLOCKED: evaluation.passes=true but grade ${numericGrade} < threshold ${tierThreshold}. ` +
-        `Grade-based check (passes_threshold=${passesThreshold}) controls.`
+    if (evaluation.passes === true && !passes) { // diagnostic — backdoor detection, not control flow
+      console.warn( // diagnostic log only — evaluation.passes is never used for control flow
+        `[Phase VII] BACKDOOR BLOCKED: LLM passes=true but score ${numericScore} < threshold ${threshold}. ` +
+        `Numeric check controls.`
       );
     }
 
@@ -3397,13 +3480,12 @@ Provide your judicial evaluation as JSON.`;
       status: 'completed',
       output: {
         ...phaseOutput,
-        passes_threshold: passesThreshold,  // Grade-computed, NOT Claude's evaluation.passes
-        numeric_score: numericGrade,         // GPA value for threshold comparison
-        grade: evaluation.grade,
-        numericGrade: evaluation.numericGrade,
+        numeric_score: numericScore,           // 0-100 percentage scale (BINDING)
+        grade: letterGrade,
+        numericGrade: rawGrade,                // Original GPA for reference
         loopNumber,
       },
-      nextPhase: passesThreshold ? 'VIII.5' : 'VIII',
+      nextPhase: passes ? 'VIII.5' : 'VIII',
       requiresReview: true, // CP2: Notify admin of grade
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,
