@@ -88,6 +88,22 @@ export async function middleware(request: NextRequest) {
   response = addSecurityHeaders(response);
 
   // Create Supabase client
+  // TOKEN REFRESH RACE CONDITION (DST-03):
+  // The Supabase client initialized here uses the JWT from the current request cookie.
+  // Token refresh may occur during this request via the onAuthStateChange listener.
+  // The old token remains valid on the Supabase server until its exp claim.
+  // If intermittent 401s appear in production logs at rates >0.01%,
+  // investigate token refresh race condition.
+  //
+  // DEFERRED FIX: Implement request-scoped Supabase client caching via AsyncLocalStorage.
+  // Pattern:
+  //   import { AsyncLocalStorage } from 'async_hooks';
+  //   const requestStorage = new AsyncLocalStorage<{ supabase: SupabaseClient }>();
+  //   // In middleware: requestStorage.run({ supabase: client }, () => next());
+  //   // In route handlers: const supabase = requestStorage.getStore()?.supabase;
+  // This ensures every function in the same request uses the identical Supabase client
+  // instance with the same JWT, eliminating the refresh race window entirely.
+  // Trigger: implement when production 401 rate exceeds 0.01%.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -275,6 +291,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
     "img-src 'self' data: https: blob:",
     "font-src 'self' data:",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://api.anthropic.com https://api.openai.com https://www.courtlistener.com https://*.inngest.com",
+    // REMOVED (DST-10): https://*.clerk.accounts.dev — Clerk eliminated by ADR-001
     "frame-src 'self' https://js.stripe.com",
     "object-src 'none'",
     "base-uri 'self'",

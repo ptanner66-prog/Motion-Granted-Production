@@ -20,3 +20,9 @@ export {
 } from './delete-order';
 
 export { anonymizeOrderForAnalytics } from './anonymize';
+
+// DST-04 + DST-08: Transactional cascade delete + legal hold race fix
+export {
+  deleteOrderData as deleteOrderDataCascade,
+  dailyRetentionJob,
+} from './retention-manager';

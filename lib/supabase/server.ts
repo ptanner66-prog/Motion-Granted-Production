@@ -12,6 +12,10 @@ export const isSupabaseConfigured = !!(
   supabaseUrl.startsWith('https://')
 )
 
+// NOTE (DST-03): This function creates a NEW Supabase client per call.
+// In high-concurrency scenarios, multiple calls within the same request
+// may see different JWT states if a token refresh occurs between calls.
+// See middleware.ts DST-03 comment for deferred fix pattern.
 export async function createClient() {
   if (!isSupabaseConfigured) {
     // Return a mock client that throws helpful errors

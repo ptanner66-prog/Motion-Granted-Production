@@ -1,69 +1,87 @@
 /**
- * CP3 Timeout Management
+ * BINDING REFERENCE — CP3 Approval Flow (Domain 5)
  *
- * SP-4 Task 8 (D5 W3-1): Schedule and cancel CP3 timeout reminders.
- *
- * Timeline:
- *   T+0:    CP3 entered — scheduleCP3Timeouts() called
- *   T+48h:  First reminder email to attorney
- *   T+72h:  Second reminder email
- *   T+14d:  Final notice (Stage 1 → Stage 2 transition)
- *   T+21d:  Auto-cancel with 50% refund
- *
- * Depends on: SP-2 W1-1 (checkpoint_reminders table, pending_inngest_jobs column)
+ * CP3 Location: Phase X Stage 6 (NOT Phase IX)
+ * CP3 Actor: Attorney-only. NO admin gate.
+ * Rework Cap: 3 attorney cycles. Re-entry Phase VII.
+ * Cost Tracking: RESETS on attorney rework (binding 02/15/26)
+ * Timeout: 14d Stage 1 + 7d Stage 2 = 21d total
+ * Reminder Sequence: T+48h, T+72h, T+14d FINAL NOTICE, T+21d auto-cancel
+ * Refund: 50% flat (CP3_CANCEL and CP3_TIMEOUT_CANCEL)
+ * Status Flow: AWAITING_APPROVAL → COMPLETED (no APPROVED intermediate)
+ * Fn2 Wait Match: data.orderId (NOT data.workflowId)
  */
 
-import { SupabaseClient } from '@supabase/supabase-js';
-
-const CP3_SCHEDULE = [
-  { type: 'reminder_48h', delay: '48h' },
-  { type: 'reminder_72h', delay: '72h' },
-  { type: 'final_notice_14d', delay: '14d' },
-  { type: 'auto_cancel_21d', delay: '21d' },
-] as const;
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Schedule all CP3 timeout jobs when attorney review begins.
- * Records the schedule in orders.pending_inngest_jobs and checkpoint_reminders.
+ * Schedule CP3 timeouts by recording the checkpoint reminder entry.
  *
- * Actual Inngest job dispatch is handled by the workflow orchestrator
- * (Fn2) which reads pending_inngest_jobs and creates step.sleep() calls.
+ * The actual timeout enforcement is handled by Inngest's waitForEvent
+ * with built-in timeout durations (14d Stage 1 + 7d Stage 2).
+ * This function creates the checkpoint_reminders row so that
+ * cancelCP3Timeouts can mark them cancelled when the attorney acts.
  */
 export async function scheduleCP3Timeouts(
   supabase: SupabaseClient,
   orderId: string
-): Promise<{ jobIds: string[] }> {
-  const schedule = CP3_SCHEDULE.map(s => ({ type: s.type, delay: s.delay }));
+): Promise<void> {
+  try {
+    // Cancel any existing active reminders for this order first
+    await supabase
+      .from('checkpoint_reminders')
+      .update({
+        cancelled: true,
+        cancelled_at: new Date().toISOString(),
+      })
+      .match({ order_id: orderId, checkpoint_type: 'CP3', cancelled: false });
 
-  await supabase.from('orders').update({
-    pending_inngest_jobs: schedule,
-    cp3_entered_at: new Date().toISOString(),
-  }).eq('id', orderId);
+    // Create new reminder record
+    const { error } = await supabase
+      .from('checkpoint_reminders')
+      .insert({
+        order_id: orderId,
+        checkpoint_type: 'CP3',
+        job_ids: ['inngest:stage1-14d', 'inngest:stage2-7d', 'inngest:reminder-48h', 'inngest:reminder-72h'],
+        cancelled: false,
+      });
 
-  // Record in checkpoint_reminders for audit
-  await supabase.from('checkpoint_reminders').insert({
-    order_id: orderId,
-    checkpoint_type: 'CP3',
-    job_ids: schedule.map(s => s.type),
-  });
-
-  return { jobIds: schedule.map(s => s.type) };
+    if (error) {
+      console.error('[cp3-timeouts] Failed to schedule timeouts:', error);
+    }
+  } catch (err) {
+    console.error('[cp3-timeouts] Error scheduling timeouts:', err);
+  }
 }
 
 /**
- * Cancel all pending CP3 timeout jobs.
- * Called when attorney approves, requests changes, or cancels.
+ * Cancel all pending CP3 timeouts and reminders for an order.
+ *
+ * Called when:
+ * - Attorney approves (handleApprove)
+ * - Attorney requests changes (handleRequestChanges)
+ * - Attorney cancels (handleCancel)
+ * - External cancellation (checkpoint-cleanup)
+ *
+ * Failures are logged but never block the calling operation.
  */
 export async function cancelCP3Timeouts(
   supabase: SupabaseClient,
   orderId: string
 ): Promise<void> {
-  await supabase.from('orders').update({
-    pending_inngest_jobs: [],
-  }).eq('id', orderId);
+  try {
+    const { error } = await supabase
+      .from('checkpoint_reminders')
+      .update({
+        cancelled: true,
+        cancelled_at: new Date().toISOString(),
+      })
+      .match({ order_id: orderId, checkpoint_type: 'CP3', cancelled: false });
 
-  await supabase.from('checkpoint_reminders').update({
-    cancelled: true,
-    cancelled_at: new Date().toISOString(),
-  }).match({ order_id: orderId, cancelled: false });
+    if (error) {
+      console.error('[cp3-timeouts] Failed to cancel timeouts:', error);
+    }
+  } catch (err) {
+    console.error('[cp3-timeouts] Error cancelling timeouts:', err);
+  }
 }

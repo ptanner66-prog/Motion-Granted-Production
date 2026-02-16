@@ -1,19 +1,19 @@
 /**
  * Canonical Order Status Transitions
  *
- * D6 C-007 + SP-4 R4-06: Single source of truth for valid order status transitions.
+ * D6 C-007: Single source of truth for valid order status transitions.
  * Uses 'REVISION_REQ' (never 'REVISION_REQUESTED') per binding rule.
- * Uses 'AWAITING_APPROVAL' for CP3 attorney review state.
  *
- * 7-state model:
- *   SUBMITTED → PAID → IN_PROGRESS → AWAITING_APPROVAL → REVISION_REQ → IN_PROGRESS (loop)
- *                                                       → COMPLETED
- *                                                       → CANCELLED (from any non-terminal)
- *                                   → CANCELLED
- *            → CANCELLED
- *   SUBMITTED → CANCELLED
+ * 16-status model (D4-CORR-001 + v5-XDC-012 + Delta Resolution):
+ *   INTAKE → PROCESSING → AWAITING_OPUS → ... → AWAITING_APPROVAL → COMPLETED
+ *                                              → REVISION_REQ → (re-enter workflow)
+ *   CANCELLED (terminal), FAILED (terminal), REFUNDED (terminal)
+ *   DISPUTED (non-terminal: can revert to pre-dispute or → REFUNDED)
+ *   PENDING_CONFLICT_REVIEW → CANCELLED only
+ *   UPGRADE_PENDING → PROCESSING or CANCELLED
  *
- * COMPLETED and CANCELLED are terminal states — no transitions out.
+ * DB stores: CANCELLED (flat), REVISION_REQ. TypeScript uses expanded variants.
+ * toDbStatus() in lib/workflow/order-status.ts bridges the gap.
  *
  * Binding authority: 02/15/26 binding line 8:
  *   'Use REVISION_REQ (not REVISION_REQUESTED) everywhere.'
@@ -24,25 +24,35 @@
 // ============================================================================
 
 /**
- * All valid order statuses. Uses string literals for DB compatibility.
- * IMPORTANT: 'REVISION_REQ' is the ONLY valid revision status.
+ * All valid order statuses — 16 members (D4-CORR-001 + v5-XDC-012 + Delta).
+ * DB uses compact variants (CANCELLED, REVISION_REQ); TypeScript uses expanded.
+ * IMPORTANT: 'REVISION_REQ' is the ONLY valid revision status in DB.
  */
 export const ORDER_STATUSES = [
-  'SUBMITTED',
-  'PAID',
-  'IN_PROGRESS',
+  'INTAKE',
+  'PROCESSING',
+  'AWAITING_OPUS',
+  'HOLD_PENDING',
+  'PROTOCOL_10_EXIT',
+  'UPGRADE_PENDING',
+  'PENDING_CONFLICT_REVIEW',
   'AWAITING_APPROVAL',
   'REVISION_REQ',
   'COMPLETED',
   'CANCELLED',
+  'DISPUTED',
+  'REFUNDED',
+  'FAILED',
 ] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-/** Terminal statuses — no further transitions allowed */
+/** Terminal statuses — no further transitions allowed (DISPUTED is NOT terminal) */
 export const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set([
-  'COMPLETED',
   'CANCELLED',
+  'COMPLETED',
+  'FAILED',
+  'REFUNDED',
 ]);
 
 // ============================================================================
@@ -53,21 +63,34 @@ export const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set([
  * VALID_TRANSITIONS[currentStatus] → Set of statuses it can transition to.
  *
  * Rules:
- * - SUBMITTED can go to PAID or CANCELLED (payment failed / user cancel)
- * - PAID can go to IN_PROGRESS or CANCELLED (refund before work starts)
- * - IN_PROGRESS can go to AWAITING_APPROVAL or CANCELLED
- * - AWAITING_APPROVAL can go to COMPLETED, REVISION_REQ, or CANCELLED
- * - REVISION_REQ can go to IN_PROGRESS or CANCELLED
- * - COMPLETED and CANCELLED are terminal (empty sets)
+ * - INTAKE → PROCESSING, PENDING_CONFLICT_REVIEW, CANCELLED
+ * - PROCESSING → AWAITING_OPUS, CANCELLED
+ * - AWAITING_OPUS → HOLD_PENDING, PROTOCOL_10_EXIT, CANCELLED
+ * - HOLD_PENDING → PROCESSING, CANCELLED
+ * - PROTOCOL_10_EXIT → PROCESSING, CANCELLED
+ * - UPGRADE_PENDING → PROCESSING, CANCELLED (D4 v5 XDC-012)
+ * - PENDING_CONFLICT_REVIEW → CANCELLED only (Delta D4-CORR-001)
+ * - AWAITING_APPROVAL → COMPLETED, REVISION_REQ, CANCELLED
+ * - REVISION_REQ → PROCESSING, CANCELLED
+ * - COMPLETED → DISPUTED (Stripe dispute received)
+ * - CANCELLED, FAILED, REFUNDED → terminal (empty sets)
+ * - DISPUTED → COMPLETED (won), AWAITING_APPROVAL (restored), REFUNDED (lost)
  */
 export const VALID_TRANSITIONS: Record<OrderStatus, ReadonlySet<OrderStatus>> = {
-  SUBMITTED: new Set(['PAID', 'CANCELLED']),
-  PAID: new Set(['IN_PROGRESS', 'CANCELLED']),
-  IN_PROGRESS: new Set(['AWAITING_APPROVAL', 'CANCELLED']),
-  AWAITING_APPROVAL: new Set(['COMPLETED', 'REVISION_REQ', 'CANCELLED']),
-  REVISION_REQ: new Set(['IN_PROGRESS', 'CANCELLED']),
-  COMPLETED: new Set(),
-  CANCELLED: new Set(),
+  INTAKE: new Set<OrderStatus>(['PROCESSING', 'PENDING_CONFLICT_REVIEW', 'CANCELLED']),
+  PROCESSING: new Set<OrderStatus>(['AWAITING_OPUS', 'CANCELLED']),
+  AWAITING_OPUS: new Set<OrderStatus>(['HOLD_PENDING', 'PROTOCOL_10_EXIT', 'AWAITING_APPROVAL', 'CANCELLED']),
+  HOLD_PENDING: new Set<OrderStatus>(['PROCESSING', 'CANCELLED']),
+  PROTOCOL_10_EXIT: new Set<OrderStatus>(['PROCESSING', 'CANCELLED']),
+  UPGRADE_PENDING: new Set<OrderStatus>(['PROCESSING', 'CANCELLED']),
+  PENDING_CONFLICT_REVIEW: new Set<OrderStatus>(['CANCELLED']),
+  AWAITING_APPROVAL: new Set<OrderStatus>(['COMPLETED', 'REVISION_REQ', 'CANCELLED']),
+  REVISION_REQ: new Set<OrderStatus>(['PROCESSING', 'CANCELLED']),
+  COMPLETED: new Set<OrderStatus>(['DISPUTED']),
+  CANCELLED: new Set<OrderStatus>(),
+  DISPUTED: new Set<OrderStatus>(['COMPLETED', 'AWAITING_APPROVAL', 'REFUNDED']),
+  REFUNDED: new Set<OrderStatus>(),
+  FAILED: new Set<OrderStatus>(),
 };
 
 // ============================================================================

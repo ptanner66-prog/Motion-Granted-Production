@@ -52,6 +52,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
               "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://api.anthropic.com https://api.openai.com https://www.courtlistener.com https://*.inngest.com https://*.sentry.io",
+              // REMOVED (DST-10): https://*.clerk.accounts.dev — Clerk eliminated by ADR-001
               "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
               "object-src 'none'",
               "base-uri 'self'",

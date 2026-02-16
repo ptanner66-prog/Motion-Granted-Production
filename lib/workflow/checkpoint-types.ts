@@ -48,6 +48,30 @@ export const CANONICAL_EVENTS = {
   WORKFLOW_CHECKPOINT_APPROVED: 'workflow/checkpoint-approved',
 } as const;
 
+/**
+ * CANONICAL EVENT PAYLOAD: checkpoint/cp3.reached (D6 C-009)
+ * Binding specification — ALL emitters and consumers MUST conform.
+ *
+ * Emitted by: Fn1 completion step (lib/inngest/workflow-orchestration.ts)
+ * Consumed by: Fn2 trigger + step.waitForEvent
+ *
+ * REQUIRED fields:
+ *   orderId    — orders.id (Fn2 matches on data.orderId)
+ *   workflowId — orders.workflow_id (required for event correlation)
+ *   packageId  — delivery_packages.id (current delivery package)
+ *
+ * RECOMMENDED fields:
+ *   tier           — for Fn2 timeout/behavior configuration
+ *   attorneyEmail  — for reminder emails (avoids DB lookup)
+ */
+export interface CP3ReachedPayload {
+  orderId: string;
+  workflowId: string;
+  packageId: string;
+  tier?: string;
+  attorneyEmail?: string;
+}
+
 export type CP3Action = 'APPROVE' | 'REQUEST_CHANGES' | 'CANCEL';
 
 export interface CP3DecisionPayload {

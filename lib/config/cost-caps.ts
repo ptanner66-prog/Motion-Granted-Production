@@ -12,6 +12,37 @@
  * filter .eq('is_rework_reset', false). The is_rework_reset column is
  * owned by D4 Task D-5. This function provides the cap values consumed
  * by those queries.
+ *
+ * COST CAP DESIGN RATIONALE (D3 Task 22)
+ *
+ * These caps control the maximum AI spend per rework cycle (not per order).
+ * Per binding 02/15/26, cost tracking resets on attorney rework via
+ * is_rework_reset flag (Domain 4 Task D-5). Each rework cycle gets
+ * a fresh budget equal to the tier's cap.
+ *
+ * Tier A ($5): Effectively prevents revision looping. A single Sonnet-based
+ *   Phase VII + VIII cycle costs $4-8. The $5 cap allows 0-1 loops.
+ *   This is INTENTIONAL: Tier A motions are procedural ($299-$400 revenue),
+ *   and multiple revision cycles are not economically viable.
+ *   To change: set COST_CAP_TIER_A env var.
+ *
+ * Tier B ($35): Allows 2-3 revision loops. Opus Phase VIII costs $8-12/loop.
+ *
+ * Tier C ($75): Allows 3-5 revision loops. Higher thinking budgets.
+ *
+ * Tier D ($125): Allows 4-6 revision loops. 16K thinking for Phase VII.
+ *   Aligns with 4-loop internal max per binding 02/15/26.
+ *
+ * RETRY COST NOTE: These caps do NOT include a retry buffer.
+ *   Inngest retry cost tracking uses step-level source field
+ *   ('primary' vs 'retry') per Vercel/Inngest IV-005.
+ *   Cost cap compares against ALL costs (primary + retry).
+ *   If retries push over cap, Protocol 10 triggers — acceptable,
+ *   as excessive retries indicate infrastructure issues.
+ *
+ * AGGREGATE CAP: D7-R3-012 recommended aggregate caps across rework
+ *   cycles. Deferred to post-launch. Worst case: 3 cycles x $125 =
+ *   $375 on $1,499 Tier D revenue (25% cost ratio, still profitable).
  */
 
 const DEFAULT_COST_CAPS: Record<string, number> = {

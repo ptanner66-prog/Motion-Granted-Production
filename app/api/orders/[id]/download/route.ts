@@ -50,8 +50,16 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Check order status (must be delivered)
-    if (order.status !== 'delivered' && order.status !== 'completed') {
+    // Check order status — D8-CORR-001: DISPUTED added (attorney needs files during Stripe dispute)
+    const DOWNLOAD_ALLOWED_STATUSES = [
+      'AWAITING_APPROVAL',
+      'COMPLETED',
+      'DISPUTED',       // D8-CORR-001: attorney needs files during Stripe dispute
+      'REVISION_REQ',   // attorney may need files during revision
+      'delivered',       // Legacy status
+      'completed',       // Legacy lowercase
+    ];
+    if (!DOWNLOAD_ALLOWED_STATUSES.includes(order.status)) {
       return NextResponse.json({
         error: 'Deliverables not yet available'
       }, { status: 400 });

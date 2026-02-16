@@ -6,6 +6,19 @@
  *
  * Called by the Stripe webhook handler after successful checkout.
  *
+ * D3 TASK 16 DUAL-WRITE NOTE:
+ * During the Phase 1 transition period, all code that writes amount_paid
+ * MUST also write amount_paid_cents with the same value:
+ *
+ *   await supabase.from('orders').update({
+ *     amount_paid: amountPaidCents,       // Legacy column
+ *     amount_paid_cents: amountPaidCents,  // New column (Phase 1 dual-write)
+ *   }).eq('id', orderId);
+ *
+ * The Stripe webhook handler (app/api/webhooks/stripe/route.ts) is the
+ * primary writer of amount_paid. Update that file when applying Phase 1.
+ * Phase 2 migration renames columns after all reads migrate.
+ *
  * @module order-creation
  */
 

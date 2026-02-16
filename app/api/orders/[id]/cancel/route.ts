@@ -1,144 +1,180 @@
-/**
- * Order Cancel API
- *
- * POST /api/orders/[id]/cancel
- *
- * Cancel an order from three possible source statuses with DIFFERENT behavior:
- *   - AWAITING_APPROVAL: CP3 cancel — 50% refund, wake Fn2
- *   - PAID: Customer cancel pre-work — 100% refund, no event
- *   - IN_PROGRESS: Customer cancel mid-work — 50% refund, no event
- *
- * Uses refund lock to prevent double-refund race condition.
- * Three-gate auth: authenticate → verify ownership → validate status.
- *
- * SP-4 Task 2 (R4-06)
- */
+// app/api/orders/[id]/cancel/route.ts
+// D6 Directive 1 v2 — COMPLETE REWRITE (SP-8)
+// Resolves: C-004 (correct refund logic), C-008 (separate route)
+// Refund: 50% of amount_paid_cents for AWAITING_APPROVAL (BD-REFUND-BASIS)
+// Dual-path: CP3 (AWAITING_APPROVAL) routes through Fn2, pre-CP3 direct.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateAndLoadOrder, validateOptimisticLock } from '@/lib/orders/status-guards';
-import { updateOrderStatus } from '@/lib/orders/status-machine';
-import { logCheckpointEvent } from '@/lib/workflow/checkpoint-logger';
-import { cancelCP3Timeouts } from '@/lib/workflow/cp3-timeouts';
-import { acquireRefundLock, releaseRefundLock } from '@/lib/payments/refund-lock';
+import { authenticateCP3Request } from '@/lib/api/cp3-auth';
+import { createClient } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/admin';
 import { inngest } from '@/lib/inngest/client';
-import { CP3_REFUND_PERCENTAGE } from '@/lib/workflow/checkpoint-types';
+import { CANONICAL_EVENTS, CP3_REFUND_PERCENTAGE } from '@/lib/workflow/checkpoint-types';
 
 export async function POST(
-  request: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: orderId } = await params;
 
-  let body: { status_version?: unknown; reason?: unknown };
+  // Try to parse body first (needed for both paths)
+  let body: { status_version?: number; reason?: string } = {};
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const statusVersion = typeof body.status_version === 'number' ? body.status_version : undefined;
-  if (statusVersion === undefined) {
-    return NextResponse.json({ error: 'status_version is required' }, { status: 400 });
+  const { status_version, reason } = body;
+  if (typeof status_version !== 'number') {
+    return NextResponse.json({ error: 'status_version required' }, { status: 400 });
   }
 
-  // Cancel allowed from three statuses (also legacy equivalents)
-  const result = await authenticateAndLoadOrder(orderId, [
-    'AWAITING_APPROVAL', 'PAID', 'IN_PROGRESS',
-    // Legacy equivalents
-    'draft_delivered', 'pending_review', 'submitted', 'in_progress',
-    'HOLD_PENDING', 'on_hold',
-  ]);
-  if (result instanceof NextResponse) return result;
-  const { order, userId } = result;
+  // Authenticate user
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Fetch order with service client
+  const serviceClient = getServiceSupabase();
+  const { data: order, error: orderError } = await serviceClient
+    .from('orders')
+    .select('id, status, status_version, workflow_id, client_id, tier, amount_paid_cents, current_phase, attorney_email, order_number')
+    .eq('id', orderId)
+    .single();
+
+  if (orderError || !order) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  if (order.client_id !== user.id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   // Optimistic lock
-  const lockError = validateOptimisticLock(order, statusVersion);
-  if (lockError) return lockError;
-
-  const adminClient = getServiceSupabase();
-
-  // Determine cancellation type and refund based on source status
-  let cancellationType: string;
-  let refundPercentage: number;
-  let needsEventEmission = false;
-
-  const awaitingStatuses = ['AWAITING_APPROVAL', 'draft_delivered', 'pending_review'];
-  const fullRefundStatuses = ['PAID', 'submitted', 'HOLD_PENDING', 'on_hold'];
-
-  if (awaitingStatuses.includes(order.status)) {
-    cancellationType = 'CP3_CANCEL';
-    refundPercentage = CP3_REFUND_PERCENTAGE; // 50%
-    needsEventEmission = true; // Wake Fn2
-  } else if (fullRefundStatuses.includes(order.status)) {
-    cancellationType = 'CUSTOMER_CANCEL';
-    refundPercentage = 100;
-  } else {
-    // IN_PROGRESS or in_progress
-    cancellationType = 'CUSTOMER_CANCEL';
-    refundPercentage = CP3_REFUND_PERCENTAGE; // 50%
+  if (order.status_version !== status_version) {
+    return NextResponse.json({ error: 'Concurrent modification' }, { status: 409 });
   }
 
-  // Acquire refund lock (prevents double-refund race)
-  const lock = await acquireRefundLock(adminClient, orderId);
-  if (!lock.acquired) {
+  // === CP3 PATH: AWAITING_APPROVAL — route through Fn2 ===
+  if (order.status === 'AWAITING_APPROVAL') {
+    // Binding R2v2: AWAITING_APPROVAL = 50% refund of amount_paid_cents
+    const refundAmountCents = Math.round((order.amount_paid_cents || 0) * (CP3_REFUND_PERCENTAGE / 100));
+
+    // Atomic status transition: AWAITING_APPROVAL → CANCELLED (DB flat)
+    const { data: updated, error: updateErr } = await serviceClient
+      .from('orders')
+      .update({
+        status: 'CANCELLED', // DB stores flat CANCELLED (toDbStatus maps)
+        status_version: order.status_version + 1,
+        cancelled_at: new Date().toISOString(),
+        cancellation_reason: reason ?? 'Attorney cancelled at CP3',
+      })
+      .eq('id', orderId)
+      .eq('status', 'AWAITING_APPROVAL')
+      .eq('status_version', status_version)
+      .select()
+      .single();
+
+    if (updateErr || !updated) {
+      return NextResponse.json(
+        { error: 'Concurrent modification. Please refresh.' }, { status: 409 }
+      );
+    }
+
+    // Audit trail on delivery_packages
+    const { data: pkg } = await serviceClient
+      .from('delivery_packages')
+      .select('id')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (pkg) {
+      await serviceClient.from('delivery_packages').update({
+        cp3_decision: 'CANCELLED',
+        cp3_decision_at: new Date().toISOString(),
+        cp3_decided_by: user.id,
+      }).eq('id', pkg.id);
+    }
+
+    // Emit event for Fn2 cleanup + refund processing
+    await inngest.send({
+      name: CANONICAL_EVENTS.WORKFLOW_CHECKPOINT_APPROVED,
+      data: {
+        orderId,
+        workflowId: order.workflow_id,
+        packageId: pkg?.id ?? null,
+        tier: order.tier,
+        attorneyEmail: order.attorney_email,
+        action: 'CANCELLED',
+        refundAmountCents,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      orderId,
+      status: 'CANCELLED_USER', // TypeScript name for frontend
+      refundAmountCents,
+      refundPercentage: CP3_REFUND_PERCENTAGE,
+    });
+  }
+
+  // === PRE-CP3 PATH: Direct cancellation (INTAKE, HOLD_PENDING, etc.) ===
+  const cancellableStatuses = ['INTAKE', 'PROCESSING', 'HOLD_PENDING', 'UPGRADE_PENDING'];
+  if (!cancellableStatuses.includes(order.status)) {
     return NextResponse.json(
-      { error: 'Cancellation already in progress', current_status: lock.currentStatus },
+      { error: `Order cannot be cancelled in status: ${order.status}` },
       { status: 409 }
     );
   }
 
-  try {
-    // Update status
-    const statusResult = await updateOrderStatus(
-      adminClient, orderId, 'CANCELLED', order.status_version,
-      {
-        cancellation_type: cancellationType,
-        cancelled_at: new Date().toISOString(),
-        cancel_reason: typeof body.reason === 'string' ? (body.reason as string).trim() : null,
-        refund_status: 'pending',
-      }
+  // Pre-CP3: full refund for orders not yet worked on
+  const refundAmountCents = order.amount_paid_cents || 0;
+
+  const { data: updated, error: updateError } = await serviceClient
+    .from('orders')
+    .update({
+      status: 'CANCELLED',
+      status_version: order.status_version + 1,
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: reason ?? null,
+      refund_amount: refundAmountCents,
+      refund_status: 'pending',
+    })
+    .eq('id', orderId)
+    .eq('status_version', order.status_version)
+    .select('id')
+    .single();
+
+  if (updateError || !updated) {
+    return NextResponse.json(
+      { error: 'Failed to cancel. Concurrent modification.' },
+      { status: 409 }
     );
-
-    if (!statusResult.success) {
-      return NextResponse.json({ error: statusResult.error }, { status: 409 });
-    }
-
-    // Cancel CP3 timeouts if applicable
-    if (awaitingStatuses.includes(order.status)) {
-      await cancelCP3Timeouts(adminClient, orderId);
-    }
-
-    // Log event (immutable audit)
-    await logCheckpointEvent(adminClient, {
-      orderId,
-      eventType: 'ORDER_CANCELLED',
-      actor: 'attorney',
-      metadata: { cancellationType, refundPercentage, source: order.status },
-    });
-
-    // Emit event to wake Fn2 ONLY if cancelling from AWAITING_APPROVAL
-    // Separate from DB ops per D5 W3-2 durability rule
-    if (needsEventEmission) {
-      await inngest.send({
-        name: 'workflow/checkpoint-approved',
-        data: {
-          orderId,
-          workflowId: order.workflow_id,
-          action: 'CANCEL',
-          approvedBy: userId,
-        },
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      status: 'cancelled',
-      cancellation_type: cancellationType,
-      refund_percentage: refundPercentage,
-      status_version: statusResult.statusVersion,
-    });
-  } finally {
-    await releaseRefundLock(adminClient, orderId);
   }
+
+  await serviceClient.from('automation_logs').insert({
+    order_id: orderId,
+    action_type: 'order_cancelled',
+    action_details: {
+      cancelledBy: user.id,
+      previousStatus: order.status,
+      refundAmountCents,
+      refundPercentage: 100,
+      reason: reason ?? null,
+    },
+  });
+
+  return NextResponse.json({
+    success: true,
+    orderId,
+    orderNumber: order.order_number,
+    refundAmountCents,
+    refundPercentage: 100,
+    status_version: order.status_version + 1,
+  });
 }
