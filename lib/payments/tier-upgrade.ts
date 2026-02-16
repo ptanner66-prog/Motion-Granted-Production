@@ -25,9 +25,12 @@ import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('payments-tier-upgrade');
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia' as Stripe.LatestApiVersion,
-});
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeSecretKey && !stripeSecretKey.includes('xxxxx')
+  ? new Stripe(stripeSecretKey, {
+      apiVersion: '2024-12-18.acacia' as Stripe.LatestApiVersion,
+    })
+  : null;
 
 // ============================================================
 // TYPES
@@ -108,7 +111,7 @@ export async function generateUpgradeInvoice(
       .single();
 
     // Create Stripe checkout session for the difference
-    const session = await stripe.checkout.sessions.create({
+    const session = await stripe!.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
       allow_promotion_codes: false, // BD-XD-004
@@ -209,7 +212,7 @@ export async function processUpgradePaymentFull(
     if (order.status === 'cancelled') {
       console.error(`[UPGRADE] Payment received for cancelled order ${orderId}. Issuing refund.`);
       if (session.payment_intent) {
-        await stripe.refunds.create({
+        await stripe!.refunds.create({
           payment_intent: session.payment_intent as string,
           amount: session.amount_total!,
         });
@@ -237,7 +240,7 @@ export async function processUpgradePaymentFull(
     if (order.tier === order.upgrade_to_tier) {
       console.warn(`[UPGRADE] Order ${orderId} already at target tier. Refunding differential.`);
       if (session.payment_intent) {
-        await stripe.refunds.create({
+        await stripe!.refunds.create({
           payment_intent: session.payment_intent as string,
           amount: session.amount_total!,
         });
@@ -379,7 +382,7 @@ export async function createUpgradeCheckoutSession(
   clientId: string,
   stateCode: string,
 ): Promise<{ url: string }> {
-  const session = await stripe.checkout.sessions.create({
+  const session = await stripe!.checkout.sessions.create({
     mode: 'payment',
     line_items: [
       {

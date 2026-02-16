@@ -189,7 +189,10 @@ function extractDraftText(phaseOutput: unknown): string | null {
 // STRIPE CLIENT (SP-5: CP3 refund processing)
 // ============================================================================
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-04-10' as Stripe.LatestApiVersion });
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeSecretKey && !stripeSecretKey.includes('xxxxx')
+  ? new Stripe(stripeSecretKey, { apiVersion: '2024-04-10' as Stripe.LatestApiVersion })
+  : null;
 
 // ============================================================================
 // SUPABASE CLIENT
@@ -3796,7 +3799,7 @@ async function handleCancel(
           order.amount_paid * (CP3_REFUND_PERCENTAGE / 100)
         );
         if (refundAmount > 0) {
-          await stripe.refunds.create({
+          await stripe!.refunds.create({
             payment_intent: order.stripe_payment_intent_id,
             amount: refundAmount,
             metadata: {
