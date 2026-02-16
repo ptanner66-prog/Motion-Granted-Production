@@ -1,35 +1,63 @@
 /**
- * Workflow Checkpoint Approval API
+ * CP3 Approve Route — Directive 1 v2 Rewrite
  *
  * POST /api/orders/[id]/approve
  *
- * Two modes:
- * 1. Customer CP3 approval — order owner approves, no action field in body.
- *    Resolves CP3 checkpoint, updates order status to 'completed', returns download URLs.
- * 2. Admin checkpoint approval — admin/clerk sends { action: 'APPROVE' | 'REQUEST_CHANGES' | 'CANCEL' }.
+ * D6 C-001: NO order_workflows table — reads from orders directly
+ * D6 C-002: Optimistic lock via status_version (NOT cp3_decision IS NULL)
+ * D6 C-003: workflowId from DATABASE, NEVER from client request
+ *
+ * Attorney-only: order.client_id must match authenticated user.
+ * Emits workflow/checkpoint-approved event; Fn2 handles delivery inline.
+ * Status goes AWAITING_APPROVAL → COMPLETED (no APPROVED intermediate).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { inngest } from '@/lib/inngest/client';
-import { createLogger } from '@/lib/security/logger';
+import { logCheckpointEvent } from '@/lib/workflow/checkpoint-logger';
+import { CANONICAL_EVENTS } from '@/lib/workflow/checkpoint-types';
 
-const log = createLogger('api-orders-approve');
-
-// ---------------------------------------------------------------------------
-// Customer CP3 Approval
-// ---------------------------------------------------------------------------
-async function handleCustomerApproval(
-  orderId: string,
-  userId: string,
-  body: { status_version?: number }
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabase = await createClient();
+  const { id: orderId } = await params;
 
-  // Fetch order and verify ownership
-  const { data: order, error: orderError } = await supabase
+  // === GATE 1: Authentication ===
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // === GATE 2: Parse request body ===
+  // C-003 FIX: Only accept status_version from client. NEVER workflowId.
+  let body: { status_version?: number } = {};
+  try {
+    body = await req.json();
+  } catch {
+    // Empty body — status_version will be validated below
+  }
+
+  const { status_version } = body;
+
+  if (typeof status_version !== 'number') {
+    return NextResponse.json(
+      { error: 'status_version is required (number)' },
+      { status: 400 }
+    );
+  }
+
+  // === GATE 3: Ownership verification ===
+  const serviceClient = getServiceSupabase();
+
+  // C-001 FIX: Query orders table directly. NO order_workflows table.
+  const { data: order, error: orderError } = await serviceClient
     .from('orders')
-    .select('id, client_id, status, order_number, status_version')
+    .select('id, status, status_version, workflow_id, client_id, tier')
     .eq('id', orderId)
     .single();
 
@@ -37,367 +65,80 @@ async function handleCustomerApproval(
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   }
 
-  if (order.client_id !== userId) {
+  // Ownership: attorney must own the order
+  if (order.client_id !== user.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Verify the order is in a reviewable state (7-status + legacy)
-  const reviewableStatuses = ['AWAITING_APPROVAL', 'draft_delivered', 'pending_review'];
-  if (!reviewableStatuses.includes(order.status)) {
+  // Status: must be AWAITING_APPROVAL
+  if (order.status !== 'AWAITING_APPROVAL') {
     return NextResponse.json(
-      {
-        error:
-          order.status === 'completed' || order.status === 'COMPLETED'
-            ? 'This order has already been approved.'
-            : 'This order is not ready for review.',
-      },
-      { status: 400 }
+      { error: `Order is ${order.status}, not AWAITING_APPROVAL` },
+      { status: 409 }
     );
   }
 
-  // Optimistic concurrency: verify status_version
-  if (body.status_version === undefined || body.status_version === null) {
-    return NextResponse.json(
-      { error: 'status_version is required' },
-      { status: 400 }
-    );
-  }
-
-  const currentVersion = order.status_version ?? 0;
-  if (body.status_version !== currentVersion) {
+  // === GATE 4: Optimistic lock via status_version ===
+  // C-002 FIX: Use status_version as SOLE optimistic lock. NOT cp3_decision IS NULL.
+  if (order.status_version !== status_version) {
     return NextResponse.json(
       {
-        error: 'Version conflict. The order has been modified by another request.',
-        current_version: currentVersion,
+        error: 'Concurrent modification detected. Please refresh and try again.',
+        expected_version: order.status_version,
+        received_version: status_version,
       },
       { status: 409 }
     );
   }
 
-  const now = new Date().toISOString();
-  const retentionExpiresAt = new Date(
-    Date.now() + 180 * 24 * 60 * 60 * 1000
-  ).toISOString();
-
-  // Update order status to completed (atomic: only if version matches)
-  const { data: updatedOrder, error: updateError } = await supabase
-    .from('orders')
-    .update({
-      status: 'completed',
-      completed_at: now,
-      delivered_at: now,
-      retention_expires_at: retentionExpiresAt,
-      status_version: currentVersion + 1,
-      updated_at: now,
-    })
-    .eq('id', orderId)
-    .eq('status_version', currentVersion)
-    .select('id')
-    .single();
-
-  if (updateError || !updatedOrder) {
-    return NextResponse.json(
-      { error: 'Failed to approve order. It may have been modified concurrently.' },
-      { status: 409 }
-    );
-  }
-
-  // Fetch deliverable documents with download URLs
-  const { data: documents } = await supabase
-    .from('documents')
-    .select('id, file_name, file_url, document_type, file_type, file_size')
-    .eq('order_id', orderId)
-    .eq('is_deliverable', true)
-    .order('created_at', { ascending: true });
-
-  const downloadUrls: Record<string, string> = {};
-  for (const doc of documents ?? []) {
-    if (doc.file_url) {
-      downloadUrls[doc.file_name] = doc.file_url;
-    }
-  }
-
-  return NextResponse.json({
-    success: true,
-    orderNumber: order.order_number,
-    status_version: currentVersion + 1,
-    downloadUrls,
-    documents: (documents ?? []).map((doc: { id: string; file_name: string; document_type: string; file_type: string; file_url: string; file_size: number }) => ({
-      id: doc.id,
-      filename: doc.file_name,
-      type: doc.document_type,
-      fileType: doc.file_type,
-      downloadUrl: doc.file_url,
-      fileSizeBytes: doc.file_size,
-    })),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Main POST handler
-// ---------------------------------------------------------------------------
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: orderId } = await params;
-  const supabase = await createClient();
-
-  // Verify auth
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // Parse request body (may be empty for customer approval)
-  let body: { action?: string; notes?: string; status_version?: number } = {};
+  // === EXECUTE: Emit approval event ===
   try {
-    body = await request.json();
-  } catch {
-    // Empty body is valid for customer CP3 approval
-  }
-
-  // Route: if no action field, treat as customer CP3 approval
-  if (!body.action) {
-    return handleCustomerApproval(orderId, user.id, body);
-  }
-
-  // ---------- Admin checkpoint approval flow ----------
-
-  // Check admin/clerk role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (profile?.role !== 'admin' && profile?.role !== 'clerk') {
-    return NextResponse.json({ error: 'Forbidden - Admin/Clerk only' }, { status: 403 });
-  }
-
-  const { action, notes } = body;
-
-  // Validate action
-  if (!['APPROVE', 'REQUEST_CHANGES', 'CANCEL'].includes(action)) {
-    return NextResponse.json(
-      { error: 'Invalid action. Must be APPROVE, REQUEST_CHANGES, or CANCEL' },
-      { status: 400 }
-    );
-  }
-
-  try {
-    // Get workflow state
-    const { data: workflow, error: workflowError } = await supabase
-      .from('workflow_state')
-      .select('*')
-      .eq('order_id', orderId)
-      .single();
-
-    if (workflowError || !workflow) {
-      return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
-    }
-
-    if (!workflow.checkpoint_pending) {
-      return NextResponse.json({ error: 'No checkpoint pending for this workflow' }, { status: 400 });
-    }
-
-    // Send Inngest event to unblock the workflow's waitForEvent step
-    try {
-      await inngest.send({
-        name: 'workflow/checkpoint-approved',
-        data: {
-          orderId,
-          action: action as 'APPROVE' | 'REQUEST_CHANGES' | 'CANCEL',
-          notes: notes || undefined,
-          approvedBy: user.id,
-          approvedAt: new Date().toISOString(),
-        },
-      });
-      log.info(`[CP3] Sent Inngest approval event: ${action} for order ${orderId}`);
-    } catch (inngestError) {
-      log.error('[CP3] Failed to send Inngest approval event', {
-        error: inngestError instanceof Error ? inngestError.message : inngestError,
+    // C-003 FIX: workflowId from DATABASE, NEVER from client
+    await inngest.send({
+      name: CANONICAL_EVENTS.WORKFLOW_CHECKPOINT_APPROVED,
+      data: {
         orderId,
-        action,
-      });
-    }
+        workflowId: order.workflow_id, // FROM DATABASE
+        action: 'APPROVE' as const,
+        notes: null,
+        attorneyId: user.id,
+      },
+    });
 
-    // Handle different actions
-    if (action === 'APPROVE') {
-      // Clear checkpoint and mark as complete
-      await supabase
-        .from('workflow_state')
-        .update({
-          checkpoint_pending: false,
-          checkpoint_type: null,
-          checkpoint_data: null,
-          phase_status: 'COMPLETE',
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', workflow.id);
-
-      // Update order status to ready for delivery
-      await supabase
-        .from('orders')
-        .update({
-          status: 'draft_delivered',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', orderId);
-
-      // Log approval
-      await supabase.from('automation_logs').insert({
-        order_id: orderId,
-        action_type: 'checkpoint_approved',
-        action_details: {
-          workflowId: workflow.id,
-          phase: workflow.current_phase,
-          approvedBy: user.id,
-          notes,
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        action: 'APPROVE',
-        message: 'Workflow approved and marked complete',
-      });
-
-    } else if (action === 'REQUEST_CHANGES') {
-      // Route back to Phase VIII for revisions
-      await supabase
-        .from('workflow_state')
-        .update({
-          checkpoint_pending: false,
-          checkpoint_type: null,
-          checkpoint_data: null,
-          current_phase: 'VIII',
-          phase_status: 'PENDING',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', workflow.id);
-
-      // Log request
-      await supabase.from('automation_logs').insert({
-        order_id: orderId,
-        action_type: 'checkpoint_changes_requested',
-        action_details: {
-          workflowId: workflow.id,
-          phase: workflow.current_phase,
-          requestedBy: user.id,
-          notes,
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        action: 'REQUEST_CHANGES',
-        message: 'Changes requested. Workflow routed to Phase VIII for revisions.',
-      });
-
-    } else if (action === 'CANCEL') {
-      // Cancel the workflow
-      await supabase
-        .from('workflow_state')
-        .update({
-          checkpoint_pending: false,
-          phase_status: 'CANCELLED',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', workflow.id);
-
-      // Update order status
-      await supabase
-        .from('orders')
-        .update({
-          status: 'cancelled',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', orderId);
-
-      // Log cancellation
-      await supabase.from('automation_logs').insert({
-        order_id: orderId,
-        action_type: 'workflow_cancelled',
-        action_details: {
-          workflowId: workflow.id,
-          phase: workflow.current_phase,
-          cancelledBy: user.id,
-          notes,
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        action: 'CANCEL',
-        message: 'Workflow cancelled',
-      });
-    }
-
-    return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
-  } catch (error) {
-    log.error('Approval error', { error: error instanceof Error ? error.message : error });
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process approval' },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * GET /api/orders/[id]/approve
- * Get checkpoint status for an order
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: orderId } = await params;
-  const supabase = await createClient();
-
-  // Verify auth
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // Check admin/clerk role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (profile?.role !== 'admin' && profile?.role !== 'clerk') {
-    return NextResponse.json({ error: 'Forbidden - Admin/Clerk only' }, { status: 403 });
-  }
-
-  try {
-    const { data: workflow, error } = await supabase
-      .from('workflow_state')
-      .select('id, current_phase, phase_status, checkpoint_pending, checkpoint_type, checkpoint_data')
+    // Write cp3_decision to delivery_packages (AUDIT TRAIL, not lock)
+    const { data: pkg } = await serviceClient
+      .from('delivery_packages')
+      .select('id')
       .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single();
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return NextResponse.json({ checkpointPending: false, message: 'No workflow found' });
-      }
-      throw error;
+    if (pkg) {
+      await serviceClient.from('delivery_packages').update({
+        cp3_decision: 'APPROVED',
+        cp3_decision_at: new Date().toISOString(),
+        cp3_decided_by: user.id,
+      }).eq('id', pkg.id);
     }
+
+    // Log the action
+    await logCheckpointEvent(serviceClient, {
+      orderId,
+      packageId: pkg?.id,
+      eventType: 'CP3_APPROVE_REQUESTED',
+      actor: user.id,
+      metadata: { statusVersion: status_version },
+    });
 
     return NextResponse.json({
-      checkpointPending: workflow.checkpoint_pending,
-      checkpointType: workflow.checkpoint_type,
-      checkpointData: workflow.checkpoint_data,
-      currentPhase: workflow.current_phase,
-      phaseStatus: workflow.phase_status,
+      success: true,
+      message: 'Approval processing. You will receive a delivery email shortly.',
     });
   } catch (error) {
-    log.error('Checkpoint status error', { error: error instanceof Error ? error.message : error });
+    console.error('[approve] Failed to process approval:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to get checkpoint status' },
+      { error: 'Internal server error processing approval' },
       { status: 500 }
     );
   }

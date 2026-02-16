@@ -23,6 +23,20 @@
 /**
  * Normalized usage shape consumed by cost_tracking INSERT.
  * Both Anthropic and OpenAI usage are mapped to this before persistence.
+ *
+ * IMPORTANT (D3 Task 19): The `tier` field in cost_tracking records the
+ * order's tier AT THE TIME of this API call, NOT the order's current tier.
+ * If a tier reclassification occurs mid-workflow (e.g., B -> C), earlier
+ * cost_tracking rows will have tier='B' and later rows tier='C'.
+ *
+ * This is intentional — tier-at-call-time reflects the model routing and
+ * thinking budget that was actually used for that call. The materialized
+ * view (order_cost_summary) uses orders.tier for the order's current/final
+ * tier, not cost_tracking.tier.
+ *
+ * For cost cap enforcement (checkSubLoopCostCap), ALL loop costs are summed
+ * regardless of tier value in cost_tracking — the cap is determined by the
+ * order's CURRENT tier from the orders table.
  */
 export interface NormalizedUsage {
   input_tokens: number;
