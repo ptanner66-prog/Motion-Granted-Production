@@ -242,3 +242,33 @@ export async function withRateLimit<T>(fn: () => Promise<T>, label: string = 're
     throw error;
   }
 }
+
+// ============================================================================
+// SUPABASE-BACKED ATOMIC RATE LIMITER (SP-13 AM-2 / D9 A-2)
+// Uses DB-level atomic increment to prevent race conditions across
+// concurrent Inngest functions. Fail-closed: returns false on error.
+// ============================================================================
+
+interface SupabaseRpcClient {
+  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+}
+
+/**
+ * Check and atomically increment the DB-backed rate counter.
+ * Returns true if the request is allowed, false if rate-limited or on error.
+ */
+export async function checkAndIncrementRateLimit(
+  supabase: SupabaseRpcClient,
+  api: string = 'courtlistener',
+  limit: number = 5000
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('increment_rate_counter', {
+    p_api: api,
+    p_limit: limit,
+  });
+  if (error) {
+    log.error('Rate limiter RPC failed', { api, error: error.message });
+    return false; // Fail closed: treat as rate-limited
+  }
+  return data === true;
+}

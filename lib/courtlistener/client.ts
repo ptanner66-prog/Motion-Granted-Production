@@ -2281,3 +2281,81 @@ function determineAuthorityLevel(court: string, jurisdiction: string): 'binding'
   // Everything else is persuasive
   return 'persuasive';
 }
+
+// ============================================================================
+// BACKWARD CITATION ANALYSIS (SP-13 AO-12 / D9-017 / ST-D9R2-01)
+// Returns cases that OUR case cites (its foundation authorities).
+// CORRECT parameter: ?cited_opinion (NOT ?citing_opinion which is FORWARD).
+// SCOPE: Tier D ONLY — pipeline must check tier before calling.
+// ============================================================================
+
+export interface BackwardCitation {
+  opinionId: number;
+  caseName: string;
+  court: string;
+  dateFiled: string;
+  citation: string;
+  depth: number;
+}
+
+/**
+ * Get backward citations — cases that the given opinion cites.
+ *
+ * CRITICAL (D9-017 / ST-D9R2-01): Uses `?cited_opinion` parameter,
+ * NOT `?citing_opinion`. The difference:
+ * - cited_opinion: returns cases where our case IS THE ONE CITING them (backward)
+ * - citing_opinion: returns cases that cite our case (forward)
+ *
+ * @param opinionId - CourtListener opinion ID
+ * @param tier - Motion tier. MUST be 'D' — other tiers skip backward analysis.
+ */
+export async function getBackwardCitations(
+  opinionId: string,
+  tier: string
+): Promise<{ success: boolean; data?: BackwardCitation[]; error?: string }> {
+  // BINDING (D9-017): Tier D ONLY
+  if (tier !== 'D') {
+    return { success: true, data: [] };
+  }
+
+  // CORRECT: ?cited_opinion returns BACKWARD citations (what our case cites)
+  const result = await makeRequest<{
+    results: Array<{
+      id: number;
+      case_name?: string;
+      court?: string;
+      court_id?: string;
+      date_filed?: string;
+      citations?: Array<{ volume: number; reporter: string; page: number }>;
+      depth?: number;
+    }>;
+    count: number;
+  }>(`/search/?type=o&cited_opinion=${opinionId}&page_size=50`);
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+
+  if (!result.data || result.data.count === 0) {
+    return { success: true, data: [] };
+  }
+
+  const citations: BackwardCitation[] = result.data.results.map(op => {
+    let citationStr = '';
+    if (op.citations && op.citations.length > 0) {
+      const c = op.citations[0];
+      citationStr = `${c.volume} ${c.reporter} ${c.page}`;
+    }
+
+    return {
+      opinionId: op.id,
+      caseName: op.case_name || 'Unknown',
+      court: op.court || op.court_id || 'Unknown',
+      dateFiled: op.date_filed || '',
+      citation: citationStr,
+      depth: op.depth || 0,
+    };
+  });
+
+  return { success: true, data: citations };
+}
