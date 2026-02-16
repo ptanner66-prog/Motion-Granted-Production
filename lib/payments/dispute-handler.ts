@@ -17,9 +17,12 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { validateTransition } from './payment-status';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia' as Stripe.LatestApiVersion,
-});
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeSecretKey && !stripeSecretKey.includes('xxxxx')
+  ? new Stripe(stripeSecretKey, {
+      apiVersion: '2024-12-18.acacia' as Stripe.LatestApiVersion,
+    })
+  : null;
 
 // ============================================================
 // WEBHOOK HANDLERS
@@ -36,7 +39,7 @@ export async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<voi
 
   if (dispute.payment_intent) {
     try {
-      const pi = await stripe.paymentIntents.retrieve(dispute.payment_intent as string);
+      const pi = await stripe!.paymentIntents.retrieve(dispute.payment_intent as string);
       orderId = pi.metadata?.orderId || pi.metadata?.order_id || null;
     } catch {
       // Continue to fallback
@@ -266,7 +269,7 @@ export async function compileDisputeEvidence(orderId: string): Promise<DisputeEv
 async function findOrderIdForDispute(dispute: Stripe.Dispute): Promise<string | null> {
   if (dispute.payment_intent) {
     try {
-      const pi = await stripe.paymentIntents.retrieve(dispute.payment_intent as string);
+      const pi = await stripe!.paymentIntents.retrieve(dispute.payment_intent as string);
       if (pi.metadata?.orderId) return pi.metadata.orderId;
       if (pi.metadata?.order_id) return pi.metadata.order_id;
     } catch {
