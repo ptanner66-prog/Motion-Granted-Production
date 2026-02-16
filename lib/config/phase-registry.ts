@@ -390,7 +390,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
 
   // ── Phase VIII: Revisions ─────────────────────────────────────────
   // MODE: CHAT. ST-003: Opus for B/C/D, Sonnet for A ONLY.
-  // ST-004: Tier D = 10K thinking budget (not 8K)
+  // SP-12 AH-2: B/C/D all use 10K thinking budget (verified binding).
   //
   // CONFLICT RESOLUTION: Clay's §1.2 says "Sonnet all tiers" but
   // Batch 2 Matrix says "Sonnet A, OPUS+ET B/C/D". The Batch 2
@@ -402,8 +402,8 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
     mode: 'CHAT',
     routing: {
       A: SONNET_STANDARD,
-      B: OPUS_ET_8K,
-      C: OPUS_ET_8K,
+      B: OPUS_ET_10K, // SP-12 AH-2: 10K verified binding (was 8K)
+      C: OPUS_ET_10K, // SP-12 AH-2: 10K verified binding (was 8K)
       D: OPUS_ET_10K, // ST-004: Tier D = 10K
     },
   },

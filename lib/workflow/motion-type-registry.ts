@@ -324,3 +324,72 @@ export const REGISTRY_STATS = {
     }
   }
 })();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SP-12 AK-4: MOTION_TIER_MAP — Quick tier lookup by abstract type code
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Abstract motion type code → tier mapping.
+ * Used for quick tier classification when only the type code is available
+ * (e.g., intake form dropdown, API route classification).
+ *
+ * This is derived from MOTION_TYPE_REGISTRY but uses abstract type codes
+ * rather than slugs or numeric IDs.
+ *
+ * SP-12 AK-4: Includes all Tier D motions as specified in D4 D-7.
+ */
+export const MOTION_TIER_MAP: Record<string, MotionTier> = {
+  // Tier D — Highly Complex / Dispositive (10 type codes)
+  'DECERTIFY_CLASS': 'D',
+  'MSJ_COMPLEX': 'D',
+  'DAUBERT_MOTION': 'D',
+  'PI_COMPLEX': 'D',
+  'MANDAMUS': 'D',
+  'INTERLOCUTORY_APPEAL': 'D',
+  'ANTI_SLAPP': 'D',
+  'ARBITRATION_COMPLEX': 'D',
+  'RECEIVERSHIP': 'D',
+  'MULTI_PARTY_INTERVENTION': 'D',
+
+  // Tier C — Complex
+  'DISMISS_12B6_COMPLEX': 'C',
+  'DEMURRER_COMPLEX': 'C',
+  'PEREMPTORY_COMPLEX': 'C',
+  'WRIT_MANDAMUS': 'C',
+  'WRIT_PROHIBITION': 'C',
+  'WRIT_HABEAS': 'C',
+  'ANTI_SLAPP_SIMPLE': 'C',
+  'COMPLEX_CASE': 'C',
+  'INTERLOCUTORY': 'C',
+  'DECLARATORY': 'C',
+
+  // Tier B — Intermediate (representative subset)
+  'COMPEL_DISCOVERY': 'B',
+  'SANCTIONS': 'B',
+  'MOTION_IN_LIMINE': 'B',
+  'NEW_TRIAL': 'B',
+  'COMPEL_ARBITRATION': 'B',
+  'DISMISS_SIMPLE': 'B',
+  'MSJ_PARTIAL': 'B',
+
+  // Tier A — Procedural / Routine (representative subset)
+  'EXTEND_DEADLINE': 'A',
+  'CONTINUANCE': 'A',
+  'WITHDRAW_COUNSEL': 'A',
+  'DEFAULT_JUDGMENT': 'A',
+  'PRO_HAC_VICE': 'A',
+  'QUASH_SERVICE': 'A',
+  'SEAL_RECORDS': 'A',
+};
+
+/**
+ * Get tier from abstract motion type code.
+ * Falls back to slug-based lookup if type code not found.
+ *
+ * @param typeCode - Abstract type code (e.g., 'MSJ_COMPLEX')
+ * @returns MotionTier or undefined if not found
+ */
+export function getTierByTypeCode(typeCode: string): MotionTier | undefined {
+  return MOTION_TIER_MAP[typeCode.toUpperCase()];
+}

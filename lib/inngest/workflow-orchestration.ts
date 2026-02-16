@@ -1084,10 +1084,61 @@ export const generateOrderWorkflow = inngest.createFunction(
       start: "5m",
     },
   },
-  { event: "order/submitted" },
+  // SP-12 AH-5: Triple-trigger routing
+  // New order, attorney rework, or Protocol 10 re-assembly
+  [
+    { event: "order/submitted" },           // New order
+    { event: "order/revision-requested" },   // Attorney rework
+    { event: "order/protocol-10-exit" },     // Protocol 10 re-assembly
+  ],
   async ({ event, step }) => {
     const { orderId } = event.data;
     const supabase = getSupabase();
+
+    // ========================================================================
+    // SP-12 AH-5: Triple-trigger routing — determine start phase
+    // ========================================================================
+    const startPhase = await step.run('determine-start-phase', async () => {
+      switch (event.name) {
+        case 'order/submitted':
+          return 'PHASE_I';
+
+        case 'order/revision-requested':
+          return 'PHASE_VII'; // Attorney rework re-enters at Phase VII
+
+        case 'order/protocol-10-exit': {
+          // Protocol 10 re-assembly: read resume_phase from order
+          const { data: order } = await supabase
+            .from('orders')
+            .select('resume_phase')
+            .eq('id', orderId)
+            .single();
+          return order?.resume_phase || 'PHASE_VIII5'; // Default to VIII.5
+        }
+
+        default:
+          throw new Error(`Unknown trigger event: ${event.name}`);
+      }
+    });
+
+    // SP-12 AH-5: Idempotency check (Layer 1)
+    const existingWorkflow = await step.run('check-existing-workflow', async () => {
+      if (event.name === 'order/submitted') {
+        const { data } = await supabase
+          .from('orders')
+          .select('status')
+          .eq('id', orderId)
+          .single();
+        if (data && data.status !== 'paid' && data.status !== 'submitted') {
+          return true; // Already processing
+        }
+      }
+      return false;
+    });
+
+    if (existingWorkflow) {
+      return { skipped: true, reason: 'Workflow already active', startPhase };
+    }
 
     // ========================================================================
     // STEP 0: Verify API Configuration
