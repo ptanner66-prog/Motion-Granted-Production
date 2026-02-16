@@ -124,6 +124,17 @@ import { handleProtocol10Exit } from "@/lib/workflow/protocol-10-handler";
 // SP-11: Protocol 5 — statutory reference verification after revision
 import { runProtocol5 } from "@/lib/citation/protocol-5";
 
+// SP-13: Domain 9 Protocol Orchestration — dispatcher + persistence + handler registration
+import { dispatchProtocols } from "@/lib/protocols/dispatcher";
+import { persistProtocolResults } from "@/lib/protocols/persistence";
+import { registerAllHandlers } from "@/lib/protocols/register-handlers";
+
+// SP-13: Register all protocol handlers at module load
+registerAllHandlers();
+
+// SP-13: Phase filter — dispatcher only fires during verification phases (Decision 8)
+const DISPATCHER_PHASES = ['V.1', 'VII.1', 'IX.1'];
+
 // BATCH_09 ST-002: Citation pre-fetch for batch existence lookups
 import { CourtListenerClient } from "@/lib/workflow/courtlistener-client";
 import { splitTextIntoBlocks } from "@/lib/citation/extraction-pipeline";
@@ -1121,6 +1132,52 @@ export const generateOrderWorkflow = inngest.createFunction(
       }
     });
 
+    // SP-13 AP-2: Protocol 10 re-assembly event validation
+    if (event.name === 'order/protocol-10-exit') {
+      const isValidP10 = await step.run('validate-p10-trigger', async () => {
+        // Check 1: Loop exhaustion
+        const { data: loopCounter } = await supabase
+          .from('loop_counters')
+          .select('current_count, max_loops')
+          .eq('order_id', orderId)
+          .single();
+
+        if (loopCounter && loopCounter.current_count >= loopCounter.max_loops) {
+          return true; // Legitimate P10 — loop exhaustion
+        }
+
+        // Check 2: Cost cap exceeded
+        const { data: costCapEvents } = await supabase
+          .from('payment_events')
+          .select('id')
+          .eq('order_id', orderId)
+          .eq('event_type', 'COST_CAP_EXCEEDED')
+          .limit(1);
+
+        if (costCapEvents && costCapEvents.length > 0) {
+          return true; // Legitimate P10 — cost cap
+        }
+
+        // Check 3: CP3 rework cap exceeded
+        const { data: orderData } = await supabase
+          .from('orders')
+          .select('protocol_10_triggered')
+          .eq('id', orderId)
+          .single();
+
+        if (orderData?.protocol_10_triggered) {
+          return true; // Legitimate P10 — CP3 rework cap
+        }
+
+        return false;
+      });
+
+      if (!isValidP10) {
+        console.error('[SECURITY] P10 event rejected — no legitimate trigger found', { orderId });
+        return { skipped: true, reason: 'P10 event rejected — invalid trigger', startPhase };
+      }
+    }
+
     // SP-12 AH-5: Idempotency check (Layer 1)
     const existingWorkflow = await step.run('check-existing-workflow', async () => {
       if (event.name === 'order/submitted') {
@@ -2009,6 +2066,40 @@ export const generateOrderWorkflow = inngest.createFunction(
     console.log('[Orchestration] Accumulated after V.1:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
+    // SP-13 Step 6.5/6.6: Protocol dispatch after Phase V.1 (Decision 8)
+    // ========================================================================
+    if (DISPATCHER_PHASES.includes('V.1')) {
+      const v1DispatchResult = await step.run('dispatch-protocols-v1', async () => {
+        return dispatchProtocols({
+          orderId,
+          phase: 'V.1',
+          tier: (workflowState.tier || 'A') as 'A' | 'B' | 'C' | 'D',
+          jurisdiction: workflowState.jurisdiction || 'LA',
+          citation: { id: orderId, text: '' }, // Order-level dispatch
+          verificationResult: { status: 'VERIFIED' as const },
+          detectionOnly: false,
+        });
+      });
+
+      await step.run('persist-protocol-results-v1', async () => {
+        await persistProtocolResults(
+          supabase, orderId, 'V.1',
+          v1DispatchResult.results, orderId
+        );
+      });
+
+      if (v1DispatchResult.holdRequired) {
+        await step.sendEvent('workflow/hold-required', {
+          data: {
+            orderId,
+            holdProtocol: v1DispatchResult.holdProtocol,
+            phase: 'V.1',
+          },
+        });
+      }
+    }
+
+    // ========================================================================
     // STEP 8: Phase VI - Opposition Anticipation
     // ========================================================================
     const phaseVIResult = await step.run("phase-vi-opposition-anticipation", async () => {
@@ -2412,6 +2503,40 @@ export const generateOrderWorkflow = inngest.createFunction(
         });
       }
 
+      // ================================================================
+      // SP-13 Step 6.5/6.6: Protocol dispatch after Phase VII.1 (Decision 8)
+      // ================================================================
+      if (DISPATCHER_PHASES.includes('VII.1')) {
+        const vii1DispatchResult = await step.run(`dispatch-protocols-vii1-loop-${loopNum}`, async () => {
+          return dispatchProtocols({
+            orderId,
+            phase: 'VII.1',
+            tier: (workflowState.tier || 'A') as 'A' | 'B' | 'C' | 'D',
+            jurisdiction: workflowState.jurisdiction || 'LA',
+            citation: { id: orderId, text: '' },
+            verificationResult: { status: 'VERIFIED' as const },
+            detectionOnly: false,
+          });
+        });
+
+        await step.run(`persist-protocol-results-vii1-loop-${loopNum}`, async () => {
+          await persistProtocolResults(
+            supabase, orderId, 'VII.1',
+            vii1DispatchResult.results, orderId
+          );
+        });
+
+        if (vii1DispatchResult.holdRequired) {
+          await step.sendEvent('workflow/hold-required', {
+            data: {
+              orderId,
+              holdProtocol: vii1DispatchResult.holdProtocol,
+              phase: 'VII.1',
+            },
+          });
+        }
+      }
+
       // BUG-11 FIX: Increment loop counter at WORKFLOW level
       workflowState.revisionLoopCount = loopNum;
 
@@ -2705,6 +2830,40 @@ export const generateOrderWorkflow = inngest.createFunction(
       workflowState.phaseOutputs["IX.1"] = phaseIX1Result.output;
     }
     console.log('[Orchestration] Accumulated after IX.1:', Object.keys(workflowState.phaseOutputs));
+
+    // ========================================================================
+    // SP-13 Step 6.5/6.6: Protocol dispatch after Phase IX.1 (Decision 8)
+    // ========================================================================
+    if (DISPATCHER_PHASES.includes('IX.1')) {
+      const ix1DispatchResult = await step.run('dispatch-protocols-ix1', async () => {
+        return dispatchProtocols({
+          orderId,
+          phase: 'IX.1',
+          tier: (workflowState.tier || 'A') as 'A' | 'B' | 'C' | 'D',
+          jurisdiction: workflowState.jurisdiction || 'LA',
+          citation: { id: orderId, text: '' },
+          verificationResult: { status: 'VERIFIED' as const },
+          detectionOnly: false,
+        });
+      });
+
+      await step.run('persist-protocol-results-ix1', async () => {
+        await persistProtocolResults(
+          supabase, orderId, 'IX.1',
+          ix1DispatchResult.results, orderId
+        );
+      });
+
+      if (ix1DispatchResult.holdRequired) {
+        await step.sendEvent('workflow/hold-required', {
+          data: {
+            orderId,
+            holdProtocol: ix1DispatchResult.holdProtocol,
+            phase: 'IX.1',
+          },
+        });
+      }
+    }
 
     // ========================================================================
     // STEP 15: Phase X - Final Assembly + CP3 Checkpoint (Admin Approval)
