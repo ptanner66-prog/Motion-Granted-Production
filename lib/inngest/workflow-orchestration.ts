@@ -270,14 +270,15 @@ async function emitDurableEvent(
   }
 
   // Always persist to checkpoint_events for audit trail
-  await supabaseClient.from('checkpoint_events').insert({
+  const { error: persistError } = await supabaseClient.from('checkpoint_events').insert({
     order_id: orderId,
     event_name: name,
     event_data: data,
     checkpoint_type: checkpointType,
-  }).catch((err: unknown) => {
-    console.error('Checkpoint event persistence failed', { name, orderId, error: err });
   });
+  if (persistError) {
+    console.error('Checkpoint event persistence failed', { name, orderId, error: persistError });
+  }
 }
 
 // ============================================================================
