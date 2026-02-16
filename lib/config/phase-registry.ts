@@ -71,6 +71,8 @@ interface RouteConfig {
   thinkingBudget?: number;
   /** max_tokens for the API call. 64000 for Opus ET phases, 16384 for standard CHAT, 4096 for CODE/JSON. */
   maxTokens: number;
+  /** Temperature override. undefined = use API default. ST-005: Phase VII = 0.0 for deterministic grading. */
+  temperature?: number;
 }
 
 /** Per-tier routing for a phase. */
@@ -319,9 +321,10 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
   },
 
   // ── Phase VI: Opposition Analysis ─────────────────────────────────
-  // MODE: CHAT. SKIP A, Opus+ET 8K B/C/D.
+  // MODE: CHAT. SKIP A, Opus+ET 8K B/C, Opus+ET 10K D.
   // Anticipates opposing arguments and prepares responses.
   // Tier A procedural motions skip opposition analysis entirely.
+  // ST-004: Tier D = 10K thinking budget (not 8K)
   'VI': {
     name: 'Opposition Analysis',
     mode: 'CHAT',
@@ -329,22 +332,25 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SKIP,
       B: OPUS_ET_8K,
       C: OPUS_ET_8K,
-      D: OPUS_ET_8K,
+      D: OPUS_ET_10K, // ST-004: Tier D = 10K
     },
   },
 
   // ── Phase VII: Judge Simulation ───────────────────────────────────
-  // MODE: CHAT. OPUS ALL TIERS + ET 10K.
+  // MODE: CHAT. OPUS ALL TIERS + ET.
   // Quality gate. Skeptical judicial evaluation. B+ minimum.
   // Most judgment-intensive phase. NEVER downgrade the model.
+  // ST-004: Tier D = 16K thinking budget
+  // ST-005: temperature = 0.0 for ALL tiers (deterministic grading prevents
+  //         nondeterministic pass/fail on Inngest retry)
   'VII': {
     name: 'Judge Simulation',
     mode: 'CHAT',
     routing: {
-      A: OPUS_ET_10K,
-      B: OPUS_ET_10K,
-      C: OPUS_ET_10K,
-      D: OPUS_ET_10K,
+      A: { ...OPUS_ET_10K, temperature: 0.0 },
+      B: { ...OPUS_ET_10K, temperature: 0.0 },
+      C: { ...OPUS_ET_10K, temperature: 0.0 },
+      D: { ...OPUS_ET_16K, temperature: 0.0 }, // ST-004: Tier D = 16K
     },
   },
 
@@ -383,14 +389,14 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
   },
 
   // ── Phase VIII: Revisions ─────────────────────────────────────────
-  // MODE: CHAT.
-  // Sonnet A (no ET), Opus+ET 8K B/C.
+  // MODE: CHAT. ST-003: Opus for B/C/D, Sonnet for A ONLY.
+  // ST-004: Tier D = 10K thinking budget (not 8K)
   //
   // CONFLICT RESOLUTION: Clay's §1.2 says "Sonnet all tiers" but
-  // Batch 2 Matrix says "Sonnet A, OPUS+ET 8K B/C". The Batch 2
+  // Batch 2 Matrix says "Sonnet A, OPUS+ET B/C/D". The Batch 2
   // matrix supersedes because: (1) it's later in the document,
-  // (2) ET requires Opus — Sonnet cannot use 8K thinking budgets,
-  // (3) the execution code already correctly used Opus for B/C.
+  // (2) ET requires Opus — Sonnet cannot use thinking budgets,
+  // (3) the execution code already correctly used Opus for B/C/D.
   'VIII': {
     name: 'Revisions',
     mode: 'CHAT',
@@ -398,7 +404,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
       A: SONNET_STANDARD,
       B: OPUS_ET_8K,
       C: OPUS_ET_8K,
-      D: OPUS_ET_8K,
+      D: OPUS_ET_10K, // ST-004: Tier D = 10K
     },
   },
 
@@ -585,6 +591,22 @@ export function getMaxTokens(
   }
 
   return route.maxTokens;
+}
+
+/**
+ * Get the temperature override for a phase/tier combination.
+ * Returns undefined if no override is set (use API default).
+ * ST-005: Phase VII = 0.0 for deterministic grading.
+ */
+export function getTemperature(
+  phase: WorkflowPhase,
+  tier: Tier,
+): number | undefined {
+  const config = PHASE_REGISTRY[phase];
+  if (!config) {
+    throw new Error(`[PHASE_REGISTRY] Unknown phase: "${phase}"`);
+  }
+  return config.routing[tier].temperature;
 }
 
 /**

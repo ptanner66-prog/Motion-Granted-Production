@@ -1713,6 +1713,113 @@ export const generateOrderWorkflow = inngest.createFunction(
     });
 
     // ========================================================================
+    // STEP 5.5: D4-CORR-002 — Tier Upgrade Check (after Phase IV)
+    // ========================================================================
+    // When Phase IV complexity analysis detects tier mismatch (e.g., filed as
+    // Tier A but research shows Tier C complexity), pause for attorney payment.
+    // Rush clock pauses during UPGRADE_PENDING. 7-day timeout → auto-cancel.
+    // ========================================================================
+    const tierAssessment = phaseIVAggregateResult as { suggestedTier?: string; tierMismatch?: boolean };
+
+    if (tierAssessment.tierMismatch && tierAssessment.suggestedTier &&
+        tierAssessment.suggestedTier !== workflowState.tier) {
+
+      const originalTier = workflowState.tier;
+      const suggestedTier = tierAssessment.suggestedTier;
+
+      // 1. Update order status to UPGRADE_PENDING
+      await step.run('upgrade-set-pending', async () => {
+        await supabase.from('orders').update({
+          status: 'UPGRADE_PENDING',
+          status_version: (workflowState.statusVersion ?? 0) + 1,
+          upgrade_from_tier: originalTier,
+          upgrade_to_tier: suggestedTier,
+        }).eq('id', orderId);
+      });
+
+      // 2. Store phase context for resume
+      await step.run('upgrade-save-context', async () => {
+        await supabase.from('phase_context').upsert({
+          order_id: orderId,
+          context_type: 'UPGRADE_PENDING',
+          data: {
+            current_phase: 'IV',
+            loop_count: workflowState.loopCount ?? 0,
+            citations_so_far: workflowState.citationCount,
+            rush_paused_at: workflowState.rushDeadline ? new Date().toISOString() : null,
+          },
+        });
+      });
+
+      // 3. Send upgrade-required notification
+      await step.run('upgrade-notify', async () => {
+        await supabase.from('email_queue').insert({
+          order_id: orderId,
+          template: 'tier_upgrade_required',
+          data: {
+            originalTier,
+            suggestedTier,
+            orderId,
+          },
+          status: 'pending',
+        });
+      });
+
+      // 4. Wait for upgrade payment (7-day timeout)
+      const upgradeResult = await step.waitForEvent('wait-for-upgrade-payment', {
+        event: 'order/upgrade-completed',
+        match: 'data.orderId',
+        timeout: '7d',
+      });
+
+      // 5. Handle result
+      if (upgradeResult === null) {
+        // Timeout: auto-cancel with CANCELLED_SYSTEM
+        await step.run('upgrade-timeout-cancel', async () => {
+          await supabase.from('orders').update({
+            status: 'CANCELLED', // DB flat status
+            status_version: (workflowState.statusVersion ?? 0) + 2,
+            cancelled_at: new Date().toISOString(),
+            cancellation_reason: 'Tier upgrade payment not received within 7 days',
+          }).eq('id', orderId);
+
+          // Log for audit
+          await supabase.from('automation_logs').insert({
+            order_id: orderId,
+            action_type: 'upgrade_timeout_cancel',
+            action_details: {
+              originalTier,
+              suggestedTier,
+              timeoutDays: 7,
+            },
+          });
+        });
+
+        return; // Exit Fn1
+      }
+
+      // Upgrade paid: resume at Phase IV with new tier
+      const newTier = upgradeResult.data.newTier as string;
+      workflowState.tier = newTier;
+
+      // Resume rush clock if applicable
+      await step.run('upgrade-resume', async () => {
+        await supabase.from('orders').update({
+          status: 'PROCESSING',
+          tier: newTier,
+          status_version: (workflowState.statusVersion ?? 0) + 2,
+        }).eq('id', orderId);
+
+        // Clean up phase context
+        await supabase.from('phase_context').delete()
+          .eq('order_id', orderId)
+          .eq('context_type', 'UPGRADE_PENDING');
+      });
+
+      console.log(`[Orchestration] Tier upgrade complete: ${originalTier} → ${newTier}`);
+    }
+
+    // ========================================================================
     // STEP 6: Phase V - Draft Motion
     // ========================================================================
     const phaseVResult = await step.run("phase-v-draft-motion", async () => {

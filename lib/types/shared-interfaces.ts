@@ -118,6 +118,51 @@ export type WorkflowStatus =
   | 'on_hold' | 'cancelled' | 'revision';
 
 // ============================================================================
+// ORDER STATUS (D4-CORR-001 + v5-XDC-012 + Delta Resolution)
+// ============================================================================
+
+/**
+ * Full 16-member OrderStatus union.
+ * DB stores compact names (CANCELLED, REVISION_REQ); TypeScript uses expanded.
+ * toDbStatus() in lib/workflow/order-status.ts bridges the gap.
+ */
+export type OrderStatus =
+  | 'INTAKE'
+  | 'PROCESSING'
+  | 'AWAITING_OPUS'
+  | 'HOLD_PENDING'
+  | 'PROTOCOL_10_EXIT'
+  | 'UPGRADE_PENDING'
+  | 'PENDING_CONFLICT_REVIEW'
+  | 'AWAITING_APPROVAL'
+  | 'REVISION_REQUESTED'
+  | 'COMPLETED'
+  | 'CANCELLED_USER'
+  | 'CANCELLED_SYSTEM'
+  | 'CANCELLED_CONFLICT'
+  | 'DISPUTED'
+  | 'REFUNDED'
+  | 'FAILED';
+
+/**
+ * D7-CORR-004: Cancellation status helper.
+ * D7 frequently checks "is this cancelled?" without caring which variant.
+ */
+export function isCancelledStatus(status: OrderStatus): boolean {
+  return ['CANCELLED_USER', 'CANCELLED_SYSTEM', 'CANCELLED_CONFLICT'].includes(status);
+}
+
+/**
+ * Terminal state check (REFUNDED is terminal, DISPUTED is NOT).
+ */
+export function isTerminalState(status: OrderStatus): boolean {
+  return [
+    'CANCELLED_USER', 'CANCELLED_SYSTEM', 'CANCELLED_CONFLICT',
+    'COMPLETED', 'FAILED', 'REFUNDED',
+  ].includes(status);
+}
+
+// ============================================================================
 // LOOP TRIGGER (D3 Task 11)
 // ============================================================================
 

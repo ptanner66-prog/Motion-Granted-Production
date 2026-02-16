@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('retention-retention-service');
-const DEFAULT_RETENTION_DAYS = 180;
+const DEFAULT_RETENTION_DAYS = 365; // ST-001: CCP §340.6 — 1-year malpractice discovery statute
 const MAX_RETENTION_DAYS = 730; // 2 years hard cap
 const REMINDER_DAYS_BEFORE = 14;
 

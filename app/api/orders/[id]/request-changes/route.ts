@@ -1,124 +1,121 @@
-/**
- * CP3 Request Changes Route — D6 C-008
- *
- * POST /api/orders/[id]/request-changes
- *
- * Attorney requests revisions at CP3 checkpoint.
- * Checks Protocol 10 block and rework cap before emitting event.
- * Fn2 handles status transition, cost reset, and Phase VII re-entry.
- *
- * D6 C-001: NO order_workflows table
- * D6 C-002: status_version optimistic lock
- * D6 C-003: workflowId from database only
- */
+// app/api/orders/[id]/request-changes/route.ts
+// D6 Directive 1 v2 — COMPLETE REWRITE (SP-8)
+// Resolves: C-008 (separate route)
+// Rework cap: max 3 attorney rework cycles (tracked via payment_events)
+// Loop counter resets each attorney rework cycle
+// Protocol 10 disables this button after max reworks
+// CP3 timeout (14d+7d) RESETS on each rework submission
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { getServiceSupabase } from '@/lib/supabase/admin';
+import { authenticateCP3Request } from '@/lib/api/cp3-auth';
 import { inngest } from '@/lib/inngest/client';
-import { logCheckpointEvent } from '@/lib/workflow/checkpoint-logger';
 import { CANONICAL_EVENTS, CP3_REWORK_CAP } from '@/lib/workflow/checkpoint-types';
-
-const MAX_NOTES_LENGTH = 5000;
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: orderId } = await params;
+  const authResult = await authenticateCP3Request(req, orderId);
+  if (authResult instanceof NextResponse) return authResult;
 
-  // Gate 1: Auth
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { userId, order, package: pkg, supabase } = authResult;
+  const body = await req.json().catch(() => ({}));
+  const reason = body.reason;
+  const statusVersion = body.status_version;
 
-  // Gate 2: Parse — notes required for request-changes
-  let body: { status_version?: number; notes?: string } = {};
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
-
-  const { status_version, notes } = body;
-  if (typeof status_version !== 'number') {
-    return NextResponse.json({ error: 'status_version required' }, { status: 400 });
-  }
-
-  // Validate notes
-  const trimmedNotes = typeof notes === 'string' ? notes.trim() : '';
-  if (trimmedNotes.length > MAX_NOTES_LENGTH) {
+  // Reason is REQUIRED for request changes
+  if (!reason || (typeof reason === 'string' && reason.trim().length === 0)) {
     return NextResponse.json(
-      { error: `Notes must be ${MAX_NOTES_LENGTH} characters or fewer.` },
-      { status: 400 }
+      { error: 'Reason for changes is required' }, { status: 400 }
+    );
+  }
+  if (typeof statusVersion !== 'number') {
+    return NextResponse.json(
+      { error: 'status_version required' }, { status: 400 }
     );
   }
 
-  // Gate 3: Ownership + status + P10 + rework cap
-  const serviceClient = getServiceSupabase();
-  const { data: order, error: orderError } = await serviceClient
+  // Optimistic lock
+  if (order.status_version !== statusVersion) {
+    return NextResponse.json(
+      { error: 'Concurrent modification. Please refresh.' }, { status: 409 }
+    );
+  }
+
+  // Check attorney rework cap (binding: max 3 rework cycles)
+  // Tracked via payment_events, NOT loop_counters (which are internal)
+  const { data: reworkHistory } = await supabase
+    .from('payment_events')
+    .select('id')
+    .eq('order_id', orderId)
+    .eq('event_type', 'CP3_REQUEST_CHANGES')
+    .limit(4);
+
+  if (reworkHistory && reworkHistory.length >= CP3_REWORK_CAP) {
+    // Protocol 10: max rework cap reached
+    // Dashboard should have already hidden the button (defense-in-depth)
+    return NextResponse.json(
+      { error: `Maximum revision requests reached (${CP3_REWORK_CAP}). You may approve or cancel.` },
+      { status: 422 }
+    );
+  }
+
+  // Transition: AWAITING_APPROVAL → REVISION_REQ (DB canonical)
+  const { data: updated, error: updateErr } = await supabase
     .from('orders')
-    .select('id, status, status_version, workflow_id, client_id, protocol_10_triggered, attorney_rework_count')
+    .update({
+      status: 'REVISION_REQ', // DB canonical per Architecture v2.1 Section 10A
+      status_version: order.status_version + 1,
+    })
     .eq('id', orderId)
+    .eq('status', 'AWAITING_APPROVAL')
+    .eq('status_version', statusVersion)
+    .select()
     .single();
 
-  if (orderError || !order) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
-  if (order.client_id !== user.id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  if (order.status !== 'AWAITING_APPROVAL') {
-    return NextResponse.json({ error: `Order is ${order.status}` }, { status: 409 });
-  }
-  if (order.status_version !== status_version) {
-    return NextResponse.json({ error: 'Concurrent modification' }, { status: 409 });
-  }
-
-  // Protocol 10 block
-  if (order.protocol_10_triggered) {
+  if (updateErr || !updated) {
     return NextResponse.json(
-      { error: 'Request Changes is unavailable. Protocol 10 quality gate is active.', code: 'P10_BLOCKED' },
-      { status: 422 }
+      { error: 'Concurrent modification. Please refresh.' }, { status: 409 }
     );
   }
 
-  // Rework cap check
-  if ((order.attorney_rework_count ?? 0) >= CP3_REWORK_CAP) {
-    return NextResponse.json(
-      { error: `Maximum revision cycles (${CP3_REWORK_CAP}) reached.`, code: 'REWORK_CAP_REACHED' },
-      { status: 422 }
-    );
-  }
+  // Audit trail on delivery_packages
+  await supabase.from('delivery_packages').update({
+    cp3_decision: 'REQUEST_CHANGES',
+    cp3_decision_at: new Date().toISOString(),
+    cp3_decided_by: userId,
+    cp3_revision_number: (pkg.status_version || 0) + 1,
+  }).eq('id', pkg.id);
 
-  // Execute: emit request-changes event
-  try {
-    await inngest.send({
-      name: CANONICAL_EVENTS.WORKFLOW_CHECKPOINT_APPROVED,
-      data: {
-        orderId,
-        workflowId: order.workflow_id, // FROM DATABASE
-        action: 'REQUEST_CHANGES' as const,
-        notes: trimmedNotes || null,
-        attorneyId: user.id,
-      },
-    });
+  // Log rework event for cap tracking
+  await supabase.from('payment_events').insert({
+    order_id: orderId,
+    event_type: 'CP3_REQUEST_CHANGES',
+    metadata: { reason, reworkCount: (reworkHistory?.length || 0) + 1 },
+  });
 
-    await logCheckpointEvent(serviceClient, {
+  // Emit event — Fn1 re-enters at Phase VII per binding
+  // Loop counter resets on attorney rework per binding 02/15
+  await inngest.send({
+    name: CANONICAL_EVENTS.ORDER_REVISION_REQUESTED,
+    data: {
       orderId,
-      eventType: 'CP3_REQUEST_CHANGES_REQUESTED',
-      actor: user.id,
-      metadata: { notes: trimmedNotes || null, reworkCount: (order.attorney_rework_count ?? 0) + 1 },
-    });
+      workflowId: order.workflow_id,
+      packageId: pkg.id,
+      tier: order.tier,
+      attorneyEmail: order.attorney_email,
+      action: 'REQUEST_CHANGES',
+      reason,
+      reworkCount: (reworkHistory?.length || 0) + 1,
+    },
+  });
 
-    return NextResponse.json({
-      success: true,
-      message: 'Revision request submitted. Your motion will be re-drafted.',
-    });
-  } catch (error) {
-    console.error('[request-changes] Failed:', error);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
-  }
+  return NextResponse.json({
+    success: true,
+    orderId,
+    status: 'REVISION_REQUESTED', // TypeScript name for frontend
+    reworkCount: (reworkHistory?.length || 0) + 1,
+    maxReworks: CP3_REWORK_CAP,
+  });
 }

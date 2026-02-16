@@ -3,10 +3,10 @@
  *
  * Handles order archival per data retention policy.
  *
- * Retention periods:
- * - Standard: 90 days after delivery
- * - Extended (customer requested): +90 days (180 total)
- * - Maximum: 365 days (then auto-delete)
+ * Retention periods (ST-001: CCP §340.6):
+ * - Standard: 365 days after delivery (California malpractice discovery statute)
+ * - Extended (customer requested): up to 730 days (2-year hard cap)
+ * - Maximum: 730 days (then auto-delete)
  *
  * Archive process:
  * 1. Move documents to cold storage (archive bucket)
@@ -58,9 +58,9 @@ export interface ExpiringOrder {
 // CONSTANTS
 // ============================================================================
 
-const STANDARD_RETENTION_DAYS = 90;
-const EXTENDED_RETENTION_DAYS = 180;
-const MAXIMUM_RETENTION_DAYS = 365;
+const STANDARD_RETENTION_DAYS = 365; // ST-001: CCP §340.6 — 1-year malpractice discovery statute
+const EXTENDED_RETENTION_DAYS = 730; // 2-year hard cap
+const MAXIMUM_RETENTION_DAYS = 730;
 
 // ============================================================================
 // ARCHIVE FUNCTIONS
