@@ -27,9 +27,10 @@ interface CP3ActionsProps {
   orderId: string
   statusVersion: number
   amountPaid: number
+  protocol10Triggered?: boolean
 }
 
-export function CP3Actions({ orderId, statusVersion, amountPaid }: CP3ActionsProps) {
+export function CP3Actions({ orderId, statusVersion, amountPaid, protocol10Triggered }: CP3ActionsProps) {
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -158,8 +159,18 @@ export function CP3Actions({ orderId, statusVersion, amountPaid }: CP3ActionsPro
             Approve &amp; Download
           </Button>
 
-          {/* Request Changes */}
-          {!showChangesForm ? (
+          {/* Request Changes — hidden by Protocol 10 */}
+          {protocol10Triggered ? (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-800">Maximum Revisions Reached</AlertTitle>
+              <AlertDescription className="text-amber-700 text-sm">
+                This order has reached the maximum revision cycle. Please review
+                the Attorney Instruction Sheet for details. You may approve or
+                cancel the order.
+              </AlertDescription>
+            </Alert>
+          ) : !showChangesForm ? (
             <Button
               variant="outline"
               size="lg"
