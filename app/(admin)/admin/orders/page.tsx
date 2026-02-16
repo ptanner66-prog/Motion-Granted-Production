@@ -117,14 +117,16 @@ export default async function AdminOrdersPage() {
   const deliveredOrders = allOrders.filter(o => ['draft_delivered', 'revision_delivered'].includes(o.status))
   const completedOrders = allOrders.filter(o => o.status === 'completed')
   const blockedOrders = allOrders.filter(o => o.status === 'blocked')
+  const holdOrders = allOrders.filter(o => o.status === 'on_hold' || o.status === 'hold_pending')
 
-  // Calculate action required count
-  const actionRequiredCount = needsApprovalOrders.length + revisionRequestedOrders.length
+  // Calculate action required count (includes HOLD orders)
+  const actionRequiredCount = needsApprovalOrders.length + revisionRequestedOrders.length + holdOrders.length
 
-  // Determine default tab
+  // Determine default tab — prioritize HOLD orders
   let defaultTab = 'in_progress'
   if (revisionRequestedOrders.length > 0) defaultTab = 'revisions'
   if (needsApprovalOrders.length > 0) defaultTab = 'needs_approval'
+  if (holdOrders.length > 0) defaultTab = 'on_hold'
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto">
@@ -134,7 +136,16 @@ export default async function AdminOrdersPage() {
         <p className="text-gray-500 mt-1">Manage and track all customer orders</p>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
+          {holdOrders.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-red-700 mb-1">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-sm font-medium">On Hold</span>
+              </div>
+              <p className="text-2xl font-bold text-red-800">{holdOrders.length}</p>
+            </div>
+          )}
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
             <div className="flex items-center gap-2 text-amber-700 mb-1">
               <CheckCircle className="h-4 w-4" />
@@ -185,6 +196,17 @@ export default async function AdminOrdersPage() {
       {/* Tabs */}
       <Tabs defaultValue={defaultTab} className="space-y-6">
         <TabsList className="bg-gray-100 p-1 border border-gray-200 flex-wrap">
+          {holdOrders.length > 0 && (
+            <TabsTrigger
+              value="on_hold"
+              className="data-[state=active]:bg-red-100 data-[state=active]:text-red-700 text-gray-500 rounded-lg px-4"
+            >
+              On Hold
+              <span className="ml-2 rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">
+                {holdOrders.length}
+              </span>
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="needs_approval"
             className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-700 text-gray-500 rounded-lg px-4"
@@ -255,6 +277,15 @@ export default async function AdminOrdersPage() {
             </span>
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="on_hold">
+          <OrderList
+            orders={holdOrders}
+            emptyMessage="No orders on hold"
+            actionHint="These orders are paused and need admin action to resolve."
+            actionColor="red"
+          />
+        </TabsContent>
 
         <TabsContent value="needs_approval">
           <OrderList

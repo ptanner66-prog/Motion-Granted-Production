@@ -142,6 +142,29 @@ export type DisputeEvidenceCompileEvent = {
   };
 };
 
+// SP-22: HOLD checkpoint events
+export type CheckpointHoldCreatedEvent = {
+  name: "checkpoint/hold.created";
+  data: {
+    orderId: string;
+    holdReason: string;
+    customerEmail: string;
+    createdAt: string;
+    details: Record<string, unknown>;
+  };
+};
+
+export type CheckpointHoldResolvedEvent = {
+  name: "checkpoint/hold.resolved";
+  data: {
+    orderId: string;
+    checkpointId?: string;
+    action: "RESUMED" | "CANCELLED";
+    holdReason: string;
+    resolvedBy?: string;
+  };
+};
+
 export type Events = {
   "order/submitted": OrderSubmittedEvent;
   "order/generate-draft": OrderGenerationEvent;
@@ -155,6 +178,9 @@ export type Events = {
   "checkpoint/cp3.reached": CheckpointCP3ReachedEvent;
   "conflict/review-started": ConflictReviewStartedEvent;
   "dispute/evidence-compile": DisputeEvidenceCompileEvent;
+  // SP-22: HOLD checkpoint events
+  "checkpoint/hold.created": CheckpointHoldCreatedEvent;
+  "checkpoint/hold.resolved": CheckpointHoldResolvedEvent;
 };
 
 /**

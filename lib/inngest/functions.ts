@@ -40,6 +40,12 @@ import { webhookArchival } from './functions/webhook-archival';
 import { paymentReconciliation } from './functions/payment-reconciliation';
 import { conflictAutoCancelV2 } from './functions/conflict-auto-cancel';
 
+// SP-22: HOLD checkpoint subsystem functions
+import { hold7dTerminalAction } from './functions/hold-7d-terminal-action';
+import { hold24hReminder } from './functions/hold-24h-reminder';
+import { hold72hEscalation } from './functions/hold-72h-escalation';
+import { holdRecoveryCron } from './functions/hold-recovery-cron';
+
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1187,4 +1193,9 @@ export const functions = [
   // SP-11: D7 Wave 5-8 functions
   stripeHealthMonitor,      // D7-R3-013: Weekly Monday 6:00 AM CT health check
   webhookArchival,          // D7-NEW-011: Daily 3:30 AM CT webhook archival
+  // SP-22: HOLD checkpoint subsystem functions
+  hold7dTerminalAction,     // 7-day terminal action (evidence_gap auto-cancel / admin escalation)
+  hold24hReminder,          // 24-hour HOLD reminder email
+  hold72hEscalation,        // 72-hour HOLD escalation + admin notification
+  holdRecoveryCron,         // Every 6h cron to detect stuck HOLDs
 ];

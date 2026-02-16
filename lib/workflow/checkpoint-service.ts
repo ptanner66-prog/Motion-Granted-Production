@@ -849,33 +849,14 @@ export async function triggerHoldCheckpoint(
 
       // 48hr reminder
       await inngest.send({
-        name: 'workflow/hold.reminder',
+        name: 'checkpoint/hold.created',
         data: {
-          workflowId,
           orderId: workflow?.order_id,
-          reminderType: '48hr',
+          holdReason: reason,
+          customerEmail: '',
+          createdAt: now.toISOString(),
+          details: { type: 'evidence_gap', gaps: missingEvidence.map(e => ({ field: e, description: e })) },
         },
-        ts: reminderAt.getTime(),
-      });
-
-      // 72hr escalation
-      await inngest.send({
-        name: 'workflow/hold.escalation',
-        data: {
-          workflowId,
-          orderId: workflow?.order_id,
-        },
-        ts: escalationAt.getTime(),
-      });
-
-      // 7-day auto-cancel
-      await inngest.send({
-        name: 'workflow/hold.auto-cancel',
-        data: {
-          workflowId,
-          orderId: workflow?.order_id,
-        },
-        ts: autoCancelAt.getTime(),
       });
     } catch (inngestError) {
       log.error('Failed to schedule HOLD timers', { error: inngestError instanceof Error ? inngestError.message : String(inngestError) });

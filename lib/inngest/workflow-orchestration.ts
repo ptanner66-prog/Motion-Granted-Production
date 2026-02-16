@@ -1213,6 +1213,74 @@ async function generateDeliverables(
 }
 
 // ============================================================================
+// SP-22 HOLD-ST-018: Generic checkAndWaitForHold() for non-Phase-III HOLDs
+// ============================================================================
+
+/**
+ * Reusable HOLD check function — called at multiple points in Fn1 where
+ * the workflow may have been placed on HOLD (revision_stall, citation_critical_failure).
+ *
+ * Returns 'continue' if not on HOLD or HOLD was resolved.
+ * Returns 'cancelled' if HOLD led to cancellation.
+ */
+async function checkAndWaitForHold(
+  step: Parameters<Parameters<typeof inngest.createFunction>[2]>[0]['step'],
+  supabase: import('@supabase/supabase-js').SupabaseClient,
+  orderId: string,
+  currentPhase: string
+): Promise<'continue' | 'cancelled'> {
+  const order = await step.run(`check-hold-${currentPhase}`, async () => {
+    const { data } = await supabase
+      .from('orders')
+      .select('id, status, hold_reason')
+      .eq('id', orderId)
+      .single();
+    return data;
+  });
+
+  if (!order || (order.status !== 'on_hold' && order.status !== 'hold_pending')) {
+    return 'continue';
+  }
+
+  console.log(`[Orchestration] HOLD detected at ${currentPhase} — waiting for resolution`);
+
+  const holdResult = await step.waitForEvent(`wait-hold-${currentPhase}`, {
+    event: 'checkpoint/hold.resolved',
+    match: 'data.orderId',
+    timeout: '8d',
+  });
+
+  if (!holdResult) {
+    const current = await step.run(`check-hold-fallback-${currentPhase}`, async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('id, status')
+        .eq('id', orderId)
+        .single();
+      return data;
+    });
+
+    if (current?.status === 'cancelled' || current?.status === 'CANCELLED_SYSTEM') {
+      return 'cancelled';
+    }
+
+    if (current?.status === 'on_hold' || current?.status === 'hold_pending') {
+      // Fallback: timeout function failed
+      const { handleHoldTimeout } = await import('@/lib/inngest/checkpoint-timeout');
+      await step.run(`fallback-cancel-${currentPhase}`, async () => {
+        await handleHoldTimeout('fallback', orderId);
+      });
+      return 'cancelled';
+    }
+    // Resolved but event lost — continue
+  } else if (holdResult.data.action === 'CANCELLED') {
+    return 'cancelled';
+  }
+
+  return 'continue';
+}
+
+// ============================================================================
 // MAIN WORKFLOW ORCHESTRATION
 // ============================================================================
 
@@ -1773,8 +1841,8 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.log('[Orchestration] ========== HOLD TRIGGERED (mode=enforce) ==========');
         console.log('[Orchestration] Reason:', holdReason);
 
-        // Execute HOLD handling in a step for proper Inngest tracking
-        const holdResult = await step.run("handle-phase-iii-hold", async () => {
+        // SP-22: Execute HOLD handling — set status, emit event, then waitForEvent
+        await step.run("handle-phase-iii-hold", async () => {
           // Update order status to on_hold
           await supabase
             .from("orders")
@@ -1808,7 +1876,7 @@ export const generateOrderWorkflow = inngest.createFunction(
             },
           });
 
-          // Queue notification to client
+          // Queue notification to admin
           await supabase.from("notification_queue").insert({
             notification_type: "workflow_hold",
             recipient_email: ADMIN_EMAIL,
@@ -1844,23 +1912,69 @@ export const generateOrderWorkflow = inngest.createFunction(
             }
           }
 
-          return {
-            held: true,
-            reason: holdReason,
-          };
+          // SP-22: Emit checkpoint/hold.created to start timeout cascade
+          // (24h reminder, 72h escalation, 7d terminal action)
+          const { inngest: inngestClient } = await import('@/lib/inngest/client');
+          await inngestClient.send({
+            name: 'checkpoint/hold.created',
+            data: {
+              orderId,
+              holdReason,
+              customerEmail: customerEmail ?? '',
+              createdAt: new Date().toISOString(),
+              details: {
+                type: 'evidence_gap',
+                gaps: Array.isArray(missingItems)
+                  ? missingItems.map(item => ({ field: item, description: item }))
+                  : [{ field: String(missingItems), description: String(missingItems) }],
+              },
+            },
+          });
         });
 
-        // STOP WORKFLOW - Return early with on_hold status
-        console.log('[Orchestration] Workflow STOPPED at Phase III due to HOLD');
-        return {
-          success: true,
-          orderId,
-          workflowId: workflowState.workflowId,
-          status: "on_hold",
-          holdPhase: "III",
-          holdReason,
-          message: "Workflow paused - client action required",
-        };
+        // SP-22 HOLD-ST-001: Wait for HOLD resolution with 8-day timeout
+        // 1-day safety margin beyond the 7-day terminal action
+        console.log('[Orchestration] HOLD detected post-Phase III — waiting for resolution via waitForEvent');
+        const holdResolutionEvent = await step.waitForEvent('wait-for-hold-resolution', {
+          event: 'checkpoint/hold.resolved',
+          match: 'data.orderId',
+          timeout: '8d',
+        });
+
+        if (!holdResolutionEvent) {
+          // Fn1 8d timeout expired — HOLD timeout function likely crashed
+          console.log('[Orchestration] HOLD waitForEvent timed out (8d) — checking order status');
+          const currentOrder = await step.run('check-hold-status-fallback', async () => {
+            const { data } = await supabase
+              .from('orders')
+              .select('id, status, hold_reason')
+              .eq('id', orderId)
+              .single();
+            return data;
+          });
+
+          if (currentOrder?.status === 'cancelled' || currentOrder?.status === 'CANCELLED_SYSTEM') {
+            return { status: 'cancelled', orderId, reason: 'hold_timeout_event_lost' };
+          }
+
+          if (currentOrder?.status === 'on_hold' || currentOrder?.status === 'hold_pending') {
+            // Fallback: timeout function failed, we cancel ourselves
+            const { handleHoldTimeout: fallbackTimeout } = await import('@/lib/inngest/checkpoint-timeout');
+            await step.run('fallback-hold-cancel', async () => {
+              await fallbackTimeout('fallback', orderId);
+            });
+            return { status: 'cancelled', orderId, reason: 'hold_timeout_fallback' };
+          }
+
+          // Status is something else (in_progress) — attorney resolved but event lost. Continue.
+          console.warn('[Orchestration] HOLD resolved but event lost — continuing workflow', { status: currentOrder?.status });
+        } else if (holdResolutionEvent.data.action === 'CANCELLED') {
+          // HOLD was cancelled (auto-cancel or admin cancel)
+          return { status: 'cancelled', orderId, reason: 'hold_auto_cancel' };
+        }
+
+        // HOLD resolved — continue to Phase IV
+        console.log('[Orchestration] HOLD resolved — resuming workflow to Phase IV');
       } else if (holdMode === 'warn') {
         // TESTING MODE: Log the HOLD but continue workflow
         console.warn(`[Orchestration] ========== HOLD DETECTED (mode=warn, bypassed) ==========`);
@@ -2269,6 +2383,12 @@ export const generateOrderWorkflow = inngest.createFunction(
       }
     }
 
+    // SP-22: Check if order was placed on HOLD after Phase V.1 citation verification
+    const holdCheckV1 = await checkAndWaitForHold(step, supabase, orderId, 'post-v1-citation');
+    if (holdCheckV1 === 'cancelled') {
+      return { status: 'cancelled', orderId, reason: 'hold_cancel_post_v1' };
+    }
+
     // ========================================================================
     // STEP 8: Phase VI - Opposition Anticipation
     // ========================================================================
@@ -2470,6 +2590,12 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.warn(`[${orderId}] Phase VIII loop ${loopNum} returned no revisedMotion — keeping previous draft`);
       }
       console.log(`[Orchestration] Phase VIII output stored. currentDraft updated. Keys: ${Object.keys(workflowState.phaseOutputs)}`);
+
+      // SP-22: Check if order was placed on HOLD during revision loop (revision_stall)
+      const holdCheckRevision = await checkAndWaitForHold(step, supabase, orderId, `revision-loop-${loopNum}`);
+      if (holdCheckRevision === 'cancelled') {
+        return { status: 'cancelled', orderId, reason: 'hold_cancel_revision_loop' };
+      }
 
       // SP-05: Crash recovery — persist Phase VIII output to DB so Inngest replay
       // can recover the latest revision if the function crashes mid-loop
@@ -2714,6 +2840,12 @@ export const generateOrderWorkflow = inngest.createFunction(
             },
           });
         }
+      }
+
+      // SP-22: Check if order was placed on HOLD after Phase VII.1 citation verification
+      const holdCheckVII1 = await checkAndWaitForHold(step, supabase, orderId, `post-vii1-citation-loop-${loopNum}`);
+      if (holdCheckVII1 === 'cancelled') {
+        return { status: 'cancelled', orderId, reason: 'hold_cancel_post_vii1' };
       }
 
       // BUG-11 FIX: Increment loop counter at WORKFLOW level
