@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateCP3Request } from '@/lib/api/cp3-auth';
 import { inngest } from '@/lib/inngest/client';
 import { CANONICAL_EVENTS } from '@/lib/workflow/checkpoint-types';
+import { checkRateLimit } from '@/lib/security/rate-limiter';
 
 export async function POST(
   req: NextRequest,
@@ -16,6 +17,15 @@ export async function POST(
   const { id: orderId } = await params;
   const authResult = await authenticateCP3Request(req, orderId);
   if (authResult instanceof NextResponse) return authResult;
+
+  // CP3 rate limit: 5 decisions per minute per user
+  const rl = await checkRateLimit(authResult.userId, 'cp3');
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded', retryAfter: rl.reset },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) } }
+    );
+  }
 
   const { userId, order, package: pkg, supabase } = authResult;
 
