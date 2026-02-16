@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   // Get the order
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, client_id, status, order_number, filing_deadline, state, court_type')
+    .select('id, client_id, status, order_number, filing_deadline, state, court_type, state_code')
     .eq('id', orderId)
     .single();
 
@@ -82,6 +82,40 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
 
+  // AC-2: Validate state is enabled (catches bypass-path orders that skipped checkout Step 8)
+  if (order.state_code) {
+    const { data: stateRow } = await supabase
+      .from('states')
+      .select('enabled, name')
+      .eq('code', order.state_code)
+      .single();
+
+    if (stateRow && !stateRow.enabled) {
+      return NextResponse.json(
+        { error: `Orders from ${stateRow.name} are not currently accepted. Please contact support.` },
+        { status: 400 },
+      );
+    }
+  }
+
+  // AC-3: 30-second debounce (prevents rapid duplicate calls — D7-R5-009)
+  const { data: orderForDebounce } = await supabase
+    .from('orders')
+    .select('last_workflow_trigger_at')
+    .eq('id', orderId)
+    .single();
+
+  if (orderForDebounce?.last_workflow_trigger_at) {
+    const lastTrigger = new Date(orderForDebounce.last_workflow_trigger_at).getTime();
+    const thirtySecondsAgo = Date.now() - 30000;
+    if (lastTrigger > thirtySecondsAgo) {
+      return NextResponse.json(
+        { error: 'Workflow already triggered. Please wait.' },
+        { status: 409 },
+      );
+    }
+  }
+
   // Check if order has documents (optional warning, not blocking)
   const { count: documentCount } = await supabase
     .from('documents')
@@ -92,6 +126,12 @@ export async function POST(request: Request) {
   try {
     // Calculate priority based on filing deadline (closer deadline = higher priority)
     const priority = calculatePriority(order.filing_deadline);
+
+    // AC-3: Set trigger timestamp before sending event (D7-R5-009)
+    await supabase
+      .from('orders')
+      .update({ last_workflow_trigger_at: new Date().toISOString() })
+      .eq('id', orderId);
 
     // Send event to Inngest queue — BD-6: stateCode + courtType, NOT jurisdiction
     await inngest.send({

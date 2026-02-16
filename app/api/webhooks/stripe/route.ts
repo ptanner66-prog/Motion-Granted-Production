@@ -10,6 +10,8 @@ import { processRevisionPayment } from '@/lib/workflow/checkpoint-service';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
 import { logWebhookFailure } from '@/lib/services/webhook-logger';
 import { populateOrderFromCheckoutMetadata } from '@/lib/payments/order-creation';
+import { validateCheckoutMetadata } from '@/lib/payments/checkout-validation';
+import { createOrderFromCheckout, processUpgradePayment } from '@/lib/payments/order-creation-v2';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -602,13 +604,18 @@ async function handlePaymentCanceled(
 }
 
 /**
- * v6.3: Handle checkout session completed (used for revision payments)
+ * v6.3 + SP-10 AB-4: Handle checkout session completed
+ *
+ * Routes by session_type (D7-R5-005-WEBHOOK):
+ * - 'initial' → createOrderFromCheckout()
+ * - 'tier_upgrade' → processUpgradePayment()
+ * - 'revision' (legacy: metadata.type === 'revision') → processRevisionPayment()
  */
 async function handleCheckoutSessionCompleted(
   supabase: Awaited<ReturnType<typeof createClient>>,
   session: Stripe.Checkout.Session
 ) {
-  // Check if this is a revision payment
+  // Legacy revision payment path (metadata.type === 'revision')
   if (session.metadata?.type === 'revision') {
     const workflowId = session.metadata.workflow_id;
     const revisionId = session.metadata.revision_id;
@@ -621,7 +628,6 @@ async function handleCheckoutSessionCompleted(
       return;
     }
 
-    // Process the revision payment
     const result = await processRevisionPayment(workflowId, revisionId, paymentIntentId);
 
     if (!result.success) {
@@ -629,7 +635,6 @@ async function handleCheckoutSessionCompleted(
       throw new Error(result.error);
     }
 
-    // Log the revision payment
     await supabase.from('automation_logs').insert({
       order_id: session.metadata.order_id || null,
       action_type: 'revision_payment_processed',
@@ -659,78 +664,127 @@ async function handleCheckoutSessionCompleted(
     console.log(`[Stripe Webhook] Processing fully-discounted order (100% coupon applied)`);
   }
 
-  // Handle other checkout sessions (e.g., order payments)
-  const orderId = session.metadata?.order_id;
-  if (orderId) {
-    // Similar to payment_intent.succeeded but for checkout sessions
-    // SP12-03 FIX: Include filing_deadline in select so the Inngest trigger
-    // condition on line 685 (order?.filing_deadline) can actually evaluate to true.
-    // Without this, order.filing_deadline was always undefined and the workflow never fired.
-    const { data: order, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        stripe_payment_status: 'succeeded',
-        status: 'under_review',
-      })
-      .eq('id', orderId)
-      .select('id, order_number, filing_deadline')
-      .single();
+  // SP-10 AB-4: Validate metadata (D7-R5-004-VALID)
+  const validation = validateCheckoutMetadata(session);
+  if (!validation.valid) {
+    console.error('[WEBHOOK] Invalid checkout metadata:', {
+      sessionId: session.id,
+      errors: validation.errors,
+      format: validation.format,
+    });
 
-    if (updateError) {
-      console.error('[Stripe Webhook] Failed to update order from checkout:', updateError);
-      return;
+    try {
+      const Sentry = await import('@sentry/nextjs');
+      Sentry.captureMessage(`Invalid checkout metadata: ${validation.errors.join('; ')}`, 'error');
+    } catch {
+      // Sentry not available
     }
 
-    if (order) {
-      // 50-State Step 7.3: Populate R1 columns from checkout metadata
-      if (session.metadata) {
-        await populateOrderFromCheckoutMetadata(
-          supabase,
-          orderId,
-          session.metadata as Record<string, string>,
-        );
+    // Log to payment_events
+    const { createClient: createServiceClient } = await import('@supabase/supabase-js');
+    const serviceSupabase = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    await serviceSupabase.from('payment_events').insert({
+      order_id: session.metadata?.orderId || session.metadata?.order_id || null,
+      event_type: 'ORDER_CREATION_FAILED',
+      metadata: {
+        session_id: session.id,
+        validation_errors: validation.errors,
+        session_metadata: session.metadata,
+      },
+    });
+    return; // 200 response — do not retry permanently broken payload
+  }
+
+  // SP-10 AB-4: Route by session_type (D7-R5-005)
+  const sessionType = session.metadata?.session_type || 'initial';
+
+  switch (sessionType) {
+    case 'tier_upgrade':
+      await processUpgradePayment(session);
+      return;
+
+    case 'initial':
+    default: {
+      // Fall through to v2 order creation, with legacy fallback
+      const orderId = session.metadata?.orderId || session.metadata?.order_id;
+      if (!orderId) {
+        console.error('[WEBHOOK] No orderId in session metadata:', session.id);
+        return;
       }
 
-      await queueOrderNotification(orderId, 'payment_received');
-      await scheduleTask('conflict_check', {
-        orderId,
-        priority: 8,
-        payload: { triggeredBy: 'checkout_success' },
-      });
+      // Try v2 createOrderFromCheckout first
+      try {
+        await createOrderFromCheckout(session);
+      } catch (v2Error) {
+        console.error('[WEBHOOK] v2 createOrderFromCheckout failed, using legacy path:', v2Error);
 
-      // Auto-generation defaults to enabled. Set ENABLE_AUTO_GENERATION=false to disable.
-      const checkoutAutoGen = process.env.ENABLE_AUTO_GENERATION !== 'false';
+        // Legacy fallback path
+        const { data: order, error: updateError } = await supabase
+          .from('orders')
+          .update({
+            stripe_payment_status: 'succeeded',
+            status: 'under_review',
+            amount_paid_cents: session.amount_total ?? 0,
+          })
+          .eq('id', orderId)
+          .select('id, order_number, filing_deadline')
+          .single();
 
-      // Queue order for draft generation via Inngest
-      if (checkoutAutoGen && order?.filing_deadline) {
-        try {
-          await inngest.send({
-            name: "order/submitted",
-            data: {
+        if (updateError) {
+          console.error('[Stripe Webhook] Failed to update order from checkout:', updateError);
+          return;
+        }
+
+        if (order) {
+          if (session.metadata) {
+            await populateOrderFromCheckoutMetadata(
+              supabase,
               orderId,
-              priority: calculatePriority(order.filing_deadline),
-              filingDeadline: order.filing_deadline,
-            },
+              session.metadata as Record<string, string>,
+            );
+          }
+
+          await queueOrderNotification(orderId, 'payment_received');
+          await scheduleTask('conflict_check', {
+            orderId,
+            priority: 8,
+            payload: { triggeredBy: 'checkout_success' },
           });
 
-          console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
-        } catch (inngestError) {
-          // CRITICAL: Inngest failed - queue to automation_tasks as fallback
-          console.error(`[Stripe Webhook] Inngest send failed (checkout), using fallback:`, inngestError);
+          const checkoutAutoGen = process.env.ENABLE_AUTO_GENERATION !== 'false';
 
-          await supabase.from('automation_tasks').insert({
-            task_type: 'generate_draft',
-            order_id: orderId,
-            priority: 10,
-            status: 'pending',
-            payload: {
-              source: 'checkout_webhook_fallback',
-              filingDeadline: order.filing_deadline,
-              error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
-            },
-          });
+          if (checkoutAutoGen && order?.filing_deadline) {
+            try {
+              await inngest.send({
+                name: "order/submitted",
+                data: {
+                  orderId,
+                  priority: calculatePriority(order.filing_deadline),
+                  filingDeadline: order.filing_deadline,
+                },
+              });
+              console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
+            } catch (inngestError) {
+              console.error(`[Stripe Webhook] Inngest send failed (checkout), using fallback:`, inngestError);
+              await supabase.from('automation_tasks').insert({
+                task_type: 'generate_draft',
+                order_id: orderId,
+                priority: 10,
+                status: 'pending',
+                payload: {
+                  source: 'checkout_webhook_fallback',
+                  filingDeadline: order.filing_deadline,
+                  error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
+                },
+              });
+            }
+          }
         }
       }
+      break;
     }
   }
 }
