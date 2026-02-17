@@ -1,10 +1,9 @@
+// Vercel Pro Plan: Extended function duration — MUST be before imports for Next.js detection
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
-
-// Vercel Pro Plan: Extended function duration for Legal-Grade Citation Research
-// Phase IV now runs 3 sub-phases (A/B/C) which can take up to 60 seconds total
-// Setting to 300 seconds (5 minutes) for safety margin
-export const maxDuration = 300;
 
 // v7.4.1: Explicit imports for reliable function registration
 // Primary workflow handler
