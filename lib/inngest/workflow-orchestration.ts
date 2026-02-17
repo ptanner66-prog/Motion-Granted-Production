@@ -1313,6 +1313,12 @@ export const generateOrderWorkflow = inngest.createFunction(
     const { orderId } = event.data;
     const supabase = getSupabase();
 
+    console.log(`[workflow:${orderId}] Starting 14-phase workflow`, {
+      eventName: event.name,
+      orderId,
+      timestamp: new Date().toISOString(),
+    });
+
     // ========================================================================
     // SP-12 AH-5: Triple-trigger routing — determine start phase
     // ========================================================================
@@ -1439,7 +1445,23 @@ export const generateOrderWorkflow = inngest.createFunction(
           error: error?.message,
         });
 
+        // FIX: Distinguish query errors from genuinely missing orders.
+        // A transient DB error (timeout, connection reset) previously returned
+        // { skip: true, reason: 'order_not_found' }, silently skipping all 14 phases.
+        // Now we throw on query errors so Inngest retries the step.
+        if (error && !data) {
+          // PGRST116 = "JSON object requested, multiple (or no) rows returned" — genuine not-found
+          if (error.code === 'PGRST116') {
+            console.error(`[check-existing-workflow] Order ${orderId} not found in database`);
+            return { skip: true, reason: 'order_not_found' };
+          }
+          // Any other error is transient — throw to trigger Inngest retry
+          console.error(`[check-existing-workflow] DB query error for order ${orderId}:`, error.message);
+          throw new Error(`Failed to query order status: ${error.message}`);
+        }
+
         if (!data) {
+          console.error(`[check-existing-workflow] No data returned for order ${orderId} (no error)`);
           return { skip: true, reason: 'order_not_found' };
         }
 
@@ -1448,19 +1470,24 @@ export const generateOrderWorkflow = inngest.createFunction(
         // processing, assigned, on_hold, etc.) are allowed to proceed.
         const terminalStatuses = ['completed', 'draft_delivered', 'revision_delivered', 'cancelled', 'refunded'];
         if (terminalStatuses.includes(data.status)) {
+          console.log(`[check-existing-workflow] Skipping: order ${orderId} already in terminal status '${data.status}'`);
           return { skip: true, reason: `order_already_${data.status}` };
         }
 
+        console.log(`[check-existing-workflow] Proceeding: order ${orderId} status is '${data.status}'`);
         return { skip: false, reason: `order_status_${data.status}` };
       }
       return { skip: false, reason: 'non_submit_event' };
     });
 
-    console.log('[workflow-decision]', { orderId, ...workflowCheck });
+    console.log(`[workflow:${orderId}] Workflow check decision:`, { ...workflowCheck });
 
     if (workflowCheck.skip) {
+      console.warn(`[workflow:${orderId}] SKIPPING all phases — reason: ${workflowCheck.reason}`);
       return { skipped: true, reason: workflowCheck.reason, startPhase };
     }
+
+    console.log(`[workflow:${orderId}] Passed idempotency check, proceeding to phase execution`);
 
     // ========================================================================
     // STEP 0: Verify API Configuration
