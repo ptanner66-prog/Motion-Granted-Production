@@ -23,6 +23,7 @@ import type {
   SaveCitationInput,
   CitationCacheEntry,
 } from '@/types/citations';
+import { extractCaseName } from '@/lib/citations/extract-case-name';
 
 /**
  * Create a Supabase client using the service-role key.
@@ -70,7 +71,7 @@ function transformDbToOrderCitation(row: Record<string, unknown>): OrderCitation
     id: row.id as string,
     orderId: row.order_id as string,
     citationString: row.citation_string as string,
-    caseName: row.case_name as string,
+    caseName: (row.case_name as string) || extractCaseName(row.citation_string as string),
     caseNameShort: (row.case_name_short as string) || '',
     courtlistenerOpinionId: row.courtlistener_opinion_id as string | undefined,
     courtlistenerClusterId: row.courtlistener_cluster_id as string | undefined,
@@ -203,7 +204,7 @@ export async function getCitationDetails(
         const details: CitationDetails = {
           opinionId: cached.courtlistener_opinion_id,
           clusterId: cached.courtlistener_cluster_id || opinionId,
-          caseName: cached.case_name || 'Unknown Case',
+          caseName: cached.case_name || extractCaseName(cached.citation_string),
           caseNameShort: cached.case_name_short || '',
           citation: cached.citation_string || '',
           court: cached.court || '',
@@ -362,7 +363,7 @@ export async function batchGetCitationDetailsService(
       results.push({
         opinionId: entry.courtlistener_opinion_id,
         clusterId: entry.courtlistener_cluster_id || entry.courtlistener_opinion_id,
-        caseName: entry.case_name || 'Unknown Case',
+        caseName: entry.case_name || extractCaseName(entry.citation_string),
         caseNameShort: entry.case_name_short || '',
         citation: entry.citation_string || '',
         court: entry.court || '',

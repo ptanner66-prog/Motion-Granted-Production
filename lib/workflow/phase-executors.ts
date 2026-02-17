@@ -31,6 +31,7 @@ import { getModel, getThinkingBudget, getMaxTokens, getExecutionMode, getModelCo
 import { MODELS } from '@/lib/config/models';
 import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
+import { extractCaseName } from '@/lib/citations/extract-case-name';
 
 // SP-07: CIV pipeline imports for 7-step citation verification
 import { verifyBatch, verifyNewCitations, verifyUnauthorizedCitation } from '@/lib/civ';
@@ -43,6 +44,30 @@ import type {
 
 // SP-14 TASK-16: Louisiana article selection for Phase II
 import { getArticlesForMotion } from '@/lib/workflow/article-selection';
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/** Derive court short abbreviation from court code or full name */
+function deriveCourtShort(court: string): string {
+  const shortNames: Record<string, string> = {
+    'scotus': 'U.S.', 'ca5': '5th Cir.', 'ca9': '9th Cir.', 'ca1': '1st Cir.',
+    'ca2': '2d Cir.', 'ca3': '3d Cir.', 'ca4': '4th Cir.', 'ca6': '6th Cir.',
+    'ca7': '7th Cir.', 'ca8': '8th Cir.', 'ca10': '10th Cir.', 'ca11': '11th Cir.',
+    'cadc': 'D.C. Cir.', 'la': 'La.', 'lactapp': 'La. Ct. App.',
+    'cal': 'Cal.', 'calctapp': 'Cal. Ct. App.', 'tex': 'Tex.', 'fla': 'Fla.',
+  };
+  const lower = court.toLowerCase();
+  if (shortNames[lower]) return shortNames[lower];
+  // Try pattern match on full court names
+  if (lower.includes('fifth circuit')) return '5th Cir.';
+  if (lower.includes('louisiana') && lower.includes('appeal')) return 'La. Ct. App.';
+  if (lower.includes('louisiana')) return 'La.';
+  if (lower.includes('supreme court of the united states')) return 'U.S.';
+  if (lower.includes('district court')) return 'D. Ct.';
+  return court;
+}
 
 // ============================================================================
 // TYPES
@@ -2116,23 +2141,35 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
       }>;
 
       // Transform case citations to SaveCitationInput format
-      const caseCitationInputs: SaveCitationInput[] = fullCaseCitationBank.map((c, index) => ({
-        citationString: c.citation || '',
-        caseName: c.caseName || 'Unknown Case',
-        courtlistenerOpinionId: c.courtlistener_id?.toString(),
-        courtlistenerClusterId: c.courtlistener_cluster_id?.toString(),
-        courtlistenerUrl: c.courtlistener_id
-          ? `https://www.courtlistener.com/opinion/${c.courtlistener_id}/`
-          : undefined,
-        court: c.court,
-        dateFiled: c.date_filed,
-        citationType: 'case' as const,
-        proposition: c.proposition,
-        authorityLevel: c.authorityLevel === 'binding' ? 'binding' : 'persuasive',
-        verificationStatus: c.courtlistener_id ? 'verified' : 'unverified',
-        verificationMethod: c.verification_method || 'courtlistener_api',
-        displayOrder: index + 1,
-      }));
+      const caseCitationInputs: SaveCitationInput[] = fullCaseCitationBank.map((c, index) => {
+        const resolvedName = c.caseName || extractCaseName(c.citation);
+        // Extract short name (first party before "v.")
+        const vMatch = resolvedName.match(/^([^v]+?)(?:\s+v\.?\s+|\s+vs\.?\s+)/i);
+        const shortName = vMatch ? vMatch[1].trim().split(/[,\s]/)[0] : resolvedName.split(/[,\s]/)[0] || resolvedName;
+        // Extract year from date_filed
+        const yearDisplay = c.date_filed ? c.date_filed.split('-')[0] : undefined;
+
+        return {
+          citationString: c.citation || '',
+          caseName: resolvedName,
+          caseNameShort: shortName,
+          courtlistenerOpinionId: c.courtlistener_id?.toString(),
+          courtlistenerClusterId: c.courtlistener_cluster_id?.toString(),
+          courtlistenerUrl: c.courtlistener_id
+            ? `https://www.courtlistener.com/opinion/${c.courtlistener_id}/`
+            : undefined,
+          court: c.court,
+          courtShort: c.court ? deriveCourtShort(c.court) : undefined,
+          dateFiled: c.date_filed,
+          dateFiledDisplay: yearDisplay,
+          citationType: 'case' as const,
+          proposition: c.proposition,
+          authorityLevel: c.authorityLevel === 'binding' ? 'binding' : 'persuasive',
+          verificationStatus: c.courtlistener_id ? 'verified' : 'unverified',
+          verificationMethod: c.verification_method || 'courtlistener_api',
+          displayOrder: index + 1,
+        };
+      });
 
       // Transform statutory citations to SaveCitationInput format
       const statutoryCitationInputs: SaveCitationInput[] = statutoryCitationBank.map((s, index) => ({

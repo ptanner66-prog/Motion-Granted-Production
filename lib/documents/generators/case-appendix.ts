@@ -28,6 +28,7 @@ import {
 import { createClient } from '@/lib/supabase/server';
 
 import { createLogger } from '@/lib/security/logger';
+import { extractCaseName as extractCaseNameUtil } from '@/lib/citations/extract-case-name';
 
 const log = createLogger('documents-generators-case-appendix');
 // ============================================================================
@@ -158,12 +159,7 @@ function stripHtml(html: string): string {
  * Extract case name from citation string
  */
 function extractCaseNameFromCitation(citation: string): string {
-  // Try to extract "Party v. Party" pattern
-  const match = citation.match(/^([^,]+\s+v\.\s+[^,]+)/i);
-  if (match) {
-    return match[1];
-  }
-  return citation.split(',')[0] || 'Unknown Case';
+  return extractCaseNameUtil(citation);
 }
 
 // ============================================================================

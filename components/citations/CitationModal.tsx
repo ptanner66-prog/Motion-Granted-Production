@@ -40,6 +40,7 @@ import {
   Check,
 } from 'lucide-react';
 import type { OrderCitation, CitationDetails } from '@/types/citations';
+import { extractCaseName, extractCourtName } from '@/lib/citations/extract-case-name';
 
 export interface CitationModalProps {
   isOpen: boolean;
@@ -129,11 +130,20 @@ export function CitationModal({
 
   // Handle copy citation
   const handleCopy = async () => {
-    const text = details
-      ? `${details.caseName}, ${details.citation}`
-      : citation?.caseName
-        ? `${citation.caseName}, ${citation.citationString}`
-        : citation?.citationString || '';
+    let text: string;
+    if (details) {
+      const name = details.caseName && details.caseName !== 'Unknown Case'
+        ? details.caseName
+        : extractCaseName(details.citation || citation?.citationString);
+      text = `${name}, ${details.citation}`;
+    } else if (citation) {
+      const name = citation.caseName && citation.caseName !== 'Unknown Case'
+        ? citation.caseName
+        : extractCaseName(citation.citationString);
+      text = `${name}, ${citation.citationString}`;
+    } else {
+      text = '';
+    }
 
     await navigator.clipboard.writeText(text);
     setCopied(true);
@@ -177,15 +187,30 @@ export function CitationModal({
   const renderContent = () => {
     if (!details) return null;
 
+    // Resolve display name — extraction fallback when CourtListener returned 'Unknown Case'
+    const displayCaseName =
+      details.caseName && details.caseName !== 'Unknown Case'
+        ? details.caseName
+        : (citation?.caseName && citation.caseName !== 'Unknown Case'
+            ? citation.caseName
+            : extractCaseName(details.citation || citation?.citationString));
+
+    const displayCourt =
+      details.courtShort && details.courtShort !== 'Unknown Court'
+        ? details.courtShort
+        : (citation?.courtShort && citation.courtShort !== 'Unknown Court'
+            ? citation.courtShort
+            : extractCourtName(undefined, details.citation || citation?.citationString));
+
     return (
       <div className="space-y-6">
         {/* Case Header */}
         <div>
           <h2 className="text-xl font-bold text-navy uppercase tracking-wide">
-            {details.caseName}
+            {displayCaseName}
           </h2>
           <p className="text-lg text-gray-600 mt-1">
-            {details.citation} ({details.courtShort} {details.dateFiledDisplay || details.dateFiled?.split('-')[0]})
+            {details.citation} ({displayCourt} {details.dateFiledDisplay || details.dateFiled?.split('-')[0]})
           </p>
         </div>
 
@@ -507,11 +532,15 @@ export function CitationModal({
             {/* Fallback: Show citation info from DB when no CourtListener ID */}
             <div>
               <h2 className="text-xl font-bold text-navy uppercase tracking-wide">
-                {citation.caseName}
+                {citation.caseName && citation.caseName !== 'Unknown Case'
+                  ? citation.caseName
+                  : extractCaseName(citation.citationString)}
               </h2>
               <p className="text-lg text-gray-600 mt-1">
                 {citation.citationString}
-                {citation.courtShort && ` (${citation.courtShort})`}
+                {' '}({citation.court && citation.court !== 'Unknown Court'
+                  ? (citation.courtShort || citation.court)
+                  : extractCourtName(undefined, citation.citationString)})
               </p>
             </div>
 
