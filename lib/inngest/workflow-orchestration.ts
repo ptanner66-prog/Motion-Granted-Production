@@ -2362,6 +2362,89 @@ export const generateOrderWorkflow = inngest.createFunction(
     }
     console.log('[Orchestration] Accumulated after V:', Object.keys(workflowState.phaseOutputs));
 
+    // ========================================================================
+    // STEP 5.5: Mark citations that appear in the draft motion (in_draft)
+    // ========================================================================
+    await step.run('mark-citations-in-draft', async () => {
+      try {
+        const phaseVOutput = (workflowState.phaseOutputs?.["V"] ?? {}) as Record<string, unknown>;
+        const draftMotion = phaseVOutput?.draftMotion as Record<string, unknown> | undefined;
+        if (!draftMotion) {
+          console.log('[mark-in-draft] No draftMotion in Phase V output — skipping');
+          return;
+        }
+
+        // Collect all citationsUsed from legalArguments
+        const legalArgs = draftMotion.legalArguments as Array<{ citationsUsed?: string[] }> | undefined;
+        const usedCitations = new Set<string>();
+
+        if (Array.isArray(legalArgs)) {
+          for (const arg of legalArgs) {
+            if (Array.isArray(arg.citationsUsed)) {
+              for (const cite of arg.citationsUsed) {
+                if (typeof cite === 'string' && cite.trim()) {
+                  usedCitations.add(cite.trim());
+                }
+              }
+            }
+          }
+        }
+
+        if (usedCitations.size === 0) {
+          console.log('[mark-in-draft] No citationsUsed found in legalArguments — skipping');
+          return;
+        }
+
+        console.log(`[mark-in-draft] Found ${usedCitations.size} unique citations used in draft`);
+
+        // Get all order_citations for this order
+        const { data: existingCitations, error: fetchErr } = await supabase
+          .from('order_citations')
+          .select('id, citation_string, case_name')
+          .eq('order_id', orderId);
+
+        if (fetchErr || !existingCitations) {
+          console.error('[mark-in-draft] Failed to fetch citations:', fetchErr?.message);
+          return;
+        }
+
+        // Match used citations against stored citations (fuzzy: substring match on citation_string)
+        const idsToMark: string[] = [];
+        for (const row of existingCitations) {
+          const citStr = (row.citation_string || '').trim();
+          const caseName = (row.case_name || '').trim();
+          for (const used of usedCitations) {
+            if (
+              citStr && used.includes(citStr) ||
+              citStr && citStr.includes(used) ||
+              caseName && used.toLowerCase().includes(caseName.toLowerCase())
+            ) {
+              idsToMark.push(row.id);
+              break;
+            }
+          }
+        }
+
+        if (idsToMark.length > 0) {
+          const { error: updateErr } = await supabase
+            .from('order_citations')
+            .update({ in_draft: true })
+            .in('id', idsToMark);
+
+          if (updateErr) {
+            console.error('[mark-in-draft] Failed to update citations:', updateErr.message);
+          } else {
+            console.log(`[mark-in-draft] Marked ${idsToMark.length}/${existingCitations.length} citations as in_draft`);
+          }
+        } else {
+          console.log('[mark-in-draft] No citation matches found');
+        }
+      } catch (err) {
+        // Non-fatal — don't block workflow
+        console.error('[mark-in-draft] Error (non-fatal):', err instanceof Error ? err.message : err);
+      }
+    });
+
     // SP-20 D5: CP2 — Non-blocking draft ready event
     await step.run('cp2-draft-ready', async () => {
       await emitDurableEvent(

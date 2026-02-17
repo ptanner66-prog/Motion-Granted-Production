@@ -10,7 +10,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronUp, Search, Scale, BookOpen, Filter } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search, Scale, BookOpen, Filter, FileText, Library } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,7 +50,7 @@ export function CitationList({
   const [sortBy, setSortBy] = useState<SortOption>('authority');
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(['binding', 'persuasive', 'statutory'])
+    new Set(['in-motion', 'research-bank', 'binding', 'persuasive', 'statutory'])
   );
 
   // Filter and sort citations
@@ -119,7 +119,12 @@ export function CitationList({
     );
   }, [statutoryCitations, searchQuery]);
 
-  // Group case citations by authority level
+  // Split by in_draft status
+  const hasAnyInDraft = citations.some(c => c.inDraft);
+  const inMotionCitations = filteredCitations.filter(c => c.inDraft);
+  const researchBankCitations = hasAnyInDraft ? filteredCitations.filter(c => !c.inDraft) : [];
+
+  // Group case citations by authority level (used when no in_draft data exists)
   const bindingCitations = filteredCitations.filter(c => c.authorityLevel === 'binding');
   const persuasiveCitations = filteredCitations.filter(c => c.authorityLevel === 'persuasive');
   const otherCitations = filteredCitations.filter(c => !c.authorityLevel);
@@ -200,8 +205,101 @@ export function CitationList({
         Showing {filteredCitations.length + filteredStatutory.length} of {totalCount} citations
       </div>
 
-      {/* Case Citations - Binding */}
-      {(bindingCitations.length > 0 || otherCitations.length > 0) && (
+      {/* In Motion / Research Bank split (when in_draft data exists) */}
+      {hasAnyInDraft && inMotionCitations.length > 0 && (
+        <div className="border border-emerald-200 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('in-motion')}
+            className="w-full flex items-center justify-between p-4 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-emerald-600" />
+              <span className="font-medium text-emerald-800">
+                In Motion ({inMotionCitations.length})
+              </span>
+              <span className="text-xs text-emerald-600 font-normal">Citations used in draft</span>
+            </div>
+            {expandedSections.has('in-motion') ? (
+              <ChevronUp className="h-5 w-5 text-gray-500" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-gray-500" />
+            )}
+          </button>
+
+          {expandedSections.has('in-motion') && (
+            <div className="p-4 bg-white">
+              <div className={cn(
+                layout === 'inline' && 'flex flex-wrap gap-2',
+                layout === 'grid' && 'grid grid-cols-2 sm:grid-cols-3 gap-2',
+                layout === 'list' && 'space-y-3'
+              )}>
+                {inMotionCitations.map(citation => (
+                  <div key={citation.id} className={cn(layout === 'list' && 'border-b border-gray-100 pb-3 last:border-0 last:pb-0')}>
+                    <CitationChip
+                      citation={citation}
+                      onClick={() => onCitationClick?.(citation)}
+                      size={layout === 'inline' ? 'sm' : 'md'}
+                    />
+                    {showPropositions && citation.proposition && layout === 'list' && (
+                      <p className="mt-1 text-sm text-gray-600 ml-7">{citation.proposition}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasAnyInDraft && researchBankCitations.length > 0 && (
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('research-bank')}
+            className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Library className="h-5 w-5 text-gray-500" />
+              <span className="font-medium text-gray-700">
+                Research Bank ({researchBankCitations.length})
+              </span>
+              <span className="text-xs text-gray-500 font-normal">Not in current draft</span>
+            </div>
+            {expandedSections.has('research-bank') ? (
+              <ChevronUp className="h-5 w-5 text-gray-500" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-gray-500" />
+            )}
+          </button>
+
+          {expandedSections.has('research-bank') && (
+            <div className="p-4 bg-white">
+              <div className={cn(
+                layout === 'inline' && 'flex flex-wrap gap-2',
+                layout === 'grid' && 'grid grid-cols-2 sm:grid-cols-3 gap-2',
+                layout === 'list' && 'space-y-3'
+              )}>
+                {researchBankCitations.map(citation => (
+                  <div key={citation.id} className={cn(layout === 'list' && 'border-b border-gray-100 pb-3 last:border-0 last:pb-0')}>
+                    <CitationChip
+                      citation={citation}
+                      onClick={() => onCitationClick?.(citation)}
+                      size={layout === 'inline' ? 'sm' : 'md'}
+                    />
+                    {showPropositions && citation.proposition && layout === 'list' && (
+                      <p className="mt-1 text-sm text-gray-600 ml-7">{citation.proposition}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Case Citations - Binding (fallback when no in_draft data) */}
+      {!hasAnyInDraft && (bindingCitations.length > 0 || otherCitations.length > 0) && (
         <div className="border border-gray-200 rounded-lg overflow-hidden">
           <button
             type="button"
@@ -246,8 +344,8 @@ export function CitationList({
         </div>
       )}
 
-      {/* Case Citations - Persuasive */}
-      {persuasiveCitations.length > 0 && (
+      {/* Case Citations - Persuasive (fallback when no in_draft data) */}
+      {!hasAnyInDraft && persuasiveCitations.length > 0 && (
         <div className="border border-gray-200 rounded-lg overflow-hidden">
           <button
             type="button"
