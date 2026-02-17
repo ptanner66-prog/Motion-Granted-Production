@@ -121,6 +121,13 @@ export async function POST(
     // If INNGEST_EVENT_KEY is not configured, fall back to direct execution
     const inngestConfigured = process.env.INNGEST_EVENT_KEY && process.env.INNGEST_SIGNING_KEY;
 
+    log.info(`[Generate] Triggering workflow for order ${orderId}`, {
+      orderId,
+      orderStatus: order.status,
+      inngestConfigured: !!inngestConfigured,
+      triggeredBy: user.id,
+    });
+
     if (inngestConfigured) {
       // Trigger the 14-phase workflow via order/submitted event (v7.4.1)
       await inngest.send({
@@ -131,6 +138,7 @@ export async function POST(
           filingDeadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         },
       });
+      log.info(`[Generate] Inngest event 'order/submitted' sent for order ${orderId}`);
     } else {
       // Fallback: Execute workflow directly using v7.2 phase executors
       log.info('Inngest not configured, executing workflow directly with v7.2 system');
