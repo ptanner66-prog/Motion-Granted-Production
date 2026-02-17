@@ -16,7 +16,7 @@ const log = createLogger('realtime-workflow-subscription');
 // TYPES
 // ============================================================================
 
-export type CheckpointType = 'CP1' | 'CP2' | 'CP3';
+export type CheckpointType = 'CP1' | 'CP2' | 'CP3' | 'HOLD';
 
 export interface WorkflowUpdate {
   workflowId: string;

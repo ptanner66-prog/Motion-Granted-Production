@@ -16,7 +16,7 @@ const REMINDER_DAYS_BEFORE = 14;
  * Any order in a non-terminal state is actively being processed
  * or awaiting user action and MUST NOT be auto-deleted.
  */
-const DELETABLE_STATUSES = [
+export const DELETABLE_STATUSES = [
   'COMPLETED', 'CANCELLED', 'CANCELLED_USER', 'CANCELLED_SYSTEM',
   'CANCELLED_CONFLICT', 'REFUNDED',
 ] as const;
@@ -192,10 +192,11 @@ export async function extendRetention(
 /**
  * Get orders due for deletion reminder (14 days before expiry).
  *
- * ST6-05 FIX: Only returns orders in DELETABLE_STATUSES (terminal states).
- * Orders in active states (REVISION_REQ, PROCESSING, HOLD_PENDING, etc.)
- * must NOT receive deletion reminder emails — the attorney is actively
- * working with the order and the email would be confusing/alarming.
+ * ST6-05: Only sends reminders for orders in terminal states.
+ * Do NOT send reminders to orders in active states like REVISION_REQ,
+ * PROCESSING, HOLD_PENDING, AWAITING_APPROVAL, INTAKE, etc.
+ * An attorney receiving "your data will be deleted" while actively
+ * revising is confusing and alarming.
  */
 export async function getOrdersDueForReminder(): Promise<Array<{
   id: string;
@@ -216,7 +217,7 @@ export async function getOrdersDueForReminder(): Promise<Array<{
     .is('deleted_at', null)
     .eq('deletion_reminder_sent', false)
     .not('retention_expires_at', 'is', null)
-    .in('status', [...DELETABLE_STATUSES]);
+    .in('status', [...DELETABLE_STATUSES]); // ST6-05: terminal states only
 
   if (error) {
     log.error('[Retention] Error fetching orders for reminder:', error);
@@ -243,10 +244,9 @@ export async function markReminderSent(orderId: string): Promise<void> {
 
 /**
  * Get orders past retention date (ready for deletion).
+ * Only returns orders in terminal states (DELETABLE_STATUSES).
  *
- * ST6-01 FIX: Only returns orders in DELETABLE_STATUSES (terminal states).
- * Orders in active states (REVISION_REQ, PROCESSING, HOLD_PENDING, etc.)
- * are never returned even if their retention_expires_at has passed.
+ * ST6-01: Added status guard to prevent deletion of active orders.
  */
 export async function getExpiredOrders(): Promise<Array<{ id: string; status: string }>> {
   const supabase = await createClient();
@@ -268,11 +268,17 @@ export async function getExpiredOrders(): Promise<Array<{ id: string; status: st
 }
 
 /**
- * ST6-01: Detect orders with expired retention in non-terminal (active) states.
- * These are anomalies that require admin investigation — the retention should
- * have been extended when the order re-entered active processing.
+ * Detect non-terminal orders with expired retention.
+ * These are anomalies requiring admin investigation — an active order
+ * should never have an expired retention date.
+ *
+ * ST6-01: Anomaly detection layer for stuck orders.
  */
-export async function getStuckExpiredOrders(): Promise<Array<{ id: string; status: string; retention_expires_at: string }>> {
+export async function getStuckExpiredOrders(): Promise<Array<{
+  id: string;
+  status: string;
+  retention_expires_at: string;
+}>> {
   const supabase = await createClient();
 
   const { data, error } = await supabase

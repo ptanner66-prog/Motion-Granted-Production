@@ -1,13 +1,9 @@
 /**
- * ST6-01 Layer 2: Extend retention when order re-enters active processing.
+ * Extend retention on order re-entry (ST6-01 Layer 2)
  *
- * When an order transitions back to an active state (REVISION_REQ, PROCESSING,
- * Protocol 10 re-entry), its retention_expires_at MUST be extended to prevent
- * the auto-deletion cron from destroying it while actively processing.
- *
+ * Extends retention_expires_at when an order re-enters active processing.
  * Uses the LATER of: existing expiry vs. now + REVISION_RETENTION_EXTENSION_DAYS.
- * Also resets deletion_reminder_sent so the attorney gets a fresh reminder
- * after the order returns to a terminal state.
+ * Resets deletion_reminder_sent so attorney gets a fresh reminder on next terminal state.
  *
  * MUST be called from:
  *   - POST /api/orders/[id]/revision (post-approval revision)
@@ -22,6 +18,12 @@ const log = createLogger('retention-extend-on-reentry');
 
 const REVISION_RETENTION_EXTENSION_DAYS = 30;
 
+export interface RetentionExtensionResult {
+  previousExpiresAt: string | null;
+  newExpiresAt: string;
+  wasExtended: boolean;
+}
+
 /**
  * Extends retention_expires_at when an order re-enters active processing.
  * Uses the LATER of: existing expiry vs. now + 30 days.
@@ -35,7 +37,7 @@ const REVISION_RETENTION_EXTENSION_DAYS = 30;
 export async function extendRetentionOnReentry(
   supabase: SupabaseClient,
   orderId: string
-): Promise<{ previousExpiresAt: string | null; newExpiresAt: string; wasExtended: boolean }> {
+): Promise<RetentionExtensionResult> {
   // Step 1: Read current retention_expires_at
   const { data: order, error: readError } = await supabase
     .from('orders')
@@ -44,10 +46,10 @@ export async function extendRetentionOnReentry(
     .single();
 
   if (readError || !order) {
-    throw new Error(`Order ${orderId} not found: ${readError?.message ?? 'null'}`);
+    throw new Error(`Order ${orderId} not found: ${readError?.message ?? 'null result'}`);
   }
 
-  const previousExpiresAt = order.retention_expires_at;
+  const previousExpiresAt: string | null = order.retention_expires_at;
   const extensionMs = REVISION_RETENTION_EXTENSION_DAYS * 86_400_000;
   const minimumExpiry = new Date(Date.now() + extensionMs);
 

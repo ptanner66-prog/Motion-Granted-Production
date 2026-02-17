@@ -1,7 +1,7 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import type { OrderStatus } from '@/config/motion-types'
+import type { OrderDisplayKey } from '@/config/motion-types'
 import { Card, CardContent } from '@/components/ui/card'
 import { OrderStatusBadge } from '@/components/orders/order-status-badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -211,7 +211,7 @@ function OrderList({ orders }: { orders: OrderItem[] }) {
                     <span className="font-mono text-xs text-gray-400 tracking-wide">
                       {order.order_number}
                     </span>
-                    <OrderStatusBadge status={displayStatus as OrderStatus} size="sm" />
+                    <OrderStatusBadge status={displayStatus as OrderDisplayKey} size="sm" />
                   </div>
                   <p className="font-semibold text-navy truncate">
                     {formatMotionType(order.motion_type)}

@@ -124,7 +124,7 @@ export async function POST(
   return NextResponse.json({
     success: true,
     orderId,
-    status: 'REVISION_REQUESTED', // TypeScript name for frontend
+    status: 'REVISION_REQ',
     reworkCount: (reworkHistory?.length || 0) + 1,
     maxReworks: CP3_REWORK_CAP,
   });

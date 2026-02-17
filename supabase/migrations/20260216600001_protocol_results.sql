@@ -9,7 +9,7 @@ CREATE TABLE protocol_results (
   order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   phase TEXT NOT NULL,
   protocol_number INTEGER NOT NULL CHECK (protocol_number >= 1 AND protocol_number <= 23),
-  citation_id UUID,
+  citation_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'::uuid,
   triggered BOOLEAN NOT NULL DEFAULT false,
   severity TEXT CHECK (severity IN ('INFO', 'WARNING', 'CRITICAL')),
   action_taken TEXT,

@@ -12,6 +12,7 @@
  * - Fn1 fallback handler (when waitForEvent times out)
  */
 
+import type Stripe from 'stripe';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { inngest } from './client';
 import { calculateRefundAmount } from '@/lib/payments/refund-policy';

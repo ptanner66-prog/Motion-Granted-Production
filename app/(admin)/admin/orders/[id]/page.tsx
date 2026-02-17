@@ -573,7 +573,7 @@ export default async function AdminOrderDetailPage({
 
           {/* Generate Now - ONLY shown for orders that need INITIAL generation or are in_progress */}
           {/* Don't show for generation_failed - use RetryGenerationButton instead */}
-          {['submitted', 'under_review', 'in_progress', 'assigned'].includes(order.status) && (
+          {['submitted', 'paid', 'under_review', 'in_progress', 'processing', 'assigned'].includes(order.status) && (
             <GenerateNowButton
               orderId={order.id}
               orderNumber={order.order_number}

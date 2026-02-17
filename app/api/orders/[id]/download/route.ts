@@ -18,18 +18,15 @@ import { STORAGE_BUCKETS } from '@/lib/config/storage';
 
 const log = createLogger('api-orders-download');
 
-/**
- * ST6-04: Files exceeding this threshold get shorter signed URL expiry (1 hour)
- * and generate audit log entries for security monitoring.
- */
-const LARGE_FILE_SIZE_THRESHOLD = 4.5 * 1024 * 1024; // 4.5MB
-const LARGE_FILE_EXPIRY = 3600; // 1 hour for large files
-
 const EXPIRY_BY_STATUS: Record<string, number> = {
   AWAITING_APPROVAL: 3600, // 1 hour during review
   COMPLETED: 604800, // 7 days after completion
 };
 const DEFAULT_EXPIRY = 300; // 5 minutes
+
+// ST6-04: Large ZIP security exception threshold
+const ZIP_SIZE_THRESHOLD = 4.5 * 1024 * 1024; // 4.5MB
+const LARGE_ZIP_EXPIRY = 3600; // 1 hour for large ZIPs
 
 const DOWNLOAD_ALLOWED_STATUSES = [
   'AWAITING_APPROVAL',
@@ -109,20 +106,20 @@ export async function GET(
       // Determine bucket and path from file_url
       const { bucket, path } = parseBucketPath(doc.file_url);
 
-      // ST6-04: Large file security monitoring.
-      // Files exceeding 4.5MB get shorter signed URL expiry (1 hour vs status-dependent)
-      // and generate audit log entries for security monitoring.
+      // ST6-04: Large ZIP security monitoring
+      // ZIPs exceeding 4.5MB get shorter expiry and audit logging
       const fileSize = doc.file_size ?? 0;
-      const isLargeFile = fileSize > LARGE_FILE_SIZE_THRESHOLD;
-      const effectiveExpiry = isLargeFile ? LARGE_FILE_EXPIRY : expiry;
+      const isLargeZip = fileSize > ZIP_SIZE_THRESHOLD &&
+        (doc.file_name?.endsWith('.zip') || doc.file_type === 'application/zip');
 
-      if (isLargeFile) {
-        log.warn('Large file download — using shorter URL expiry', {
+      const effectiveExpiry = isLargeZip ? LARGE_ZIP_EXPIRY : expiry;
+
+      if (isLargeZip) {
+        log.warn('ZIP exceeds 4.5MB — using short-lived signed URL', {
           orderId,
           fileId,
           fileSize,
-          threshold: LARGE_FILE_SIZE_THRESHOLD,
-          expirySeconds: LARGE_FILE_EXPIRY,
+          threshold: ZIP_SIZE_THRESHOLD,
         });
       }
 
@@ -159,22 +156,20 @@ export async function GET(
           .is('download_confirmed_at', null);
       }
 
-      // ST6-04: Audit log for large file downloads (non-blocking)
-      if (isLargeFile) {
-        supabase.from('activity_logs').insert({
-          user_id: user.id,
-          action: 'download.large_file',
-          resource_type: 'document',
-          resource_id: fileId,
-          details: {
-            order_id: orderId,
-            download_type: 'LARGE_FILE_SHORT_EXPIRY',
-            file_size_bytes: fileSize,
-            url_expires_at: new Date(Date.now() + LARGE_FILE_EXPIRY * 1000).toISOString(),
+      // ST6-04: Audit log for large ZIP downloads
+      if (isLargeZip) {
+        supabase.from('automation_logs').insert({
+          order_id: orderId,
+          action_type: 'large_zip_download',
+          action_details: {
+            documentId: fileId,
+            fileSizeBytes: fileSize,
+            expirySeconds: effectiveExpiry,
+            downloadedBy: user.id,
           },
-        }).then(({ error: auditError }: { error: { message: string } | null }) => {
-          if (auditError) {
-            log.warn('Download audit log insert failed', { orderId, error: auditError.message });
+        }).then(({ error: auditErr }: { error: { message: string } | null }) => {
+          if (auditErr) {
+            log.warn('Large ZIP audit log insert failed', { orderId, error: auditErr.message });
           }
         });
       }
@@ -183,7 +178,7 @@ export async function GET(
         url: urlData.signedUrl,
         expiresIn: effectiveExpiry,
         fileName: doc.file_name,
-        ...(isLargeFile ? { type: 'LARGE_FILE', notice: 'URL expires in 1 hour' } : {}),
+        ...(isLargeZip ? { type: 'LARGE_ZIP' } : {}),
       });
     }
 

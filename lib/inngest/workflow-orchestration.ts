@@ -271,14 +271,15 @@ async function emitDurableEvent(
   }
 
   // Always persist to checkpoint_events for audit trail
-  await supabaseClient.from('checkpoint_events').insert({
+  const { error: persistError } = await supabaseClient.from('checkpoint_events').insert({
     order_id: orderId,
     event_name: name,
     event_data: data,
     checkpoint_type: checkpointType,
-  }).catch((err: unknown) => {
-    console.error('Checkpoint event persistence failed', { name, orderId, error: err });
   });
+  if (persistError) {
+    console.error('Checkpoint event persistence failed', { name, orderId, error: persistError });
+  }
 }
 
 // ============================================================================
@@ -1312,6 +1313,12 @@ export const generateOrderWorkflow = inngest.createFunction(
     const { orderId } = event.data;
     const supabase = getSupabase();
 
+    console.log(`[workflow:${orderId}] Starting 14-phase workflow`, {
+      eventName: event.name,
+      orderId,
+      timestamp: new Date().toISOString(),
+    });
+
     // ========================================================================
     // SP-12 AH-5: Triple-trigger routing — determine start phase
     // ========================================================================
@@ -1337,6 +1344,39 @@ export const generateOrderWorkflow = inngest.createFunction(
           throw new Error(`Unknown trigger event: ${event.name}`);
       }
     });
+
+    // ST6-01: Extend retention on re-entry (revision or P10)
+    if (event.name === 'order/revision-requested' || event.name === 'order/protocol-10-exit') {
+      await step.run('extend-retention-reentry', async () => {
+        const supa = getSupabase();
+        await extendRetentionOnReentry(supa, orderId);
+      });
+
+      // ST6-02: Check if raw uploads have been purged, log warning for revision context
+      if (event.name === 'order/revision-requested') {
+        await step.run('check-raw-uploads-purged', async () => {
+          const supa = getSupabase();
+          const { data: order } = await supa
+            .from('orders')
+            .select('raw_uploads_purged')
+            .eq('id', orderId)
+            .single();
+
+          if (order?.raw_uploads_purged) {
+            console.warn(`[WORKFLOW] Revision requested after raw upload purge for order ${orderId}`);
+            await supa.from('automation_logs').insert({
+              order_id: orderId,
+              action_type: 'revision_raw_uploads_purged',
+              action_details: {
+                disclaimer: 'Original uploaded evidence files have been purged per 7-day retention policy. '
+                  + 'This revision is based on previously extracted content and phase outputs only. '
+                  + 'Attorney may need to re-upload original evidence if substantial changes are needed.',
+              },
+            });
+          }
+        });
+      }
+    }
 
     // SP-13 AP-2: Protocol 10 re-assembly event validation
     if (event.name === 'order/protocol-10-exit') {
@@ -1423,23 +1463,69 @@ export const generateOrderWorkflow = inngest.createFunction(
     }
 
     // SP-12 AH-5: Idempotency check (Layer 1)
-    const existingWorkflow = await step.run('check-existing-workflow', async () => {
+    // FIX: Use terminal-status blacklist instead of whitelist.
+    // Callers (Stripe webhook, automation-service, order-creation-v2) often update
+    // the order status to 'under_review' or 'in_progress' BEFORE sending the
+    // Inngest event. The old whitelist ('paid'/'submitted') rejected these
+    // intermediate statuses, causing the entire 14-phase pipeline to be skipped.
+    const workflowCheck = await step.run('check-existing-workflow', async () => {
       if (event.name === 'order/submitted') {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('orders')
           .select('status')
           .eq('id', orderId)
           .single();
-        if (data && data.status !== 'paid' && data.status !== 'submitted') {
-          return true; // Already processing
+
+        console.log('[check-existing-workflow]', {
+          orderId,
+          orderFound: !!data,
+          status: data?.status,
+          error: error?.message,
+        });
+
+        // FIX: Distinguish query errors from genuinely missing orders.
+        // A transient DB error (timeout, connection reset) previously returned
+        // { skip: true, reason: 'order_not_found' }, silently skipping all 14 phases.
+        // Now we throw on query errors so Inngest retries the step.
+        if (error && !data) {
+          // PGRST116 = "JSON object requested, multiple (or no) rows returned" — genuine not-found
+          if (error.code === 'PGRST116') {
+            console.error(`[check-existing-workflow] Order ${orderId} not found in database`);
+            return { skip: true, reason: 'order_not_found' };
+          }
+          // Any other error is transient — throw to trigger Inngest retry
+          console.error(`[check-existing-workflow] DB query error for order ${orderId}:`, error.message);
+          throw new Error(`Failed to query order status: ${error.message}`);
         }
+
+        if (!data) {
+          console.error(`[check-existing-workflow] No data returned for order ${orderId} (no error)`);
+          return { skip: true, reason: 'order_not_found' };
+        }
+
+        // Only skip if order is in a terminal state — already completed or cancelled.
+        // All intermediate statuses (paid, submitted, under_review, in_progress,
+        // processing, assigned, on_hold, etc.) are allowed to proceed.
+        const terminalStatuses = ['completed', 'draft_delivered', 'revision_delivered', 'cancelled', 'refunded'];
+        if (terminalStatuses.includes(data.status)) {
+          console.log(`[check-existing-workflow] Skipping: order ${orderId} already in terminal status '${data.status}'`);
+          return { skip: true, reason: `order_already_${data.status}` };
+        }
+
+        console.log(`[check-existing-workflow] Proceeding: order ${orderId} status is '${data.status}'`);
+        return { skip: false, reason: `order_status_${data.status}` };
       }
-      return false;
+      return { skip: false, reason: 'non_submit_event' };
     });
 
-    if (existingWorkflow) {
-      return { skipped: true, reason: 'Workflow already active', startPhase };
+    console.log(`[workflow:${orderId}] Workflow check decision:`, { ...workflowCheck });
+
+    if (workflowCheck.skip) {
+      console.warn(`[workflow:${orderId}] SKIPPING all phases — reason: ${workflowCheck.reason}`);
+      return { skipped: true, reason: workflowCheck.reason, startPhase };
     }
+
+    console.log(`[workflow:${orderId}] Passed idempotency check, proceeding to phase execution`);
 
     // ========================================================================
     // STEP 0: Verify API Configuration
@@ -4057,7 +4143,7 @@ async function handleRequestChanges(
     }).match({ order_id: orderId, is_rework_reset: false });
   });
 
-  // ST6-01: Extend retention when order re-enters active processing via CP3 REQUEST_CHANGES
+  // Step 4b: ST6-01 — Extend retention on CP3 rework re-entry
   await step.run('extend-retention-rework', async () => {
     await extendRetentionOnReentry(supabase, orderId);
   });
