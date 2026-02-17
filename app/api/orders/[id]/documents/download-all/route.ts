@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import archiver from 'archiver'
 import { createLogger } from '@/lib/security/logger'
+import { STORAGE_BUCKETS } from '@/lib/config/storage'
 
 const log = createLogger('api-orders-download-all')
 
@@ -92,7 +93,7 @@ export async function GET(
         for (const doc of documents) {
           try {
             const { data: fileData, error: downloadError } = await supabase.storage
-              .from('documents')
+              .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
               .download(doc.file_url)
 
             if (downloadError || !fileData) {

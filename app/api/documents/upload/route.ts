@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { scanFile } from '@/lib/security/malware-scanner'
 import { createLogger } from '@/lib/security/logger'
+import { STORAGE_BUCKETS } from '@/lib/config/storage'
 
 const log = createLogger('api-documents-upload')
 
@@ -181,11 +182,11 @@ export async function POST(req: Request) {
 
     // Check if bucket exists first
     const { data: buckets } = await supabase.storage.listBuckets()
-    const bucketExists = buckets?.some((b: { name: string }) => b.name === 'documents')
+    const bucketExists = buckets?.some((b: { name: string }) => b.name === STORAGE_BUCKETS.ORDER_DOCUMENTS)
 
     if (!bucketExists) {
       // Try to create the bucket
-      const { error: createError } = await supabase.storage.createBucket('documents', {
+      const { error: createError } = await supabase.storage.createBucket(STORAGE_BUCKETS.ORDER_DOCUMENTS, {
         public: false,
         fileSizeLimit: 104857600, // 100MB
         allowedMimeTypes: [
@@ -205,7 +206,7 @@ export async function POST(req: Request) {
 
     // Upload to Supabase storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('documents')
+      .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
       .upload(filePath, uint8Array, {
         contentType: file.type,
         upsert: false,
@@ -217,7 +218,7 @@ export async function POST(req: Request) {
 
     // Create signed URL for private access (valid for 1 hour)
     const { data: signedUrlData, error: urlError } = await supabase.storage
-      .from('documents')
+      .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
       .createSignedUrl(filePath, 3600)
 
     if (urlError || !signedUrlData) {
