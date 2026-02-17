@@ -3518,61 +3518,81 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
 
     // Step: Send package ready notification (T+0)
+    // W4-6: Fresh service role client + non-fatal so workflow completes even if notification fails
     await step.run('send-cp3-package-ready', async () => {
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .select('id, client_id, motion_type')
-        .eq('id', orderId)
-        .single();
+      try {
+        const svc = getServiceSupabase();
 
-      if (orderError || !order) {
-        console.error('[CP3] Order lookup failed:', { orderId, error: orderError?.message });
-        throw new Error(`Order ${orderId} not found for CP3 notification: ${orderError?.message ?? 'no data'}`);
-      }
+        const { data: order, error: orderError } = await svc
+          .from('orders')
+          .select('id, client_id, motion_type')
+          .eq('id', orderId)
+          .single();
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('email, display_name')
-        .eq('id', order.client_id)
-        .single();
+        if (orderError || !order) {
+          console.error('[CP3] Order lookup failed:', { orderId, error: orderError?.message });
+          return { success: false, reason: 'order_not_found', orderId, error: orderError?.message };
+        }
 
-      if (profile?.email) {
-        await fn2QueueEmail(supabase, orderId, 'cp3-package-ready', {
-          attorneyName: profile.display_name ?? 'Counselor',
-          attorneyEmail: profile.email,
-          motionType: order.motion_type,
-          dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/dashboard/orders/${orderId}/review`,
+        const { data: profile } = await svc
+          .from('profiles')
+          .select('email, display_name')
+          .eq('id', order.client_id)
+          .single();
+
+        if (profile?.email) {
+          await fn2QueueEmail(svc, orderId, 'cp3-package-ready', {
+            attorneyName: profile.display_name ?? 'Counselor',
+            attorneyEmail: profile.email,
+            motionType: order.motion_type,
+            dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/dashboard/orders/${orderId}/review`,
+          });
+        }
+
+        await logCheckpointEvent(svc, {
+          orderId,
+          eventType: 'CP3_PACKAGE_READY',
+          actor: 'system',
+          metadata: { notificationSent: !!profile?.email },
         });
-      }
 
-      await logCheckpointEvent(supabase, {
-        orderId,
-        eventType: 'CP3_PACKAGE_READY',
-        actor: 'system',
-        metadata: { notificationSent: !!profile?.email },
-      });
+        return { success: true, notificationSent: !!profile?.email };
+      } catch (err) {
+        console.error('[CP3] Notification step failed (non-fatal):', err);
+        return { success: false, error: String(err) };
+      }
     });
 
     // Step: Update order status to AWAITING_APPROVAL
+    // Fresh service role client for reliability at end-of-workflow
     await step.run('update-status-awaiting-approval', async () => {
-      await supabase.from('orders').update({
+      const svc = getServiceSupabase();
+      const { error } = await svc.from('orders').update({
         status: 'AWAITING_APPROVAL',
         cp3_entered_at: new Date().toISOString(),
         generation_completed_at: new Date().toISOString(),
         generation_error: null,
       }).eq('id', orderId);
+
+      if (error) {
+        console.error('[CP3] Status update failed:', { orderId, error: error.message });
+        throw new Error(`Failed to update order ${orderId} to AWAITING_APPROVAL: ${error.message}`);
+      }
     });
 
     // Step: Emit checkpoint/cp3.reached — Fn2 takes over from here
     // SP-20 D5: CP3 event MUST include all 6 fields from CP3ApprovalEvent type
+    // Fresh service role client for reliability at end-of-workflow
     await step.run('cp3-emit-event', async () => {
-      const { data: order } = await supabase
+      const svc = getServiceSupabase();
+
+      const { data: order } = await svc
         .from('orders')
         .select('tier, client_id, protocol_10_triggered')
         .eq('id', orderId)
         .single();
 
-      const { data: pkg } = await supabase
+      const { data: pkg } = await svc
         .from('delivery_packages')
         .select('id')
         .eq('order_id', orderId)
@@ -3597,7 +3617,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         eventData,
         orderId,
         'CP3',
-        supabase
+        svc
       );
     });
 
