@@ -45,3 +45,18 @@ Always Include:
 10. Citation Verification Report
 
 ---
+
+### OUTPUT FORMAT — CRITICAL
+
+You MUST return your entire response as a single valid JSON object. Follow these rules EXACTLY:
+
+1. Start your response with `{` and end with `}`
+2. All string values must be double-quoted
+3. No trailing commas after the last element in arrays or objects
+4. No comments in the JSON output
+5. Escape special characters in strings: `\"` `\\` `\n` `\t`
+6. Every `[` must have a matching `]` and every `{` must have a matching `}`
+
+If your response would be very long, prioritize completeness of the JSON structure over content length. It is BETTER to have shorter document content with valid JSON than a truncated response with invalid JSON.
+
+Do NOT wrap the JSON in markdown code fences. Return raw JSON only.

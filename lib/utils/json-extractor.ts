@@ -6,9 +6,12 @@
  * 2. Text before/after JSON (preamble/postamble)
  * 3. Trailing commas
  * 4. Control characters
+ * 5. Truncated responses (unclosed brackets/braces) via jsonrepair
  *
  * Returns { success: true, data } or { success: false, error, rawText }
  */
+
+import { jsonrepair } from 'jsonrepair';
 
 export type ExtractJSONResult<T> =
   | { success: true; data: T }
@@ -118,12 +121,39 @@ export function extractJSON<T = Record<string, unknown>>(
         }
       }
     }
+    // RECOVERY PASS 4: jsonrepair — handles truncated output, unclosed brackets,
+    // missing commas, single quotes, trailing commas, and other structural issues.
+    // This is the last-resort recovery for malformed JSON (e.g. response hit max_tokens).
+    {
+      // Try to isolate the JSON portion from raw text first
+      const jsonCandidate = extractJSONCandidate(raw);
+      for (const candidate of [jsonCandidate, text, raw]) {
+        try {
+          const repaired = jsonrepair(candidate);
+          const data = JSON.parse(repaired) as T;
+          console.warn(`[${context.phase}] JSON recovered via jsonrepair for order ${context.orderId} (input length: ${candidate.length})`);
+          return { success: true, data };
+        } catch { continue; }
+      }
+    }
     const preview = raw.slice(0, 300).replace(/\n/g, '\\n');
-    console.error(`[${context.phase}] JSON parse FAILED for order ${context.orderId}. Preview: ${preview}`);
+    const tail = raw.slice(-200).replace(/\n/g, '\\n');
+    console.error(`[${context.phase}] JSON parse FAILED for order ${context.orderId}. Length: ${raw.length}. Preview: ${preview}`);
+    console.error(`[${context.phase}] Tail: ${tail}`);
     return {
       success: false,
-      error: `JSON parse failed after 3 attempts: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+      error: `JSON parse failed after 4 attempts: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
       rawText: raw,
     };
   }
+}
+
+/**
+ * Extract the best JSON candidate from raw text.
+ * Finds the first { and takes everything from there, handling potential truncation.
+ */
+function extractJSONCandidate(raw: string): string {
+  const start = raw.indexOf('{');
+  if (start === -1) return raw;
+  return raw.slice(start);
 }
