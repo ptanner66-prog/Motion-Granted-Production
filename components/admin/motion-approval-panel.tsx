@@ -91,7 +91,7 @@ export function MotionApprovalPanel({
       <CardContent className="p-6 space-y-4">
         {!hasDeliverable && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            <strong>Warning:</strong> No deliverable PDF found. The motion may not have been generated correctly.
+            <strong>Warning:</strong> No deliverable document found. The motion may not have been generated correctly.
           </div>
         )}
 

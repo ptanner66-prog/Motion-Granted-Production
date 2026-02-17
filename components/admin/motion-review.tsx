@@ -95,7 +95,7 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
 
       toast({
         title: 'Motion Approved & Delivered!',
-        description: 'PDF generated, saved as deliverable, and client notified.',
+        description: 'DOCX generated, saved as deliverable, and client notified.',
       });
 
       // Refresh the page to show updated status
@@ -178,7 +178,7 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
               {isApproving ? (
                 <>
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                  Generating PDF & Delivering...
+                  Generating DOCX & Delivering...
                 </>
               ) : (
                 <>
@@ -188,7 +188,7 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
               )}
             </Button>
             <p className="text-xs text-teal-600 text-center mt-3">
-              This will generate a PDF, save it as a deliverable, and email the client.
+              This will generate a DOCX, save it as a deliverable, and email the client.
             </p>
           </CardContent>
         </Card>

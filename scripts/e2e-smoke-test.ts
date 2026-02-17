@@ -185,15 +185,7 @@ async function main() {
     }
   });
 
-  // --- 5. PDF GENERATION ---
-  console.log('');
-  console.log('\uD83D\uDCD1 PDF Generation');
-
-  await test('PDF module loads', async () => {
-    const mod = await import('../lib/pdf/generator');
-    if (typeof mod.generatePDF !== 'function') throw new Error('generatePDF not exported');
-    if (typeof mod.convertDocxBufferToPDF !== 'function') throw new Error('convertDocxBufferToPDF not exported');
-  });
+  // --- 5. PDF GENERATION (removed — DOCX only) ---
 
   // --- 7. INTEGRATION LAYER ---
   console.log('');

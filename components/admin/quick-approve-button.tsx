@@ -35,7 +35,7 @@ export function QuickApproveButton({ orderId, orderNumber }: QuickApproveButtonP
 
       toast({
         title: 'Motion Approved & Delivered',
-        description: 'The PDF has been generated and the client has been notified.',
+        description: 'The DOCX has been generated and the client has been notified.',
       });
 
       // Refresh the page to show updated status
@@ -67,7 +67,7 @@ export function QuickApproveButton({ orderId, orderNumber }: QuickApproveButtonP
           Review the motion in the Claude Chat tab. When satisfied, click below to:
         </p>
         <ul className="text-sm text-teal-700 space-y-1 ml-4 list-disc">
-          <li>Generate the PDF</li>
+          <li>Generate the DOCX</li>
           <li>Save as deliverable</li>
           <li>Email the client</li>
         </ul>

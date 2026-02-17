@@ -1,13 +1,12 @@
 /**
  * Approve and Deliver Motion API
  *
- * One-click approve: generates PDF from the conversation's motion and delivers to client
+ * One-click approve: generates DOCX from the conversation's motion and delivers to client
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { inngest } from '@/lib/inngest/client';
-import { generateMotionPDF, savePDFAsDeliverable } from '@/lib/workflow/pdf-generator';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
 import { sendEmail } from '@/lib/resend';
 import { DraftReadyEmail } from '@/emails/draft-ready';
@@ -75,31 +74,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No motion has been generated yet' }, { status: 400 });
     }
 
-    // Generate PDF from the motion
-    const pdfResult = await generateMotionPDF({
-      title: `${order.motion_type} - ${order.case_caption || order.case_number}`,
-      content: conversation.generated_motion,
-      caseNumber: order.case_number,
-      caseCaption: order.case_caption,
-      court: order.jurisdiction,
-      filingDate: new Date().toISOString(),
+    // Generate DOCX from the motion content
+    const { Document, Packer, Paragraph, TextRun } = await import('docx');
+    const lines = (conversation.generated_motion as string).split('\n');
+    const paragraphs = lines.map((line: string) => new Paragraph({
+      children: [new TextRun({ text: line, font: 'Times New Roman', size: 24 })],
+      spacing: { after: 240 },
+    }));
+
+    const doc = new Document({
+      sections: [{ children: paragraphs }],
     });
 
-    if (!pdfResult.success || !pdfResult.data?.pdfBuffer) {
-      return NextResponse.json({ error: pdfResult.error || 'Failed to generate PDF' }, { status: 500 });
+    const docxBuffer = Buffer.from(await Packer.toBuffer(doc));
+    const fileName = `${order.order_number}_motion.docx`;
+    const storagePath = `orders/${orderId}/deliverables/${fileName}`;
+
+    // Upload DOCX to storage
+    const { error: uploadError } = await supabase.storage
+      .from('motion-deliverables')
+      .upload(storagePath, docxBuffer, {
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      return NextResponse.json({ error: `Failed to upload DOCX: ${uploadError.message}` }, { status: 500 });
     }
 
-    // Save PDF as deliverable (pass user.id for uploaded_by)
-    const saveResult = await savePDFAsDeliverable(
-      orderId,
-      pdfResult.data.pdfBuffer,
-      `${order.order_number}_motion.pdf`,
-      user.id
-    );
+    const { data: { publicUrl: fileUrl } } = supabase.storage
+      .from('motion-deliverables')
+      .getPublicUrl(storagePath);
 
-    if (!saveResult.success || !saveResult.data) {
-      return NextResponse.json({ error: saveResult.error || 'Failed to save PDF' }, { status: 500 });
-    }
+    // Insert document record
+    await supabase.from('documents').insert({
+      order_id: orderId,
+      file_name: fileName,
+      file_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      file_size: docxBuffer.length,
+      file_url: storagePath,
+      document_type: 'motion',
+      is_deliverable: true,
+      uploaded_by: user.id,
+    });
 
     // Update order status to delivered
     await supabase
@@ -144,7 +161,7 @@ export async function POST(request: Request) {
           change_type: 'motion_approved',
           approvedBy: user.id,
           approverName: profile.full_name,
-          deliverableUrl: saveResult.data.fileUrl,
+          deliverableUrl: fileUrl,
           approvedAt: new Date().toISOString(),
         },
       });
@@ -194,7 +211,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Motion approved and delivered',
-      deliverableUrl: saveResult.data.fileUrl,
+      deliverableUrl: fileUrl,
       status: 'draft_delivered',
     });
   } catch (error) {

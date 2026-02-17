@@ -16,7 +16,6 @@
 
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { assembleFilingPackage, type AssemblerInput, type FilingPackage } from '../generators/filing-package-assembler';
-import { convertDocxBufferToPDF } from '../pdf/generator';
 import { uploadDocument, ensureBucketExists } from './storage-manager';
 import { normalizeTier } from '@/lib/utils/tier-helpers';
 import { resolveBarState } from '@/lib/jurisdiction/registry';
@@ -37,9 +36,7 @@ export interface UploadedDocument {
   type: string;
   filename: string;
   docxPath?: string;
-  pdfPath?: string;
   docxUrl?: string;
-  pdfUrl?: string;
   pageCount: number;
   wordCount: number;
 }
@@ -411,42 +408,6 @@ export async function generateAndStoreFilingPackage(
         uploaded.docxUrl = docxResult.signedUrl;
       } else {
         warnings.push(`Failed to upload ${docxFilename}: ${docxResult.error}`);
-      }
-
-      // Convert to PDF and upload
-      try {
-        const pdfResult = await convertDocxBufferToPDF(doc.buffer, {
-          filename: `${doc.filename}.pdf`,
-        });
-
-        if (pdfResult.success && pdfResult.buffer) {
-          const pdfFilename = pdfResult.filename.endsWith('.pdf')
-            ? pdfResult.filename
-            : `${doc.filename}.pdf`;
-
-          const pdfUpload = await uploadDocument(
-            supabase,
-            input.orderId,
-            pdfFilename,
-            pdfResult.buffer,
-            'application/pdf'
-          );
-
-          if (pdfUpload.success) {
-            uploaded.pdfPath = pdfUpload.path;
-            uploaded.pdfUrl = pdfUpload.signedUrl;
-          } else {
-            warnings.push(`Failed to upload PDF for ${doc.filename}: ${pdfUpload.error}`);
-          }
-
-          if (pdfResult.warnings) {
-            warnings.push(...pdfResult.warnings);
-          }
-        } else {
-          warnings.push(`PDF conversion skipped for ${doc.filename}: ${pdfResult.error || 'LibreOffice not available'}`);
-        }
-      } catch (pdfError) {
-        warnings.push(`PDF conversion failed for ${doc.filename}: ${pdfError instanceof Error ? pdfError.message : 'Unknown'}`);
       }
 
       uploadedDocuments.push(uploaded);

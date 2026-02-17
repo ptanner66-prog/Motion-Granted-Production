@@ -323,7 +323,7 @@ interface PhaseExecutionResult {
 }
 
 interface DeliverableResult {
-  motionPdf?: string;
+  motionDocx?: string;
   attorneyInstructionSheet?: string;
   citationAccuracyReport?: string;
   captionQcReport?: string;
@@ -470,207 +470,12 @@ async function uploadToSupabaseStorage(
 }
 
 /**
- * Sanitize text for WinAnsi encoding (pdf-lib StandardFonts only support WinAnsi).
- * Replaces Unicode characters that would crash PDF generation with ASCII equivalents.
+ * Create a simple text file as a Buffer for upload.
+ * Used for instruction sheets, citation reports, and caption QC reports.
  */
-function sanitizeForWinAnsi(text: string): string {
-  return text
-    // Checkboxes (the specific crash cause)
-    .replace(/☐/g, '[ ]')
-    .replace(/☒/g, '[X]')
-    .replace(/☑/g, '[X]')
-    // Smart quotes and apostrophes
-    .replace(/\u201C/g, '"')  // left double quote
-    .replace(/\u201D/g, '"')  // right double quote
-    .replace(/\u2018/g, "'")  // left single quote
-    .replace(/\u2019/g, "'")  // right single quote
-    // Dashes
-    .replace(/\u2014/g, '--') // em dash
-    .replace(/\u2013/g, '-')  // en dash
-    // Ellipsis
-    .replace(/\u2026/g, '...')
-    // Legal symbols
-    .replace(/\u00A7/g, 'Sec.') // section sign
-    .replace(/\u00B6/g, 'P.')   // pilcrow
-    // Bullet points
-    .replace(/\u2022/g, '-')    // bullet
-    .replace(/\u2023/g, '>')    // triangular bullet
-    // Catch-all: remove any remaining non-Latin1 characters
-    .replace(/[^\x00-\xFF]/g, '');
-}
-
-/**
- * Create a simple motion PDF using pdf-lib
- */
-async function createSimpleMotionPDF(content: string, orderContext: OrderContext): Promise<Uint8Array> {
-  const { PDFDocument, StandardFonts } = await import('pdf-lib');
-  content = sanitizeForWinAnsi(content);
-
-  const pdfDoc = await PDFDocument.create();
-  const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-  const timesRomanBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
-
-  const pageWidth = 612; // 8.5 inches
-  const pageHeight = 792; // 11 inches
-  const margin = 72; // 1 inch
-  const fontSize = 12;
-  const lineHeight = 24; // Double-spaced
-
-  let page = pdfDoc.addPage([pageWidth, pageHeight]);
-  let yPosition = pageHeight - margin;
-
-  // Add case caption header
-  const lines = content.split('\n');
-
-  for (const line of lines) {
-    if (yPosition < margin + lineHeight) {
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-      yPosition = pageHeight - margin;
-    }
-
-    const textWidth = timesRoman.widthOfTextAtSize(line, fontSize);
-    const maxWidth = pageWidth - 2 * margin;
-
-    if (textWidth > maxWidth) {
-      // Wrap long lines
-      const words = line.split(' ');
-      let currentLine = '';
-
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const testWidth = timesRoman.widthOfTextAtSize(testLine, fontSize);
-
-        if (testWidth > maxWidth && currentLine) {
-          page.drawText(currentLine, {
-            x: margin,
-            y: yPosition,
-            size: fontSize,
-            font: timesRoman,
-          });
-          yPosition -= lineHeight;
-          currentLine = word;
-
-          if (yPosition < margin + lineHeight) {
-            page = pdfDoc.addPage([pageWidth, pageHeight]);
-            yPosition = pageHeight - margin;
-          }
-        } else {
-          currentLine = testLine;
-        }
-      }
-
-      if (currentLine) {
-        page.drawText(currentLine, {
-          x: margin,
-          y: yPosition,
-          size: fontSize,
-          font: timesRoman,
-        });
-        yPosition -= lineHeight;
-      }
-    } else {
-      page.drawText(line, {
-        x: margin,
-        y: yPosition,
-        size: fontSize,
-        font: timesRoman,
-      });
-      yPosition -= lineHeight;
-    }
-  }
-
-  return pdfDoc.save();
-}
-
-/**
- * Create a simple text PDF report
- */
-async function createSimpleTextPDF(title: string, content: string): Promise<Uint8Array> {
-  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
-  title = sanitizeForWinAnsi(title);
-  content = sanitizeForWinAnsi(content);
-
-  const pdfDoc = await PDFDocument.create();
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  const pageWidth = 612;
-  const pageHeight = 792;
-  const margin = 72;
-  const fontSize = 11;
-  const titleSize = 16;
-  const lineHeight = 18;
-
-  let page = pdfDoc.addPage([pageWidth, pageHeight]);
-  let yPosition = pageHeight - margin;
-
-  // Add title
-  page.drawText(title, {
-    x: margin,
-    y: yPosition,
-    size: titleSize,
-    font: helveticaBold,
-    color: rgb(0, 0, 0),
-  });
-  yPosition -= titleSize * 2;
-
-  // Add horizontal line
-  page.drawLine({
-    start: { x: margin, y: yPosition },
-    end: { x: pageWidth - margin, y: yPosition },
-    thickness: 1,
-    color: rgb(0, 0, 0),
-  });
-  yPosition -= lineHeight * 2;
-
-  // Add content
-  const lines = content.split('\n');
-
-  for (const line of lines) {
-    if (yPosition < margin + lineHeight) {
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-      yPosition = pageHeight - margin;
-    }
-
-    const maxWidth = pageWidth - 2 * margin;
-    const words = line.split(' ');
-    let currentLine = '';
-
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const testWidth = helvetica.widthOfTextAtSize(testLine, fontSize);
-
-      if (testWidth > maxWidth && currentLine) {
-        page.drawText(currentLine, {
-          x: margin,
-          y: yPosition,
-          size: fontSize,
-          font: helvetica,
-        });
-        yPosition -= lineHeight;
-        currentLine = word;
-
-        if (yPosition < margin + lineHeight) {
-          page = pdfDoc.addPage([pageWidth, pageHeight]);
-          yPosition = pageHeight - margin;
-        }
-      } else {
-        currentLine = testLine;
-      }
-    }
-
-    if (currentLine) {
-      page.drawText(currentLine, {
-        x: margin,
-        y: yPosition,
-        size: fontSize,
-        font: helvetica,
-      });
-      yPosition -= lineHeight;
-    }
-  }
-
-  return pdfDoc.save();
+function createTextFileBuffer(title: string, content: string): Buffer {
+  const fullText = `${title}\n${'='.repeat(title.length)}\n\n${content}`;
+  return Buffer.from(fullText, 'utf-8');
 }
 
 /**
@@ -958,39 +763,51 @@ function extractMotionContent(phaseOutputs: WorkflowState['phaseOutputs']): { co
 }
 
 /**
- * Generate motion PDF and upload to Supabase Storage.
+ * Generate motion DOCX and upload to Supabase Storage.
  * Returns the public URL or undefined on failure.
  */
-async function generateAndUploadMotionPdf(
+async function generateAndUploadMotionDocx(
   state: WorkflowState,
   supabase: ReturnType<typeof getSupabase>
 ): Promise<string | undefined> {
   const start = Date.now();
-  console.log('[generate-motion-pdf] Starting...');
+  console.log('[generate-motion-docx] Starting...');
 
   try {
     const { content, source } = extractMotionContent(state.phaseOutputs);
-    console.log(`[generate-motion-pdf] Motion source: ${source}, length: ${content.length} chars`);
+    console.log(`[generate-motion-docx] Motion source: ${source}, length: ${content.length} chars`);
 
-    const pdfBytes = await createSimpleMotionPDF(content, state.orderContext);
-    console.log(`[generate-motion-pdf] PDF created in ${Date.now() - start}ms`);
+    // Create a simple DOCX from the motion content
+    const { Document, Packer, Paragraph, TextRun } = await import('docx');
+    const lines = content.split('\n');
+    const paragraphs = lines.map(line => new Paragraph({
+      children: [new TextRun({ text: line, font: 'Times New Roman', size: 24 })],
+      spacing: { after: 240 },
+    }));
+
+    const doc = new Document({
+      sections: [{ children: paragraphs }],
+    });
+
+    const docxBuffer = await Packer.toBuffer(doc);
+    console.log(`[generate-motion-docx] DOCX created in ${Date.now() - start}ms`);
 
     const uploadStart = Date.now();
     const url = await uploadToSupabaseStorage(
       supabase,
-      `orders/${state.orderId}/deliverables/motion.pdf`,
-      pdfBytes
+      `orders/${state.orderId}/deliverables/motion.docx`,
+      docxBuffer
     );
-    console.log(`[generate-motion-pdf] Uploaded in ${Date.now() - uploadStart}ms, total: ${Date.now() - start}ms`);
+    console.log(`[generate-motion-docx] Uploaded in ${Date.now() - uploadStart}ms, total: ${Date.now() - start}ms`);
     return url;
   } catch (error) {
-    console.error('[generate-motion-pdf] Error:', error);
+    console.error('[generate-motion-docx] Error:', error);
     return undefined;
   }
 }
 
 /**
- * Generate instruction sheet PDF and upload to Supabase Storage.
+ * Generate instruction sheet text file and upload to Supabase Storage.
  */
 async function generateAndUploadInstructionSheet(
   state: WorkflowState,
@@ -1014,14 +831,14 @@ async function generateAndUploadInstructionSheet(
       actualCitationCount || state.citationCount,
       judgeResult
     );
-    const pdfBytes = await createSimpleTextPDF('ATTORNEY INSTRUCTION SHEET', content);
-    console.log(`[generate-instruction-sheet] PDF created in ${Date.now() - start}ms`);
+    const txtBuffer = createTextFileBuffer('ATTORNEY INSTRUCTION SHEET', content);
+    console.log(`[generate-instruction-sheet] Text file created in ${Date.now() - start}ms`);
 
     const uploadStart = Date.now();
     const url = await uploadToSupabaseStorage(
       supabase,
-      `orders/${state.orderId}/deliverables/instruction-sheet.pdf`,
-      pdfBytes
+      `orders/${state.orderId}/deliverables/instruction-sheet.txt`,
+      txtBuffer
     );
     console.log(`[generate-instruction-sheet] Uploaded in ${Date.now() - uploadStart}ms, total: ${Date.now() - start}ms`);
     return url;
@@ -1104,14 +921,14 @@ async function generateAndUploadCitationReport(
     }
 
     const reportContent = generateCitationReportContent(allCitations, actualCitationCount);
-    const pdfBytes = await createSimpleTextPDF('CITATION ACCURACY REPORT', reportContent);
-    console.log(`[generate-citation-report] PDF created in ${Date.now() - start}ms`);
+    const txtBuffer = createTextFileBuffer('CITATION ACCURACY REPORT', reportContent);
+    console.log(`[generate-citation-report] Text file created in ${Date.now() - start}ms`);
 
     const uploadStart = Date.now();
     const url = await uploadToSupabaseStorage(
       supabase,
-      `orders/${state.orderId}/deliverables/citation-report.pdf`,
-      pdfBytes
+      `orders/${state.orderId}/deliverables/citation-report.txt`,
+      txtBuffer
     );
     console.log(`[generate-citation-report] Uploaded in ${Date.now() - uploadStart}ms, total: ${Date.now() - start}ms`);
     return url;
@@ -1122,7 +939,7 @@ async function generateAndUploadCitationReport(
 }
 
 /**
- * Generate caption QC report PDF and upload to Supabase Storage.
+ * Generate caption QC report text file and upload to Supabase Storage.
  */
 async function generateAndUploadCaptionQcReport(
   state: WorkflowState,
@@ -1134,14 +951,14 @@ async function generateAndUploadCaptionQcReport(
   try {
     const qcResult = state.phaseOutputs["IX.1"] as { qcPasses: boolean; qcIssues: string[]; qcCorrections: string[] } | undefined;
     const content = generateCaptionQcReportContent(qcResult);
-    const pdfBytes = await createSimpleTextPDF('CAPTION QC REPORT', content);
-    console.log(`[generate-caption-qc-report] PDF created in ${Date.now() - start}ms`);
+    const txtBuffer = createTextFileBuffer('CAPTION QC REPORT', content);
+    console.log(`[generate-caption-qc-report] Text file created in ${Date.now() - start}ms`);
 
     const uploadStart = Date.now();
     const url = await uploadToSupabaseStorage(
       supabase,
-      `orders/${state.orderId}/deliverables/caption-qc-report.pdf`,
-      pdfBytes
+      `orders/${state.orderId}/deliverables/caption-qc-report.txt`,
+      txtBuffer
     );
     console.log(`[generate-caption-qc-report] Uploaded in ${Date.now() - uploadStart}ms, total: ${Date.now() - start}ms`);
     return url;
@@ -1152,7 +969,7 @@ async function generateAndUploadCaptionQcReport(
 }
 
 /**
- * Persist deliverable records to the database after all PDFs have been generated.
+ * Persist deliverable records to the database after all deliverables have been generated.
  * Inserts document records, updates the order, and logs completion.
  */
 async function persistDeliverableRecords(
@@ -1165,12 +982,12 @@ async function persistDeliverableRecords(
 
   const storagePath = `orders/${orderId}/deliverables`;
 
-  // SP12-04 FIX: Insert deliverable records into documents table with is_deliverable: true.
-  const deliverableEntries: Array<{ name: string; url: string | undefined; type: string }> = [
-    { name: 'motion.pdf', url: deliverableUrls.motionPdf, type: 'motion' },
-    { name: 'instruction-sheet.pdf', url: deliverableUrls.attorneyInstructionSheet, type: 'instruction_sheet' },
-    { name: 'citation-report.pdf', url: deliverableUrls.citationAccuracyReport, type: 'citation_report' },
-    { name: 'caption-qc-report.pdf', url: deliverableUrls.captionQcReport, type: 'caption_qc_report' },
+  // Insert deliverable records into documents table with is_deliverable: true.
+  const deliverableEntries: Array<{ name: string; url: string | undefined; type: string; mimeType: string }> = [
+    { name: 'motion.docx', url: deliverableUrls.motionDocx, type: 'motion', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    { name: 'instruction-sheet.txt', url: deliverableUrls.attorneyInstructionSheet, type: 'instruction_sheet', mimeType: 'text/plain' },
+    { name: 'citation-report.txt', url: deliverableUrls.citationAccuracyReport, type: 'citation_report', mimeType: 'text/plain' },
+    { name: 'caption-qc-report.txt', url: deliverableUrls.captionQcReport, type: 'caption_qc_report', mimeType: 'text/plain' },
   ];
 
   for (const entry of deliverableEntries) {
@@ -1178,7 +995,7 @@ async function persistDeliverableRecords(
       const { error } = await supabase.from('documents').insert({
         order_id: orderId,
         file_name: entry.name,
-        file_type: 'application/pdf',
+        file_type: entry.mimeType,
         file_size: 0,
         file_url: `${storagePath}/${entry.name}`,
         document_type: entry.type,
@@ -3332,11 +3149,10 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
     // STEP 15: Generate Deliverables (before CP3 handoff)
     // Split into separate steps so each gets its own 300s timeout.
-    // Previously a single step.run that packed 4 PDF generations + 4 storage
-    // uploads + 6 DB writes, causing FUNCTION_INVOCATION_TIMEOUT.
+    // PDF generation removed — ship DOCX + text reports only.
     // ========================================================================
-    const motionPdfUrl = await step.run("generate-motion-pdf", async () => {
-      return await generateAndUploadMotionPdf(workflowState, supabase);
+    const motionDocxUrl = await step.run("generate-motion-docx", async () => {
+      return await generateAndUploadMotionDocx(workflowState, supabase);
     });
 
     const instructionSheetUrl = await step.run("generate-instruction-sheet", async () => {
@@ -3353,7 +3169,7 @@ export const generateOrderWorkflow = inngest.createFunction(
 
     await step.run("persist-deliverable-records", async () => {
       await persistDeliverableRecords(workflowState.orderId, workflowState.workflowId, {
-        motionPdf: motionPdfUrl ?? undefined,
+        motionDocx: motionDocxUrl ?? undefined,
         attorneyInstructionSheet: instructionSheetUrl ?? undefined,
         citationAccuracyReport: citationReportUrl ?? undefined,
         captionQcReport: captionQcReportUrl ?? undefined,
