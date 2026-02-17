@@ -50,18 +50,19 @@ export default function SettingsPage() {
           .single()
 
         if (error && error.code === 'PGRST116') {
-          // Profile doesn't exist - create one
+          // Profile doesn't exist — should have been created by handle_new_user trigger.
+          // Insert with correct defaults matching the trigger's schema constraints.
           const newProfile = {
             id: user.id,
-            email: user.email,
+            email: user.email || '',
             full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || '',
             phone: null,
-            bar_number: null,
+            bar_number: '',
             states_licensed: [],
             firm_name: null,
             firm_address: null,
             firm_phone: null,
-            role: 'client',
+            role: 'customer',
           }
 
           const { error: insertError } = await supabase
@@ -69,7 +70,7 @@ export default function SettingsPage() {
             .insert(newProfile)
 
           if (insertError) {
-            // Still show the form with default values
+            console.error('[Settings] Profile insert error:', insertError.code, insertError.message)
           }
 
           setProfile({
@@ -125,31 +126,36 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      // Try update first, then upsert if it fails
+      // Update profile — do NOT include `role` (blocked by RLS privilege escalation policy)
+      // and do NOT include `id`/`email` (immutable identity fields)
       const { error } = await supabase
         .from('profiles')
-        .upsert({
-          id: user.id,
-          email: user.email,
+        .update({
           full_name: profile.full_name,
           phone: profile.phone,
-          bar_number: profile.bar_number,
+          bar_number: profile.bar_number || '',
           firm_name: profile.firm_name,
           firm_address: profile.firm_address,
           firm_phone: profile.firm_phone,
-          role: 'client',
+          updated_at: new Date().toISOString(),
         })
+        .eq('id', user.id)
 
-      if (error) throw error
+      if (error) {
+        console.error('[Settings] Save error:', error.code, error.message, error.details)
+        throw error
+      }
 
       toast({
         title: 'Settings saved',
         description: 'Your account settings have been updated.',
       })
     } catch (error) {
+      console.error('[Settings] handleSave failed:', error)
+      const message = error instanceof Error ? error.message : 'Unknown error'
       toast({
         title: 'Error saving settings',
-        description: 'Please try again later.',
+        description: message.includes('violates') ? 'A required field is missing.' : 'Please try again later.',
         variant: 'destructive',
       })
     } finally {
