@@ -194,6 +194,9 @@ export interface OrderCitation {
   adminReviewedBy?: string;
   adminNotes?: string;
 
+  // Draft usage
+  inDraft?: boolean;              // true if citation is used in the motion draft
+
   displayOrder: number;
   createdAt?: string;
   updatedAt?: string;

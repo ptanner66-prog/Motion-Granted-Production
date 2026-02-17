@@ -90,6 +90,7 @@ function transformDbToOrderCitation(row: Record<string, unknown>): OrderCitation
     adminReviewedAt: row.admin_reviewed_at as string | undefined,
     adminReviewedBy: row.admin_reviewed_by as string | undefined,
     adminNotes: row.admin_notes as string | undefined,
+    inDraft: row.in_draft as boolean | undefined,
     displayOrder: (row.display_order as number) || 0,
     createdAt: row.created_at as string | undefined,
     updatedAt: row.updated_at as string | undefined,

@@ -45,6 +45,8 @@ import { JudgeSimulationCard } from '@/components/workflow/JudgeSimulationCard'
 import { CitationViewer } from '@/components/citations'
 import type { WorkflowPhaseCode, PhaseStatus, JudgeSimulationResult } from '@/types/workflow'
 
+const TIER_INT_TO_LETTER: Record<number, string> = { 0: 'A', 1: 'B', 2: 'C', 3: 'D' }
+
 export const metadata: Metadata = {
   title: 'Order Details - Admin',
   description: 'View and manage order details.',
@@ -185,8 +187,8 @@ export default async function AdminOrderDetailPage({
                 {order.order_number}
               </h1>
               <OrderStatusBadge status={order.status as OrderStatus} />
-              {order.motion_tier && (
-                <TierBadge tier={order.motion_tier} showTooltip />
+              {order.motion_tier != null && (
+                <TierBadge tier={TIER_INT_TO_LETTER[order.motion_tier] || String(order.motion_tier)} showTooltip />
               )}
             </div>
             <p className="text-lg text-gray-600">{formatMotionType(order.motion_type)}</p>
