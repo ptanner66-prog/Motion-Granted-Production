@@ -75,18 +75,76 @@ export async function POST(request: Request) {
     }
 
     // Generate DOCX from the motion content
-    const { Document, Packer, Paragraph, TextRun } = await import('docx');
-    const lines = (conversation.generated_motion as string).split('\n');
-    const paragraphs = lines.map((line: string) => new Paragraph({
-      children: [new TextRun({ text: line, font: 'Times New Roman', size: 24 })],
-      spacing: { after: 240 },
-    }));
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import('docx');
 
-    const doc = new Document({
-      sections: [{ children: paragraphs }],
-    });
+    const motionData = conversation.generated_motion;
+    let docxBuffer: Buffer;
 
-    const docxBuffer = Buffer.from(await Packer.toBuffer(doc));
+    // Check if the motion is a structured object (from Phase V/VIII output)
+    const motionObj = typeof motionData === 'string' ? (() => { try { return JSON.parse(motionData); } catch { return null; } })() : motionData;
+    const isStructured = motionObj && typeof motionObj === 'object' && (motionObj.caption || motionObj.title || motionObj.introduction);
+
+    if (isStructured) {
+      // Structured motion — render with proper formatting
+      const font = 'Times New Roman';
+      const bodySize = 24;
+      const children: InstanceType<typeof Paragraph>[] = [];
+
+      const textToParas = (text: string, opts?: { bold?: boolean; alignment?: typeof AlignmentType.CENTER }) => {
+        for (const line of String(text).split('\n')) {
+          children.push(new Paragraph({
+            children: [new TextRun({ text: line, font, size: bodySize, bold: opts?.bold })],
+            alignment: opts?.alignment,
+            spacing: { after: 200 },
+          }));
+        }
+      };
+      const spacer = () => children.push(new Paragraph({ children: [], spacing: { after: 200 } }));
+
+      if (motionObj.caption) { textToParas(String(motionObj.caption), { bold: true, alignment: AlignmentType.CENTER }); spacer(); }
+      if (motionObj.title) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: String(motionObj.title), font, size: bodySize, bold: true, allCaps: true })],
+          alignment: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1, spacing: { after: 300 },
+        }));
+        spacer();
+      }
+      if (motionObj.introduction) { textToParas(String(motionObj.introduction)); spacer(); }
+      if (motionObj.statementOfFacts) {
+        children.push(new Paragraph({ children: [new TextRun({ text: 'STATEMENT OF FACTS', font, size: bodySize, bold: true })], heading: HeadingLevel.HEADING_2, spacing: { after: 200 } }));
+        textToParas(String(motionObj.statementOfFacts)); spacer();
+      }
+      const legalArgs = motionObj.legalArguments as Array<{ heading?: string; content?: string }> | undefined;
+      if (legalArgs && Array.isArray(legalArgs)) {
+        for (const arg of legalArgs) {
+          if (arg.heading) children.push(new Paragraph({ children: [new TextRun({ text: arg.heading, font, size: bodySize, bold: true })], heading: HeadingLevel.HEADING_2, spacing: { after: 200 } }));
+          if (arg.content) textToParas(arg.content);
+          spacer();
+        }
+      }
+      if (motionObj.conclusion) {
+        children.push(new Paragraph({ children: [new TextRun({ text: 'CONCLUSION', font, size: bodySize, bold: true })], heading: HeadingLevel.HEADING_2, spacing: { after: 200 } }));
+        textToParas(String(motionObj.conclusion)); spacer();
+      }
+      if (motionObj.prayerForRelief) { textToParas(String(motionObj.prayerForRelief)); spacer(); }
+      if (motionObj.signature) { spacer(); textToParas(String(motionObj.signature)); }
+      if (motionObj.certificateOfService) {
+        children.push(new Paragraph({ children: [], pageBreakBefore: true }));
+        children.push(new Paragraph({ children: [new TextRun({ text: 'CERTIFICATE OF SERVICE', font, size: bodySize, bold: true })], alignment: AlignmentType.CENTER, heading: HeadingLevel.HEADING_2, spacing: { after: 200 } }));
+        textToParas(String(motionObj.certificateOfService));
+      }
+
+      docxBuffer = Buffer.from(await Packer.toBuffer(new Document({ sections: [{ children }] })));
+    } else {
+      // Plain text — wrap line-by-line
+      const text = typeof motionData === 'string' ? motionData : JSON.stringify(motionData, null, 2);
+      const lines = text.split('\n');
+      const paragraphs = lines.map((line: string) => new Paragraph({
+        children: [new TextRun({ text: line, font: 'Times New Roman', size: 24 })],
+        spacing: { after: 240 },
+      }));
+      docxBuffer = Buffer.from(await Packer.toBuffer(new Document({ sections: [{ children: paragraphs }] })));
+    }
     const fileName = `${order.order_number}_motion.docx`;
     const storagePath = `orders/${orderId}/deliverables/${fileName}`;
 

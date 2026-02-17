@@ -111,7 +111,7 @@ export default async function AdminOrdersPage() {
   const allOrders: Order[] = orders || []
 
   // Categorize orders by status
-  const needsApprovalOrders = allOrders.filter(o => o.status === 'pending_review')
+  const needsApprovalOrders = allOrders.filter(o => o.status === 'pending_review' || o.status === 'AWAITING_APPROVAL')
   const revisionRequestedOrders = allOrders.filter(o => o.status === 'revision_requested')
   const inProgressOrders = allOrders.filter(o => ['submitted', 'in_progress', 'under_review', 'assigned'].includes(o.status))
   const deliveredOrders = allOrders.filter(o => ['draft_delivered', 'revision_delivered'].includes(o.status))
