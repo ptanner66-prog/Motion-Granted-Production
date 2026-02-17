@@ -4658,17 +4658,35 @@ ${JSON.stringify(finalMotion, null, 2)}
 
 Generate supporting documents. The Certificate of Service MUST include the exact attorney signature block shown above. Provide as JSON.`;
 
-    const response = await createMessageWithStreaming(client, {
+    const requestParams: Anthropic.MessageCreateParams = {
       model: resolveModelForExecution('IX', input.tier),
-      max_tokens: resolveMaxTokensForExecution('IX', input.tier), // Phase IX: Registry-driven
+      max_tokens: resolveMaxTokensForExecution('IX', input.tier), // Phase IX: Registry-driven (32768)
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-    });
+    };
+
+    const response = await createMessageWithStreaming(client, requestParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
 
-    const parsed = extractJSON(outputText, { phase: 'IX', orderId: input.orderId });
+    // Truncation detection — if response was cut off at max_tokens, retry with 1.5x budget
+    let outputTextFinal = outputText;
+    if (response.stop_reason === 'max_tokens') {
+      console.warn(`[Phase IX] Response truncated at max_tokens (${outputText.length} chars) — retrying with 1.5x budget`);
+      const retryParams = {
+        ...requestParams,
+        max_tokens: Math.ceil((requestParams.max_tokens as number) * 1.5),
+      } as Anthropic.MessageCreateParams;
+      const retryResponse = await createMessageWithStreaming(client, retryParams) as Anthropic.Message;
+      if (retryResponse.stop_reason === 'max_tokens') {
+        console.warn('[Phase IX] Response truncated TWICE — attempting JSON repair on truncated output');
+      }
+      const retryTextContent = retryResponse.content.find(c => c.type === 'text');
+      outputTextFinal = retryTextContent?.type === 'text' ? retryTextContent.text : outputText;
+    }
+
+    const parsed = extractJSON(outputTextFinal, { phase: 'IX', orderId: input.orderId });
     if (!parsed.success) {
       console.error(`[Phase IX] JSON extraction failed for order ${input.orderId}: ${parsed.error}`);
       return {

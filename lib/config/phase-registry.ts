@@ -164,6 +164,12 @@ const SONNET_STANDARD: RouteConfig = {
   maxTokens: 16384,
 };
 
+/** Phase IX generates multiple supporting documents — needs higher token budget to avoid truncation. */
+const SONNET_HIGH_OUTPUT: RouteConfig = {
+  model: MODELS.SONNET,
+  maxTokens: 32768,
+};
+
 const OPUS_STANDARD: RouteConfig = {
   model: MODELS.OPUS,
   maxTokens: 16384,
@@ -423,16 +429,16 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
   },
 
   // ── Phase IX: Supporting Documents ────────────────────────────────
-  // MODE: CHAT. Sonnet all tiers.
+  // MODE: CHAT. Sonnet all tiers. HIGH_OUTPUT (32768 tokens) to prevent truncation.
   // Declaration, separate statement, proposed order, memorandum.
   'IX': {
     name: 'Supporting Documents',
     mode: 'CHAT',
     routing: {
-      A: SONNET_STANDARD,
-      B: SONNET_STANDARD,
-      C: SONNET_STANDARD,
-      D: SONNET_STANDARD,
+      A: SONNET_HIGH_OUTPUT,
+      B: SONNET_HIGH_OUTPUT,
+      C: SONNET_HIGH_OUTPUT,
+      D: SONNET_HIGH_OUTPUT,
     },
   },
 
