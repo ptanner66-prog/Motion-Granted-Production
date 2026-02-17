@@ -107,6 +107,7 @@ export const ORDER_STATUSES = {
   in_progress: { label: "In Progress", color: "indigo", bgColor: "bg-indigo-100", textColor: "text-indigo-800" },
   processing: { label: "Processing", color: "blue", bgColor: "bg-blue-100", textColor: "text-blue-800" },
   pending_review: { label: "Ready for Review", color: "amber", bgColor: "bg-amber-100", textColor: "text-amber-800" },
+  AWAITING_APPROVAL: { label: "Awaiting Approval", color: "amber", bgColor: "bg-amber-100", textColor: "text-amber-800" },
   draft_delivered: { label: "Delivered", color: "green", bgColor: "bg-green-100", textColor: "text-green-800" },
   revision_requested: { label: "Revision Requested", color: "purple", bgColor: "bg-purple-100", textColor: "text-purple-800" },
   revision_in_progress: { label: "Revision In Progress", color: "purple", bgColor: "bg-purple-100", textColor: "text-purple-800" },

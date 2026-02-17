@@ -739,10 +739,14 @@ function formatMotionObjectToText(motion: Record<string, unknown>): string {
 // ============================================================================
 
 /**
- * Extract motion content from the best available phase output.
- * Returns { content, source } where source describes the origin phase.
+ * Extract the best available motion object from phase outputs.
+ * Returns the raw object (for structured DOCX generation) and source info.
  */
-function extractMotionContent(phaseOutputs: WorkflowState['phaseOutputs']): { content: string; source: string } {
+function extractMotionObject(phaseOutputs: WorkflowState['phaseOutputs']): {
+  motionObj: Record<string, unknown> | null;
+  plainText: string | null;
+  source: string;
+} {
   const phaseXOutput = (phaseOutputs?.["X"] ?? {}) as Record<string, unknown>;
   const phaseVIIIOutput = (phaseOutputs?.["VIII"] ?? {}) as Record<string, unknown>;
   const phaseVOutput = (phaseOutputs?.["V"] ?? {}) as Record<string, unknown>;
@@ -751,20 +755,169 @@ function extractMotionContent(phaseOutputs: WorkflowState['phaseOutputs']): { co
   const revisedMotion = phaseVIIIOutput?.revisedMotion as Record<string, unknown> | undefined;
   const draftMotion = phaseVOutput?.draftMotion as Record<string, unknown> | undefined;
 
+  // Phase X sometimes provides motion as a pre-formatted string
   if (finalPackage?.motion && typeof finalPackage.motion === 'string') {
-    return { content: finalPackage.motion, source: 'Phase X finalPackage.motion' };
-  } else if (revisedMotion) {
-    return { content: formatMotionObjectToText(revisedMotion), source: 'Phase VIII revisedMotion' };
-  } else if (draftMotion) {
-    return { content: formatMotionObjectToText(draftMotion), source: 'Phase V draftMotion' };
+    return { motionObj: null, plainText: finalPackage.motion, source: 'Phase X finalPackage.motion' };
+  }
+  if (revisedMotion && typeof revisedMotion === 'object') {
+    return { motionObj: revisedMotion, plainText: null, source: 'Phase VIII revisedMotion' };
+  }
+  if (draftMotion && typeof draftMotion === 'object') {
+    return { motionObj: draftMotion, plainText: null, source: 'Phase V draftMotion' };
   }
 
+  return { motionObj: null, plainText: null, source: 'none' };
+}
+
+/**
+ * Legacy helper: extract motion content as plain text string.
+ * Used by finalize-workflow step and text-based reports.
+ */
+function extractMotionContent(phaseOutputs: WorkflowState['phaseOutputs']): { content: string; source: string } {
+  const { motionObj, plainText, source } = extractMotionObject(phaseOutputs);
+  if (plainText) return { content: plainText, source };
+  if (motionObj) return { content: formatMotionObjectToText(motionObj), source };
   return { content: 'Motion content not available - check phase outputs', source: 'none' };
 }
 
 /**
+ * Build a formatted DOCX from a structured motion object.
+ * Each section gets proper heading levels, fonts, and alignment.
+ */
+async function buildFormattedMotionDocx(motionObj: Record<string, unknown>): Promise<Uint8Array> {
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import('docx');
+
+  const font = 'Times New Roman';
+  const bodySize = 24; // 12pt in half-points
+  const children: InstanceType<typeof Paragraph>[] = [];
+
+  // Helper: split text on newlines and create paragraphs
+  const textToParagraphs = (text: string, opts?: { bold?: boolean; alignment?: typeof AlignmentType.CENTER; heading?: typeof HeadingLevel.HEADING_1 }) => {
+    const lines = text.split('\n');
+    for (const line of lines) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: line, font, size: bodySize, bold: opts?.bold })],
+        alignment: opts?.alignment,
+        heading: opts?.heading,
+        spacing: { after: 200 },
+      }));
+    }
+  };
+
+  // Spacer paragraph
+  const spacer = () => children.push(new Paragraph({ children: [], spacing: { after: 200 } }));
+
+  // CAPTION — centered, bold
+  if (motionObj.caption && typeof motionObj.caption === 'string') {
+    textToParagraphs(motionObj.caption, { bold: true, alignment: AlignmentType.CENTER });
+    spacer();
+  }
+
+  // TITLE — centered, bold, heading
+  if (motionObj.title && typeof motionObj.title === 'string') {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: String(motionObj.title), font, size: bodySize, bold: true, allCaps: true })],
+      alignment: AlignmentType.CENTER,
+      heading: HeadingLevel.HEADING_1,
+      spacing: { after: 300 },
+    }));
+    spacer();
+  }
+
+  // INTRODUCTION
+  if (motionObj.introduction && typeof motionObj.introduction === 'string') {
+    textToParagraphs(motionObj.introduction);
+    spacer();
+  }
+
+  // STATEMENT OF FACTS
+  if (motionObj.statementOfFacts && typeof motionObj.statementOfFacts === 'string') {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'STATEMENT OF FACTS', font, size: bodySize, bold: true })],
+      heading: HeadingLevel.HEADING_2,
+      spacing: { after: 200 },
+    }));
+    textToParagraphs(motionObj.statementOfFacts);
+    spacer();
+  }
+
+  // LEGAL ARGUMENTS
+  const legalArgs = motionObj.legalArguments as Array<{ heading?: string; content?: string }> | undefined;
+  if (legalArgs && Array.isArray(legalArgs)) {
+    for (const arg of legalArgs) {
+      if (arg.heading) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: arg.heading, font, size: bodySize, bold: true })],
+          heading: HeadingLevel.HEADING_2,
+          spacing: { after: 200 },
+        }));
+      }
+      if (arg.content) {
+        textToParagraphs(arg.content);
+      }
+      spacer();
+    }
+  }
+
+  // CONCLUSION
+  if (motionObj.conclusion && typeof motionObj.conclusion === 'string') {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'CONCLUSION', font, size: bodySize, bold: true })],
+      heading: HeadingLevel.HEADING_2,
+      spacing: { after: 200 },
+    }));
+    textToParagraphs(motionObj.conclusion);
+    spacer();
+  }
+
+  // PRAYER FOR RELIEF
+  if (motionObj.prayerForRelief && typeof motionObj.prayerForRelief === 'string') {
+    textToParagraphs(motionObj.prayerForRelief);
+    spacer();
+  }
+
+  // SIGNATURE BLOCK
+  if (motionObj.signature && typeof motionObj.signature === 'string') {
+    spacer();
+    textToParagraphs(motionObj.signature);
+  }
+
+  // CERTIFICATE OF SERVICE — page break before
+  if (motionObj.certificateOfService && typeof motionObj.certificateOfService === 'string') {
+    children.push(new Paragraph({ children: [], pageBreakBefore: true }));
+    children.push(new Paragraph({
+      children: [new TextRun({ text: 'CERTIFICATE OF SERVICE', font, size: bodySize, bold: true })],
+      alignment: AlignmentType.CENTER,
+      heading: HeadingLevel.HEADING_2,
+      spacing: { after: 200 },
+    }));
+    textToParagraphs(motionObj.certificateOfService);
+  }
+
+  const doc = new Document({
+    sections: [{ children }],
+  });
+  return Packer.toBuffer(doc);
+}
+
+/**
+ * Build a simple DOCX from plain text (line-by-line paragraphs).
+ */
+async function buildPlainTextDocx(text: string): Promise<Uint8Array> {
+  const { Document, Packer, Paragraph, TextRun } = await import('docx');
+  const lines = text.split('\n');
+  const paragraphs = lines.map(line => new Paragraph({
+    children: [new TextRun({ text: line, font: 'Times New Roman', size: 24 })],
+    spacing: { after: 240 },
+  }));
+  const doc = new Document({ sections: [{ children: paragraphs }] });
+  return Packer.toBuffer(doc);
+}
+
+/**
  * Generate motion DOCX and upload to Supabase Storage.
- * Returns the public URL or undefined on failure.
+ * Uses structured formatting when a motion object is available,
+ * falls back to plain text wrapping for pre-formatted strings.
  */
 async function generateAndUploadMotionDocx(
   state: WorkflowState,
@@ -774,22 +927,24 @@ async function generateAndUploadMotionDocx(
   console.log('[generate-motion-docx] Starting...');
 
   try {
-    const { content, source } = extractMotionContent(state.phaseOutputs);
-    console.log(`[generate-motion-docx] Motion source: ${source}, length: ${content.length} chars`);
+    const { motionObj, plainText, source } = extractMotionObject(state.phaseOutputs);
+    console.log(`[generate-motion-docx] Motion source: ${source}`);
 
-    // Create a simple DOCX from the motion content
-    const { Document, Packer, Paragraph, TextRun } = await import('docx');
-    const lines = content.split('\n');
-    const paragraphs = lines.map(line => new Paragraph({
-      children: [new TextRun({ text: line, font: 'Times New Roman', size: 24 })],
-      spacing: { after: 240 },
-    }));
+    let docxBuffer: Uint8Array;
 
-    const doc = new Document({
-      sections: [{ children: paragraphs }],
-    });
+    if (motionObj) {
+      // Structured motion object — render with proper formatting
+      console.log(`[generate-motion-docx] Using structured DOCX assembly (keys: ${Object.keys(motionObj).join(', ')})`);
+      docxBuffer = await buildFormattedMotionDocx(motionObj);
+    } else if (plainText) {
+      // Pre-formatted text string — wrap line-by-line
+      console.log(`[generate-motion-docx] Using plain text DOCX (${plainText.length} chars)`);
+      docxBuffer = await buildPlainTextDocx(plainText);
+    } else {
+      console.error('[generate-motion-docx] No motion content found');
+      return undefined;
+    }
 
-    const docxBuffer = await Packer.toBuffer(doc);
     console.log(`[generate-motion-docx] DOCX created in ${Date.now() - start}ms`);
 
     const uploadStart = Date.now();

@@ -177,7 +177,7 @@ export default async function QueuePage() {
       generation_started_at,
       generation_completed_at
     `)
-    .in('status', ['pending_review', 'draft_delivered', 'completed'])
+    .in('status', ['pending_review', 'draft_delivered', 'completed', 'AWAITING_APPROVAL'])
     .gte('generation_completed_at', yesterday)
     .order('generation_completed_at', { ascending: false })
     .limit(10)
