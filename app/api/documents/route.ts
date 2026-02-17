@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { createLogger } from '@/lib/security/logger'
+import { STORAGE_BUCKETS } from '@/lib/config/storage'
 
 const log = createLogger('api-documents')
 
@@ -107,7 +108,7 @@ export async function POST(req: Request) {
 
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('documents')
+      .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
       .upload(filePath, fileBuffer, {
         contentType: file.type || 'application/octet-stream',
         cacheControl: '3600',
@@ -146,13 +147,13 @@ export async function POST(req: Request) {
 
     // Get signed URL (expires in 1 hour) instead of public URL for security
     const { data: urlData, error: urlError } = await supabase.storage
-      .from('documents')
+      .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
       .createSignedUrl(filePath, 3600)
 
     if (urlError) {
       log.error('Failed to create signed URL', { error: urlError })
       // Clean up uploaded file
-      await supabase.storage.from('documents').remove([filePath]).catch(() => {})
+      await supabase.storage.from(STORAGE_BUCKETS.ORDER_DOCUMENTS).remove([filePath]).catch(() => {})
       return NextResponse.json({ error: 'Failed to create secure file access' }, { status: 500 })
     }
 
@@ -176,7 +177,7 @@ export async function POST(req: Request) {
       log.error('Database insert error', { error: dbError })
 
       // Clean up uploaded file
-      await supabase.storage.from('documents').remove([filePath]).catch(() => {})
+      await supabase.storage.from(STORAGE_BUCKETS.ORDER_DOCUMENTS).remove([filePath]).catch(() => {})
 
       if (dbError.message?.includes('security') || dbError.message?.includes('policy')) {
         return NextResponse.json({

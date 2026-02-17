@@ -10,6 +10,7 @@
 
 import { getServiceSupabase } from '@/lib/supabase/admin';
 import { inngest } from '@/lib/inngest/client';
+import { STORAGE_BUCKETS } from '@/lib/config/storage';
 
 /**
  * DST-04: Atomic transactional cascade delete via RPC.
@@ -48,7 +49,7 @@ export async function deleteOrderData(orderId: string): Promise<{
   // Step 2: Storage cleanup (non-blocking — retry via Inngest if fails)
   let storageDeleted = false;
   try {
-    const buckets = ['order-documents', 'order-archive', 'client-uploads'];
+    const buckets = [STORAGE_BUCKETS.ORDER_DOCUMENTS, STORAGE_BUCKETS.ORDER_ARCHIVE, STORAGE_BUCKETS.CLIENT_UPLOADS];
     for (const bucket of buckets) {
       const { data: files } = await supabase.storage
         .from(bucket)

@@ -7,6 +7,7 @@ import { anonymizeOrderForAnalytics } from './anonymize';
 import { logActivity } from '@/lib/activity/activity-logger';
 
 import { createLogger } from '@/lib/security/logger';
+import { STORAGE_BUCKETS } from '@/lib/config/storage';
 
 const log = createLogger('retention-delete-order');
 export type DeletionType = 'AUTO' | 'CUSTOMER_REQUESTED' | 'ADMIN';
@@ -61,32 +62,19 @@ export async function deleteOrderData(
       // Continue with deletion even if anonymization fails
     }
 
-    // Step 3: Delete uploaded documents from storage
+    // Step 3: Delete uploaded documents and deliverables from storage
+    // Both are stored in the canonical ORDER_DOCUMENTS bucket
     try {
       const { data: files } = await supabase.storage
-        .from('order-documents')
+        .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
         .list(orderId);
 
       if (files && files.length > 0) {
         const filePaths = files.map((f: { name: string }) => `${orderId}/${f.name}`);
-        await supabase.storage.from('order-documents').remove(filePaths);
+        await supabase.storage.from(STORAGE_BUCKETS.ORDER_DOCUMENTS).remove(filePaths);
       }
     } catch (storageError) {
-      log.warn(`[Delete] Could not delete uploads for ${orderId}:`, storageError);
-    }
-
-    // Step 4: Delete deliverables from storage
-    try {
-      const { data: deliverables } = await supabase.storage
-        .from('deliverables')
-        .list(orderId);
-
-      if (deliverables && deliverables.length > 0) {
-        const deliverablePaths = deliverables.map((f: { name: string }) => `${orderId}/${f.name}`);
-        await supabase.storage.from('deliverables').remove(deliverablePaths);
-      }
-    } catch (storageError) {
-      log.warn(`[Delete] Could not delete deliverables for ${orderId}:`, storageError);
+      log.warn(`[Delete] Could not delete files for ${orderId}:`, storageError);
     }
 
     // Step 5: Delete related database records
