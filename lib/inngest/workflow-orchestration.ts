@@ -928,290 +928,287 @@ function formatMotionObjectToText(motion: Record<string, unknown>): string {
 }
 
 // ============================================================================
-// DELIVERABLE GENERATION
+// DELIVERABLE GENERATION — Individual step helpers
+// Each function generates a single deliverable for use in separate step.run()
+// calls, enabling Inngest to checkpoint between them and avoid timeouts.
 // ============================================================================
 
-async function generateDeliverables(
-  state: WorkflowState,
-  supabase: ReturnType<typeof getSupabase>
-): Promise<DeliverableResult> {
-  console.log('[generateDeliverables] Starting deliverable generation...');
-
-  const { orderId, workflowId, tier, orderContext, phaseOutputs, citationCount } = state;
-
-  // Defensive: Log available phase outputs
-  const availablePhases = Object.keys(phaseOutputs ?? {});
-  console.log(`[generateDeliverables] Available phases: ${availablePhases.join(', ') || 'NONE'}`);
-
-  // Extract phase outputs with CORRECT key names
-  // Phase VIII outputs: { revisedMotion: {...} } NOT { finalDraft: string }
+/**
+ * Extract motion content from the best available phase output.
+ * Returns { content, source } where source describes the origin phase.
+ */
+function extractMotionContent(phaseOutputs: WorkflowState['phaseOutputs']): { content: string; source: string } {
+  const phaseXOutput = (phaseOutputs?.["X"] ?? {}) as Record<string, unknown>;
   const phaseVIIIOutput = (phaseOutputs?.["VIII"] ?? {}) as Record<string, unknown>;
   const phaseVOutput = (phaseOutputs?.["V"] ?? {}) as Record<string, unknown>;
-  const phaseXOutput = (phaseOutputs?.["X"] ?? {}) as Record<string, unknown>;
 
-  console.log(`[generateDeliverables] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
-  console.log(`[generateDeliverables] Phase VIII keys: ${Object.keys(phaseVIIIOutput).join(', ') || 'EMPTY'}`);
-  console.log(`[generateDeliverables] Phase X keys: ${Object.keys(phaseXOutput).join(', ') || 'EMPTY'}`);
-
-  // Get the final motion from the correct location:
-  // 1. Phase X finalPackage.motion (best - final assembled)
-  // 2. Phase VIII revisedMotion (if revisions happened)
-  // 3. Phase V draftMotion (original draft)
   const finalPackage = phaseXOutput?.finalPackage as Record<string, unknown> | undefined;
   const revisedMotion = phaseVIIIOutput?.revisedMotion as Record<string, unknown> | undefined;
   const draftMotion = phaseVOutput?.draftMotion as Record<string, unknown> | undefined;
 
-  console.log(`[generateDeliverables] finalPackage exists: ${!!finalPackage}`);
-  console.log(`[generateDeliverables] revisedMotion exists: ${!!revisedMotion}`);
-  console.log(`[generateDeliverables] draftMotion exists: ${!!draftMotion}`);
+  if (finalPackage?.motion && typeof finalPackage.motion === 'string') {
+    return { content: finalPackage.motion, source: 'Phase X finalPackage.motion' };
+  } else if (revisedMotion) {
+    return { content: formatMotionObjectToText(revisedMotion), source: 'Phase VIII revisedMotion' };
+  } else if (draftMotion) {
+    return { content: formatMotionObjectToText(draftMotion), source: 'Phase V draftMotion' };
+  }
 
-  const judgeResult = phaseOutputs["VII"] as JudgeSimulationResult | undefined;
-  const qcResult = phaseOutputs["IX.1"] as { qcPasses: boolean; qcIssues: string[]; qcCorrections: string[] } | undefined;
+  return { content: 'Motion content not available - check phase outputs', source: 'none' };
+}
 
-  // Get citations from Phase IV with CORRECT keys
-  const phaseIVOutput = (phaseOutputs?.["IV"] ?? {}) as Record<string, unknown>;
-  const caseCitationBank = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
-  const statutoryCitationBank = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
-  const actualCitationCount = caseCitationBank.length + statutoryCitationBank.length;
-  console.log(`[generateDeliverables] Citations: ${caseCitationBank.length} case + ${statutoryCitationBank.length} statutory = ${actualCitationCount} total`);
+/**
+ * Generate motion PDF and upload to Supabase Storage.
+ * Returns the public URL or undefined on failure.
+ */
+async function generateAndUploadMotionPdf(
+  state: WorkflowState,
+  supabase: ReturnType<typeof getSupabase>
+): Promise<string | undefined> {
+  const start = Date.now();
+  console.log('[generate-motion-pdf] Starting...');
 
   try {
-    const storagePath = `orders/${orderId}/deliverables`;
-    const deliverableUrls: DeliverableResult = {};
+    const { content, source } = extractMotionContent(state.phaseOutputs);
+    console.log(`[generate-motion-pdf] Motion source: ${source}, length: ${content.length} chars`);
 
-    // 1. Generate Motion PDF (primary deliverable)
-    console.log('[generateDeliverables] Generating motion PDF...');
-    try {
-      // Get motion content from best available source
-      let motionContent: string = '';
+    const pdfBytes = await createSimpleMotionPDF(content, state.orderContext);
+    console.log(`[generate-motion-pdf] PDF created in ${Date.now() - start}ms`);
 
-      // Try Phase X finalPackage.motion first (full assembled motion text)
-      if (finalPackage?.motion && typeof finalPackage.motion === 'string') {
-        motionContent = finalPackage.motion;
-        console.log('[generateDeliverables] Using Phase X finalPackage.motion');
+    const uploadStart = Date.now();
+    const url = await uploadToSupabaseStorage(
+      supabase,
+      `orders/${state.orderId}/deliverables/motion.pdf`,
+      pdfBytes
+    );
+    console.log(`[generate-motion-pdf] Uploaded in ${Date.now() - uploadStart}ms, total: ${Date.now() - start}ms`);
+    return url;
+  } catch (error) {
+    console.error('[generate-motion-pdf] Error:', error);
+    return undefined;
+  }
+}
+
+/**
+ * Generate instruction sheet PDF and upload to Supabase Storage.
+ */
+async function generateAndUploadInstructionSheet(
+  state: WorkflowState,
+  supabase: ReturnType<typeof getSupabase>
+): Promise<string | undefined> {
+  const start = Date.now();
+  console.log('[generate-instruction-sheet] Starting...');
+
+  try {
+    const phaseIVOutput = (state.phaseOutputs?.["IV"] ?? {}) as Record<string, unknown>;
+    const caseCitations = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
+    const statuteCitations = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
+    const actualCitationCount = caseCitations.length + statuteCitations.length;
+
+    const judgeResult = state.phaseOutputs["VII"] as JudgeSimulationResult | undefined;
+
+    const content = generateInstructionSheetContent(
+      state.orderId,
+      state.orderContext,
+      state.tier,
+      actualCitationCount || state.citationCount,
+      judgeResult
+    );
+    const pdfBytes = await createSimpleTextPDF('ATTORNEY INSTRUCTION SHEET', content);
+    console.log(`[generate-instruction-sheet] PDF created in ${Date.now() - start}ms`);
+
+    const uploadStart = Date.now();
+    const url = await uploadToSupabaseStorage(
+      supabase,
+      `orders/${state.orderId}/deliverables/instruction-sheet.pdf`,
+      pdfBytes
+    );
+    console.log(`[generate-instruction-sheet] Uploaded in ${Date.now() - uploadStart}ms, total: ${Date.now() - start}ms`);
+    return url;
+  } catch (error) {
+    console.error('[generate-instruction-sheet] Error:', error);
+    return undefined;
+  }
+}
+
+/**
+ * Generate citation accuracy report PDF and upload to Supabase Storage.
+ */
+async function generateAndUploadCitationReport(
+  state: WorkflowState,
+  supabase: ReturnType<typeof getSupabase>
+): Promise<string | undefined> {
+  const start = Date.now();
+  console.log('[generate-citation-report] Starting...');
+
+  try {
+    const phaseIVOutput = (state.phaseOutputs?.["IV"] ?? {}) as Record<string, unknown>;
+    const caseCitationBank = (phaseIVOutput?.caseCitationBank ?? []) as unknown[];
+    const statutoryCitationBank = (phaseIVOutput?.statutoryCitationBank ?? []) as unknown[];
+    const actualCitationCount = caseCitationBank.length + statutoryCitationBank.length;
+
+    // BINDING 02/16/26 (ING-011R): Use REAL verification results from Phase V.1/VII.1/IX.1.
+    // NEVER hardcode status:'VERIFIED' or confidence:1.0.
+    // SP-18 Issue 3: Read actual pipeline results, merge all verification phases.
+    const phaseV1Output = (state.phaseOutputs?.["V.1"] ?? {}) as Record<string, unknown>;
+    const phaseVII1Output = (state.phaseOutputs?.["VII.1"] ?? {}) as Record<string, unknown>;
+    const phaseIX1Output = (state.phaseOutputs?.["IX.1"] ?? {}) as Record<string, unknown>;
+
+    const v1Results = (phaseV1Output?.verificationResults ?? phaseV1Output?.citations ?? []) as Array<Record<string, unknown>>;
+    const vii1Results = (phaseVII1Output?.verificationResults ?? phaseVII1Output?.citations ?? []) as Array<Record<string, unknown>>;
+
+    const ix1Audit = phaseIX1Output?.finalCitationAudit as Record<string, unknown> | undefined;
+    const ix1RejectedCitations = new Set(
+      ((ix1Audit?.rejectedCitations ?? []) as string[]).map(c => c.toLowerCase().replace(/\s+/g, ' ').trim())
+    );
+
+    const allCitations: Array<{ citation: string; status: string; confidence: number }> = [];
+    const seenNormalized = new Set<string>();
+
+    for (const r of [...v1Results, ...vii1Results]) {
+      const civResult = r.civResult as Record<string, unknown> | undefined;
+      const compositeResult = civResult?.compositeResult as Record<string, unknown> | undefined;
+      const citationStr = String(r.citation ?? r.citationString ?? 'Unknown citation');
+      const normalized = citationStr.toLowerCase().replace(/\s+/g, ' ').trim();
+
+      if (seenNormalized.has(normalized)) {
+        const idx = allCitations.findIndex(
+          c => c.citation.toLowerCase().replace(/\s+/g, ' ').trim() === normalized
+        );
+        if (idx !== -1) allCitations.splice(idx, 1);
       }
-      // Try Phase VIII revisedMotion
-      else if (revisedMotion) {
-        motionContent = formatMotionObjectToText(revisedMotion);
-        console.log('[generateDeliverables] Using Phase VIII revisedMotion');
-      }
-      // Fallback to Phase V draftMotion
-      else if (draftMotion) {
-        motionContent = formatMotionObjectToText(draftMotion);
-        console.log('[generateDeliverables] Using Phase V draftMotion');
-      }
-      else {
-        console.error('[generateDeliverables] ERROR: No motion content found in any phase!');
-        motionContent = 'Motion content not available - check phase outputs';
+      seenNormalized.add(normalized);
+
+      // SP-18 FIX: Read confidenceScore (CIV field name), NOT confidence
+      let status = String(compositeResult?.status ?? r.status ?? (r.verified ? 'VERIFIED' : 'UNVERIFIED'));
+      const confidence = Number(compositeResult?.confidenceScore ?? compositeResult?.confidence ?? r.confidence ?? 0);
+
+      // SP-18: IX.1 final audit rejection overrides previous VERIFIED
+      if (ix1RejectedCitations.has(normalized) && status === 'VERIFIED') {
+        status = 'REJECTED';
+        console.warn(`[generate-citation-report] Citation downgraded by IX.1 final audit: ${citationStr}`);
       }
 
-      console.log(`[generateDeliverables] Motion content length: ${motionContent.length} chars`);
-
-      const motionPdfBytes = await createSimpleMotionPDF(motionContent, orderContext);
-      const motionUrl = await uploadToSupabaseStorage(
-        supabase,
-        `${storagePath}/motion.pdf`,
-        motionPdfBytes
-      );
-      deliverableUrls.motionPdf = motionUrl;
-      console.log('[generateDeliverables] Motion PDF generated:', motionUrl);
-    } catch (error) {
-      console.error('[generateDeliverables] Error generating motion PDF:', error);
+      allCitations.push({ citation: citationStr, status, confidence });
     }
 
-    // 2. Generate Attorney Instruction Sheet
-    console.log('[generateDeliverables] Generating instruction sheet...');
-    try {
-      // Use actual citation count from Phase IV
-      const instructionContent = generateInstructionSheetContent(
-        orderId,
-        orderContext,
-        tier,
-        actualCitationCount || citationCount, // Use our calculated count, fallback to state
-        judgeResult
-      );
-      const instructionPdfBytes = await createSimpleTextPDF('ATTORNEY INSTRUCTION SHEET', instructionContent);
-      const instructionUrl = await uploadToSupabaseStorage(
-        supabase,
-        `${storagePath}/instruction-sheet.pdf`,
-        instructionPdfBytes
-      );
-      deliverableUrls.attorneyInstructionSheet = instructionUrl;
-      console.log('[generateDeliverables] Instruction sheet generated:', instructionUrl);
-    } catch (error) {
-      console.error('[generateDeliverables] Error generating instruction sheet:', error);
-    }
-
-    // 3. Generate Citation Accuracy Report
-    console.log('[generateDeliverables] Generating citation report...');
-    try {
-      // BINDING 02/16/26 (ING-011R): Use REAL verification results from Phase V.1/VII.1/IX.1.
-      // NEVER hardcode status:'VERIFIED' or confidence:1.0.
-      // SP-18 Issue 3: Read actual pipeline results, merge all verification phases.
-      const phaseV1Output = (phaseOutputs?.["V.1"] ?? {}) as Record<string, unknown>;
-      const phaseVII1Output = (phaseOutputs?.["VII.1"] ?? {}) as Record<string, unknown>;
-      const phaseIX1Output = (phaseOutputs?.["IX.1"] ?? {}) as Record<string, unknown>;
-
-      // Extract real verification results from CIV pipeline output
-      const v1Results = (phaseV1Output?.verificationResults ?? phaseV1Output?.citations ?? []) as Array<Record<string, unknown>>;
-      const vii1Results = (phaseVII1Output?.verificationResults ?? phaseVII1Output?.citations ?? []) as Array<Record<string, unknown>>;
-
-      // IX.1 final audit: extract rejected citations to downgrade any previously VERIFIED
-      const ix1Audit = phaseIX1Output?.finalCitationAudit as Record<string, unknown> | undefined;
-      const ix1RejectedCitations = new Set(
-        ((ix1Audit?.rejectedCitations ?? []) as string[]).map(c => c.toLowerCase().replace(/\s+/g, ' ').trim())
-      );
-
-      // Build citation report from actual pipeline results
-      const allCitations: Array<{ citation: string; status: string; confidence: number }> = [];
-      const seenNormalized = new Set<string>();
-
-      // Map CIV pipeline results to report format — VII.1 results override V.1 for duplicates
-      for (const r of [...v1Results, ...vii1Results]) {
-        const civResult = r.civResult as Record<string, unknown> | undefined;
-        const compositeResult = civResult?.compositeResult as Record<string, unknown> | undefined;
-        const citationStr = String(r.citation ?? r.citationString ?? 'Unknown citation');
-        const normalized = citationStr.toLowerCase().replace(/\s+/g, ' ').trim();
-
-        // De-duplicate: latest phase wins
-        if (seenNormalized.has(normalized)) {
-          // Remove previous entry so the latest (VII.1) takes precedence
-          const idx = allCitations.findIndex(
-            c => c.citation.toLowerCase().replace(/\s+/g, ' ').trim() === normalized
-          );
-          if (idx !== -1) allCitations.splice(idx, 1);
-        }
-        seenNormalized.add(normalized);
-
-        // SP-18 FIX: Read confidenceScore (CIV field name), NOT confidence
-        let status = String(compositeResult?.status ?? r.status ?? (r.verified ? 'VERIFIED' : 'UNVERIFIED'));
-        const confidence = Number(compositeResult?.confidenceScore ?? compositeResult?.confidence ?? r.confidence ?? 0);
-
-        // SP-18: IX.1 final audit rejection overrides previous VERIFIED
-        if (ix1RejectedCitations.has(normalized) && status === 'VERIFIED') {
-          status = 'REJECTED';
-          console.warn(`[generateDeliverables] Citation downgraded by IX.1 final audit: ${citationStr}`);
-        }
-
-        allCitations.push({ citation: citationStr, status, confidence });
-      }
-
-      // Fallback: if CIV results are empty, build from citation banks with UNVERIFIED status
-      if (allCitations.length === 0) {
-        console.warn('[generateDeliverables] No CIV results found — using citation bank with UNVERIFIED status');
-        for (const c of [...caseCitationBank, ...statutoryCitationBank]) {
-          allCitations.push({
-            citation: String((c as Record<string, unknown>)?.citation ?? 'Unknown citation'),
-            status: 'UNVERIFIED',
-            confidence: 0,
-          });
-        }
-      }
-
-      const citationReportContent = generateCitationReportContent(
-        allCitations,
-        actualCitationCount
-      );
-      const citationPdfBytes = await createSimpleTextPDF('CITATION ACCURACY REPORT', citationReportContent);
-      const citationUrl = await uploadToSupabaseStorage(
-        supabase,
-        `${storagePath}/citation-report.pdf`,
-        citationPdfBytes
-      );
-      deliverableUrls.citationAccuracyReport = citationUrl;
-      console.log('[generateDeliverables] Citation report generated:', citationUrl);
-    } catch (error) {
-      console.error('[generateDeliverables] Error generating citation report:', error);
-    }
-
-    // 4. Generate Caption QC Report
-    console.log('[generateDeliverables] Generating caption QC report...');
-    try {
-      const captionReportContent = generateCaptionQcReportContent(qcResult);
-      const captionPdfBytes = await createSimpleTextPDF('CAPTION QC REPORT', captionReportContent);
-      const captionUrl = await uploadToSupabaseStorage(
-        supabase,
-        `${storagePath}/caption-qc-report.pdf`,
-        captionPdfBytes
-      );
-      deliverableUrls.captionQcReport = captionUrl;
-      console.log('[generateDeliverables] Caption QC report generated:', captionUrl);
-    } catch (error) {
-      console.error('[generateDeliverables] Error generating caption QC report:', error);
-    }
-
-    // SP12-04 FIX: Insert deliverable records into documents table with is_deliverable: true.
-    // Before this fix, auto-generated PDFs were only stored in orders.deliverable_urls JSONB,
-    // but the client GET /api/orders/[id]/deliverables queries documents table for is_deliverable=true.
-    const deliverableEntries: Array<{ name: string; url: string | undefined; type: string }> = [
-      { name: 'motion.pdf', url: deliverableUrls.motionPdf, type: 'motion' },
-      { name: 'instruction-sheet.pdf', url: deliverableUrls.attorneyInstructionSheet, type: 'instruction_sheet' },
-      { name: 'citation-report.pdf', url: deliverableUrls.citationAccuracyReport, type: 'citation_report' },
-      { name: 'caption-qc-report.pdf', url: deliverableUrls.captionQcReport, type: 'caption_qc_report' },
-    ];
-
-    for (const entry of deliverableEntries) {
-      if (entry.url) {
-        await supabase.from('documents').insert({
-          order_id: orderId,
-          file_name: entry.name,
-          file_type: 'application/pdf',
-          file_size: 0, // Size unknown from storage upload
-          file_url: `${storagePath}/${entry.name}`,
-          document_type: entry.type,
-          is_deliverable: true,
-        }).then(({ error }) => {
-          if (error) {
-            console.warn(`[generateDeliverables] Failed to insert ${entry.name} into documents table:`, error.message);
-          }
+    if (allCitations.length === 0) {
+      console.warn('[generate-citation-report] No CIV results found — using citation bank with UNVERIFIED status');
+      for (const c of [...caseCitationBank, ...statutoryCitationBank]) {
+        allCitations.push({
+          citation: String((c as Record<string, unknown>)?.citation ?? 'Unknown citation'),
+          status: 'UNVERIFIED',
+          confidence: 0,
         });
       }
     }
 
-    // 5. Update order with deliverable URLs
-    await supabase
-      .from('orders')
-      .update({
-        deliverable_urls: deliverableUrls,
-        deliverables_generated_at: new Date().toISOString(),
-      })
-      .eq('id', orderId);
+    const reportContent = generateCitationReportContent(allCitations, actualCitationCount);
+    const pdfBytes = await createSimpleTextPDF('CITATION ACCURACY REPORT', reportContent);
+    console.log(`[generate-citation-report] PDF created in ${Date.now() - start}ms`);
 
-    // 6. Log completion
-    await supabase.from('automation_logs').insert({
-      order_id: orderId,
-      action_type: 'deliverables_generated',
-      action_details: {
-        workflowId,
-        deliverableCount: Object.keys(deliverableUrls).length,
-        deliverables: Object.keys(deliverableUrls),
-      },
-    });
-
-    console.log('[generateDeliverables] Complete!');
-    return deliverableUrls;
-
+    const uploadStart = Date.now();
+    const url = await uploadToSupabaseStorage(
+      supabase,
+      `orders/${state.orderId}/deliverables/citation-report.pdf`,
+      pdfBytes
+    );
+    console.log(`[generate-citation-report] Uploaded in ${Date.now() - uploadStart}ms, total: ${Date.now() - start}ms`);
+    return url;
   } catch (error) {
-    console.error('[generateDeliverables] Error:', error);
-
-    // Log error but don't fail the workflow
-    await supabase.from('automation_logs').insert({
-      order_id: orderId,
-      action_type: 'deliverable_generation_failed',
-      action_details: {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-      },
-    });
-
-    // Return empty result - admin can manually generate
-    return {
-      motionPdf: undefined,
-      attorneyInstructionSheet: undefined,
-      citationAccuracyReport: undefined,
-      captionQcReport: undefined,
-    };
+    console.error('[generate-citation-report] Error:', error);
+    return undefined;
   }
+}
+
+/**
+ * Generate caption QC report PDF and upload to Supabase Storage.
+ */
+async function generateAndUploadCaptionQcReport(
+  state: WorkflowState,
+  supabase: ReturnType<typeof getSupabase>
+): Promise<string | undefined> {
+  const start = Date.now();
+  console.log('[generate-caption-qc-report] Starting...');
+
+  try {
+    const qcResult = state.phaseOutputs["IX.1"] as { qcPasses: boolean; qcIssues: string[]; qcCorrections: string[] } | undefined;
+    const content = generateCaptionQcReportContent(qcResult);
+    const pdfBytes = await createSimpleTextPDF('CAPTION QC REPORT', content);
+    console.log(`[generate-caption-qc-report] PDF created in ${Date.now() - start}ms`);
+
+    const uploadStart = Date.now();
+    const url = await uploadToSupabaseStorage(
+      supabase,
+      `orders/${state.orderId}/deliverables/caption-qc-report.pdf`,
+      pdfBytes
+    );
+    console.log(`[generate-caption-qc-report] Uploaded in ${Date.now() - uploadStart}ms, total: ${Date.now() - start}ms`);
+    return url;
+  } catch (error) {
+    console.error('[generate-caption-qc-report] Error:', error);
+    return undefined;
+  }
+}
+
+/**
+ * Persist deliverable records to the database after all PDFs have been generated.
+ * Inserts document records, updates the order, and logs completion.
+ */
+async function persistDeliverableRecords(
+  orderId: string,
+  workflowId: string,
+  deliverableUrls: DeliverableResult,
+  supabase: ReturnType<typeof getSupabase>
+): Promise<void> {
+  console.log('[persist-deliverable-records] Starting...');
+
+  const storagePath = `orders/${orderId}/deliverables`;
+
+  // SP12-04 FIX: Insert deliverable records into documents table with is_deliverable: true.
+  const deliverableEntries: Array<{ name: string; url: string | undefined; type: string }> = [
+    { name: 'motion.pdf', url: deliverableUrls.motionPdf, type: 'motion' },
+    { name: 'instruction-sheet.pdf', url: deliverableUrls.attorneyInstructionSheet, type: 'instruction_sheet' },
+    { name: 'citation-report.pdf', url: deliverableUrls.citationAccuracyReport, type: 'citation_report' },
+    { name: 'caption-qc-report.pdf', url: deliverableUrls.captionQcReport, type: 'caption_qc_report' },
+  ];
+
+  for (const entry of deliverableEntries) {
+    if (entry.url) {
+      const { error } = await supabase.from('documents').insert({
+        order_id: orderId,
+        file_name: entry.name,
+        file_type: 'application/pdf',
+        file_size: 0,
+        file_url: `${storagePath}/${entry.name}`,
+        document_type: entry.type,
+        is_deliverable: true,
+      });
+      if (error) {
+        console.warn(`[persist-deliverable-records] Failed to insert ${entry.name}:`, error.message);
+      }
+    }
+  }
+
+  await supabase
+    .from('orders')
+    .update({
+      deliverable_urls: deliverableUrls,
+      deliverables_generated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId);
+
+  await supabase.from('automation_logs').insert({
+    order_id: orderId,
+    action_type: 'deliverables_generated',
+    action_details: {
+      workflowId,
+      deliverableCount: Object.values(deliverableUrls).filter(Boolean).length,
+      deliverables: Object.keys(deliverableUrls).filter(k => deliverableUrls[k as keyof DeliverableResult]),
+    },
+  });
+
+  console.log('[persist-deliverable-records] Complete!');
 }
 
 // ============================================================================
@@ -3334,9 +3331,33 @@ export const generateOrderWorkflow = inngest.createFunction(
 
     // ========================================================================
     // STEP 15: Generate Deliverables (before CP3 handoff)
+    // Split into separate steps so each gets its own 300s timeout.
+    // Previously a single step.run that packed 4 PDF generations + 4 storage
+    // uploads + 6 DB writes, causing FUNCTION_INVOCATION_TIMEOUT.
     // ========================================================================
-    const deliverables = await step.run("generate-deliverables", async () => {
-      return await generateDeliverables(workflowState, supabase);
+    const motionPdfUrl = await step.run("generate-motion-pdf", async () => {
+      return await generateAndUploadMotionPdf(workflowState, supabase);
+    });
+
+    const instructionSheetUrl = await step.run("generate-instruction-sheet", async () => {
+      return await generateAndUploadInstructionSheet(workflowState, supabase);
+    });
+
+    const citationReportUrl = await step.run("generate-citation-report", async () => {
+      return await generateAndUploadCitationReport(workflowState, supabase);
+    });
+
+    const captionQcReportUrl = await step.run("generate-caption-qc-report", async () => {
+      return await generateAndUploadCaptionQcReport(workflowState, supabase);
+    });
+
+    await step.run("persist-deliverable-records", async () => {
+      await persistDeliverableRecords(workflowState.orderId, workflowState.workflowId, {
+        motionPdf: motionPdfUrl ?? undefined,
+        attorneyInstructionSheet: instructionSheetUrl ?? undefined,
+        citationAccuracyReport: citationReportUrl ?? undefined,
+        captionQcReport: captionQcReportUrl ?? undefined,
+      }, supabase);
     });
 
     // ========================================================================
