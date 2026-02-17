@@ -21,6 +21,7 @@ import { CourtListenerOpinion, CourtListenerSearchResult, CourtListenerCitingOpi
 import type { CitationDetails, CitationTreatment, CitationReference } from '@/types/citations';
 import { simplifyQueryV2 } from './query-builder';
 import { scoreRelevance, TOPICAL_RELEVANCE_THRESHOLD, type PropositionContext } from './relevance-scorer';
+import { extractCaseName } from '@/lib/citations/extract-case-name';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -968,7 +969,7 @@ export async function searchOpinions(
       return {
         id: resolvedId,  // Use resolved ID, NOT op.id which is null!
         cluster_id: clusterId,
-        case_name: op.caseName || op.case_name || 'Unknown Case',
+        case_name: op.caseName || op.case_name || extractCaseName(citationStr),
         citation: citationStr,
         court: op.court || op.court_id || 'Unknown Court',
         date_filed: op.dateFiled || op.date_filed || '',
@@ -1895,7 +1896,7 @@ export async function getCitationDetailsForViewer(
     }
 
     // Build response
-    const caseName = opinion.case_name || clusterData?.case_name || 'Unknown Case';
+    const caseName = opinion.case_name || clusterData?.case_name || extractCaseName(citationString);
     const caseNameShort = opinion.case_name_short || clusterData?.case_name_short || extractShortName(caseName);
     const court = opinion.court || opinion.court_id || clusterData?.court || clusterData?.court_id || 'Unknown Court';
     const dateFiled = opinion.date_filed || clusterData?.date_filed || '';

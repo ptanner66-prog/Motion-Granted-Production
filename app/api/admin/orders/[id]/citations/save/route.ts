@@ -20,6 +20,7 @@ import { createClient } from '@/lib/supabase/server';
 import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
 import { createLogger } from '@/lib/security/logger';
+import { extractCaseName } from '@/lib/citations/extract-case-name';
 
 const log = createLogger('api-admin-citations-save');
 
@@ -139,7 +140,7 @@ export async function POST(
 
       citations.push({
         citationString,
-        caseName: c.caseName || c.case_name || 'Unknown Case',
+        caseName: c.caseName || c.case_name || extractCaseName(citationString),
         caseNameShort: extractShortName(c.caseName || c.case_name || ''),
         courtlistenerOpinionId: c.courtlistener_id?.toString() || c.courtlistenerId?.toString(),
         courtlistenerClusterId: c.courtlistener_cluster_id?.toString() || c.courtlistenerClusterId?.toString(),

@@ -44,6 +44,7 @@ import { getTierFromMotionType } from '@/lib/ai/model-router';
 import { deduplicateCitations } from '@/lib/civ/deduplication';
 
 import { createLogger } from '@/lib/security/logger';
+import { extractCaseName } from '@/lib/citations/extract-case-name';
 
 const log = createLogger('citation-civ-pipeline');
 /**
@@ -241,7 +242,7 @@ export async function verifyCitation(
     : '';
 
   const step3 = await executeDictaDetection(
-    parsed.caseName || citation.caseName || 'Unknown Case',
+    parsed.caseName || citation.caseName || extractCaseName(citation.citationString),
     step2.stage1.supportingQuote || citation.proposition,
     surroundingContext,
     citation.propositionType,
@@ -256,7 +257,7 @@ export async function verifyCitation(
   // Step 5: Bad Law Check + Protocols 18-23
   const step5 = await executeBadLawCheck(
     citation.citationString,
-    parsed.caseName || citation.caseName || 'Unknown Case',
+    parsed.caseName || citation.caseName || extractCaseName(citation.citationString),
     step1.courtlistenerId,
     citationDbId,
     citation.motionTypeContext || 'motion_to_compel', // Pass motion type for tier-based model selection
