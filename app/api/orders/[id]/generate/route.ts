@@ -18,7 +18,7 @@ import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('api-orders-generate');
 
-export const maxDuration = 30; // Just enough to trigger the workflow
+export const maxDuration = 300; // Vercel Pro max — fallback mode runs full workflow directly
 
 // SP-08: service_role scoped to background IIFE only.
 // After the HTTP response is sent, cookies are unavailable, so the background

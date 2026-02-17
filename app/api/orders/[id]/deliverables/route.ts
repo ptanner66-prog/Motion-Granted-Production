@@ -1,3 +1,5 @@
+export const maxDuration = 120; // 2 minutes for deliverable uploads
+
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { createLogger } from '@/lib/security/logger'
