@@ -27,6 +27,9 @@ import { sendDeletionReminders, autoDeleteExpired } from "@/lib/inngest/retentio
 // Orphan sweep + retention purge (SP-17 D6 Phase 6)
 import { orphanSweepCron } from "@/lib/inngest/orphan-sweep";
 
+// SP-23 ST6-02: Raw upload purge (7-day post-completion cleanup)
+import { purgeRawUploads } from "@/lib/inngest/purge-raw-uploads";
+
 /**
  * Inngest API Route Handler
  *
@@ -57,6 +60,8 @@ const registeredFunctions = [
   autoDeleteExpired,
   // ORPHAN SWEEP: Weekly storage cleanup + 180-day archive purge (SP-17 D6)
   orphanSweepCron,
+  // RAW UPLOAD PURGE: Daily 7-day post-completion cleanup (SP-23 ST6-02)
+  purgeRawUploads,
 ];
 
 // IV-003: Required function registration validator
@@ -72,6 +77,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
   { ref: sendDeletionReminders, name: 'sendDeletionReminders' },
   { ref: autoDeleteExpired, name: 'autoDeleteExpired' },
   { ref: orphanSweepCron, name: 'orphanSweepCron' },
+  { ref: purgeRawUploads, name: 'purgeRawUploads' },
 ] as const;
 
 const missingFns = REQUIRED_FUNCTION_EXPORTS.filter(f => !f.ref);

@@ -11,7 +11,7 @@
  *   - Fn1 Protocol 10 re-entry path
  */
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('retention-extend-on-reentry');

@@ -95,6 +95,41 @@ export interface AssemblerInput {
   citationWarnings?: string[];
 }
 
+/**
+ * ST6-03 FIX: Canonical court filing order.
+ *
+ * Courts expect documents in a specific order within a filing package.
+ * Extra documents like Certificate of Service and Verification must appear
+ * AFTER the motion body but BEFORE exhibits and proof of service.
+ *
+ * Filing order:
+ *   1. Notice of Motion (introduces the filing)
+ *   2. Memorandum of Points and Authorities (main motion body)
+ *   3. Declaration(s) / Affidavit(s) (evidentiary support, after motion body)
+ *   4. Proposed Order (what the court is asked to sign)
+ *   5. Separate Statement (CA MSJ/MSA, evidence-related)
+ *   6. Proof of Service (last filed document — certifies service on all parties)
+ *   7. Attorney Instructions (internal, not filed — always last)
+ */
+const FILING_ORDER: Record<DocumentType, number> = {
+  notice_of_motion: 1,
+  memorandum: 2,
+  declaration: 3,
+  affidavit: 3,            // Same position as declaration (jurisdiction determines which)
+  proposed_order: 4,
+  separate_statement: 5,
+  proof_of_service: 6,
+  attorney_instructions: 7, // Internal only, always last
+};
+
+function sortByFilingOrder(documents: GeneratedDocument[]): GeneratedDocument[] {
+  return [...documents].sort((a, b) => {
+    const orderA = FILING_ORDER[a.type] ?? 99;
+    const orderB = FILING_ORDER[b.type] ?? 99;
+    return orderA - orderB;
+  });
+}
+
 function determineRequiredDocuments(input: AssemblerInput): DocumentType[] {
   const docs: DocumentType[] = [];
   const state = input.jurisdiction.stateCode.toUpperCase();
@@ -242,12 +277,17 @@ export async function assembleFilingPackage(input: AssemblerInput): Promise<Fili
     }
   }
 
-  const totalPages = documents.reduce((sum, d) => sum + d.pageCount, 0);
+  // ST6-03 FIX: Sort documents into correct court filing order.
+  // Ensures extra documents (CoS, Verification) appear after the motion body
+  // and before exhibits/proof of service, regardless of generation order.
+  const sortedDocuments = sortByFilingOrder(documents);
+
+  const totalPages = sortedDocuments.reduce((sum, d) => sum + d.pageCount, 0);
 
   return {
     orderId: sanitizedInput.orderId,
     orderNumber: sanitizedInput.orderNumber,
-    documents,
+    documents: sortedDocuments,
     metadata: {
       jurisdiction: sanitizedInput.jurisdiction.stateCode,
       isFederal: sanitizedInput.jurisdiction.isFederal,

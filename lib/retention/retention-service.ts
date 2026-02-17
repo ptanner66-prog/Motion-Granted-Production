@@ -11,6 +11,16 @@ const DEFAULT_RETENTION_DAYS = 365; // ST-001: CCP §340.6 — 1-year malpractic
 const MAX_RETENTION_DAYS = 730; // 2 years hard cap
 const REMINDER_DAYS_BEFORE = 14;
 
+/**
+ * ST6-01: Only terminal states are safe to delete or send deletion reminders.
+ * Any order in a non-terminal state is actively being processed
+ * or awaiting user action and MUST NOT be auto-deleted.
+ */
+export const DELETABLE_STATUSES = [
+  'COMPLETED', 'CANCELLED', 'CANCELLED_USER', 'CANCELLED_SYSTEM',
+  'CANCELLED_CONFLICT', 'REFUNDED',
+] as const;
+
 export interface RetentionStatus {
   retention_expires_at: string | null;
   days_remaining: number | null;
@@ -231,18 +241,6 @@ export async function markReminderSent(orderId: string): Promise<void> {
     })
     .eq('id', orderId);
 }
-
-/**
- * Terminal statuses safe for auto-deletion.
- * Any order in a non-terminal state is actively being processed
- * or awaiting user action and MUST NOT be deleted.
- *
- * ST6-01: P0 fix — prevents deletion of actively-processing orders.
- */
-export const DELETABLE_STATUSES = [
-  'COMPLETED', 'CANCELLED', 'CANCELLED_USER', 'CANCELLED_SYSTEM',
-  'CANCELLED_CONFLICT', 'REFUNDED',
-] as const;
 
 /**
  * Get orders past retention date (ready for deletion).
