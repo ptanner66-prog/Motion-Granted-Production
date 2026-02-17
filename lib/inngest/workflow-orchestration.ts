@@ -1419,22 +1419,47 @@ export const generateOrderWorkflow = inngest.createFunction(
     }
 
     // SP-12 AH-5: Idempotency check (Layer 1)
-    const existingWorkflow = await step.run('check-existing-workflow', async () => {
+    // FIX: Use terminal-status blacklist instead of whitelist.
+    // Callers (Stripe webhook, automation-service, order-creation-v2) often update
+    // the order status to 'under_review' or 'in_progress' BEFORE sending the
+    // Inngest event. The old whitelist ('paid'/'submitted') rejected these
+    // intermediate statuses, causing the entire 14-phase pipeline to be skipped.
+    const workflowCheck = await step.run('check-existing-workflow', async () => {
       if (event.name === 'order/submitted') {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('orders')
           .select('status')
           .eq('id', orderId)
           .single();
-        if (data && data.status !== 'paid' && data.status !== 'submitted') {
-          return true; // Already processing
+
+        console.log('[check-existing-workflow]', {
+          orderId,
+          orderFound: !!data,
+          status: data?.status,
+          error: error?.message,
+        });
+
+        if (!data) {
+          return { skip: true, reason: 'order_not_found' };
         }
+
+        // Only skip if order is in a terminal state — already completed or cancelled.
+        // All intermediate statuses (paid, submitted, under_review, in_progress,
+        // processing, assigned, on_hold, etc.) are allowed to proceed.
+        const terminalStatuses = ['completed', 'draft_delivered', 'revision_delivered', 'cancelled', 'refunded'];
+        if (terminalStatuses.includes(data.status)) {
+          return { skip: true, reason: `order_already_${data.status}` };
+        }
+
+        return { skip: false, reason: `order_status_${data.status}` };
       }
-      return false;
+      return { skip: false, reason: 'non_submit_event' };
     });
 
-    if (existingWorkflow) {
-      return { skipped: true, reason: 'Workflow already active', startPhase };
+    console.log('[workflow-decision]', { orderId, ...workflowCheck });
+
+    if (workflowCheck.skip) {
+      return { skipped: true, reason: workflowCheck.reason, startPhase };
     }
 
     // ========================================================================
