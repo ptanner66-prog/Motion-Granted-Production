@@ -3519,13 +3519,16 @@ export const generateOrderWorkflow = inngest.createFunction(
 
     // Step: Send package ready notification (T+0)
     await step.run('send-cp3-package-ready', async () => {
-      const { data: order } = await supabase
+      const { data: order, error: orderError } = await supabase
         .from('orders')
-        .select('id, client_id, motion_type, workflow_id')
+        .select('id, client_id, motion_type')
         .eq('id', orderId)
         .single();
 
-      if (!order) throw new Error(`Order ${orderId} not found for CP3 notification`);
+      if (orderError || !order) {
+        console.error('[CP3] Order lookup failed:', { orderId, error: orderError?.message });
+        throw new Error(`Order ${orderId} not found for CP3 notification: ${orderError?.message ?? 'no data'}`);
+      }
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -3565,7 +3568,7 @@ export const generateOrderWorkflow = inngest.createFunction(
     await step.run('cp3-emit-event', async () => {
       const { data: order } = await supabase
         .from('orders')
-        .select('workflow_id, tier, client_id, protocol_10_triggered')
+        .select('tier, client_id, protocol_10_triggered')
         .eq('id', orderId)
         .single();
 
@@ -3583,7 +3586,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       const eventData: CP3ApprovalEvent = {
         orderId,
         packageId: pkg?.id ?? '',
-        workflowId: order?.workflow_id ?? workflowState.workflowId,
+        workflowId: workflowState.workflowId,
         grade: (gradeObj?.numeric_score as number) ?? 0,
         tier: (order?.tier ?? workflowState.tier) as string,
         protocol10Triggered: order?.protocol_10_triggered ?? false,
@@ -3967,7 +3970,7 @@ async function processCP3Decision(
   const order = await step.run('verify-order-status', async () => {
     const { data, error } = await supabase
       .from('orders')
-      .select('status, workflow_id, tier, protocol_10_triggered, attorney_rework_count, stripe_payment_intent_id, amount_paid')
+      .select('status, tier, protocol_10_triggered, attorney_rework_count, stripe_payment_intent_id, amount_paid')
       .eq('id', orderId)
       .single();
 
@@ -3979,7 +3982,15 @@ async function processCP3Decision(
         `Order ${orderId} is ${data.status}, not AWAITING_APPROVAL. Stale event.`
       );
     }
-    return data;
+
+    // Look up workflow_id from order_workflows (not stored on orders table)
+    const { data: wf } = await supabase
+      .from('order_workflows')
+      .select('id')
+      .eq('order_id', orderId)
+      .single();
+
+    return { ...data, workflow_id: wf?.id ?? '' };
   });
 
   switch (action) {
