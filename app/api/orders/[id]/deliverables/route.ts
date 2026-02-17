@@ -3,6 +3,7 @@ export const maxDuration = 120; // 2 minutes for deliverable uploads
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { createLogger } from '@/lib/security/logger'
+import { STORAGE_BUCKETS } from '@/lib/config/storage'
 
 const log = createLogger('api-orders-deliverables')
 
@@ -71,7 +72,7 @@ export async function POST(
 
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('documents')
+      .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
       .upload(filePath, fileBuffer, {
         contentType: file.type || 'application/octet-stream',
         cacheControl: '3600',
@@ -85,7 +86,7 @@ export async function POST(
 
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from('documents')
+      .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
       .getPublicUrl(filePath)
 
     // Save to database with is_deliverable = true
@@ -107,7 +108,7 @@ export async function POST(
     if (dbError) {
       log.error('Database insert error', { error: dbError })
       // Clean up uploaded file
-      await supabase.storage.from('documents').remove([filePath]).catch(() => {})
+      await supabase.storage.from(STORAGE_BUCKETS.ORDER_DOCUMENTS).remove([filePath]).catch(() => {})
       return NextResponse.json({ error: 'Failed to save document record' }, { status: 500 })
     }
 
@@ -194,7 +195,7 @@ export async function GET(
     // Add public URLs
     const deliverablesWithUrls = (deliverables || []).map((doc: { file_url: string; [key: string]: unknown }) => ({
       ...doc,
-      publicUrl: supabase.storage.from('documents').getPublicUrl(doc.file_url).data.publicUrl
+      publicUrl: supabase.storage.from(STORAGE_BUCKETS.ORDER_DOCUMENTS).getPublicUrl(doc.file_url).data.publicUrl
     }))
 
     return NextResponse.json({ deliverables: deliverablesWithUrls })

@@ -20,6 +20,7 @@
 import { createClient } from '@/lib/supabase/server';
 
 import { createLogger } from '@/lib/security/logger';
+import { STORAGE_BUCKETS } from '@/lib/config/storage';
 
 const log = createLogger('storage-archive-service');
 // ============================================================================
@@ -93,19 +94,19 @@ export async function archiveOrder(orderId: string): Promise<ArchiveResult> {
       try {
         // Download from primary bucket
         const { data: fileData } = await supabase.storage
-          .from('documents')
+          .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
           .download(doc.storageUrl);
 
         if (fileData) {
           // Upload to archive bucket
           const archivePath = `archived/${orderId}/${doc.storageUrl.split('/').pop()}`;
           await supabase.storage
-            .from('documents-archive')
+            .from(STORAGE_BUCKETS.ORDER_ARCHIVE)
             .upload(archivePath, fileData, { upsert: true });
 
           // Delete from primary bucket
           await supabase.storage
-            .from('documents')
+            .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
             .remove([doc.storageUrl]);
 
           documentsArchived++;
@@ -234,7 +235,7 @@ export async function deleteExpiredOrders(): Promise<DeletionResult> {
       const documents = (order.documents || []) as Array<{ storageUrl: string }>;
       for (const doc of documents) {
         const archivePath = `archived/${order.id}/${doc.storageUrl?.split('/').pop()}`;
-        await supabase.storage.from('documents-archive').remove([archivePath]);
+        await supabase.storage.from(STORAGE_BUCKETS.ORDER_ARCHIVE).remove([archivePath]);
         documentsDeleted++;
       }
 

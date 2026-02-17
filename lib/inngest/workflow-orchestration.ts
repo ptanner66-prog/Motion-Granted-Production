@@ -85,6 +85,7 @@ import {
 
 // Configuration imports
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
+import { STORAGE_BUCKETS } from "@/lib/config/storage";
 import { createMessageWithRetry } from "@/lib/claude-client";
 
 // BUG-01/BUG-02: Deadline validation and calculation
@@ -451,19 +452,19 @@ async function uploadToSupabaseStorage(
   content: Uint8Array | Buffer
 ): Promise<string> {
   const { data, error } = await supabase.storage
-    .from('motion-deliverables')
+    .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
     .upload(path, content, {
       contentType: 'application/pdf',
       upsert: true,
     });
 
   if (error) {
-    console.error('[uploadToSupabaseStorage] Error:', error);
+    console.error('[uploadToSupabaseStorage] Error:', error, { bucket: STORAGE_BUCKETS.ORDER_DOCUMENTS, path });
     throw new Error(`Storage upload failed: ${error.message}`);
   }
 
   const { data: { publicUrl } } = supabase.storage
-    .from('motion-deliverables')
+    .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
     .getPublicUrl(path);
 
   return publicUrl;

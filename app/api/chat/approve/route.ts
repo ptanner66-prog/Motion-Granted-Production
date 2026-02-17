@@ -12,6 +12,7 @@ import { sendEmail } from '@/lib/resend';
 import { DraftReadyEmail } from '@/emails/draft-ready';
 import { createElement } from 'react';
 import { createLogger } from '@/lib/security/logger';
+import { STORAGE_BUCKETS } from '@/lib/config/storage';
 
 const log = createLogger('api-chat-approve');
 
@@ -150,18 +151,19 @@ export async function POST(request: Request) {
 
     // Upload DOCX to storage
     const { error: uploadError } = await supabase.storage
-      .from('motion-deliverables')
+      .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
       .upload(storagePath, docxBuffer, {
         contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         upsert: true,
       });
 
     if (uploadError) {
+      log.error('Storage upload failed', { bucket: STORAGE_BUCKETS.ORDER_DOCUMENTS, storagePath, error: uploadError.message });
       return NextResponse.json({ error: `Failed to upload DOCX: ${uploadError.message}` }, { status: 500 });
     }
 
     const { data: { publicUrl: fileUrl } } = supabase.storage
-      .from('motion-deliverables')
+      .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
       .getPublicUrl(storagePath);
 
     // Insert document record
