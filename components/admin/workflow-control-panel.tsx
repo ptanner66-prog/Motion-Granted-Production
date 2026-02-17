@@ -81,7 +81,7 @@ export function WorkflowControlPanel({ orderId, orderNumber, motionType }: Workf
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId,
-          generatePdf: true,
+          generateDocx: true,
           saveAsDeliverable: true,
           requireReview: true,
         }),
@@ -95,7 +95,7 @@ export function WorkflowControlPanel({ orderId, orderNumber, motionType }: Workf
 
       toast({
         title: 'Motion Generated!',
-        description: `${data.wordCount} words. PDF saved. Ready for your review.`,
+        description: `${data.wordCount} words. DOCX saved. Ready for your review.`,
       })
 
       // Refresh the page to show updated status
@@ -285,7 +285,7 @@ export function WorkflowControlPanel({ orderId, orderNumber, motionType }: Workf
               <div>
                 <p className="text-sm font-medium text-navy">One-Click Generate</p>
                 <p className="text-xs text-gray-600 mt-1">
-                  Generate the motion instantly using your superprompt template. Creates PDF ready for review.
+                  Generate the motion instantly using your superprompt template. Creates DOCX ready for review.
                 </p>
               </div>
             </div>

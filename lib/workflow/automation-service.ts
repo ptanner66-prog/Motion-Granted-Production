@@ -5,7 +5,7 @@
  * 1. Order submitted → Auto-start workflow
  * 2. Documents parsed → Legal analysis → Draft generated
  * 3. Quality review → Revisions → Final assembly
- * 4. PDF generated → Saved as deliverable → Client notified
+ * 4. DOCX generated → Saved as deliverable → Client notified
  *
  * Designed for production SaaS with:
  * - Automatic error recovery
@@ -20,7 +20,6 @@ import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('workflow-automation-service');
 import { getWorkflowProgress } from './workflow-state';
-import { generatePDFFromWorkflow, savePDFAsDeliverable } from './pdf-generator';
 import { queueOrderNotification } from '@/lib/automation/notification-sender';
 import type { OperationResult } from '@/types/automation';
 import type { WorkflowPath } from '@/types/workflow';
@@ -32,7 +31,6 @@ import type { WorkflowPath } from '@/types/workflow';
 export interface AutomationConfig {
   autoRun: boolean;
   workflowPath: WorkflowPath;
-  generatePDF: boolean;
   sendNotifications: boolean;
   maxRetries: number;
   retryDelayMs: number;
@@ -45,7 +43,6 @@ export interface AutomationResult {
   status: 'completed' | 'in_progress' | 'requires_review' | 'failed';
   currentPhase?: number;
   totalPhases: number;
-  pdfGenerated: boolean;
   deliverableId?: string;
   notificationSent: boolean;
   error?: string;
@@ -70,7 +67,6 @@ export interface OrderProgress {
 const DEFAULT_CONFIG: AutomationConfig = {
   autoRun: true,
   workflowPath: 'path_a',
-  generatePDF: true,
   sendNotifications: true,
   maxRetries: 3,
   retryDelayMs: 5000,
@@ -178,7 +174,6 @@ export async function startOrderAutomation(
         status: 'in_progress',
         currentPhase: 1,
         totalPhases: 14,
-        pdfGenerated: false,
         notificationSent: false,
       },
     };
@@ -196,7 +191,7 @@ export async function startOrderAutomation(
 
 /**
  * Finalize order after workflow completion
- * Generates PDF, saves deliverable, sends notification
+ * Updates status and sends notification (deliverables are generated in the workflow pipeline)
  */
 async function finalizeOrder(
   orderId: string,
@@ -206,43 +201,9 @@ async function finalizeOrder(
   startTime: number
 ): Promise<OperationResult<AutomationResult>> {
   const supabase = await createClient();
-  let pdfGenerated = false;
-  let deliverableId: string | undefined;
   let notificationSent = false;
 
   try {
-    // Generate PDF
-    if (config.generatePDF) {
-      const pdfResult = await generatePDFFromWorkflow(orderId, workflowId);
-
-      if (pdfResult.success && pdfResult.data) {
-        // Get order details for filename
-        const { data: order } = await supabase
-          .from('orders')
-          .select('motion_type, case_number')
-          .eq('id', orderId)
-          .single();
-
-        const motionType = (order?.motion_type || 'Motion').replace(/\s+/g, '_');
-        const caseNum = (order?.case_number || 'CASE').replace(/[^a-zA-Z0-9]/g, '_');
-        const fileName = `${motionType}_${caseNum}_${new Date().toISOString().split('T')[0]}.pdf`;
-
-        // Save as deliverable
-        const saveResult = await savePDFAsDeliverable(orderId, pdfResult.data.pdfBytes, fileName);
-
-        if (saveResult.success && saveResult.data) {
-          pdfGenerated = true;
-          deliverableId = saveResult.data.documentId;
-
-          await logAutomationEvent(orderId, 'pdf_generated', {
-            fileName,
-            pageCount: pdfResult.data.pageCount,
-            wordCount: pdfResult.data.wordCount,
-          });
-        }
-      }
-    }
-
     // Update order status to draft_delivered
     await supabase
       .from('orders')
@@ -256,7 +217,7 @@ async function finalizeOrder(
     if (config.sendNotifications) {
       try {
         await queueOrderNotification(orderId, 'draft_ready', {
-          deliverableReady: pdfGenerated,
+          deliverableReady: true,
         });
         notificationSent = true;
 
@@ -273,7 +234,6 @@ async function finalizeOrder(
 
     await logAutomationEvent(orderId, 'automation_completed', {
       duration,
-      pdfGenerated,
       notificationSent,
     });
 
@@ -285,8 +245,6 @@ async function finalizeOrder(
         workflowId,
         status: 'completed',
         totalPhases: 14,
-        pdfGenerated,
-        deliverableId,
         notificationSent,
         duration,
       },
@@ -379,7 +337,6 @@ export async function resumeOrderAutomation(
       status: 'in_progress',
       currentPhase: workflow.current_phase,
       totalPhases: 14,
-      pdfGenerated: false,
       notificationSent: false,
     },
   };
