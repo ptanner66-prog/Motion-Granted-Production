@@ -24,7 +24,7 @@ export const URL_EXPIRY = {
   DOWNLOAD: 604800,      // 7 days in seconds
 } as const;
 
-const STORAGE_BUCKET = 'deliverables';
+const STORAGE_BUCKET = 'order-documents';
 
 export interface SignedUrlResult {
   fileKey: string;

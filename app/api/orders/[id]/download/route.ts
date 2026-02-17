@@ -255,6 +255,6 @@ function parseBucketPath(fileUrl: string): { bucket: string; path: string } {
       path: fileUrl.replace(`${STORAGE_BUCKETS.ORDER_DOCUMENTS}/`, ''),
     };
   }
-  // Legacy: stored as "orders/..." in documents bucket
-  return { bucket: 'documents', path: fileUrl };
+  // Legacy: stored as "orders/..." — now lives in order-documents bucket
+  return { bucket: STORAGE_BUCKETS.ORDER_DOCUMENTS, path: fileUrl };
 }
