@@ -1,3 +1,5 @@
+export const maxDuration = 120; // 2 minutes for ZIP generation and download
+
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import archiver from 'archiver'

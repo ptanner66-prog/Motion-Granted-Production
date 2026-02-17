@@ -9,7 +9,7 @@
  * v7.2: Uses workflow-orchestration.ts for proper phase execution.
  */
 
-export const maxDuration = 30;
+export const maxDuration = 300; // Vercel Pro max — matches vercel.json
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
