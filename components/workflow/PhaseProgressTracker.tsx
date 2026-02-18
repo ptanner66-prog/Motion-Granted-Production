@@ -37,8 +37,15 @@ interface PhaseProgressTrackerProps {
   currentPhase: WorkflowPhaseCode;
   phaseStatuses: Partial<Record<WorkflowPhaseCode, PhaseStatus>>;
   revisionLoop?: number;
+  tier?: string;
   className?: string;
   compact?: boolean;
+}
+
+/** Tier-specific max revision loops: A=2, B=3, C=3, D=4 */
+function getMaxLoopsForTier(tier?: string): number {
+  const limits: Record<string, number> = { A: 2, B: 3, C: 3, D: 4 };
+  return limits[tier ?? ''] ?? 3;
 }
 
 // Ordered list of phases for display
@@ -142,6 +149,7 @@ export function PhaseProgressTracker({
   currentPhase,
   phaseStatuses,
   revisionLoop = 0,
+  tier,
   className,
   compact = false,
 }: PhaseProgressTrackerProps) {
@@ -174,7 +182,7 @@ export function PhaseProgressTracker({
         {revisionLoop > 0 && (
           <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
             <AlertCircle className="w-4 h-4" />
-            <span>Revision Loop {revisionLoop} of 3</span>
+            <span>Revision Loop {revisionLoop} of {getMaxLoopsForTier(tier)}</span>
           </div>
         )}
 

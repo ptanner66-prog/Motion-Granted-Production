@@ -412,6 +412,15 @@ function resolveMaxTokensForExecution(phase: string, tier: string): number {
 }
 
 /**
+ * Get tier-specific max revision loops for Phase VII prompt context.
+ * A=2, B=3, C=3, D=4 — matches TIERED_MAX_LOOPS in workflow-orchestration.ts.
+ */
+function getMaxLoopsForPhaseVII(tier: string): number {
+  const limits: Record<string, number> = { A: 2, B: 3, C: 3, D: 4 };
+  return limits[tier] ?? 3;
+}
+
+/**
  * Sanitize blank/empty signature block fields before passing to the LLM prompt.
  * Replaces empty strings and minimal patterns (e.g., ", LA") with explicit
  * placeholder tokens that Claude will preserve literally, rather than
@@ -3034,7 +3043,7 @@ ${gradingLockSection}
 
 **Jurisdiction:** ${input.jurisdiction}
 **Motion Type:** ${input.motionType}
-**Revision Loop:** ${loopNumber} of 3
+**Revision Loop:** ${loopNumber} of ${getMaxLoopsForPhaseVII(input.tier)}
 **Is Re-evaluation:** ${isReEvaluation ? 'YES - evaluating REVISED motion from Phase VIII' : 'NO - initial evaluation'}
 **Phase VI Skipped:** ${phaseVISkipped ? 'YES - Tier A procedural motion (DO NOT penalize for missing opposition analysis)' : 'NO'}
 
@@ -3601,6 +3610,20 @@ async function executePhaseVIII(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase VIII] Phase V keys: ${Object.keys(phaseVOutput).join(', ') || 'EMPTY'}`);
     console.log(`[Phase VIII] Phase VII keys: ${Object.keys(phaseVIIOutput).join(', ') || 'EMPTY'}`);
 
+    // =========================================================================
+    // CAPTION LOCK: Extract original caption from Phase V (never mutated).
+    // Court captions have specific formatting (line breaks, ALL CAPS, spacing)
+    // that degrades through JSON serialization across revision loops.
+    // We extract once and inject verbatim into every revision.
+    // =========================================================================
+    const phaseVDraftMotion = (phaseVOutput?.draftMotion ?? phaseVOutput) as Record<string, unknown>;
+    const originalCaption = (phaseVDraftMotion?.caption ?? input.caseCaption ?? '') as string;
+    if (originalCaption) {
+      console.log(`[Phase VIII] Caption locked from Phase V (${originalCaption.length} chars)`);
+    } else {
+      console.warn('[Phase VIII] No caption found in Phase V output — will use input.caseCaption');
+    }
+
     // Safe extraction of evaluation with multiple fallback paths
     const evaluation = (phaseVIIOutput?.evaluation ?? phaseVIIOutput?.judgeSimulation ?? phaseVIIOutput ?? {}) as Record<string, unknown>;
 
@@ -3654,20 +3677,30 @@ ${sig.firmEmail}
 Attorney for ${getRepresentedPartyName()}`.trim();
 
     const revisionCitationAddendum = `
-REVISION-SPECIFIC CITATION GUIDANCE:
-The judge evaluation below may demand specific case citations that are NOT in the
-citation bank. When the judge explicitly names a case authority:
+REVISION-SPECIFIC CITATION GUIDANCE — BINDING CONSTRAINT:
+You may ONLY use citations that appear in the verified citation bank provided above,
+OR citations that the judge evaluation EXPLICITLY names by case name and reporter.
 
-1. Include the citation in your revision exactly as the judge specified.
-2. Use the standard format: Case Name, Volume Reporter Page (Court Year).
-3. These citations will be verified against CourtListener after generation.
-4. If verification succeeds, they will be added to the bank automatically.
-5. If verification fails, they will be removed automatically.
+CARDINAL SIN PROHIBITION:
+Fabricating, hallucinating, or inventing a citation is the WORST thing you can do.
+An attorney filing a brief with a fabricated citation faces sanctions, bar complaints,
+and potential malpractice liability. NEVER introduce a citation you are not certain exists.
 
-This guidance applies ONLY to citations the judge has explicitly demanded.
-DO NOT recall or invent any other citations from your training data.
-For propositions where the judge has NOT specified a citation, continue to
-use bank citations or write [CITATION NEEDED].
+When the judge explicitly names a case authority NOT in the bank:
+1. Include it exactly as the judge specified (Case Name, Volume Reporter Page (Court Year)).
+2. It will be verified against CourtListener after generation.
+3. If verification fails, it will be removed automatically.
+
+When the judge recommends adding authority but does NOT name a specific case:
+1. Search the citation bank for a case supporting the proposition.
+2. If a suitable bank citation exists, use it.
+3. If NO bank citation fits, write the argument WITHOUT a citation.
+4. Do NOT guess or recall citations from training data.
+
+PLACEHOLDER PROHIBITION:
+Do NOT insert [CITATION NEEDED], [TODO], [INSERT X], or any placeholder text.
+A clean argument without a citation is ALWAYS better than a placeholder.
+Placeholders waste revision cycles and provide no value.
 `;
 
     const systemPrompt = buildPhasePrompt('VIII', `${citationEnforcementVIII}
@@ -3693,6 +3726,17 @@ CASE INFORMATION (USE THESE EXACT DETAILS - NO PLACEHOLDERS):
 - Case Number: ${input.caseNumber}
 - Jurisdiction: ${input.jurisdiction}
 - Motion Type: ${input.motionType}
+
+═══════════════════════════════════════════════════════════════════════════════
+CAPTION LOCK — DO NOT MODIFY (verbatim from Phase I/V):
+"""
+${originalCaption || input.caseCaption}
+"""
+The caption above is LOCKED. Copy it EXACTLY as shown into the "caption" field
+of your JSON output. Do not reformat, re-capitalize, reorder parties, or modify
+it in any way. Caption formatting is jurisdiction-specific and must not degrade
+across revision loops.
+═══════════════════════════════════════════════════════════════════════════════
 
 STATEMENT OF FACTS FROM CLIENT:
 ${input.statementOfFacts || '[Client statement of facts not provided]'}
@@ -3814,6 +3858,22 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
     const phaseOutput: Record<string, unknown> = { ...parsed.data, phaseComplete: 'VIII' };
 
     // =========================================================================
+    // CAPTION ENFORCEMENT: Restore original caption if Phase VIII mutated it.
+    // The LLM sometimes reformats captions (changes case, drops line breaks,
+    // reorders parties). Always restore the locked Phase V/I caption.
+    // =========================================================================
+    if (originalCaption && phaseOutput.revisedMotion && typeof phaseOutput.revisedMotion === 'object') {
+      const revisedMotionObj = phaseOutput.revisedMotion as Record<string, unknown>;
+      const revisedCaption = (revisedMotionObj.caption ?? '') as string;
+      if (revisedCaption !== originalCaption) {
+        console.warn(`[Phase VIII] Caption drift detected — restoring original caption`);
+        console.log(`[Phase VIII]   Original: ${originalCaption.substring(0, 80)}...`);
+        console.log(`[Phase VIII]   Revised:  ${revisedCaption.substring(0, 80)}...`);
+        revisedMotionObj.caption = originalCaption;
+      }
+    }
+
+    // =========================================================================
     // SP-07 TASK-05: POST-REVISION FACT FABRICATION AUDIT
     // Compare named entities in revision against orderContext sources.
     // Fabrication → revert to currentDraft (NOT Phase V original)
@@ -3856,6 +3916,49 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
       phaseOutput.holdRecommended = true;
       phaseOutput.holdReason = 'MISSING_SPECIFICS';
       phaseOutput.bracketedPrompts = bracketedPrompts;
+    }
+
+    // =========================================================================
+    // POST-GENERATION PLACEHOLDER STRIPPING — Remove [CITATION NEEDED] etc.
+    // Placeholders waste revision cycles. Strip them and log for audit.
+    // =========================================================================
+    if (phaseOutput.revisedMotion && typeof phaseOutput.revisedMotion === 'object') {
+      const placeholderPattern = /\[CITATION (?:NEEDED|REQUIRED|MISSING|GAP)[^\]]*\]/gi;
+      let placeholdersStripped = 0;
+      const strippedPlaceholders: string[] = [];
+
+      const stripPlaceholdersFromValue = (val: string): string => {
+        const matches = val.match(placeholderPattern);
+        if (matches) {
+          placeholdersStripped += matches.length;
+          strippedPlaceholders.push(...matches);
+        }
+        return val.replace(placeholderPattern, '').replace(/\s{2,}/g, ' ').trim();
+      };
+
+      const motionObj = phaseOutput.revisedMotion as Record<string, unknown>;
+      for (const key of Object.keys(motionObj)) {
+        const value = motionObj[key];
+        if (typeof value === 'string') {
+          motionObj[key] = stripPlaceholdersFromValue(value);
+        } else if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item && typeof item === 'object') {
+              for (const subKey of Object.keys(item)) {
+                if (typeof item[subKey] === 'string') {
+                  item[subKey] = stripPlaceholdersFromValue(item[subKey]);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (placeholdersStripped > 0) {
+        console.warn(`[Phase VIII] Stripped ${placeholdersStripped} citation placeholder(s): ${strippedPlaceholders.join(', ')}`);
+        phaseOutput.placeholdersStripped = placeholdersStripped;
+        phaseOutput.strippedPlaceholderList = strippedPlaceholders;
+      }
     }
 
     // =========================================================================
