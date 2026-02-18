@@ -253,8 +253,8 @@ function getSupabase() {
 // ============================================================================
 
 /**
- * Emit an Inngest event with retry and persist to checkpoint_events for audit trail.
- * Wraps all event emissions in try-catch with single retry.
+ * Emit an Inngest event with exponential backoff retry and persist to checkpoint_events for audit trail.
+ * Critical events (CP3) must not be silently dropped — dead-letter log on final failure.
  */
 async function emitDurableEvent(
   name: string,
@@ -263,15 +263,45 @@ async function emitDurableEvent(
   checkpointType: 'CP1' | 'CP2' | 'CP3',
   supabaseClient: SupabaseClient
 ): Promise<void> {
-  try {
-    await inngest.send({ name, data });
-  } catch (error) {
-    console.error('Event emission failed — retrying', { name, orderId, error });
-    // Retry once
-    await inngest.send({ name, data });
+  const maxRetries = 3;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await inngest.send({ name, data });
+      lastError = null;
+      break; // success
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delayMs = 1000 * Math.pow(2, attempt);
+        console.error(`Event emission failed (attempt ${attempt + 1}/${maxRetries + 1}) — retrying in ${delayMs}ms`, { name, orderId });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
   }
 
-  // Always persist to checkpoint_events for audit trail
+  if (lastError) {
+    // Dead-letter: persist failed event for manual recovery
+    console.error(`CRITICAL: Event ${name} failed after ${maxRetries + 1} attempts`, {
+      orderId,
+      error: lastError instanceof Error ? lastError.message : String(lastError),
+    });
+    // Persist dead-letter record so admin can investigate
+    await supabaseClient.from('checkpoint_events').insert({
+      order_id: orderId,
+      event_name: `DEAD_LETTER:${name}`,
+      event_data: { ...data, deadLetterReason: lastError instanceof Error ? lastError.message : String(lastError), failedAt: new Date().toISOString() },
+      checkpoint_type: checkpointType,
+    }).then(({ error }) => {
+      if (error) console.error('Dead-letter persistence also failed', { name, orderId, error });
+    });
+    // Re-throw so the Inngest step can retry at a higher level
+    throw lastError;
+  }
+
+  // Persist to checkpoint_events for audit trail
   const { error: persistError } = await supabaseClient.from('checkpoint_events').insert({
     order_id: orderId,
     event_name: name,

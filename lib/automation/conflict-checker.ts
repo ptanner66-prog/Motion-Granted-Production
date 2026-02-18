@@ -544,7 +544,7 @@ function performBasicMatching(
  * Store conflict matches in database
  */
 async function storeConflictMatches(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   orderId: string,
   matches: ConflictMatchResult[]
 ): Promise<void> {
@@ -567,7 +567,7 @@ async function storeConflictMatches(
  * Update order conflict status
  */
 async function updateOrderConflictStatus(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   orderId: string,
   flagged: boolean,
   cleared: boolean,
@@ -587,7 +587,7 @@ async function updateOrderConflictStatus(
  * Create an approval queue item for conflict review
  */
 async function createConflictApproval(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   orderId: string,
   matches: ConflictMatchResult[],
   recommendation: 'clear' | 'review' | 'reject',
@@ -659,7 +659,7 @@ function generateReasoningSummary(matches: ConflictMatchResult[]): string {
  * Log an automation action
  */
 async function logAutomationAction(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   orderId: string | null,
   actionType: string,
   details: Record<string, unknown>

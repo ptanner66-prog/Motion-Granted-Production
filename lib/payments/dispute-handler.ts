@@ -124,16 +124,8 @@ export async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<voi
     console.error('[DISPUTE] Failed to send admin alert email:', emailErr);
   }
 
-  // Begin async evidence compilation via Inngest
-  try {
-    const { inngest } = await import('@/lib/inngest/client');
-    await inngest.send({
-      name: 'dispute/evidence-compile',
-      data: { orderId, disputeId: dispute.id },
-    });
-  } catch (inngestErr) {
-    console.error('[DISPUTE] Inngest evidence-compile send failed:', inngestErr);
-  }
+  // Evidence compilation handler not yet implemented — log for manual action
+  console.warn(`[DISPUTE] MANUAL ACTION REQUIRED: Compile evidence for order ${orderId}, dispute ${dispute.id}. Automated evidence compilation is not yet available.`);
 }
 
 export async function handleDisputeUpdated(dispute: Stripe.Dispute): Promise<void> {

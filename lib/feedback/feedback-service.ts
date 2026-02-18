@@ -351,7 +351,7 @@ export async function scheduleFeedbackRequest(
     .from('feedback_requests')
     .insert({
       order_id: orderId,
-      user_id: order.user_id,
+      user_id: order.client_id,
       scheduled_for: scheduledFor.toISOString(),
       status: 'pending',
     })

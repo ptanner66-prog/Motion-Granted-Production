@@ -187,14 +187,21 @@ export async function POST(
       throw insertError;
     }
 
-    // Trigger workflow via Inngest
-    const { inngest } = await import('@/lib/inngest/client');
+    // Trigger workflow via canonical order/submitted event (consumed by Fn1)
+    const { inngest, calculatePriority } = await import('@/lib/inngest/client');
+    const { data: orderData } = await supabase
+      .from('orders')
+      .select('filing_deadline')
+      .eq('id', orderId)
+      .single();
     await inngest.send({
-      name: 'workflow/execute-phase',
+      name: 'order/submitted',
       data: {
         orderId,
-        workflowId,
-        phase: 'I',
+        priority: orderData?.filing_deadline
+          ? calculatePriority(orderData.filing_deadline)
+          : 5000,
+        filingDeadline: orderData?.filing_deadline || null,
       },
     });
 

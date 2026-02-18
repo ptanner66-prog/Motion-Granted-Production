@@ -336,14 +336,18 @@ export async function batchExistenceCheck(
       } else {
         // Failed citation gets a safe NOT_FOUND result instead of crashing the batch
         results.push({
+          step: 1,
+          name: 'existence_check',
+          citationInput: batch[batchSettled.indexOf(settled)]?.citation ?? '',
           result: 'NOT_FOUND' as const,
           citationNormalized: '',
           sourcesChecked: [],
+          isPublished: false,
           confidence: 0,
           proceedToStep2: false,
           durationMs: 0,
           error: settled.reason instanceof Error ? settled.reason.message : 'Batch citation check failed',
-        } as ExistenceCheckOutput);
+        });
       }
     }
 
