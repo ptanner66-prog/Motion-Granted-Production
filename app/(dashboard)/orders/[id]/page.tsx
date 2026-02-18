@@ -536,7 +536,7 @@ export default async function OrderDetailPage({
                 Questions about this order or need to make changes?
               </p>
               <a
-                href="mailto:support@motiongranted.com"
+                href="mailto:support@motion-granted.com"
                 className="inline-flex items-center gap-2 text-sm font-medium text-teal hover:text-teal-light transition-colors"
               >
                 Contact Support

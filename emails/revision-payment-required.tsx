@@ -43,8 +43,8 @@ export function RevisionPaymentRequiredEmail({
   revisionNumber = 2,
   tier = 'B',
   amount = 125,
-  paymentUrl = 'https://motiongranted.com/checkout',
-  portalUrl = 'https://motiongranted.com/dashboard',
+  paymentUrl = 'https://motion-granted.com/checkout',
+  portalUrl = 'https://motion-granted.com/dashboard',
 }: RevisionPaymentRequiredEmailProps) {
   return (
     <Html>
@@ -151,8 +151,8 @@ export function RevisionPaymentRequiredEmail({
           <Section style={footer}>
             <Text style={footerText}>
               Questions about pricing? Contact us at{' '}
-              <Link href="mailto:support@motiongranted.com" style={link}>
-                support@motiongranted.com
+              <Link href="mailto:support@motion-granted.com" style={link}>
+                support@motion-granted.com
               </Link>
             </Text>
             <Text style={pricingNote}>

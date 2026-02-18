@@ -10,8 +10,8 @@
 import { sendEmail, sendEmailAsync, type EmailResult } from './email-service';
 import { resolveFromOrder } from '@/lib/jurisdiction/resolver';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com';
-const SUPPORT_EMAIL = 'support@motiongranted.com';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com';
+const SUPPORT_EMAIL = 'support@motion-granted.com';
 
 /**
  * BD-20: Resolve jurisdiction display string.

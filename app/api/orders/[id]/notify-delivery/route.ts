@@ -61,7 +61,7 @@ export async function POST(
     }
 
     // Send draft ready email
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'
 
     const result = await sendEmail({
       to: clientEmail,

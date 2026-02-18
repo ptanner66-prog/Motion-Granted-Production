@@ -66,7 +66,7 @@ export function CP3ReminderEmail({
   orderNumber = 'MG-2026-00123',
   motionType = 'Motion for Summary Judgment',
   caseCaption = 'Smith v. Jones',
-  dashboardUrl = 'https://motiongranted.com/dashboard/orders/123',
+  dashboardUrl = 'https://motion-granted.com/dashboard/orders/123',
   reminderType = '48h',
   autoCancelDate,
 }: CP3ReminderEmailProps) {
@@ -181,8 +181,8 @@ export function CP3ReminderEmail({
           <Section style={footer}>
             <Text style={footerText}>
               Questions? Reply to this email or contact us at{' '}
-              <Link href="mailto:support@motiongranted.com" style={link}>
-                support@motiongranted.com
+              <Link href="mailto:support@motion-granted.com" style={link}>
+                support@motion-granted.com
               </Link>
             </Text>
             <Text style={footerDisclaimer}>

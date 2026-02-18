@@ -372,7 +372,7 @@ export async function POST(req: Request) {
     const origin =
       process.env.NEXT_PUBLIC_APP_URL ||
       process.env.NEXT_PUBLIC_SITE_URL ||
-      'https://motiongranted.com';
+      'https://motion-granted.com';
 
     try {
       const session = await stripe.checkout.sessions.create({

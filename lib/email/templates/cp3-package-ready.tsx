@@ -53,7 +53,7 @@ export default function CP3PackageReady({
           <Hr style={divider} />
           <Section style={footerSection}>
             <Text style={footer}>Motion Granted | Legal Process Outsourcing</Text>
-            <Text style={footer}>Questions? Reply to this email or contact support@motiongranted.com</Text>
+            <Text style={footer}>Questions? Reply to this email or contact support@motion-granted.com</Text>
           </Section>
         </Container>
       </Body>

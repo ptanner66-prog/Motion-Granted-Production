@@ -93,7 +93,7 @@ const resourceLinks = [
   },
   {
     name: 'Help & Support',
-    href: 'mailto:support@motiongranted.com',
+    href: 'mailto:support@motion-granted.com',
     icon: HelpCircle,
     external: true
   },
@@ -319,7 +319,7 @@ export function AdminShell({ children, user, breadcrumbLabel }: AdminShellProps)
                   {user?.name || 'Admin'}
                 </p>
                 <p className="text-xs text-gray-500 truncate">
-                  {user?.email || 'admin@motiongranted.com'}
+                  {user?.email || 'admin@motion-granted.com'}
                 </p>
               </div>
               <Shield className="h-4 w-4 text-teal" />
@@ -391,7 +391,7 @@ export function AdminShell({ children, user, breadcrumbLabel }: AdminShellProps)
                     </Avatar>
                     <div className="flex flex-col space-y-0.5">
                       <p className="text-sm font-semibold text-navy">{user?.name || 'Admin'}</p>
-                      <p className="text-xs text-gray-500">{user?.email || 'admin@motiongranted.com'}</p>
+                      <p className="text-xs text-gray-500">{user?.email || 'admin@motion-granted.com'}</p>
                     </div>
                   </div>
                 </DropdownMenuLabel>

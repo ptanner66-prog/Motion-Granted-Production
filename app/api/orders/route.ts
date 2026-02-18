@@ -158,7 +158,7 @@ export async function POST(req: Request) {
       const stateAccepting = await isStateAcceptingOrders(supabase, stateCode, body.motion_type)
       if (!stateAccepting) {
         return NextResponse.json(
-          { error: `We are not currently accepting orders for ${stateCode}. Please contact support@motiongranted.com.` },
+          { error: `We are not currently accepting orders for ${stateCode}. Please contact support@motion-granted.com.` },
           { status: 400 }
         )
       }
@@ -306,7 +306,7 @@ export async function POST(req: Request) {
             day: 'numeric',
           }),
           totalPrice: `$${body.total_price.toFixed(2)}`,
-          portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/orders/${order.id}`,
+          portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'}/orders/${order.id}`,
         }),
       }).catch((err) => {
         log.error('Failed to send confirmation email', { error: err instanceof Error ? err.message : err })
@@ -330,7 +330,7 @@ export async function POST(req: Request) {
   } catch (error) {
     log.error('Order creation error', { error: error instanceof Error ? error.message : error })
     return NextResponse.json(
-      { error: 'We couldn\'t process your order. Please try again, or contact support@motiongranted.com if the issue persists.' },
+      { error: 'We couldn\'t process your order. Please try again, or contact support@motion-granted.com if the issue persists.' },
       { status: 500 }
     )
   }

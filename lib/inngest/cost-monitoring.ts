@@ -109,7 +109,7 @@ export const costAnomalyDetector = inngest.createFunction(
           to_email: ALERT_EMAIL,
           from_email: EMAIL_FROM.alerts,
           subject: `[COST ALERT] ${anomalies.length} order(s) exceeded $${ANOMALY_THRESHOLD_USD} threshold`,
-          body: `Cost Anomaly Report\n\n${anomalies.map(a => `- Order ${a.orderId}: $${a.costUsd}`).join('\n')}\n\nThreshold: $${ANOMALY_THRESHOLD_USD}\nReview: ${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/admin/analytics`,
+          body: `Cost Anomaly Report\n\n${anomalies.map(a => `- Order ${a.orderId}: $${a.costUsd}`).join('\n')}\n\nThreshold: $${ANOMALY_THRESHOLD_USD}\nReview: ${process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'}/admin/analytics`,
           priority: 8,
         });
 
@@ -176,7 +176,7 @@ export const budgetAlertCron = inngest.createFunction(
           to_email: ALERT_EMAIL,
           from_email: EMAIL_FROM.alerts,
           subject: `[${level}] Monthly AI budget at ${result.percentUsed}% ($${result.totalSpendUsd}/$${result.budgetUsd})`,
-          body: `Budget Alert\n\nCurrent spend: $${result.totalSpendUsd}\nMonthly budget: $${result.budgetUsd}\nUsage: ${result.percentUsed}%\n\nReview: ${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/admin/analytics`,
+          body: `Budget Alert\n\nCurrent spend: $${result.totalSpendUsd}\nMonthly budget: $${result.budgetUsd}\nUsage: ${result.percentUsed}%\n\nReview: ${process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'}/admin/analytics`,
           priority: result.percentUsed >= 95 ? 10 : 8,
         });
 

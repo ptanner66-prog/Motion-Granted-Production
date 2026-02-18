@@ -128,8 +128,8 @@ export const stripeHealthMonitor = inngest.createFunction(
         const hasCritical = report.alerts.some(a => a.level === 'critical');
 
         await resend.emails.send({
-          from: 'Motion Granted <alerts@motiongranted.com>',
-          to: process.env.ADMIN_ALERT_EMAIL || 'admin@motiongranted.com',
+          from: 'Motion Granted <alerts@motion-granted.com>',
+          to: process.env.ADMIN_ALERT_EMAIL || 'admin@motion-granted.com',
           subject: `[${hasCritical ? 'CRITICAL' : 'WARNING'}] Stripe Health Alert`,
           text: `Weekly health check found ${report.alerts.length} alert(s).\n\nDispute rate: ${(report.disputeRate * 100).toFixed(2)}%\nRefund rate: ${(report.refundRate * 100).toFixed(2)}%\nCharges (30d): ${report.totalCharges}\n\nAlerts:\n${report.alerts.map(a => `- ${a.metric}: ${(a.currentValue * 100).toFixed(2)}% (threshold: ${(a.threshold * 100).toFixed(2)}%)`).join('\n')}`,
         });

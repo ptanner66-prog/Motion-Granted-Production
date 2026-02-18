@@ -52,11 +52,11 @@ export async function POST(request: Request) {
     const safeSubject = escapeHtml(data.subject)
     const safeMessage = escapeHtml(data.message)
 
-    const adminEmail = process.env.ADMIN_EMAIL || 'support@motiongranted.com'
+    const adminEmail = process.env.ADMIN_EMAIL || 'support@motion-granted.com'
 
     // Send notification to admin
     await resend.emails.send({
-      from: 'Motion Granted <noreply@motiongranted.com>',
+      from: 'Motion Granted <noreply@motion-granted.com>',
       to: adminEmail,
       subject: `Contact Form: ${safeSubject}`,
       html: `
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
 
     // Send confirmation to user
     await resend.emails.send({
-      from: 'Motion Granted <noreply@motiongranted.com>',
+      from: 'Motion Granted <noreply@motion-granted.com>',
       to: data.email,
       subject: 'We received your message - Motion Granted',
       html: `

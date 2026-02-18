@@ -48,7 +48,7 @@ export function MarketingFooter() {
               Court-ready litigation documents with verified citations.
               We draft. You review. You file.
             </p>
-            <a href="mailto:support@motiongranted.com">support@motiongranted.com</a>
+            <a href="mailto:support@motion-granted.com">support@motion-granted.com</a>
           </div>
           {footerSections.map((section) => (
             <div key={section.title} className="footer-col">

@@ -16,8 +16,8 @@ function getResend(): Resend {
   return resendClient;
 }
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'Motion Granted <noreply@motiongranted.com>';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com';
+const FROM_EMAIL = process.env.EMAIL_FROM || 'Motion Granted <noreply@motion-granted.com>';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com';
 
 interface DeletionReminderParams {
   to: string;
@@ -109,7 +109,7 @@ export async function sendDeletionReminderEmail(params: DeletionReminderParams):
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
 
   <p style="color: #64748b; font-size: 14px;">
-    Questions? Reply to this email or contact <a href="mailto:support@motiongranted.com" style="color: #2563eb;">support@motiongranted.com</a>
+    Questions? Reply to this email or contact <a href="mailto:support@motion-granted.com" style="color: #2563eb;">support@motion-granted.com</a>
   </p>
 
   <p style="color: #64748b; font-size: 14px; margin-bottom: 0;">

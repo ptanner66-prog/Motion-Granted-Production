@@ -43,7 +43,7 @@ export function PostApprovalRevision({
             For additional revisions, please contact support.
           </p>
           <Button variant="outline" size="sm" className="gap-2" asChild>
-            <a href="mailto:support@motiongranted.com?subject=Additional Revision Request">
+            <a href="mailto:support@motion-granted.com?subject=Additional Revision Request">
               <Mail className="h-4 w-4" />
               Contact Support
             </a>

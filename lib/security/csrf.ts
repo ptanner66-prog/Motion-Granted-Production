@@ -23,8 +23,6 @@ import { NextRequest } from 'next/server';
  */
 function getAllowedOrigins(): string[] {
   const origins: string[] = [
-    'https://motiongranted.com',
-    'https://www.motiongranted.com',
     'https://motion-granted.com',
     'https://www.motion-granted.com',
     'https://motion-granted-production.vercel.app',

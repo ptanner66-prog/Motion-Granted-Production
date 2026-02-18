@@ -128,7 +128,7 @@ export function RegisterForm() {
     } catch {
       toast({
         title: 'Registration Failed',
-        description: 'We couldn\'t create your account. Please try again, or contact support@motiongranted.com if the issue persists.',
+        description: 'We couldn\'t create your account. Please try again, or contact support@motion-granted.com if the issue persists.',
         variant: 'destructive',
       })
     } finally {

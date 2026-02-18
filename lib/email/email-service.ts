@@ -22,7 +22,7 @@ const log = createLogger('email-email-service');
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
-const SENDER = process.env.RESEND_FROM_EMAIL || 'Motion Granted <noreply@motiongranted.com>';
+const SENDER = process.env.RESEND_FROM_EMAIL || 'Motion Granted <noreply@motion-granted.com>';
 
 // ============================================================================
 // SINGLETON CLIENT

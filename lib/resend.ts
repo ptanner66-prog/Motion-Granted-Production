@@ -31,7 +31,7 @@ export async function sendEmail({
 }) {
   try {
     const data = await getResend().emails.send({
-      from: 'Motion Granted <noreply@motiongranted.com>',
+      from: 'Motion Granted <noreply@motion-granted.com>',
       to,
       subject,
       react,

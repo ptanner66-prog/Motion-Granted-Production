@@ -115,8 +115,8 @@ export async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<voi
       : 'unknown';
 
     await resend.emails.send({
-      from: 'Motion Granted <alerts@motiongranted.com>',
-      to: process.env.ADMIN_ALERT_EMAIL || 'admin@motiongranted.com',
+      from: 'Motion Granted <alerts@motion-granted.com>',
+      to: process.env.ADMIN_ALERT_EMAIL || 'admin@motion-granted.com',
       subject: `[URGENT] Dispute Opened — Order ${orderId}`,
       text: `A dispute has been opened for order ${orderId}.\n\nAmount: $${(dispute.amount / 100).toFixed(2)}\nReason: ${dispute.reason}\nEvidence deadline: ${dueDate}\n\nPlease review immediately in the admin dashboard.`,
     });

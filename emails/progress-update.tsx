@@ -70,8 +70,8 @@ export function ProgressUpdateEmail({
   milestone = 'assigned',
   clerkName,
   estimatedCompletion,
-  portalUrl = 'https://motiongranted.com/dashboard',
-  orderUrl = 'https://motiongranted.com/orders/123',
+  portalUrl = 'https://motion-granted.com/dashboard',
+  orderUrl = 'https://motion-granted.com/orders/123',
 }: ProgressUpdateEmailProps) {
   const config = milestoneConfig[milestone]
 
@@ -159,8 +159,8 @@ export function ProgressUpdateEmail({
           <Section style={footer}>
             <Text style={footerText}>
               Questions? Reply to this email or contact us at{' '}
-              <Link href="mailto:support@motiongranted.com" style={link}>
-                support@motiongranted.com
+              <Link href="mailto:support@motion-granted.com" style={link}>
+                support@motion-granted.com
               </Link>
             </Text>
             <Text style={footerDisclaimer}>

@@ -33,6 +33,10 @@ const faqs = [
     answer: "One round of revisions is included with every order. We want you satisfied with the final product. If the revision involves a material change to the scope or legal theory, we'll discuss it with you first."
   },
   {
+    question: "What is your refund policy?",
+    answer: "Refund amounts are based on the stage of work completed at the time of cancellation: 85% during early phases (intake through evidence strategy), 65% during authority research, 40% during drafting, and 20% during later review phases. Orders cancelled due to a conflict of interest are not charged. If you don't review your completed draft within 21 days, the order is automatically cancelled with a 50% refund. See our Terms of Service for full details."
+  },
+  {
     question: "How do you handle confidential case materials?",
     answer: "All case materials are processed in isolated environments. We don't use your data for training AI models. Data is scrubbed according to your retention preferences after delivery. Attorney-client privilege is preserved—we're simply your drafting vendor."
   },
@@ -94,10 +98,10 @@ export function FAQSection() {
             Still have questions? We&apos;re here to help.
           </p>
           <a
-            href="mailto:support@motiongranted.com"
+            href="mailto:support@motion-granted.com"
             className="text-navy font-medium hover:text-gold transition-colors"
           >
-            Contact us at support@motiongranted.com
+            Contact us at support@motion-granted.com
           </a>
         </div>
       </div>

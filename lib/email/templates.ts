@@ -10,8 +10,8 @@ const BRAND = {
   name: 'Motion Granted',
   color: '#1e3a5f',
   accent: '#c5a059',
-  url: process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com',
-  supportEmail: 'support@motiongranted.com',
+  url: process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com',
+  supportEmail: 'support@motion-granted.com',
 };
 
 function baseLayout(content: string, preheader?: string): string {

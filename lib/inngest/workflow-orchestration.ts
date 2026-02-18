@@ -619,9 +619,9 @@ function generateInstructionSheetContent(
   content.push('CONTACT INFORMATION');
   content.push('───────────────────────────────────────────────────────────────────────');
   content.push('Motion Granted LPO');
-  content.push('Email: support@motiongranted.com');
+  content.push('Email: support@motion-granted.com');
   content.push('Phone: (555) 123-4567');
-  content.push('Web: https://motiongranted.com');
+  content.push('Web: https://motion-granted.com');
   content.push('');
   content.push('Questions or need revisions? Contact us within 7 days of delivery.');
   content.push('');
@@ -1705,7 +1705,15 @@ export const generateOrderWorkflow = inngest.createFunction(
         })
         .eq("id", orderId);
 
-      // Log workflow start
+      // D2-009: Snapshot model versions at workflow start for audit trail
+      const modelVersionAtStart = {
+        primary: process.env.ANTHROPIC_MODEL || 'claude-opus-4-6',
+        secondary: process.env.ANTHROPIC_SONNET_MODEL || 'claude-sonnet-4-5-20250929',
+        citation: process.env.OPENAI_MODEL || 'gpt-4-turbo',
+        timestamp: new Date().toISOString(),
+      };
+
+      // Log workflow start with model snapshot
       await supabase.from("automation_logs").insert({
         order_id: orderId,
         action_type: "workflow_started",
@@ -1713,6 +1721,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           workflowId,
           tier: orderContext.motionTier,
           motionType: orderContext.motionType,
+          modelVersionAtStart,
         },
       });
 
@@ -3848,7 +3857,7 @@ export const generateOrderWorkflow = inngest.createFunction(
             attorneyName: profile.display_name ?? 'Counselor',
             attorneyEmail: profile.email,
             motionType: order.motion_type,
-            dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/dashboard/orders/${orderId}/review`,
+            dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'}/dashboard/orders/${orderId}/review`,
           });
         }
 
@@ -4110,7 +4119,7 @@ Action Required:
 2. Review the automation logs to see which phase was running
 3. Consider manually retrying or processing the order
 
-Admin Dashboard: ${process.env.NEXT_PUBLIC_APP_URL || "https://motiongranted.com"}/admin/orders/${orderId}
+Admin Dashboard: ${process.env.NEXT_PUBLIC_APP_URL || "https://motion-granted.com"}/admin/orders/${orderId}
           `.trim(),
         });
       } catch (emailError) {

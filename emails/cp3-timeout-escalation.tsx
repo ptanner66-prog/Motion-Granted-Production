@@ -38,7 +38,7 @@ export function CP3TimeoutEscalationEmail({
   caseCaption = 'Smith v. Jones',
   attorneyEmail = 'attorney@example.com',
   attorneyName = 'Counselor',
-  adminDashboardUrl = 'https://motiongranted.com/admin/orders/123',
+  adminDashboardUrl = 'https://motion-granted.com/admin/orders/123',
   refundAmountFormatted = '$250.00',
   cp3EnteredAt = '',
   cancelledAt = '',

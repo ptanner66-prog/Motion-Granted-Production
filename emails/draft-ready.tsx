@@ -26,8 +26,8 @@ export function DraftReadyEmail({
   motionType = 'Motion for Summary Judgment',
   caseCaption = 'Smith v. Jones',
   deliveredDate = 'January 18, 2024',
-  portalUrl = 'https://motiongranted.com/dashboard',
-  orderUrl = 'https://motiongranted.com/orders/123',
+  portalUrl = 'https://motion-granted.com/dashboard',
+  orderUrl = 'https://motion-granted.com/orders/123',
 }: DraftReadyEmailProps) {
   return (
     <Html>
@@ -106,8 +106,8 @@ export function DraftReadyEmail({
           <Section style={footer}>
             <Text style={footerText}>
               Questions about your draft? Reply to this email or contact us at{' '}
-              <Link href="mailto:support@motiongranted.com" style={link}>
-                support@motiongranted.com
+              <Link href="mailto:support@motion-granted.com" style={link}>
+                support@motion-granted.com
               </Link>
             </Text>
             <Text style={footerDisclaimer}>

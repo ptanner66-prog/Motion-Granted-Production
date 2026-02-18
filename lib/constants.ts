@@ -20,7 +20,7 @@ export const FILE_UPLOAD = {
 
 // Contact Information
 export const CONTACT = {
-  EMAIL: 'support@motiongranted.com',
+  EMAIL: 'support@motion-granted.com',
   PHONE: '(555) 123-4567',
 } as const
 

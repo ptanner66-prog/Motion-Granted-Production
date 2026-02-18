@@ -30,8 +30,8 @@ export function StatusUpdateEmail({
   previousStatus = 'Pending',
   newStatus = 'In Progress',
   statusMessage = 'Your order has been assigned to a law clerk and work has begun.',
-  portalUrl = 'https://motiongranted.com/dashboard',
-  orderUrl = 'https://motiongranted.com/orders/123',
+  portalUrl = 'https://motion-granted.com/dashboard',
+  orderUrl = 'https://motion-granted.com/orders/123',
 }: StatusUpdateEmailProps) {
   return (
     <Html>
@@ -110,8 +110,8 @@ export function StatusUpdateEmail({
           <Section style={footer}>
             <Text style={footerText}>
               Questions? Reply to this email or contact us at{' '}
-              <Link href="mailto:support@motiongranted.com" style={link}>
-                support@motiongranted.com
+              <Link href="mailto:support@motion-granted.com" style={link}>
+                support@motion-granted.com
               </Link>
             </Text>
             <Text style={footerDisclaimer}>
