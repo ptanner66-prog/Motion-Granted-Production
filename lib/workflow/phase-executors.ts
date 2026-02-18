@@ -33,6 +33,9 @@ import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
 import { extractCaseName } from '@/lib/citations/extract-case-name';
 
+// FIX-D/FIX-E: Prompt guardrails — phase enforcement, output boundary validation, input sanitization
+import { buildPhasePrompt, detectOutputViolation, detectPhaseSkipAttempt, sanitizeForAI } from '@/lib/workflow/prompt-guardrails';
+
 // SP-07: CIV pipeline imports for 7-step citation verification
 import { verifyBatch, verifyNewCitations, verifyUnauthorizedCitation } from '@/lib/civ';
 import type {
@@ -56,8 +59,6 @@ import type { LoopGrade } from '@/lib/workflow/judge-grading-lock';
 import { applyPhaseVIIHardRules } from '@/lib/workflow/phase-vii-hardcoded-rules';
 import type { PhaseVIIOutput, PhaseVIISectionGrade } from '@/lib/workflow/phase-vii-hardcoded-rules';
 
-// FIX-E FIX 20: Prompt guardrails — enhanced phase enforcement with citation bank and output validation
-import { buildPhasePrompt, detectOutputViolation, sanitizeForAI } from '@/lib/workflow/prompt-guardrails';
 
 // ============================================================================
 // HELPERS
@@ -309,6 +310,38 @@ function resolveModelForExecution(phase: string, tier: string): string {
 
   // CHAT mode — return the model from registry directly
   return modelConfig.model;
+}
+
+/**
+ * Validate phase output against prompt guardrails.
+ * Checks for output boundary violations and phase skip attempts.
+ * Logs warnings but does not throw — violations are informational at this stage
+ * to avoid breaking the pipeline while guardrails are being tuned.
+ *
+ * @param phase - Phase code (e.g., 'I', 'V', 'VII')
+ * @param outputText - Raw text output from Claude
+ * @param orderId - Order ID for structured logging
+ */
+function validatePhaseOutput(phase: string, outputText: string, orderId: string): void {
+  try {
+    const violation = detectOutputViolation(phase, outputText);
+    if (violation.violated) {
+      console.warn(
+        `[Phase ${phase}] GUARDRAIL VIOLATION for order ${orderId}: ${violation.reason}`
+      );
+    }
+
+    const skipAttempt = detectPhaseSkipAttempt(phase, outputText);
+    if (skipAttempt.attempted) {
+      console.warn(
+        `[Phase ${phase}] PHASE SKIP ATTEMPT for order ${orderId}: ${skipAttempt.reason}` +
+        (skipAttempt.targetPhase ? ` (attempted skip to: ${skipAttempt.targetPhase})` : '')
+      );
+    }
+  } catch (guardErr) {
+    // Guardrail validation must never crash the pipeline
+    console.error(`[Phase ${phase}] Guardrail validation error (non-fatal):`, guardErr);
+  }
 }
 
 /**
@@ -966,9 +999,7 @@ async function executePhaseI(input: PhaseInput): Promise<PhaseOutput> {
     const client = getAnthropicClient();
     console.log(`[Phase I] Anthropic client ready`);
 
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-${PHASE_PROMPTS.PHASE_I}`;
+    const systemPrompt = buildPhasePrompt('I', PHASE_PROMPTS.PHASE_I);
 
     // FIX-E FIX 20: Sanitize user inputs before LLM interpolation
     const userMessage = `Analyze this submission for Phase I intake:
@@ -1011,6 +1042,7 @@ Provide your Phase I analysis as JSON.`;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('I', outputText, input.orderId);
 
     console.log(`[Phase I] Response text length: ${outputText.length} chars`);
 
@@ -1147,9 +1179,7 @@ async function executePhaseII(input: PhaseInput): Promise<PhaseOutput> {
     const client = getAnthropicClient();
     const phaseIOutput = input.previousPhaseOutputs['I'] as Record<string, unknown>;
 
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-${PHASE_PROMPTS.PHASE_II}`;
+    const systemPrompt = buildPhasePrompt('II', PHASE_PROMPTS.PHASE_II);
 
     const userMessage = `Based on the Phase I intake, identify the legal framework:
 
@@ -1173,6 +1203,7 @@ Provide your Phase II legal framework analysis as JSON.`;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('II', outputText, input.orderId);
 
     const parsed = extractJSON(outputText, { phase: 'II', orderId: input.orderId });
     if (!parsed.success) {
@@ -1342,9 +1373,7 @@ async function executePhaseIII(input: PhaseInput): Promise<PhaseOutput> {
     // ========================================================================
     // SYSTEM PROMPT: Load v7.4.1 methodology prompt
     // ========================================================================
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-${PHASE_PROMPTS.PHASE_III}`;
+    const systemPrompt = buildPhasePrompt('III', PHASE_PROMPTS.PHASE_III);
 
     const userMessage = `Analyze evidence and issues for Phase III:
 
@@ -1384,6 +1413,7 @@ Provide your Phase III evidence strategy as JSON.`;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('III', outputText, input.orderId);
 
     const parsed = extractJSON<Record<string, unknown>>(outputText, { phase: 'III', orderId: input.orderId });
     if (!parsed.success) {
@@ -1773,11 +1803,9 @@ Attorney for ${getRepresentedPartyName()}`.trim();
     // SYSTEM PROMPT: Load v7.4.1 methodology prompt + case data injection
     // CITATION ENFORCEMENT BLOCK INJECTED AT TOP
     // ========================================================================
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
+    const systemPrompt = buildPhasePrompt('V', `${citationEnforcementBlock}
 
-${citationEnforcementBlock}
-
-${PHASE_PROMPTS.PHASE_V}
+${PHASE_PROMPTS.PHASE_V}`) + `
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: FILING ATTORNEY INFORMATION (USE EXACTLY - NO PLACEHOLDERS)
@@ -1944,6 +1972,7 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('V', outputText, input.orderId);
 
     console.log(`[Phase V] Response text length: ${outputText.length} chars`);
 
@@ -2860,11 +2889,8 @@ async function executePhaseVI(input: PhaseInput): Promise<PhaseOutput> {
     // ========================================================================
     // SYSTEM PROMPT: Load v7.4.1 methodology prompt
     // ========================================================================
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-${PHASE_PROMPTS.PHASE_VI}
-
-${thinkingBudget ? 'Use extended thinking to deeply analyze potential opposition strategies and vulnerabilities.' : ''}`;
+    const systemPrompt = buildPhasePrompt('VI', PHASE_PROMPTS.PHASE_VI) +
+      (thinkingBudget ? '\n\nUse extended thinking to deeply analyze potential opposition strategies and vulnerabilities.' : '');
 
     const userMessage = `Anticipate opposition for Phase VI:
 
@@ -2889,6 +2915,7 @@ Analyze potential opposition. Provide as JSON.`;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('VI', outputText, input.orderId);
 
     const parsed = extractJSON(outputText, { phase: 'VI', orderId: input.orderId });
     if (!parsed.success) {
@@ -2977,35 +3004,7 @@ async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
     // ========================================================================
     const thinkingBudget = getThinkingBudget('VII', input.tier); // Always 10K for Phase VII
 
-    // FIX-E FIX 6: Build grading lock preamble for loop 2+ (anti-inflation)
-    let gradingLockPreamble = '';
-    if (loopNumber >= 2) {
-      // Build previous grades from Phase VII output history
-      const prevVIIOutput = (input.previousPhaseOutputs?.['VII'] ?? {}) as Record<string, unknown>;
-      const prevEval = (prevVIIOutput.evaluation as Record<string, unknown>) || prevVIIOutput;
-      const prevArgAssessment = (prevVIIOutput.argument_assessment ?? []) as Array<Record<string, unknown>>;
-
-      const previousGrades: LoopGrade[] = [{
-        loop: loopNumber - 1,
-        overallScore: Number(prevEval?.numeric_score ?? prevEval?.numericGrade ?? 0),
-        sectionScores: Object.fromEntries(
-          prevArgAssessment.map((a: Record<string, unknown>) => [String(a.argument_title ?? ''), Number(a.sub_grade_numeric ?? 0)])
-        ),
-        deficiencies: (prevVIIOutput.deficiencies ?? []) as string[],
-        authorityFlags: Object.fromEntries(
-          prevArgAssessment.map((a: Record<string, unknown>) => [String(a.argument_title ?? ''), Boolean(a.authority_appropriate)])
-        ),
-      }];
-
-      gradingLockPreamble = getGradingLockPreamble(loopNumber, previousGrades);
-      if (gradingLockPreamble) {
-        console.log(`[Phase VII] Grading lock preamble injected for loop ${loopNumber}`);
-      }
-    }
-
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-${gradingLockPreamble}
-${PHASE_PROMPTS.PHASE_VII}
+    const systemPrompt = buildPhasePrompt('VII', PHASE_PROMPTS.PHASE_VII) + `
 
 ---
 
@@ -3050,6 +3049,7 @@ Provide your judicial evaluation as JSON.`;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('VII', outputText, input.orderId);
 
     const parsed = extractJSON<Record<string, unknown>>(outputText, { phase: 'VII', orderId: input.orderId });
     if (!parsed.success) {
@@ -3648,13 +3648,11 @@ For propositions where the judge has NOT specified a citation, continue to
 use bank citations or write [CITATION NEEDED].
 `;
 
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-${citationEnforcementVIII}
+    const systemPrompt = buildPhasePrompt('VIII', `${citationEnforcementVIII}
 
 ${revisionCitationAddendum}
 
-${PHASE_PROMPTS.PHASE_VIII}
+${PHASE_PROMPTS.PHASE_VIII}`) + `
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: ATTORNEY INFO (MUST BE IN REVISED SIGNATURE BLOCK)
@@ -3750,6 +3748,7 @@ Address all weaknesses and revision suggestions. KEEP THE EXACT ATTORNEY INFO in
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('VIII', outputText, input.orderId);
 
     // SP-07 TASK-06: Truncation detection — if response was cut off, retry with 1.5x budget
     let outputTextFinal = outputText;
@@ -4053,9 +4052,7 @@ async function executePhaseVIII5(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase VIII.5] Motion source: ${phaseVIIIOutput?.revisedMotion ? 'Phase VIII (revised)' : 'Phase V (original)'}`);
 
 
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-${PHASE_PROMPTS.PHASE_VIII5}`;
+    const systemPrompt = buildPhasePrompt('VIII.5', PHASE_PROMPTS.PHASE_VIII5);
 
     const userMessage = `Validate caption consistency:
 
@@ -4077,6 +4074,7 @@ Validate captions. Provide as JSON.`;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('VIII.5', outputText, input.orderId);
 
     const parsed = extractJSON(outputText, { phase: 'VIII.5', orderId: input.orderId });
     if (!parsed.success) {
@@ -4258,9 +4256,7 @@ Attorney for ${getRepresentedPartyName()}`.trim();
       year: 'numeric'
     });
 
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-${PHASE_PROMPTS.PHASE_IX}
+    const systemPrompt = buildPhasePrompt('IX', PHASE_PROMPTS.PHASE_IX) + `
 
 CRITICAL: ATTORNEY INFO FOR CERTIFICATE OF SERVICE
 
@@ -4309,6 +4305,7 @@ Generate supporting documents. The Certificate of Service MUST include the exact
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('IX', outputText, input.orderId);
 
     // Truncation detection — if response was cut off at max_tokens, retry with 1.5x budget
     let outputTextFinal = outputText;
@@ -4458,9 +4455,7 @@ async function executePhaseIX1(input: PhaseInput): Promise<PhaseOutput> {
       ? 'Louisiana Code of Civil Procedure'
       : 'applicable local rules';
 
-  const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-${PHASE_PROMPTS.PHASE_IX1}
+  const systemPrompt = buildPhasePrompt('IX.1', PHASE_PROMPTS.PHASE_IX1) + `
 
 JURISDICTION: ${input.jurisdiction}
 FORMAT RULES: ${formatRules}`;
@@ -4559,9 +4554,7 @@ async function executePhaseX(input: PhaseInput): Promise<PhaseOutput> {
     console.log(`[Phase X] Evaluation grade: ${evaluation?.grade ?? evaluation?.overallGrade ?? 'Not available'}`);
 
 
-    const systemPrompt = `${PHASE_ENFORCEMENT_HEADER}
-
-${PHASE_PROMPTS.PHASE_X}
+    const systemPrompt = buildPhasePrompt('X', PHASE_PROMPTS.PHASE_X) + `
 
 MOTION TYPE: ${input.motionType}
 CASE CAPTION: ${input.caseCaption}`;
@@ -4588,6 +4581,7 @@ Assemble and check. Provide as JSON.`;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
+    validatePhaseOutput('X', outputText, input.orderId);
 
     const parsed = extractJSON<Record<string, unknown>>(outputText, { phase: 'X', orderId: input.orderId });
     if (!parsed.success) {

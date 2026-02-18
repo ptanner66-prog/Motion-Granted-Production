@@ -48,6 +48,9 @@ import { holdRecoveryCron } from './functions/hold-recovery-cron';
 // SP-21: Checkpoint recovery cron
 import { checkpointRecoveryCron } from './checkpoint-recovery';
 
+// FIX-D: Email queue consumer (reads email_queue, sends via Resend)
+import { processEmailQueue } from './process-email-queue';
+
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1202,4 +1205,6 @@ export const functions = [
   holdRecoveryCron,         // Every 6h cron to detect stuck HOLDs
   // SP-21: Checkpoint recovery
   checkpointRecoveryCron,   // Every 6h: recover stuck AWAITING_APPROVAL orders
+  // FIX-D: Email queue consumer (reads email_queue → Resend, every 60s)
+  processEmailQueue,
 ];
