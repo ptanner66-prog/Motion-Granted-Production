@@ -18,7 +18,7 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES (
   'documents',
   'documents',
-  true,  -- Public bucket for easy access
+  false,  -- PRIVATE bucket: attorney-client privilege requires signed URLs (LCV-014)
   52428800,  -- 50MB limit per file
   ARRAY[
     'application/pdf',
@@ -32,7 +32,7 @@ VALUES (
   ]::text[]
 )
 ON CONFLICT (id) DO UPDATE SET
-  public = EXCLUDED.public,
+  public = false,  -- Always force private (LCV-014)
   file_size_limit = EXCLUDED.file_size_limit,
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
@@ -60,10 +60,10 @@ ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (bucket_id = 'documents');
 
--- Policy: Anyone can read/download files (bucket is public)
-CREATE POLICY "Allow public downloads"
+-- Policy: Authenticated users can read files (bucket is PRIVATE — LCV-014)
+CREATE POLICY "Allow authenticated downloads"
 ON storage.objects FOR SELECT
-TO public
+TO authenticated
 USING (bucket_id = 'documents');
 
 -- Policy: Authenticated users can delete files
@@ -144,18 +144,17 @@ USING (
 -- STEP 7: CREATE HELPER FUNCTION (if not exists)
 -- =============================================================================
 
--- Create is_admin function if it doesn't exist
+-- Rewrite is_admin to use admin_users VIEW (DEC-A8-01)
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 STABLE
+SET search_path = ''
 AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid()
-    AND role = 'admin'
-  );
+BEGIN
+  RETURN EXISTS (SELECT 1 FROM public.admin_users WHERE user_id = auth.uid());
+END;
 $$;
 
 -- =============================================================================

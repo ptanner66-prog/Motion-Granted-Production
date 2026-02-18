@@ -19,7 +19,7 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES (
   'documents',
   'documents',
-  true,  -- Public bucket (files protected by path obscurity + database RLS)
+  false,  -- PRIVATE bucket: attorney-client privilege requires signed URLs (LCV-014)
   104857600,  -- 100MB limit for large legal briefs
   ARRAY[
     'application/pdf',
@@ -33,7 +33,7 @@ VALUES (
   ]::text[]
 )
 ON CONFLICT (id) DO UPDATE SET
-  public = true,
+  public = false,
   file_size_limit = 104857600,  -- 100MB
   allowed_mime_types = ARRAY[
     'application/pdf',
@@ -65,12 +65,11 @@ ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (bucket_id = 'documents');
 
--- Policy: Anyone can download/view files from the documents bucket
--- Security note: File URLs are only exposed through database queries,
--- which are protected by RLS (user can only see their own orders' documents)
-CREATE POLICY "Allow public downloads"
+-- Policy: Authenticated users can download/view files from the documents bucket
+-- Bucket is PRIVATE: all access requires authentication + signed URLs (LCV-014)
+CREATE POLICY "Allow authenticated downloads"
 ON storage.objects FOR SELECT
-TO public
+TO authenticated
 USING (bucket_id = 'documents');
 
 -- Policy: Authenticated users can delete files
