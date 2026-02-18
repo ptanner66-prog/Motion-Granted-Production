@@ -324,11 +324,28 @@ export async function batchExistenceCheck(
   for (let i = 0; i < citations.length; i += concurrencyLimit) {
     const batch = citations.slice(i, i + concurrencyLimit);
 
-    const batchResults = await Promise.all(
+    // BUG-FIX: Use Promise.allSettled to prevent one citation error from killing entire batch.
+    // Promise.all rejects if ANY promise rejects — one transient network error loses all citations.
+    const batchSettled = await Promise.allSettled(
       batch.map(({ citation, caseName }) => executeExistenceCheck(citation, caseName))
     );
 
-    results.push(...batchResults);
+    for (const settled of batchSettled) {
+      if (settled.status === 'fulfilled') {
+        results.push(settled.value);
+      } else {
+        // Failed citation gets a safe NOT_FOUND result instead of crashing the batch
+        results.push({
+          result: 'NOT_FOUND' as const,
+          citationNormalized: '',
+          sourcesChecked: [],
+          confidence: 0,
+          proceedToStep2: false,
+          durationMs: 0,
+          error: settled.reason instanceof Error ? settled.reason.message : 'Batch citation check failed',
+        } as ExistenceCheckOutput);
+      }
+    }
 
     // Brief pause between batches to avoid rate limit issues
     if (i + concurrencyLimit < citations.length) {

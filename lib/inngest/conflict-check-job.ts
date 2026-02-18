@@ -4,7 +4,7 @@
 
 import { inngest } from './client';
 import { checkForConflicts } from '@/lib/conflicts';
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('inngest-conflict-check');
@@ -24,7 +24,7 @@ export const conflictCheckJob = inngest.createFunction(
 
     // Step 1: Fetch order details
     const order = await step.run('fetch-order', async () => {
-      const supabase = await createClient();
+      const supabase = getServiceSupabase();
       const { data, error } = await supabase
         .from('orders')
         .select('id, case_number, party_name, opposing_party_name, attorney_id, court, jurisdiction')
@@ -51,7 +51,7 @@ export const conflictCheckJob = inngest.createFunction(
     // Step 3: Handle blocking conflicts
     if (result.hasBlockingConflicts) {
       await step.run('handle-blocking', async () => {
-        const supabase = await createClient();
+        const supabase = getServiceSupabase();
 
         // Update order status
         await supabase

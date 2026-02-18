@@ -11,7 +11,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { createClient } from '@/lib/supabase/server';
+// BUG-FIX: Background jobs (Inngest) must use admin/service-role client, not user-scoped.
+// User-scoped client requires cookies which are unavailable in background job context.
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { createMessageWithStreaming } from '@/lib/automation/claude';
 import { extractJSON } from '@/lib/utils/json-extractor';
 import {
@@ -1498,7 +1500,7 @@ async function logCitationVerification(
   apiResponse: Record<string, unknown>
 ): Promise<void> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
     await supabase.from('citation_verifications').insert({
       order_id: orderId,
       citation_text: citationText,
@@ -3004,8 +3006,28 @@ async function executePhaseVII(input: PhaseInput): Promise<PhaseOutput> {
     // ========================================================================
     const thinkingBudget = getThinkingBudget('VII', input.tier); // Always 10K for Phase VII
 
-    const systemPrompt = buildPhasePrompt('VII', PHASE_PROMPTS.PHASE_VII) + `
+    // FIX-E FIX 6b: Inject grading lock preamble on loop 2+ to prevent grade inflation.
+    // getGradingLockPreamble returns '' on loop 1, so this is safe to always call.
+    let gradingLockSection = '';
+    if (loopNumber >= 2) {
+      const prevVIIOutputForLock = (input.previousPhaseOutputs?.['VII'] ?? {}) as Record<string, unknown>;
+      const prevArgAssessmentForLock = (prevVIIOutputForLock.argument_assessment ?? []) as Array<Record<string, unknown>>;
+      const previousGrades: LoopGrade[] = [{
+        loop: loopNumber - 1,
+        overallScore: Number(prevVIIOutputForLock.numeric_score ?? 0),
+        sectionScores: Object.fromEntries(
+          prevArgAssessmentForLock.map((a: Record<string, unknown>) => [String(a.argument_title ?? ''), Number(a.sub_grade_numeric ?? 0)])
+        ),
+        deficiencies: (prevVIIOutputForLock.deficiencies ?? []) as string[],
+        authorityFlags: Object.fromEntries(
+          prevArgAssessmentForLock.map((a: Record<string, unknown>) => [String(a.argument_title ?? ''), Boolean(a.authority_appropriate)])
+        ),
+      }];
+      gradingLockSection = getGradingLockPreamble(loopNumber, previousGrades);
+    }
 
+    const systemPrompt = buildPhasePrompt('VII', PHASE_PROMPTS.PHASE_VII) + `
+${gradingLockSection}
 ---
 
 ### CONTEXT FOR THIS EVALUATION

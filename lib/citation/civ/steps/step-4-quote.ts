@@ -68,22 +68,32 @@ export async function executeQuoteVerification(
 
   // CV-109: Ellipsis validation on the quoted text
   if (quoteInDraft && quoteInDraft.includes('...')) {
-    const ellipsisResult = validateEllipsis(quoteInDraft, opinionText);
-    if (!ellipsisResult.valid) {
-      const errors = ellipsisResult.issues
-        .filter(i => i.severity === 'ERROR')
-        .map(i => i.suggestion);
-      result.ellipsisIssues = errors;
-      // Downgrade from MATCH to CLOSE_MATCH if there are ellipsis issues
+    try {
+      const ellipsisResult = validateEllipsis(quoteInDraft, opinionText);
+      if (!ellipsisResult.valid) {
+        const errors = ellipsisResult.issues
+          .filter(i => i.severity === 'ERROR')
+          .map(i => i.suggestion);
+        result.ellipsisIssues = errors;
+        // Downgrade from MATCH to CLOSE_MATCH if there are ellipsis issues
+        if (result.result === 'MATCH') {
+          result.result = 'CLOSE_MATCH';
+          result.actionTaken = 'FLAGGED';
+        }
+      }
+      if (ellipsisResult.issues.length > 0) {
+        result.ellipsisWarnings = ellipsisResult.issues
+          .filter(i => i.severity === 'WARNING')
+          .map(i => i.suggestion);
+      }
+    } catch (ellipsisError) {
+      // BUG-FIX: Unhandled validateEllipsis error could crash Step 4 entirely.
+      // Default to conservative: flag the quote as having issues.
+      result.ellipsisIssues = ['Ellipsis validation error — flagged for manual review'];
       if (result.result === 'MATCH') {
         result.result = 'CLOSE_MATCH';
         result.actionTaken = 'FLAGGED';
       }
-    }
-    if (ellipsisResult.issues.length > 0) {
-      result.ellipsisWarnings = ellipsisResult.issues
-        .filter(i => i.severity === 'WARNING')
-        .map(i => i.suggestion);
     }
   }
 

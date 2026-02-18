@@ -184,10 +184,13 @@ Respond in JSON format ONLY:
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       return {
-        result: parsed.challenge_result || 'UPHELD',
+        // BUG-FIX: Missing challenge_result must default to WEAKENED (restrictive), not UPHELD (permissive).
+        // UPHELD means "citation is fine" — defaulting to that on missing data is a cardinal sin.
+        result: parsed.challenge_result || 'WEAKENED',
         strength: parsed.challenge_strength ?? 50,
         classification: parsed.classification ?? stage1Analysis.classification,
-        agreesWithStage1: parsed.agrees_with_stage_1 ?? true,
+        // BUG-FIX: Missing agrees_with_stage_1 must default to false (restrictive), not true (permissive).
+        agreesWithStage1: parsed.agrees_with_stage_1 ?? false,
         disagreementReasons: parsed.disagreement_reasons ?? [],
         reasoning: parsed.challenge_reasoning,
       };
