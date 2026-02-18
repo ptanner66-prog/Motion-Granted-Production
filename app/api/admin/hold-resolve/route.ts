@@ -172,7 +172,7 @@ export async function POST(request: Request) {
       }
 
       case 'ESCALATE': {
-        // Mark for further review without resolving the HOLD
+        // Mark for further review — emit hold.resolved to cancel 7d timer (CONFLICT-F08)
         await supabase
           .from('orders')
           .update({
@@ -180,6 +180,18 @@ export async function POST(request: Request) {
             updated_at: now,
           })
           .eq('id', orderId);
+
+        // Emit resolution event to cancel pending timer cascade
+        await inngest.send({
+          name: 'checkpoint/hold.resolved',
+          data: {
+            orderId,
+            checkpointId: '',
+            action: 'ESCALATED',
+            holdReason,
+            resolvedBy: user.id,
+          },
+        });
 
         // Queue admin notification
         const adminEmail = process.env.ADMIN_EMAIL || process.env.ALERT_EMAIL;

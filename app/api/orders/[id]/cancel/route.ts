@@ -51,7 +51,7 @@ export async function POST(
   const serviceClient = getServiceSupabase();
   const { data: order, error: orderError } = await serviceClient
     .from('orders')
-    .select('id, status, status_version, workflow_id, client_id, tier, amount_paid_cents, current_phase, attorney_email, order_number')
+    .select('id, status, status_version, workflow_id, client_id, tier, amount_paid_cents, current_phase, attorney_email, order_number, stripe_payment_intent_id')
     .eq('id', orderId)
     .single();
 
@@ -119,7 +119,7 @@ export async function POST(
         packageId: pkg?.id ?? null,
         tier: order.tier,
         attorneyEmail: order.attorney_email,
-        action: 'CANCELLED',
+        action: 'CANCEL',
         refundAmountCents,
       },
     });
@@ -178,6 +178,31 @@ export async function POST(
       reason: reason ?? null,
     },
   });
+
+  // P2-2: Process Stripe refund (pre-CP3 = 100% refund)
+  if (refundAmountCents > 0 && order.stripe_payment_intent_id) {
+    try {
+      const StripeModule = await import('stripe');
+      const stripeClient = new StripeModule.default(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: '2025-01-27.acacia' as never,
+      });
+
+      await stripeClient.refunds.create({
+        payment_intent: order.stripe_payment_intent_id,
+      });
+
+      await serviceClient.from('orders').update({
+        refund_status: 'completed',
+        stripe_payment_status: 'refunded',
+      }).eq('id', orderId);
+    } catch (refundError) {
+      // Non-fatal: refund failed but cancellation stands — admin can retry manually
+      console.error(`[Cancel] Stripe refund failed for order ${orderId}:`, refundError);
+      await serviceClient.from('orders').update({
+        refund_status: 'failed',
+      }).eq('id', orderId);
+    }
+  }
 
   return NextResponse.json({
     success: true,

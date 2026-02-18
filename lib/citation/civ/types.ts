@@ -287,7 +287,7 @@ export interface FinalVerificationOutput {
     apiCallsMade: number;
     estimatedCost: number;
     orderId?: string;
-    phase: 'V.1' | 'VII.1';
+    phase: 'V.1' | 'VII.1' | 'IX.1';
   };
 }
 
@@ -325,7 +325,7 @@ export interface CitationToVerify {
  */
 export interface BatchVerificationRequest {
   orderId: string;
-  phase: 'V.1' | 'VII.1';
+  phase: 'V.1' | 'VII.1' | 'IX.1';
   citations: CitationToVerify[];
   options?: {
     skipCached?: boolean;
@@ -339,7 +339,7 @@ export interface BatchVerificationRequest {
  */
 export interface BatchVerificationResult {
   orderId: string;
-  phase: 'V.1' | 'VII.1';
+  phase: 'V.1' | 'VII.1' | 'IX.1';
   totalCitations: number;
   verified: number;
   flagged: number;

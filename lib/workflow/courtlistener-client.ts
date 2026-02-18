@@ -542,7 +542,7 @@ export class CourtListenerClient {
 
     if (!opinionResult.retrieved) {
       result.stage2Result = 'not_retrieved';
-      result.verificationStatus = 'VERIFIED'; // Found but couldn't get text
+      result.verificationStatus = 'VERIFIED_WEB_ONLY'; // Found but couldn't get text
       result.notes = `Found but couldn't retrieve opinion: ${opinionResult.error}`;
       return result;
     }
@@ -551,8 +551,8 @@ export class CourtListenerClient {
     result.opinionText = opinionResult.plainText;
 
     // Stage 3 will be handled externally by Opus for holding verification
-    // For now, mark as verified (existence + retrieval complete)
-    result.verificationStatus = 'VERIFIED';
+    // Existence + retrieval complete, but holding not yet verified
+    result.verificationStatus = 'EXISTENCE_CONFIRMED';
 
     return result;
   }

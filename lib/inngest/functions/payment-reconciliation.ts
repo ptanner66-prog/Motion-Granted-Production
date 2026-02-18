@@ -38,7 +38,7 @@ function getServiceSupabase() {
 
 export const paymentReconciliation = inngest.createFunction(
   { id: 'payment-reconciliation', name: 'Daily Payment Reconciliation' },
-  { cron: '0 3 * * *' }, // 3:00 AM CT daily
+  { cron: 'TZ=America/Chicago 0 3 * * *' }, // 3:00 AM CT daily
   async ({ step }) => {
     const stripe = getStripeClient();
     if (!stripe) {

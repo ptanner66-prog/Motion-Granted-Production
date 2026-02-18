@@ -580,7 +580,7 @@ export async function runCIVPipeline(input: {
   try {
     batchResult = await verifyBatch({
       orderId,
-      phase: phase === 'IX.1' ? 'V.1' : phase, // IX.1 uses V.1 config
+      phase: phase, // Pass actual phase for audit trail (IX.1 masquerade fix per P1-CIV-3)
       citations: citationsToVerify,
       options: {
         parallelLimit: batchSize,

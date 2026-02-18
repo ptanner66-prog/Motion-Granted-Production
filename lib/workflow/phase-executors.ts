@@ -2211,7 +2211,7 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
           citationType: 'case' as const,
           proposition: c.proposition,
           authorityLevel: c.authorityLevel === 'binding' ? 'binding' : 'persuasive',
-          verificationStatus: c.courtlistener_id ? 'verified' : 'unverified',
+          verificationStatus: 'pending_civ' as const,
           verificationMethod: c.verification_method || 'courtlistener_api',
           displayOrder: index + 1,
         };
@@ -4992,6 +4992,31 @@ export async function executePhase(
     tokensUsed: result.tokensUsed,
     durationMs: result.durationMs,
   });
+
+  // ST4-001: Wire recordCost into phase execution — records every phase's AI cost
+  if (result.success && result.tokensUsed && input.orderId) {
+    try {
+      const { recordCost } = await import('@/lib/workflow/cost-tracker');
+      const { MODEL_COSTS } = await import('@/lib/config/models');
+      const model = resolveModelForExecution(phase, input.tier);
+      const costPerToken = MODEL_COSTS[model] || { input: 3.0, output: 15.0 };
+      const totalCost = (result.tokensUsed.input * costPerToken.input / 1_000_000) +
+                        (result.tokensUsed.output * costPerToken.output / 1_000_000);
+
+      await recordCost({
+        orderId: input.orderId,
+        phase,
+        model,
+        tier: input.tier,
+        inputTokens: result.tokensUsed.input,
+        outputTokens: result.tokensUsed.output,
+        totalCost,
+      });
+    } catch (costError) {
+      // Non-fatal: losing cost data shouldn't fail the phase
+      console.error(`[Phase Executor] Cost recording failed for phase ${phase}:`, costError);
+    }
+  }
 
   return result;
 }

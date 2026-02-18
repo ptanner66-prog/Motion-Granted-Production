@@ -81,10 +81,10 @@ export function MotionReview({ orderId, orderNumber, orderStatus }: MotionReview
     setIsApproving(true);
 
     try {
-      const response = await fetch('/api/chat/approve', {
+      const response = await fetch(`/api/orders/${orderId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify({ action: 'APPROVE' }),
       });
 
       const data = await response.json();

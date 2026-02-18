@@ -638,7 +638,7 @@ async function processCP3Response(
   await supabase
     .from('orders')
     .update({
-      status: 'completed',
+      status: 'COMPLETED',
       updated_at: new Date().toISOString(),
     })
     .eq('id', workflow.order_id);
@@ -1055,7 +1055,7 @@ export async function processHoldResponse(
         await supabase
           .from('orders')
           .update({
-            status: 'cancelled',
+            status: 'CANCELLED',
             updated_at: now,
           })
           .eq('id', workflow.order_id);

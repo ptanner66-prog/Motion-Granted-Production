@@ -55,7 +55,7 @@ const log = createLogger('citation-civ-pipeline');
 export async function verifyCitation(
   citation: CitationToVerify,
   orderId?: string,
-  phase: 'V.1' | 'VII.1' = 'V.1',
+  phase: 'V.1' | 'VII.1' | 'IX.1' = 'V.1',
   config: CIVConfig = DEFAULT_CIV_CONFIG
 ): Promise<FinalVerificationOutput> {
   const startTime = Date.now();
@@ -235,41 +235,83 @@ export async function verifyCitation(
     });
   }
 
-  // Step 3: Dicta Detection
-  modelsUsed.push(config.primaryModel);
-  const surroundingContext = opinionText && step2.stage1.supportingQuote
-    ? extractSurroundingContext(opinionText, step2.stage1.supportingQuote)
-    : '';
+  // Step 3: Dicta Detection (isolated per P1-CIV-2)
+  let step3: Awaited<ReturnType<typeof executeDictaDetection>>;
+  try {
+    modelsUsed.push(config.primaryModel);
+    const surroundingContext = opinionText && step2.stage1.supportingQuote
+      ? extractSurroundingContext(opinionText, step2.stage1.supportingQuote)
+      : '';
 
-  const step3 = await executeDictaDetection(
-    parsed.caseName || citation.caseName || extractCaseName(citation.citationString),
-    step2.stage1.supportingQuote || citation.proposition,
-    surroundingContext,
-    citation.propositionType,
-    citation.motionTypeContext || 'motion_to_compel' // Pass motion type for tier-based model selection
-  );
-  apiCallsMade++;
+    step3 = await executeDictaDetection(
+      parsed.caseName || citation.caseName || extractCaseName(citation.citationString),
+      step2.stage1.supportingQuote || citation.proposition,
+      surroundingContext,
+      citation.propositionType,
+      citation.motionTypeContext || 'motion_to_compel'
+    );
+    apiCallsMade++;
+  } catch (step3Error) {
+    log.error('[CIV Step 3] Dicta detection failed, degrading gracefully:', step3Error);
+    step3 = {
+      step: 3 as const,
+      name: 'dicta_detection' as const,
+      classification: 'UNCLEAR' as const,
+      confidence: 0,
+      reasoning: `Step 3 error: ${step3Error instanceof Error ? step3Error.message : 'Unknown'}`,
+      actionTaken: 'FLAG' as const,
+      proceedToStep4: true,
+    };
+  }
 
-  // Step 4: Quote Verification
-  const step4 = await executeQuoteVerification(citation.quoteInDraft, opinionText || undefined);
-  // No API calls for quote verification (code-only)
+  // Step 4: Quote Verification (isolated per P1-CIV-2)
+  let step4: Awaited<ReturnType<typeof executeQuoteVerification>>;
+  try {
+    step4 = await executeQuoteVerification(citation.quoteInDraft, opinionText || undefined);
+    // No API calls for quote verification (code-only)
+  } catch (step4Error) {
+    log.error('[CIV Step 4] Quote verification failed, degrading gracefully:', step4Error);
+    step4 = {
+      step: 4 as const,
+      name: 'quote_verification' as const,
+      result: 'N/A' as const,
+      actionTaken: 'FLAGGED' as const,
+      proceedToStep5: true,
+    };
+  }
 
-  // Step 5: Bad Law Check + Protocols 18-23
-  const step5 = await executeBadLawCheck(
-    citation.citationString,
-    parsed.caseName || citation.caseName || extractCaseName(citation.citationString),
-    step1.courtlistenerId,
-    citationDbId,
-    citation.motionTypeContext || 'motion_to_compel', // Pass motion type for tier-based model selection
-    {
-      // Protocol context from earlier steps
-      isFromMajority: (step2 as any).stage_1?.is_from_majority ?? true,  // P20
-      metadataConflict: false,  // P22: Step 1 doesn't currently detect this
-      dictaConfidence: step3.confidence,  // P18
-      propositionType: citation.propositionType,  // P18
-    }
-  );
-  apiCallsMade += step5.layer2.searchesRun > 0 ? 1 : 0;
+  // Step 5: Bad Law Check + Protocols 18-23 (isolated per P1-CIV-2)
+  let step5: Awaited<ReturnType<typeof executeBadLawCheck>>;
+  try {
+    step5 = await executeBadLawCheck(
+      citation.citationString,
+      parsed.caseName || citation.caseName || extractCaseName(citation.citationString),
+      step1.courtlistenerId,
+      citationDbId,
+      citation.motionTypeContext || 'motion_to_compel',
+      {
+        isFromMajority: (step2 as any).stage_1?.is_from_majority ?? true,
+        metadataConflict: false,
+        dictaConfidence: step3.confidence,
+        propositionType: citation.propositionType,
+      }
+    );
+    apiCallsMade += step5.layer2.searchesRun > 0 ? 1 : 0;
+  } catch (step5Error) {
+    log.error('[CIV Step 5] Bad law check failed, degrading gracefully:', step5Error);
+    step5 = {
+      step: 5 as const,
+      name: 'bad_law_check' as const,
+      layer1: { source: 'courtlistener' as const, negativeSignals: [] },
+      layer2: { searchesRun: 0, status: 'GOOD_LAW' as const, confidence: 0, concerns: [`Step 5 error: ${step5Error instanceof Error ? step5Error.message : 'Unknown'}`] },
+      layer3: { inCuratedList: false },
+      compositeStatus: 'GOOD_LAW' as const,
+      confidence: 0,
+      validUntil: '',
+      actionTaken: 'FLAG' as const,
+      proceedToStep6: true,
+    };
+  }
 
   // Short-circuit if overruled
   if (!step5.proceedToStep6) {
@@ -313,16 +355,38 @@ export async function verifyCitation(
     );
   }
 
-  // Step 6: Authority Strength
-  // NOTE: caselawId parameter removed - Case.law API sunset September 5, 2024
-  const step6 = await executeAuthorityStrength(
-    citation.citationString,
-    parsed.year || new Date().getFullYear(),
-    step1.courtlistenerId,
-    undefined, // caselawId deprecated
-    citationDbId
-  );
-  apiCallsMade++;
+  // Step 6: Authority Strength (isolated per P1-CIV-2)
+  let step6: Awaited<ReturnType<typeof executeAuthorityStrength>>;
+  try {
+    step6 = await executeAuthorityStrength(
+      citation.citationString,
+      parsed.year || new Date().getFullYear(),
+      step1.courtlistenerId,
+      undefined, // caselawId deprecated
+      citationDbId
+    );
+    apiCallsMade++;
+  } catch (step6Error) {
+    log.error('[CIV Step 6] Authority strength failed, degrading gracefully:', step6Error);
+    step6 = {
+      step: 6 as const,
+      name: 'authority_strength' as const,
+      stabilityClass: 'RECENT' as const,
+      metrics: {
+        caseAgeYears: parsed.year ? new Date().getFullYear() - parsed.year : 0,
+        totalCitations: 0,
+        citationsLast5Years: 0,
+        citationsLast10Years: 0,
+        citationTrend: 'STABLE' as const,
+        distinguishCount: 0,
+        distinguishRate: 0,
+        criticismCount: 0,
+      },
+      strengthScore: 0,
+      assessment: 'WEAK' as const,
+      notes: `Step 6 error: ${step6Error instanceof Error ? step6Error.message : 'Unknown'}`,
+    };
+  }
 
   // Step 7: Compile Output
   return compileVerificationOutput(

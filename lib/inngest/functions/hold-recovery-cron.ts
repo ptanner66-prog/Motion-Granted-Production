@@ -25,7 +25,7 @@ const STUCK_THRESHOLD_MS = 9 * 24 * 60 * 60 * 1000;
 
 export const holdRecoveryCron = inngest.createFunction(
   { id: 'checkpoint-hold-recovery-cron' },
-  { cron: '0 */6 * * *' }, // Every 6 hours
+  { cron: 'TZ=America/Chicago 0 */6 * * *' }, // Every 6 hours CT
   async ({ step }) => {
     const stuckOrders = await step.run('find-stuck-holds', async () => {
       const supabase = getServiceSupabase();

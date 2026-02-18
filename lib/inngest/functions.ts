@@ -787,110 +787,6 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
 );
 
 /**
- * Order Generation Failure Handler
- *
- * Called when order generation fails after all retries.
- * Sends alert email and updates order status.
- */
-export const handleGenerationFailure = inngest.createFunction(
-  {
-    id: "handle-generation-failure",
-  },
-  { event: "inngest/function.failed" },
-  async ({ event, step }) => {
-    // Only handle failures from our generation function
-    if (event.data.function_id !== "generate-order-draft") {
-      return { skipped: true };
-    }
-
-    const { orderId } = event.data.event.data as { orderId: string };
-    const errorMessage = event.data.error?.message || "Unknown error";
-    const supabase = getSupabase();
-
-    await step.run("log-failure", async () => {
-      // Update order status
-      await supabase
-        .from("orders")
-        .update({
-          status: "generation_failed",
-          generation_error: errorMessage,
-        })
-        .eq("id", orderId);
-
-      // Log the failure
-      await supabase.from("automation_logs").insert({
-        order_id: orderId,
-        action_type: "generation_failed",
-        action_details: {
-          error: errorMessage,
-          attempts: 3,
-          functionId: event.data.function_id,
-        },
-      });
-    });
-
-    // Send alert email
-    await step.run("send-alert-email", async () => {
-      // Get order details
-      const { data: order } = await supabase
-        .from("orders")
-        .select("order_number, case_caption, motion_type, filing_deadline")
-        .eq("id", orderId)
-        .single();
-
-      // Try to send email via Resend
-      try {
-        const { Resend } = await import("resend");
-        const resend = new Resend(process.env.RESEND_API_KEY);
-
-        await resend.emails.send({
-          from: EMAIL_FROM.alerts,
-          to: ALERT_EMAIL,
-          subject: `[ALERT] Order ${order?.order_number || orderId} generation failed`,
-          text: `
-Order Generation Failed - Requires Manual Intervention
-
-Order Details:
-- Order Number: ${order?.order_number || "N/A"}
-- Case: ${order?.case_caption || "N/A"}
-- Motion Type: ${order?.motion_type || "N/A"}
-- Filing Deadline: ${order?.filing_deadline || "N/A"}
-
-Error: ${errorMessage}
-
-Attempts: 3 (all retries exhausted)
-
-Action Required:
-1. Check the admin dashboard for this order
-2. Review the error logs
-3. Manually retry or process the order
-
-Admin Dashboard: ${process.env.NEXT_PUBLIC_APP_URL}/admin/orders/${orderId}
-          `.trim(),
-        });
-      } catch (emailError) {
-        log.error('Failed to send alert email', { error: emailError instanceof Error ? emailError.message : String(emailError) });
-        // Queue for retry via notification queue
-        await supabase.from("notification_queue").insert({
-          notification_type: "generation_failed",
-          recipient_email: ALERT_EMAIL,
-          order_id: orderId,
-          template_data: {
-            orderNumber: order?.order_number,
-            error: errorMessage,
-            attempts: 3,
-          },
-          priority: 10,
-          status: "pending",
-        });
-      }
-    });
-
-    return { orderId, failed: true };
-  }
-);
-
-/**
  * Daily Deadline Check
  *
  * Runs daily at 6am CT to check for orders with urgent deadlines.
@@ -900,8 +796,8 @@ export const deadlineCheck = inngest.createFunction(
   {
     id: "deadline-check",
   },
-  // Run daily at 6am CT (11am UTC in winter, 12pm UTC in summer)
-  { cron: "0 11 * * *" },
+  // Run daily at 6am CT
+  { cron: "TZ=America/Chicago 0 6 * * *" },
   async ({ step }) => {
     const supabase = getSupabase();
 
@@ -913,7 +809,7 @@ export const deadlineCheck = inngest.createFunction(
         .from("orders")
         .select("id, order_number, case_caption, motion_type, filing_deadline, status, client_id")
         .lt("filing_deadline", twentyFourHoursFromNow)
-        .not("status", "in", "(completed,delivered,cancelled)")
+        .not("status", "in", "(COMPLETED,completed,CANCELLED,cancelled)")
         .order("filing_deadline", { ascending: true });
 
       if (error) {
@@ -1040,158 +936,25 @@ export const updateQueuePositions = inngest.createFunction(
  * to log the event for observability — it must NOT perform state transitions
  * or send workflow events, as that would race with the main workflow.
  */
-export const handleCheckpointApproval = inngest.createFunction(
-  {
-    id: "workflow-checkpoint-approval",
-  },
-  { event: "workflow/checkpoint-approved" },
-  async ({ event }) => {
-    const { orderId, action } = event.data;
-    console.log(
-      `[CP3 Handler] Received approval event for order ${orderId}: ${action}`
-    );
-    return { logged: true, orderId, action };
-  }
-);
+// handleCheckpointApproval REMOVED — same Inngest ID as real Fn2 in workflow-orchestration.ts
+// conflictAutoCancel v1 REMOVED — unauthorized Stripe refund violates CC-R3-04, replaced by v2
 
 // ============================================================================
-// CC-R3-04: Conflict Auto-Cancel (7-day timeout)
+// LEGACY FUNCTIONS REMOVED (Area Audit v1.0 Phase 1.5):
+// - handleCheckpointApproval: stub with conflicting Inngest ID
+// - conflictAutoCancel v1: unauthorized Stripe refund (CC-R3-04), replaced by v2
+// - handleGenerationFailure: filters for non-existent function ID
 // ============================================================================
-
-/**
- * Conflict Auto-Cancel
- *
- * When an order enters pending_conflict_review, this function waits 7 days.
- * If the order is still in conflict review after 7 days, it auto-cancels
- * and triggers a full Stripe refund.
- */
-export const conflictAutoCancel = inngest.createFunction(
-  {
-    id: "conflict-auto-cancel",
-    retries: 2,
-  },
-  { event: "conflict/review-started" },
-  async ({ event, step }) => {
-    const { orderId } = event.data as { orderId: string };
-    const supabase = getSupabase();
-
-    // Wait 7 days for manual resolution
-    await step.sleep("wait-for-resolution", "7d");
-
-    // Check if still in conflict review
-    const order = await step.run("check-status", async () => {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id, status, stripe_payment_intent_id, total_price, order_number')
-        .eq('id', orderId)
-        .single();
-
-      if (error) {
-        throw new Error(`Failed to fetch order: ${error.message}`);
-      }
-      return data;
-    });
-
-    if (order?.status !== 'pending_conflict_review') {
-      // Already resolved — no action needed
-      return { orderId, action: 'skipped', reason: `Status is ${order?.status}` };
-    }
-
-    // Auto-cancel the order
-    await step.run("auto-cancel", async () => {
-      await supabase
-        .from('orders')
-        .update({
-          status: 'cancelled',
-          conflict_notes: 'Auto-cancelled: conflict review timed out after 7 days',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', orderId);
-
-      // Log the auto-cancel
-      await supabase.from('automation_logs').insert({
-        order_id: orderId,
-        action_type: 'conflict_auto_cancelled',
-        action_details: {
-          reason: 'conflict_timeout',
-          timeoutDays: 7,
-          orderNumber: order.order_number,
-        },
-      });
-    });
-
-    // Trigger Stripe refund if payment was made
-    if (order.stripe_payment_intent_id) {
-      await step.run("process-refund", async () => {
-        try {
-          if (!process.env.STRIPE_SECRET_KEY) {
-            log.warn('Stripe not configured, skipping refund', { orderId });
-            return;
-          }
-          const Stripe = (await import('stripe')).default;
-          const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY, {
-            apiVersion: '2025-01-27.acacia' as Stripe.LatestApiVersion,
-          });
-
-          await stripeClient.refunds.create({
-            payment_intent: order.stripe_payment_intent_id,
-            reason: 'requested_by_customer',
-          });
-
-          await supabase
-            .from('orders')
-            .update({ stripe_payment_status: 'refunded' })
-            .eq('id', orderId);
-
-          await supabase.from('automation_logs').insert({
-            order_id: orderId,
-            action_type: 'conflict_refund_processed',
-            action_details: {
-              paymentIntentId: order.stripe_payment_intent_id,
-              amount: order.total_price,
-              reason: 'conflict_timeout',
-            },
-          });
-        } catch (refundError) {
-          log.error('Failed to process conflict refund', {
-            orderId,
-            error: refundError instanceof Error ? refundError.message : String(refundError),
-          });
-          // Don't throw — the order is already cancelled, refund can be retried manually
-        }
-      });
-    }
-
-    // Send notification
-    await step.run("notify-admin", async () => {
-      await supabase.from('notification_queue').insert({
-        notification_type: 'conflict_auto_cancelled',
-        recipient_email: ADMIN_EMAIL,
-        order_id: orderId,
-        template_data: {
-          orderNumber: order.order_number,
-          reason: 'Conflict review timed out after 7 days',
-        },
-        priority: 8,
-        status: 'pending',
-      });
-    });
-
-    return { orderId, action: 'auto_cancelled', reason: 'conflict_timeout' };
-  }
-);
 
 // Export all functions for registration
 // v7.4.1: generateOrderWorkflow (from workflowFunctions) now handles order/submitted directly
+// Area Audit v1.0: Removed handleGenerationFailure, handleCheckpointApproval, conflictAutoCancel v1
 export const functions = [
-  handleGenerationFailure,
   // New 14-phase workflow - PRIMARY HANDLER for order/submitted
   ...workflowFunctions,    // Source: workflow-orchestration.ts
   // Supporting functions
   deadlineCheck,
   updateQueuePositions,
-  handleCheckpointApproval, // Source: checkpoint handling
-  conflictAutoCancel,       // Source: CC-R3-04 (conflict check 7-day timeout)
   // SP-10: D7 Wave 2+ functions
   paymentReconciliation,    // D7-R3-001: Daily Stripe-to-Supabase reconciliation sweep
   conflictAutoCancelV2,     // CC-R3-04: 7-day conflict auto-cancel (v2, no refund)

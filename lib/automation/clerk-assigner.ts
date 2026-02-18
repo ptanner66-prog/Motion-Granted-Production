@@ -467,7 +467,7 @@ export async function unassignClerk(
     // Unassign
     await supabase
       .from('orders')
-      .update({ clerk_id: null, status: 'under_review' })
+      .update({ clerk_id: null, status: 'UNDER_REVIEW' })
       .eq('id', orderId);
 
     // Decrement clerk workload
@@ -639,7 +639,7 @@ async function assignClerkToOrder(
   // Update order
   await supabase
     .from('orders')
-    .update({ clerk_id: clerkId, status: 'assigned' })
+    .update({ clerk_id: clerkId, status: 'ASSIGNED' })
     .eq('id', orderId);
 
   // Increment clerk workload

@@ -230,7 +230,7 @@ export async function processRefund(request: RefundRequest): Promise<OperationRe
         .from('orders')
         .update({
           stripe_payment_status: isFullRefund ? 'refunded' : 'partially_refunded',
-          status: isFullRefund ? 'cancelled' : order.status,
+          status: isFullRefund ? 'CANCELLED' : order.status,
         })
         .eq('id', request.orderId);
 

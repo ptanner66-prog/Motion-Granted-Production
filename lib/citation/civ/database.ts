@@ -594,7 +594,7 @@ export async function recordStrengthAssessment(
  */
 export async function startVerificationRun(
   orderId: string,
-  phase: 'V.1' | 'VII.1',
+  phase: 'V.1' | 'VII.1' | 'IX.1',
   totalCitations: number
 ): Promise<{ success: boolean; data?: { runId: string }; error?: string }> {
   const supabase = getAdminClient();

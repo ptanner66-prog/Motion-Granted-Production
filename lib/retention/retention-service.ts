@@ -2,7 +2,7 @@
 // Core retention management functions
 // Tasks 43-45 | Version 1.0 — January 28, 2026
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -42,7 +42,7 @@ export interface RetentionExtendResult {
  * Get retention status for an order
  */
 export async function getRetentionStatus(orderId: string): Promise<RetentionStatus | null> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { data: order, error } = await supabase
     .from('orders')
@@ -102,7 +102,7 @@ export async function getRetentionStatus(orderId: string): Promise<RetentionStat
  * Set initial retention date on order delivery
  */
 export async function setInitialRetention(orderId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const deliveredAt = new Date();
   const expiresAt = new Date(deliveredAt);
@@ -133,7 +133,7 @@ export async function extendRetention(
   orderId: string,
   newExpirationDate: Date
 ): Promise<RetentionExtendResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   // Get order
   const { data: order, error: fetchError } = await supabase
@@ -200,12 +200,12 @@ export async function extendRetention(
  */
 export async function getOrdersDueForReminder(): Promise<Array<{
   id: string;
-  user_id: string;
+  client_id: string;
   motion_type: string;
   case_number: string | null;
   retention_expires_at: string;
 }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const reminderCutoff = new Date();
   reminderCutoff.setDate(reminderCutoff.getDate() + REMINDER_DAYS_BEFORE);
@@ -231,7 +231,7 @@ export async function getOrdersDueForReminder(): Promise<Array<{
  * Mark reminder as sent for an order
  */
 export async function markReminderSent(orderId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   await supabase
     .from('orders')
@@ -249,7 +249,7 @@ export async function markReminderSent(orderId: string): Promise<void> {
  * ST6-01: Added status guard to prevent deletion of active orders.
  */
 export async function getExpiredOrders(): Promise<Array<{ id: string; status: string }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { data, error } = await supabase
     .from('orders')
@@ -279,7 +279,7 @@ export async function getStuckExpiredOrders(): Promise<Array<{
   status: string;
   retention_expires_at: string;
 }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { data, error } = await supabase
     .from('orders')
