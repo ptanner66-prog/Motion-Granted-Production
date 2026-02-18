@@ -24,6 +24,7 @@ import {
 } from '@/lib/ai/model-router';
 import type { Step2Result, PropositionType, VerificationResult } from '../types';
 import { createLogger } from '@/lib/security/logger';
+import { checkOpenAICircuit, recordOpenAISuccess, recordOpenAIFailure, DEFERRED_RESULT } from '@/lib/ai/openai-circuit-breaker';
 
 const log = createLogger('citation-civ-steps-step-2-holding');
 import {
@@ -88,7 +89,27 @@ Classification definitions:
 - PARTIAL: Supports only part of the proposition
 - CONTRARY: Contradicts the proposition`;
 
-  const response = await callOpenAI(modelConfig.model, prompt, 4096);
+  // A2-DEC-5: Check OpenAI circuit breaker before call
+  const circuitCheck = await checkOpenAICircuit();
+  if (!circuitCheck.allowed) {
+    log.warn('[CIV Step 2] OpenAI circuit breaker OPEN — returning VERIFICATION_DEFERRED');
+    return {
+      result: DEFERRED_RESULT.status as unknown as VerificationResult,
+      confidence: 0,
+      classification: 'PARTIAL' as HoldingClassification,
+      isFromMajority: true,
+      reasoning: DEFERRED_RESULT.reason,
+    };
+  }
+
+  let response: string;
+  try {
+    response = await callOpenAI(modelConfig.model, prompt, 4096);
+    await recordOpenAISuccess();
+  } catch (openAiError) {
+    await recordOpenAIFailure(openAiError instanceof Error ? openAiError : new Error(String(openAiError)));
+    throw openAiError;
+  }
 
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
