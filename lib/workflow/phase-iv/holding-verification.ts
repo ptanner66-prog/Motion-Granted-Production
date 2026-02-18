@@ -28,6 +28,7 @@ import {
   type PropositionMatch,
   type GoodLawStatus,
 } from '@/types/citation-research';
+import { MODELS } from '@/lib/config/models';
 import {
   scoreCandidate,
   selectTopCitations,
@@ -62,7 +63,9 @@ const VERIFICATION_BATCH_SIZE = 5;
  */
 export async function verifyHoldings(
   input: HoldingVerificationInput,
-  anthropicClient: Anthropic
+  anthropicClient: Anthropic,
+  modelId?: string,
+  thinkingBudget?: number,
 ): Promise<HoldingVerificationOutput> {
   const start = Date.now();
 
@@ -98,7 +101,7 @@ export async function verifyHoldings(
       // Process batch in parallel
       const batchResults = await Promise.allSettled(
         batch.map(candidate =>
-          verifySingleCandidate(candidate, elementMap, anthropicClient)
+          verifySingleCandidate(candidate, elementMap, anthropicClient, modelId, thinkingBudget)
         )
       );
 
@@ -185,7 +188,9 @@ export async function verifyHoldings(
 async function verifySingleCandidate(
   candidate: RawCandidate,
   elementMap: Map<string, ExtractedElement>,
-  client: Anthropic
+  client: Anthropic,
+  modelId?: string,
+  thinkingBudget?: number,
 ): Promise<ScoredCitation | null> {
   try {
     // Get element's proposition
@@ -215,7 +220,9 @@ async function verifySingleCandidate(
       candidate,
       proposition,
       opinionContext,
-      client
+      client,
+      modelId,
+      thinkingBudget,
     );
 
     // If no support, skip this candidate
@@ -259,7 +266,9 @@ async function verifyWithClaude(
   candidate: RawCandidate,
   proposition: string,
   opinionContext: string,
-  client: Anthropic
+  client: Anthropic,
+  modelId?: string,
+  thinkingBudget?: number,
 ): Promise<ClaudeVerification> {
   const prompt = `CASE: ${candidate.caseName}
 CITATION: ${candidate.citation}
@@ -293,9 +302,11 @@ MATCHING CRITERIA:
 - NO_SUPPORT: Does not support the proposition`;
 
   try {
+    const resolvedModel = modelId || MODELS.SONNET;
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',  // Sonnet for verification (speed)
+      model: resolvedModel,
       max_tokens: 1024,
+      ...(thinkingBudget ? { thinking: { type: 'enabled' as const, budget_tokens: thinkingBudget } } : {}),
       messages: [{ role: 'user', content: prompt }],
     });
 

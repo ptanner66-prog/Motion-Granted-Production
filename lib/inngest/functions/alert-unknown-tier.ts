@@ -34,13 +34,13 @@ export const alertUnknownTier = inngest.createFunction(
 
         await supabase.from('email_queue').insert({
           order_id: null,
-          template_id: 'admin-alert',
-          template_data: {
+          template: 'admin-alert',
+          data: {
             alertType: 'UNKNOWN_TIER_DETECTED',
             message: `${count} cost_tracking rows with tier=UNKNOWN in the last hour`,
             samples,
           },
-          status: 'PENDING',
+          status: 'pending',
         });
       }
     });

@@ -60,13 +60,13 @@ export const adminReconciliation = inngest.createFunction(
         // Queue admin alert email
         await supabase.from('email_queue').insert({
           order_id: null,
-          template_id: 'admin-alert',
-          template_data: {
+          template: 'admin-alert',
+          data: {
             alertType: 'ADMIN_RECONCILIATION',
             message: `Found ${results.orphansFound} orphaned and ${results.desyncsFound} desynced admin accounts`,
             timestamp: new Date().toISOString(),
           },
-          status: 'PENDING',
+          status: 'pending',
         });
       });
     }

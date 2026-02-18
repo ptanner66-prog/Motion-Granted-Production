@@ -20,6 +20,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '@/lib/security/logger';
+import { MODELS } from '@/lib/config/models';
 
 const log = createLogger('workflow-phase-iv-element-extraction');
 import {
@@ -43,7 +44,10 @@ import {
  */
 export async function extractElements(
   input: ElementExtractionInput,
-  anthropicClient?: Anthropic
+  anthropicClient?: Anthropic,
+  modelId?: string,
+  thinkingBudget?: number,
+  maxTokens?: number,
 ): Promise<ElementExtractionOutput> {
   const start = Date.now();
 
@@ -65,7 +69,10 @@ export async function extractElements(
       customizedElements = await customizeElementsWithClaude(
         templateElements,
         input,
-        anthropicClient
+        anthropicClient,
+        modelId,
+        thinkingBudget,
+        maxTokens,
       );
     } else {
       // Use template elements directly
@@ -252,7 +259,10 @@ function optimizeSearchQueries(queries: string[]): string[] {
 async function customizeElementsWithClaude(
   templateElements: LegalElement[],
   input: ElementExtractionInput,
-  client: Anthropic
+  client: Anthropic,
+  modelId?: string,
+  thinkingBudget?: number,
+  maxTokens?: number,
 ): Promise<ExtractedElement[]> {
   const prompt = `You are extracting legal elements for citation research.
 
@@ -297,9 +307,14 @@ OUTPUT FORMAT (JSON only):
 }`;
 
   try {
+    const resolvedModel = modelId || MODELS.SONNET;
+    const resolvedMaxTokens = maxTokens || 4096;
+    log.info(`[Phase IV-A] Using model: ${resolvedModel} (max_tokens: ${resolvedMaxTokens}${thinkingBudget ? `, ET: ${thinkingBudget}` : ''})`);
+
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',  // Sonnet for speed in element extraction
-      max_tokens: 4096,
+      model: resolvedModel,
+      max_tokens: resolvedMaxTokens,
+      ...(thinkingBudget ? { thinking: { type: 'enabled' as const, budget_tokens: thinkingBudget } } : {}),
       messages: [{ role: 'user', content: prompt }],
     });
 

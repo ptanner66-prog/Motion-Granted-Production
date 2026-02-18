@@ -351,10 +351,10 @@ export async function logEmailSend(
     await supabase.from('email_log').insert({
       order_id: orderId,
       email_type: type,
-      recipient,
+      recipient_email: recipient,
       subject,
-      success,
-      message_id: messageId,
+      status: success ? 'sent' : 'failed',
+      resend_id: messageId,
       error_message: errorMessage || null,
     });
   } catch (error) {

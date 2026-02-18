@@ -41,13 +41,13 @@ export const reconcileCostTracking = inngest.createFunction(
       // DO NOT auto-delete. Preserve for forensics.
       await supabase.from('email_queue').insert({
         order_id: null,
-        template_id: 'admin-alert',
-        template_data: {
+        template: 'admin-alert',
+        data: {
           alertType: 'ORPHANED_COST_TRACKING',
           message: `${orphans.length} orphaned cost_tracking rows found. Manual investigation required.`,
           sampleOrderIds: orphans.slice(0, 5).map((r: { order_id: string }) => r.order_id),
         },
-        status: 'PENDING',
+        status: 'pending',
       });
     });
   }

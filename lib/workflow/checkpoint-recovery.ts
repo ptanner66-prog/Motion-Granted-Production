@@ -40,12 +40,12 @@ export const checkpointRecoveryCron = inngest.createFunction(
         // Alert admin — do NOT auto-resolve
         await supabase.from('email_queue').insert({
           order_id: hold.order_id,
-          template_id: 'admin-alert',
-          template_data: {
+          template: 'admin-alert',
+          data: {
             alertType: 'STALE_HOLD_CHECKPOINT',
             message: `HOLD checkpoint ${hold.id} has been PENDING for >24h`,
           },
-          status: 'PENDING',
+          status: 'pending',
         });
       }
     });
@@ -78,12 +78,12 @@ export const checkpointRecoveryCron = inngest.createFunction(
           );
           await supabase.from('email_queue').insert({
             order_id: order.id,
-            template_id: 'admin-alert',
-            template_data: {
+            template: 'admin-alert',
+            data: {
               alertType: 'ORPHANED_CP3_ORDER',
               message: `Order ${order.id} in AWAITING_APPROVAL with no Fn2 activity for 48h`,
             },
-            status: 'PENDING',
+            status: 'pending',
           });
         }
       }
@@ -109,12 +109,12 @@ export const checkpointRecoveryCron = inngest.createFunction(
         await releaseRefundLock(supabase, order.id);
         await supabase.from('email_queue').insert({
           order_id: order.id,
-          template_id: 'admin-alert',
-          template_data: {
+          template: 'admin-alert',
+          data: {
             alertType: 'STALE_REFUND_LOCK',
             message: `Refund lock cleared by recovery cron for order ${order.id}. Verify order state.`,
           },
-          status: 'PENDING',
+          status: 'pending',
         });
       }
     });
