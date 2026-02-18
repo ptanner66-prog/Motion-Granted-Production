@@ -39,7 +39,7 @@ export async function createOrderFromCheckout(
   const updatePayload: Record<string, unknown> = {
     stripe_payment_status: 'succeeded',
     stripe_checkout_session_id: session.id,
-    status: 'paid',
+    status: 'PAID',
     status_version: 1, // Reset on payment
     amount_paid_cents: session.amount_total ?? 0,
     updated_at: new Date().toISOString(),
@@ -177,7 +177,7 @@ export async function processUpgradePayment(
     amount_paid_cents: newAmountPaidCents,
     tier: currentOrder.upgrade_to_tier || meta.tier || currentOrder.tier,
     upgrade_resolved_at: new Date().toISOString(),
-    status: 'in_progress', // Resume processing after upgrade
+    status: 'IN_PROGRESS', // Resume processing after upgrade
     updated_at: new Date().toISOString(),
   };
 

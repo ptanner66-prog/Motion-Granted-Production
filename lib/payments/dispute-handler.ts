@@ -84,7 +84,7 @@ export async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<voi
     await supabase
       .from('orders')
       .update({
-        status: 'disputed',
+        status: 'DISPUTED',
         updated_at: new Date().toISOString(),
       })
       .eq('id', orderId);
@@ -187,7 +187,7 @@ export async function handleDisputeClosed(dispute: Stripe.Dispute): Promise<void
     await supabase
       .from('orders')
       .update({
-        status: 'refunded',
+        status: 'REFUNDED',
         updated_at: new Date().toISOString(),
       })
       .eq('id', orderId);

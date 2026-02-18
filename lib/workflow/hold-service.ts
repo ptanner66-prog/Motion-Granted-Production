@@ -17,7 +17,7 @@ export async function triggerHold(orderId: string, phase: Phase, reason: string)
 
     const { error: orderError } = await supabase
       .from('orders')
-      .update({ status: 'hold_pending', hold_triggered_at: now, hold_phase: phase, hold_reason: reason, updated_at: now })
+      .update({ status: 'HOLD_PENDING', hold_triggered_at: now, hold_phase: phase, hold_reason: reason, updated_at: now })
       .eq('id', orderId);
 
     if (orderError) return { success: false, error: orderError.message };
@@ -52,9 +52,9 @@ export async function resumeFromHold(orderId: string): Promise<HoldResult> {
     // SP12-07 FIX: Accept both 'hold_pending' (from hold-service triggerHold) and 'on_hold'
     // (from workflow-orchestration HOLD handler). Without this, resumeFromHold() always failed
     // for orders placed on hold by the workflow because it set status='on_hold', not 'hold_pending'.
-    if (order.status !== 'hold_pending' && order.status !== 'on_hold') return { success: false, error: 'Order not on hold' };
+    if (order.status !== 'HOLD_PENDING' && order.status !== 'hold_pending' && order.status !== 'on_hold' && order.status !== 'ON_HOLD') return { success: false, error: 'Order not on hold' };
 
-    await supabase.from('orders').update({ status: 'in_progress', hold_resolved_at: now, updated_at: now }).eq('id', orderId);
+    await supabase.from('orders').update({ status: 'IN_PROGRESS', hold_resolved_at: now, updated_at: now }).eq('id', orderId);
     await supabase.from('checkpoint_events').insert({ order_id: orderId, event_type: 'HOLD_RESOLVED', phase: order.hold_phase, data: { resolved_at: now }, created_at: now });
 
     // FIX-E FIX 10: Emit checkpoint/hold.resolved so the orchestrator's waitForEvent unblocks
@@ -80,7 +80,7 @@ export async function processHoldAutoRefund(orderId: string): Promise<HoldResult
     const supabase = await createClient();
     const now = new Date().toISOString();
 
-    await supabase.from('orders').update({ status: 'refunded', refund_reason: 'hold_timeout', refunded_at: now, updated_at: now }).eq('id', orderId);
+    await supabase.from('orders').update({ status: 'REFUNDED', refund_reason: 'hold_timeout', refunded_at: now, updated_at: now }).eq('id', orderId);
     await supabase.from('checkpoint_events').insert({ order_id: orderId, event_type: 'HOLD_AUTO_REFUND', data: { refunded_at: now }, created_at: now });
     await supabase.from('email_queue').insert({ order_id: orderId, template: HOLD_TIMEOUTS.EMAIL_TEMPLATES.auto_refund, data: { reason: 'hold_timeout_7_days' }, status: 'pending', created_at: now });
 

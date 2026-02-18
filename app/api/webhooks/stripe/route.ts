@@ -358,7 +358,7 @@ async function handlePaymentSucceeded(
     .from('orders')
     .update({
       stripe_payment_status: 'succeeded',
-      status: 'under_review',
+      status: 'UNDER_REVIEW',
     })
     .eq('id', orderId)
     .eq('stripe_payment_intent_id', paymentIntent.id)
@@ -565,7 +565,7 @@ async function handleChargeRefunded(
     await supabase
       .from('orders')
       .update({
-        status: 'cancelled',
+        status: 'CANCELLED',
         stripe_payment_status: 'refunded',
       })
       .eq('id', order.id);
@@ -752,7 +752,7 @@ async function handleCheckoutSessionCompleted(
           .from('orders')
           .update({
             stripe_payment_status: 'succeeded',
-            status: 'under_review',
+            status: 'UNDER_REVIEW',
             amount_paid_cents: session.amount_total ?? 0,
           })
           .eq('id', orderId)

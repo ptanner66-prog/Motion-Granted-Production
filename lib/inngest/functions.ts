@@ -809,7 +809,7 @@ export const deadlineCheck = inngest.createFunction(
         .from("orders")
         .select("id, order_number, case_caption, motion_type, filing_deadline, status, client_id")
         .lt("filing_deadline", twentyFourHoursFromNow)
-        .not("status", "in", "(completed,delivered,cancelled)")
+        .not("status", "in", "(COMPLETED,completed,CANCELLED,cancelled)")
         .order("filing_deadline", { ascending: true });
 
       if (error) {

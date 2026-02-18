@@ -133,7 +133,7 @@ export async function startOrderAutomation(
     await supabase
       .from('orders')
       .update({
-        status: 'in_progress',
+        status: 'IN_PROGRESS',
         updated_at: new Date().toISOString(),
       })
       .eq('id', orderId);
@@ -597,7 +597,7 @@ export async function processPendingOrders(
 
         await supabase
           .from('orders')
-          .update({ status: 'in_progress', updated_at: new Date().toISOString() })
+          .update({ status: 'IN_PROGRESS', updated_at: new Date().toISOString() })
           .eq('id', order.id);
 
         processed++;
