@@ -136,7 +136,7 @@ export async function getRevisionStatus(orderId: string): Promise<{ count: numbe
   const supabase = await createClient();
   const { data } = await supabase.from('orders').select('revision_count, protocol_10_triggered_at').eq('id', orderId).single();
   const count = data?.revision_count || 0;
-  return { count, max: FAILURE_THRESHOLDS.MAX_REVISION_LOOPS, remaining: Math.max(0, 3 - count), triggered: !!data?.protocol_10_triggered_at };
+  return { count, max: FAILURE_THRESHOLDS.MAX_REVISION_LOOPS, remaining: Math.max(0, FAILURE_THRESHOLDS.MAX_REVISION_LOOPS - count), triggered: !!data?.protocol_10_triggered_at };
 }
 
 export async function resetRevisionLoop(orderId: string): Promise<void> {

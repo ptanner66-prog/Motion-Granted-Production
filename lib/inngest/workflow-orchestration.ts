@@ -145,6 +145,9 @@ import type { CLCitationResult } from "@/lib/citation/types";
 // SP24: Load DB-backed phase prompts at workflow start
 import { loadPhasePrompts } from "@/prompts";
 
+// Orders table write-back utility
+import { updateOrderColumns, appendPhaseCourse } from "@/lib/orders/update-columns";
+
 // SP-20 D5: Checkpoint event types (shared across Fn1, Fn2, dashboard)
 import type { CP3ApprovalEvent } from "@/lib/types/checkpoint-events";
 
@@ -452,6 +455,7 @@ async function logPhaseExecution(
   result: PhaseOutput,
   tokensUsed?: { input: number; output: number }
 ): Promise<void> {
+  // Log to automation_logs
   await supabase.from("automation_logs").insert({
     order_id: state.orderId,
     action_type: "phase_executed",
@@ -467,6 +471,14 @@ async function logPhaseExecution(
       requiresReview: result.requiresReview,
     },
   });
+
+  // Write-back: Update current_phase + append to phase_course on orders table
+  // Determine the NEXT phase (so current_phase reflects where we are heading)
+  const nextPhase = result.nextPhase ?? phase;
+  await updateOrderColumns(supabase, state.orderId, {
+    current_phase: nextPhase as string,
+  }, `log-phase-${phase}`);
+  await appendPhaseCourse(supabase, state.orderId, phase as string);
 }
 
 // ============================================================================
@@ -1683,12 +1695,16 @@ export const generateOrderWorkflow = inngest.createFunction(
         workflowId = newWorkflow.id;
       }
 
-      // Update order status
+      // Update order status + write-back workflow tracking columns
       await supabase
         .from("orders")
         .update({
           status: "in_progress",
           generation_started_at: new Date().toISOString(),
+          workflow_id: workflowId,
+          generation_attempts: (order.generation_attempts ?? 0) + 1,
+          current_phase: "I",
+          last_error: null,
         })
         .eq("id", orderId);
 
@@ -1776,6 +1792,10 @@ export const generateOrderWorkflow = inngest.createFunction(
           const deadlineCalc = calculateInternalDeadline(orderContext.filingDeadline);
           internalDeadline = deadlineCalc.internalDeadline;
           console.log(`[WORKFLOW] Internal deadline: ${internalDeadline} (filing: ${orderContext.filingDeadline})`);
+          // Write-back: deadline_normal to orders table
+          await updateOrderColumns(supabase, orderId, {
+            deadline_normal: internalDeadline,
+          }, 'fn1-deadline-calc');
         } catch (e) {
           console.warn(`[WORKFLOW] Could not calculate internal deadline:`, e);
         }
@@ -1907,6 +1927,12 @@ export const generateOrderWorkflow = inngest.createFunction(
       workflowState.phaseOutputs["I"] = phaseIResult.output;
     }
     console.log('[Orchestration] Accumulated after I:', Object.keys(workflowState.phaseOutputs));
+
+    // Write-back: Populate filing metadata columns from order context after Phase I
+    await updateOrderColumns(supabase, orderId, {
+      ...(workflowState.orderContext.firmEmail ? { attorney_email: workflowState.orderContext.firmEmail } : {}),
+      ...(workflowState.orderContext.courtDivision ? { court_name: workflowState.orderContext.courtDivision } : {}),
+    }, 'post-phase-i-metadata');
 
     // SP-20 D5: CP1 — Non-blocking intake confirmed event
     await step.run('cp1-intake-confirmed', async () => {
@@ -2842,6 +2868,12 @@ export const generateOrderWorkflow = inngest.createFunction(
       );
     }
 
+    // Write-back: judge_grade + overall_score after initial Phase VII evaluation
+    await updateOrderColumns(supabase, orderId, {
+      judge_grade: workflowState.currentGrade as string ?? null,
+      overall_score: currentNumericGrade,
+    }, 'phase-vii-initial');
+
     // SP23: Tiered max loops — Tier A=2, B/C=3, D=4
     const maxLoopsForTier = getMaxRevisionLoops(workflowState.tier);
 
@@ -3243,6 +3275,13 @@ export const generateOrderWorkflow = inngest.createFunction(
           ((judgeOutput?.evaluation as Record<string, unknown> | undefined)?.numericGrade as number | undefined) ??
           0
         ));
+
+        // Write-back: update judge_grade + overall_score after each regrade
+        await updateOrderColumns(supabase, orderId, {
+          judge_grade: workflowState.currentGrade as string ?? null,
+          overall_score: currentNumericGrade,
+          revision_count: loopNum,
+        }, `phase-vii-regrade-loop-${loopNum}`);
 
         // Pure numeric break: if score >= threshold, exit revision loop
         if (currentNumericGrade >= qualityThreshold) {
@@ -3837,8 +3876,12 @@ export const generateOrderWorkflow = inngest.createFunction(
       const { error } = await svc.from('orders').update({
         status: 'AWAITING_APPROVAL',
         cp3_entered_at: new Date().toISOString(),
+        cp3_status: 'PENDING',
         generation_completed_at: new Date().toISOString(),
         generation_error: null,
+        last_error: null,
+        deliverable_ready_at: new Date().toISOString(),
+        current_phase: 'CP3',
       }).eq('id', orderId);
 
       if (error) {
@@ -3913,12 +3956,13 @@ export const handleWorkflowFailure = inngest.createFunction(
     const supabase = getSupabase();
 
     await step.run("log-workflow-failure", async () => {
-      // Update order status
+      // Update order status + last_error for dashboard display
       await supabase
         .from("orders")
         .update({
           status: "generation_failed",
           generation_error: errorMessage,
+          last_error: errorMessage,
           needs_manual_review: true,
         })
         .eq("id", orderId);
@@ -4379,11 +4423,17 @@ async function handleApprove(
   await step.run('update-order-completed', async () => {
     const retentionDate = new Date();
     retentionDate.setDate(retentionDate.getDate() + RETENTION_DAYS);
+    const now = new Date().toISOString();
 
     const { error } = await supabase.from('orders').update({
       status: 'COMPLETED',
-      completed_at: new Date().toISOString(),
+      completed_at: now,
       retention_expires_at: retentionDate.toISOString(),
+      cp3_status: 'APPROVED',
+      cp3_approved_at: now,
+      cp3_approved_by: attorneyId,
+      workflow_completed_at: now,
+      deliverables_generated_at: now,
     }).eq('id', orderId);
 
     if (error) {
@@ -4450,12 +4500,15 @@ async function handleRequestChanges(
   await step.run('update-order-rework', async () => {
     const newReworkCount = (order.attorney_rework_count ?? 0) + 1;
 
-    // Update orders table
+    // Update orders table with CP3 rework tracking columns
     await supabase.from('orders').update({
       status: 'REVISION_REQ',
       attorney_rework_count: newReworkCount,
       cp3_change_notes: notes,
       cp3_entered_at: null,
+      cp3_status: 'CHANGES_REQUESTED',
+      revision_requested_at: new Date().toISOString(),
+      revision_count: newReworkCount,
     }).eq('id', orderId);
 
     // Reset loop counter (D4-007)
@@ -4593,6 +4646,7 @@ async function handleCancel(
         status: 'CANCELLED',
         cancellation_type: cancellationType,
         cancelled_at: new Date().toISOString(),
+        cp3_status: 'CANCELLED',
       }).eq('id', orderId);
     });
 

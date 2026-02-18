@@ -31,13 +31,23 @@ export async function handleProtocol7(
       orderId: context.orderId,
       error: error.message,
     });
+    // FAIL SAFE: If we cannot query failure count, assume threshold exceeded.
+    // It is safer to pause and investigate than to let a potentially bad
+    // motion through. An admin can release the hold after review.
     return {
       protocolNumber: 7,
-      triggered: false,
-      severity: null,
-      actionTaken: null,
-      aisEntry: null,
-      holdRequired: false,
+      triggered: true,
+      severity: 'CRITICAL',
+      actionTaken: 'HOLD_TRIGGERED',
+      aisEntry: {
+        category: 'CITATION',
+        protocolNumber: 7,
+        severity: 'CRITICAL' as const,
+        title: 'Citation Verification — Database Query Failed',
+        description: `Protocol 7 could not query citation failure count: ${error.message}. Order paused as a safety precaution.`,
+        recommendation: 'Database query for citation failure count failed. Investigate the get_p7_failure_count RPC function and resume the order after confirming citation status.',
+      },
+      holdRequired: true,
       handlerVersion: VERSION,
     };
   }

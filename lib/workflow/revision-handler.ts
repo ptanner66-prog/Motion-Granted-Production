@@ -36,7 +36,7 @@ async function getRevisionLoopStatus(orderId: string) {
     .eq('id', orderId)
     .single();
   const count = data?.revision_count || 0;
-  return { count, max: MAX_REVISION_LOOPS, remaining: Math.max(0, 3 - count), triggered: !!data?.protocol_10_triggered_at };
+  return { count, max: MAX_REVISION_LOOPS, remaining: Math.max(0, MAX_REVISION_LOOPS - count), triggered: !!data?.protocol_10_triggered_at };
 }
 
 function scoreToGrade(score: number): Grade {
