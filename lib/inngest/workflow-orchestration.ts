@@ -446,15 +446,31 @@ async function logPhaseExecution(
 /**
  * Upload file to Supabase Storage
  */
+/**
+ * Upload a file to Supabase Storage and return a time-limited signed URL.
+ *
+ * FIX-B FIX-3: Replaced getPublicUrl() with createSignedUrl() — legal documents
+ * must never be accessible via permanent public URLs.
+ * FIX-B FIX-10: contentType now derived from file extension instead of hardcoded PDF.
+ */
 async function uploadToSupabaseStorage(
   supabase: ReturnType<typeof getSupabase>,
   path: string,
   content: Uint8Array | Buffer
 ): Promise<string> {
-  const { data, error } = await supabase.storage
+  // FIX-B FIX-10: Determine contentType from file extension
+  const contentType = path.endsWith('.docx')
+    ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    : path.endsWith('.txt')
+    ? 'text/plain'
+    : path.endsWith('.pdf')
+    ? 'application/pdf'
+    : 'application/octet-stream';
+
+  const { error } = await supabase.storage
     .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
     .upload(path, content, {
-      contentType: 'application/pdf',
+      contentType,
       upsert: true,
     });
 
@@ -463,11 +479,19 @@ async function uploadToSupabaseStorage(
     throw new Error(`Storage upload failed: ${error.message}`);
   }
 
-  const { data: { publicUrl } } = supabase.storage
+  // FIX-B FIX-3: Use signed URL (1-hour expiry) instead of permanent public URL.
+  // Confidential legal documents must never be exposed via unauthenticated URLs.
+  const { data: signedData, error: signedError } = await supabase.storage
     .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
-    .getPublicUrl(path);
+    .createSignedUrl(path, 3600); // 1 hour
 
-  return publicUrl;
+  if (signedError || !signedData?.signedUrl) {
+    console.error('[uploadToSupabaseStorage] Signed URL error:', signedError?.message);
+    // Return the storage path as fallback — Fn2 handleApprove generates fresh signed URLs anyway
+    return path;
+  }
+
+  return signedData.signedUrl;
 }
 
 /**
@@ -514,8 +538,16 @@ function generateInstructionSheetContent(
   content.push('───────────────────────────────────────────────────────────────────────');
   content.push(`Citations Verified: ${citationCount}`);
   if (judgeResult) {
-    content.push(`Judge Simulation Grade: ${judgeResult.grade || 'N/A'}`);
-    content.push(`Quality Score: ${judgeResult.numericGrade || 'N/A'}/4.5`);
+    // FIX-B FIX-7: Safely extract grade — judgeResult.grade may be an object
+    // (e.g. { value: 'B+' }) instead of the expected string LetterGrade.
+    const gradeValue = typeof judgeResult.grade === 'string'
+      ? judgeResult.grade
+      : (judgeResult.grade && typeof judgeResult.grade === 'object'
+          ? String((judgeResult.grade as Record<string, unknown>).value ?? JSON.stringify(judgeResult.grade))
+          : 'N/A');
+    content.push(`Judge Simulation Grade: ${gradeValue}`);
+    // FIX-B FIX-8: Use ?? instead of || so numericGrade of 0 isn't replaced with 'N/A'.
+    content.push(`Quality Score: ${judgeResult.numericGrade ?? 'N/A'}/4.5`);
   }
   content.push('');
   content.push('───────────────────────────────────────────────────────────────────────');
@@ -552,7 +584,15 @@ function generateInstructionSheetContent(
   content.push('Questions or need revisions? Contact us within 7 days of delivery.');
   content.push('');
 
-  return content.join('\n');
+  // FIX-B FIX-13: Validate for unresolved template variables.
+  // Scan output for common placeholder patterns that indicate missing data.
+  const result = content.join('\n');
+  const placeholderPatterns = /\{\{[^}]+\}\}|\[\[.+?\]\]|__[A-Z_]+__/g;
+  const matches = result.match(placeholderPatterns);
+  if (matches) {
+    console.warn('[generateInstructionSheetContent] Unresolved template variables detected:', matches);
+  }
+  return result;
 }
 
 /**
@@ -1136,18 +1176,34 @@ async function persistDeliverableRecords(
 ): Promise<void> {
   console.log('[persist-deliverable-records] Starting...');
 
+  // FIX-B FIX-5: Fetch client_id for uploaded_by (NOT NULL constraint in documents table).
+  // In server-side workflow context there is no user session, so use the order's client_id.
+  const { data: orderRecord } = await supabase
+    .from('orders')
+    .select('client_id')
+    .eq('id', orderId)
+    .single();
+  const uploadedBy = orderRecord?.client_id;
+  if (!uploadedBy) {
+    console.error(`[persist-deliverable-records] No client_id found for order ${orderId} — cannot insert documents`);
+    return;
+  }
+
   const storagePath = `orders/${orderId}/deliverables`;
 
-  // Insert deliverable records into documents table with is_deliverable: true.
+  // FIX-B FIX-6: Align document_type values with download page expectations.
+  // Download page maps 'instructions' and 'instruction_sheet' → 'instructions'.
+  // Use canonical types: motion, instructions, citation_report, caption_qc_report.
   const deliverableEntries: Array<{ name: string; url: string | undefined; type: string; mimeType: string }> = [
     { name: 'motion.docx', url: deliverableUrls.motionDocx, type: 'motion', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
-    { name: 'instruction-sheet.txt', url: deliverableUrls.attorneyInstructionSheet, type: 'instruction_sheet', mimeType: 'text/plain' },
+    { name: 'instruction-sheet.txt', url: deliverableUrls.attorneyInstructionSheet, type: 'instructions', mimeType: 'text/plain' },
     { name: 'citation-report.txt', url: deliverableUrls.citationAccuracyReport, type: 'citation_report', mimeType: 'text/plain' },
     { name: 'caption-qc-report.txt', url: deliverableUrls.captionQcReport, type: 'caption_qc_report', mimeType: 'text/plain' },
   ];
 
   for (const entry of deliverableEntries) {
     if (entry.url) {
+      // FIX-B FIX-5: Include uploaded_by (NOT NULL) to satisfy documents table constraint.
       const { error } = await supabase.from('documents').insert({
         order_id: orderId,
         file_name: entry.name,
@@ -1155,6 +1211,7 @@ async function persistDeliverableRecords(
         file_size: 0,
         file_url: `${storagePath}/${entry.name}`,
         document_type: entry.type,
+        uploaded_by: uploadedBy,
         is_deliverable: true,
       });
       if (error) {
@@ -4112,12 +4169,20 @@ async function handleApprove(
 
     if (!pkg) throw new Error(`No delivery package found for order ${orderId}`);
 
-    const { data: deliverables } = await supabase
-      .from('order_deliverables')
-      .select('file_key')
-      .eq('order_id', orderId);
+    // FIX-B FIX-1: Query `documents` table (where persistDeliverableRecords writes)
+    // instead of `order_deliverables` (wrong table with wrong columns).
+    const { data: deliverables, error: delErr } = await supabase
+      .from('documents')
+      .select('file_url')
+      .eq('order_id', orderId)
+      .eq('is_deliverable', true);
 
-    const fileKeys = (deliverables ?? []).map((d: { file_key: string }) => d.file_key);
+    if (delErr) {
+      console.error(`[handleApprove] Failed to query deliverables for ${orderId}:`, delErr.message);
+      throw new Error(`Failed to query deliverables: ${delErr.message}`);
+    }
+
+    const fileKeys = (deliverables ?? []).map((d: { file_url: string }) => d.file_url);
     if (fileKeys.length === 0) {
       throw new Error(`No deliverable files found for order ${orderId}`);
     }
