@@ -1,16 +1,14 @@
 /**
- * Extended Thinking Configuration (Task 64)
+ * Extended Thinking Configuration
  *
- * Configures extended thinking for complex Claude API calls.
- *
- * Extended thinking required for:
- * - Phase III (Tier C) — Legal strategy analysis
- * - Phase V (Tier C) — Complex argument drafting
- * - Phase VII (all tiers) — Quality grading
- * - Phase VII.1 — Revision with thinking
- *
- * Source: Chunk 9, Task 64 - Gap Analysis B-2
+ * DELEGATES to lib/config/phase-registry.ts (SINGLE SOURCE OF TRUTH).
+ * This module provides convenience wrappers for thinking budget lookups.
+ * DO NOT duplicate thinking budget values here — they live in phase-registry.ts.
  */
+
+import { getThinkingBudget as registryGetThinkingBudget } from '@/lib/config/phase-registry';
+import type { MotionTier } from '@/types/workflow';
+export type { MotionTier };
 
 // ============================================================================
 // TYPES
@@ -21,77 +19,49 @@ export interface ThinkingConfig {
   budgetTokens: number;
 }
 
-import type { MotionTier } from '@/types/workflow';
-export type { MotionTier };
-
 // ============================================================================
-// CONFIGURATION
+// FUNCTIONS — all delegate to phase-registry.ts
 // ============================================================================
 
 /**
- * Phases that require extended thinking
- */
-export const EXTENDED_THINKING_PHASES = [
-  'III',   // Legal strategy (Tier C only)
-  'V',     // Drafting (Tier C only)
-  'VII',   // Quality grading (all tiers)
-  'VII.1', // Revision (all tiers)
-];
-
-/**
- * Thinking token budgets by phase and tier
- * null means extended thinking is not enabled for that combination
- */
-export const THINKING_BUDGETS: Record<string, Record<MotionTier, number | null>> = {
-  'III': { A: null, B: null, C: 10000, D: 10000 },
-  'IV': { A: null, B: null, C: null, D: 16000 },
-  'V': { A: null, B: null, C: 10000, D: 10000 },
-  'VII': { A: 5000, B: 5000, C: 10000, D: 10000 },
-  'VII.1': { A: 5000, B: 5000, C: 10000, D: 10000 },
-};
-
-// ============================================================================
-// FUNCTIONS
-// ============================================================================
-
-/**
- * Check if a phase/tier combination should use extended thinking
+ * Check if a phase/tier combination should use extended thinking.
+ * Delegates to phase-registry.ts getThinkingBudget().
  */
 export function shouldUseExtendedThinking(
   phase: string,
   tier: MotionTier
 ): boolean {
-  const budgets = THINKING_BUDGETS[phase];
-  if (!budgets) return false;
-
-  return budgets[tier] !== null;
+  try {
+    const budget = registryGetThinkingBudget(phase as Parameters<typeof registryGetThinkingBudget>[0], tier);
+    return budget !== undefined && budget > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Get the thinking configuration for a phase/tier combination
+ * Get the thinking configuration for a phase/tier combination.
+ * Delegates to phase-registry.ts getThinkingBudget().
  */
 export function getThinkingConfig(
   phase: string,
   tier: MotionTier
 ): ThinkingConfig {
-  const budgets = THINKING_BUDGETS[phase];
-
-  if (!budgets || budgets[tier] === null) {
-    return {
-      enabled: false,
-      budgetTokens: 0,
-    };
+  try {
+    const budget = registryGetThinkingBudget(phase as Parameters<typeof registryGetThinkingBudget>[0], tier);
+    if (!budget || budget <= 0) {
+      return { enabled: false, budgetTokens: 0 };
+    }
+    return { enabled: true, budgetTokens: budget };
+  } catch {
+    return { enabled: false, budgetTokens: 0 };
   }
-
-  return {
-    enabled: true,
-    budgetTokens: budgets[tier] as number,
-  };
 }
 
 /**
- * Get thinking budget tokens for a phase/tier
- * Returns 0 if extended thinking is not enabled
+ * Get thinking budget tokens for a phase/tier.
+ * Returns 0 if extended thinking is not enabled.
+ * Delegates to phase-registry.ts getThinkingBudget().
  */
 export function getThinkingBudget(
   phase: string,
@@ -102,8 +72,9 @@ export function getThinkingBudget(
 }
 
 /**
- * Build the thinking parameter for Claude API
- * Returns undefined if thinking is not enabled
+ * Build the thinking parameter for Claude API.
+ * Returns undefined if thinking is not enabled.
+ * Delegates to phase-registry.ts getThinkingBudget().
  */
 export function buildThinkingParam(
   phase: string,
@@ -122,24 +93,7 @@ export function buildThinkingParam(
 }
 
 /**
- * Get all phases that have extended thinking enabled
- */
-export function getPhasesWithThinking(): string[] {
-  return Object.keys(THINKING_BUDGETS);
-}
-
-/**
- * Check if any tier has extended thinking for a phase
- */
-export function phaseHasThinking(phase: string): boolean {
-  const budgets = THINKING_BUDGETS[phase];
-  if (!budgets) return false;
-
-  return Object.values(budgets).some((b) => b !== null);
-}
-
-/**
- * Get thinking configuration summary for logging/debugging
+ * Get thinking configuration summary for logging/debugging.
  */
 export function getThinkingSummary(
   phase: string,

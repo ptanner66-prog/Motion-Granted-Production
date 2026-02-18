@@ -99,6 +99,30 @@ const TEMPLATE_INSTRUCTION_PATTERNS = [
  */
 const CURLY_BRACE_PATTERN = /\{([a-z][a-z_0-9]*)\}/gi;
 
+/**
+ * M-08: Non-blocking placeholders — attorney info filled at signing time.
+ * These should generate warnings but NOT block delivery.
+ */
+const NON_BLOCKING_PLACEHOLDERS = new Set([
+  '[ATTORNEY_BAR_NUMBER]',
+  '[FIRM_NAME]',
+  '[ATTORNEY_ADDRESS]',
+  '[ATTORNEY_PHONE]',
+  '[ATTORNEY_FAX]',
+  '[ATTORNEY_EMAIL]',
+  '[ATTORNEY_NAME]',
+]);
+
+/**
+ * Categorize found placeholders into blocking and non-blocking.
+ */
+export function categorizePlaceholders(found: string[]): { blocking: string[]; nonBlocking: string[] } {
+  return {
+    blocking: found.filter(p => !NON_BLOCKING_PLACEHOLDERS.has(p)),
+    nonBlocking: found.filter(p => NON_BLOCKING_PLACEHOLDERS.has(p)),
+  };
+}
+
 // ============================================================================
 // VALIDATION FUNCTIONS
 // ============================================================================
@@ -182,17 +206,24 @@ export function validateNoPlaceholders(content: string | Record<string, unknown>
   const uniqueGenericNames = [...new Set(genericNames)];
   const uniqueTemplateInstructions = [...new Set(templateInstructions)];
 
-  // Determine severity
+  // M-08: Categorize placeholders into blocking vs non-blocking
+  const { blocking: blockingPlaceholders, nonBlocking: nonBlockingPlaceholders } = categorizePlaceholders(uniquePlaceholders);
+
+  // Determine severity — only BLOCKING placeholders prevent delivery
+  const blockingIssues = blockingPlaceholders.length + uniqueGenericNames.length + uniqueTemplateInstructions.length;
   const totalIssues = uniquePlaceholders.length + uniqueGenericNames.length + uniqueTemplateInstructions.length;
   let severity: PlaceholderValidationResult['severity'] = 'none';
 
   if (totalIssues === 0) {
     severity = 'none';
-  } else if (uniquePlaceholders.length > 0 || uniqueGenericNames.length > 0) {
-    // Bracketed placeholders or generic names are BLOCKING
+  } else if (blockingPlaceholders.length > 0 || uniqueGenericNames.length > 0) {
+    // Only blocking placeholders or generic names prevent delivery
     severity = 'blocking';
   } else if (uniqueTemplateInstructions.length > 0) {
     severity = 'major';
+  } else if (nonBlockingPlaceholders.length > 0) {
+    // Attorney info placeholders are non-blocking — filled at signing
+    severity = 'minor';
   }
 
   // Build summary
