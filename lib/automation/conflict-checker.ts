@@ -5,7 +5,7 @@
  * party names against historical data and using AI for fuzzy matching.
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('automation-conflict-checker');
@@ -58,7 +58,7 @@ async function getConflictCheckSettings(): Promise<{
   fuzzyMatchThreshold: number;
 }> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
 
     const { data: settings } = await supabase
       .from('automation_settings')
@@ -103,7 +103,7 @@ export async function runConflictCheck(
   options: ConflictCheckOptions = {}
 ): Promise<OperationResult<ConflictCheckResult>> {
   const startTime = Date.now();
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Load settings
@@ -383,7 +383,7 @@ export async function clearConflicts(
   clearedBy: string,
   reason: string
 ): Promise<OperationResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Update order status
@@ -437,7 +437,7 @@ export async function flagConflict(
   flaggedBy: string,
   reason: string
 ): Promise<OperationResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     await updateOrderConflictStatus(supabase, orderId, true, false, reason);
@@ -683,7 +683,7 @@ async function logAutomationAction(
 export async function getConflictMatches(
   orderId: string
 ): Promise<OperationResult<ConflictMatchResult[]>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const { data, error } = await supabase

@@ -21,8 +21,8 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     supportsExtendedThinking: true,
   },
   {
-    id: 'claude-opus-4-5-20250929',
-    label: 'Claude Opus 4.5',
+    id: 'claude-opus-4-6',
+    label: 'Claude Opus 4.6',
     shortLabel: 'Opus',
     costTier: 'premium',
     supportsExtendedThinking: true,

@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const VALID_TIERS = ['A', 'B', 'C', 'D'] as const;
 const VALID_MODELS = [
   'claude-sonnet-4-5-20250929',
-  'claude-opus-4-5-20250929',
+  'claude-opus-4-6',
 ] as const;
 
 interface PatchBody {

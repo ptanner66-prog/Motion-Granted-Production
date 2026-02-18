@@ -89,7 +89,7 @@ export async function generateOrderDeliverableUrls(
   const urls: DeliverableUrl[] = [];
 
   for (const deliverable of deliverables) {
-    const result = await generateSignedUrl('deliverables', deliverable.storage_path, {
+    const result = await generateSignedUrl('order-documents', deliverable.storage_path, {
       download: deliverable.filename,
     });
 
