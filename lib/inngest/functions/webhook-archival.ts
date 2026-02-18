@@ -18,7 +18,7 @@ import { inngest } from '../client';
 
 export const webhookArchival = inngest.createFunction(
   { id: 'webhook-archival', name: 'Daily Webhook Events Archival' },
-  { cron: '30 3 * * *' }, // 3:30 AM CT (offset from reconciliation at 3:00 AM)
+  { cron: 'TZ=America/Chicago 30 3 * * *' }, // 3:30 AM CT (offset from reconciliation at 3:00 AM)
   async ({ step }) => {
     let archived = 0;
     let skipped = 0;

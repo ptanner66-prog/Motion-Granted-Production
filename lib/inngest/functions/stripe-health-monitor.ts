@@ -38,7 +38,7 @@ interface StripeHealthAlert {
 
 export const stripeHealthMonitor = inngest.createFunction(
   { id: 'stripe-health-monitor', name: 'Weekly Stripe Health Check' },
-  { cron: '0 6 * * 1' }, // Monday 6:00 AM CT
+  { cron: 'TZ=America/Chicago 0 6 * * 1' }, // Monday 6:00 AM CT
   async ({ step }) => {
     const report = await step.run('calculate-health', async () => {
       const { createClient } = await import('@supabase/supabase-js');

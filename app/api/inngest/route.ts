@@ -18,10 +18,8 @@ import {
 // NOTE: handleCheckpointApproval (simple logger) REMOVED — same Inngest ID as
 // workflowCheckpointApproval (real Fn2). Only one can be registered.
 import {
-  handleGenerationFailure,
   deadlineCheck,
   updateQueuePositions,
-  conflictAutoCancel,
 } from "@/lib/inngest/functions";
 
 // Conflict checking
@@ -69,7 +67,7 @@ import { processEmailQueue } from "@/lib/inngest/process-email-queue";
  * - INNGEST_SIGNING_KEY: For verifying webhook signatures
  */
 
-// All registered Inngest functions — v7.4.3: 23 functions (was 22; +1 email queue consumer)
+// All registered Inngest functions — v7.4.4: 21 functions (removed handleGenerationFailure, conflictAutoCancel v1)
 const registeredFunctions = [
   // PRIMARY: 14-phase workflow (handles order/submitted, revision-requested, protocol-10-exit)
   generateOrderWorkflow,
@@ -77,13 +75,11 @@ const registeredFunctions = [
   handleWorkflowTimeout,
   // FN2: CP3 approval lifecycle (checkpoint/cp3.reached → two-stage timeout → delivery)
   workflowCheckpointApproval,
-  // SUPPORTING: Error handling, deadlines, queue management
-  handleGenerationFailure,
+  // SUPPORTING: Deadlines, queue management
   deadlineCheck,
   updateQueuePositions,
   // CONFLICT CHECK: Runs on order/created events
   conflictCheckJob,
-  conflictAutoCancel,
   conflictAutoCancelV2,
   // RETENTION: Scheduled cron jobs for data lifecycle
   sendDeletionReminders,
@@ -115,11 +111,9 @@ const REQUIRED_FUNCTION_EXPORTS = [
   { ref: handleWorkflowFailure, name: 'handleWorkflowFailure' },
   { ref: handleWorkflowTimeout, name: 'handleWorkflowTimeout' },
   { ref: workflowCheckpointApproval, name: 'workflowCheckpointApproval' },
-  { ref: handleGenerationFailure, name: 'handleGenerationFailure' },
   { ref: deadlineCheck, name: 'deadlineCheck' },
   { ref: updateQueuePositions, name: 'updateQueuePositions' },
   { ref: conflictCheckJob, name: 'conflictCheckJob' },
-  { ref: conflictAutoCancel, name: 'conflictAutoCancel' },
   { ref: conflictAutoCancelV2, name: 'conflictAutoCancelV2' },
   { ref: sendDeletionReminders, name: 'sendDeletionReminders' },
   { ref: autoDeleteExpired, name: 'autoDeleteExpired' },

@@ -2,7 +2,7 @@
 // Order data deletion with anonymization
 // Task 45 | Version 1.0 — January 28, 2026
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { anonymizeOrderForAnalytics } from './anonymize';
 import { logActivity } from '@/lib/activity/activity-logger';
 
@@ -32,7 +32,7 @@ export async function deleteOrderData(
   deletionType: DeletionType,
   actorUserId?: string
 ): Promise<DeleteResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
   const deletedAt = new Date().toISOString();
 
   log.info(`[Delete] Starting deletion for order ${orderId} (type: ${deletionType})`);
