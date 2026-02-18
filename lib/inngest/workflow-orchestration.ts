@@ -2522,6 +2522,27 @@ export const generateOrderWorkflow = inngest.createFunction(
     console.log('[Orchestration] Accumulated after V.1:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
+    // WIRE-1: Hard gate check — halt workflow if CIV pipeline failed
+    // passesHardGate=false means citations have holding mismatches or are
+    // fabricated. Retrying will NOT fix this — it's a NonRetriableError.
+    // ========================================================================
+    const v1OutputForGate = (phaseV1Result?.output ?? {}) as Record<string, unknown>;
+    if (v1OutputForGate.passesHardGate === false) {
+      console.error(`[Orchestration] WIRE-1: Phase V.1 hard gate FAILED — halting workflow for order ${orderId}`);
+      await step.run('v1-hard-gate-update-status', async () => {
+        await supabase.from('orders').update({
+          status: 'on_hold',
+          hold_reason: 'CITATION_VERIFICATION_FAILED',
+          hold_details: `CIV hard gate failed: holdingMismatches=${v1OutputForGate.holdingMismatches}, rate=${v1OutputForGate.verificationRate}`,
+        }).eq('id', orderId);
+      });
+      throw new NonRetriableError(
+        `Phase V.1 CIV hard gate failed for order ${orderId}: ` +
+        `holdingMismatches=${v1OutputForGate.holdingMismatches}, rate=${v1OutputForGate.verificationRate}`
+      );
+    }
+
+    // ========================================================================
     // SP-13 Step 6.5/6.6: Protocol dispatch after Phase V.1 (Decision 8)
     // ========================================================================
     if (DISPATCHER_PHASES.includes('V.1')) {
@@ -2941,6 +2962,25 @@ export const generateOrderWorkflow = inngest.createFunction(
         workflowState.phaseOutputs["VII.1"] = phaseVII1Result.output;
       }
 
+      // ====================================================================
+      // WIRE-1: Hard gate check — halt workflow if CIV pipeline failed
+      // ====================================================================
+      const vii1OutputForGate = (phaseVII1Result?.output ?? {}) as Record<string, unknown>;
+      if (vii1OutputForGate.passesHardGate === false) {
+        console.error(`[Orchestration] WIRE-1: Phase VII.1 hard gate FAILED in loop ${loopNum} — halting workflow for order ${orderId}`);
+        await step.run(`vii1-hard-gate-update-status-loop-${loopNum}`, async () => {
+          await supabase.from('orders').update({
+            status: 'on_hold',
+            hold_reason: 'CITATION_VERIFICATION_FAILED',
+            hold_details: `CIV hard gate failed at VII.1 loop ${loopNum}: holdingMismatches=${vii1OutputForGate.holdingMismatches}, rate=${vii1OutputForGate.verificationRate}`,
+          }).eq('id', orderId);
+        });
+        throw new NonRetriableError(
+          `Phase VII.1 CIV hard gate failed for order ${orderId} in loop ${loopNum}: ` +
+          `holdingMismatches=${vii1OutputForGate.holdingMismatches}, rate=${vii1OutputForGate.verificationRate}`
+        );
+      }
+
       // Bank any citations verified by VII.1
       const vii1BankEntries = ((phaseVII1Result.output as Record<string, unknown>)?.verifiedBankEntries ?? []) as Array<{
         caseName?: string;
@@ -3323,13 +3363,33 @@ export const generateOrderWorkflow = inngest.createFunction(
     console.log('[Orchestration] Accumulated after IX.1:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
+    // WIRE-1: Hard gate check — halt workflow if final CIV audit failed
+    // ========================================================================
+    const ix1OutputForGate = (phaseIX1Result?.output ?? {}) as Record<string, unknown>;
+    const ix1Audit = ix1OutputForGate?.finalCitationAudit as Record<string, unknown> | undefined;
+    if (ix1Audit?.passesHardGate === false) {
+      console.error(`[Orchestration] WIRE-1: Phase IX.1 final CIV audit hard gate FAILED — halting workflow for order ${orderId}`);
+      await step.run('ix1-hard-gate-update-status', async () => {
+        await supabase.from('orders').update({
+          status: 'on_hold',
+          hold_reason: 'CITATION_VERIFICATION_FAILED',
+          hold_details: `CIV hard gate failed at IX.1 final audit: holdingMismatches=${ix1Audit?.holdingMismatches}, rate=${ix1Audit?.verificationRate}`,
+        }).eq('id', orderId);
+      });
+      throw new NonRetriableError(
+        `Phase IX.1 CIV hard gate failed for order ${orderId}: ` +
+        `holdingMismatches=${ix1Audit?.holdingMismatches}, rate=${ix1Audit?.verificationRate}`
+      );
+    }
+
+    // ========================================================================
     // SP-13 Step 6.5/6.6: Protocol dispatch after Phase IX.1 (Decision 8)
     // ========================================================================
     if (DISPATCHER_PHASES.includes('IX.1')) {
       // SP-18: Derive verification status from actual Phase IX.1 results
       const ix1Output = (phaseIX1Result?.output ?? {}) as Record<string, unknown>;
-      const ix1Audit = ix1Output?.finalCitationAudit as Record<string, unknown> | undefined;
-      const ix1HasRejected = ((ix1Audit?.rejected as number) ?? 0) > 0 || ((ix1Audit?.blocked as number) ?? 0) > 0;
+      const ix1AuditForDispatch = ix1Output?.finalCitationAudit as Record<string, unknown> | undefined;
+      const ix1HasRejected = ((ix1AuditForDispatch?.rejected as number) ?? 0) > 0 || ((ix1AuditForDispatch?.blocked as number) ?? 0) > 0;
       const ix1DispatchStatus = ix1HasRejected ? 'VERIFICATION_DEFERRED' as const : 'VERIFIED' as const;
 
       const ix1DispatchResult = await step.run('dispatch-protocols-ix1', async () => {

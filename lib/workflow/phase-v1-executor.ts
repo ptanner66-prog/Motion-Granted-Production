@@ -35,17 +35,18 @@ import {
 
 export interface PhaseV1Input {
   orderId: string;
+  phase?: 'V.1' | 'VII.1' | 'IX.1';  // Which CIV phase is calling (default: 'V.1')
   tier: 'A' | 'B' | 'C' | 'D';
-  draftText: string;        // Full motion text from Phase V
+  draftText: string;        // Full motion text from Phase V (or revised text for VII.1/IX.1)
   rawCitations: string[];   // Citations extracted by Eyecite (may contain duplicates/fragments)
 }
 
 export interface PhaseV1Output {
-  phase: 'V.1';
+  phase: 'V.1' | 'VII.1' | 'IX.1';
   status: 'completed' | 'failed';
   success: boolean;
   durationMs: number;
-  nextPhase: 'VI' | null;   // null if hard gate failed
+  nextPhase: string | null;   // null if hard gate failed
   output: {
     civPipelineResults: CIVPipelineOutput | null;
     passesHardGate: boolean;
@@ -105,20 +106,21 @@ export interface PhaseV1Output {
 export async function executePhaseV1(input: PhaseV1Input): Promise<PhaseV1Output> {
   const startTime = Date.now();
   const { orderId, tier, draftText, rawCitations } = input;
+  const phase = input.phase ?? 'V.1';
 
   console.log(
-    `[PHASE_V1] Starting full CIV pipeline for order=${orderId} tier=${tier} rawCitations=${rawCitations.length}`
+    `[PHASE_V1] Starting full CIV pipeline for order=${orderId} phase=${phase} tier=${tier} rawCitations=${rawCitations.length}`
   );
 
   try {
     // Run the full CIV pipeline (includes deduplication internally)
     const civResults = await runCIVPipeline({
       orderId,
-      phase: 'V.1',
+      phase,
       tier,
       draftText,
       rawCitations,
-      batchSize: 2, // HIGH_STAKES batch size for V.1
+      batchSize: phase === 'IX.1' ? 4 : 2, // HIGH_STAKES batch size for V.1/VII.1
     });
 
     // Build legacy-compatible output
@@ -150,12 +152,14 @@ export async function executePhaseV1(input: PhaseV1Input): Promise<PhaseV1Output
         ? 'flag' as const
         : 'pass' as const;
 
+    // Determine next phase based on which CIV phase is running
+    const nextPhaseMap: Record<string, string> = { 'V.1': 'VI', 'VII.1': 'VII', 'IX.1': 'X' };
     const output: PhaseV1Output = {
-      phase: 'V.1',
+      phase,
       status: civResults.passesHardGate ? 'completed' : 'failed',
       success: civResults.passesHardGate,
       durationMs: Date.now() - startTime,
-      nextPhase: civResults.passesHardGate ? 'VI' : null,
+      nextPhase: civResults.passesHardGate ? (nextPhaseMap[phase] ?? 'VI') : null,
       output: {
         civPipelineResults: civResults,
         passesHardGate: civResults.passesHardGate,
@@ -202,12 +206,12 @@ export async function executePhaseV1(input: PhaseV1Input): Promise<PhaseV1Output
     return output;
 
   } catch (error) {
-    console.error(`[PHASE_V1] Fatal error for order=${orderId}:`, error);
+    console.error(`[PHASE_V1] Fatal error for order=${orderId} phase=${phase}:`, error);
 
     // On pipeline error, FAIL SAFE — do not let the motion through.
     // Default ALL safety booleans to RESTRICTIVE values.
     return {
-      phase: 'V.1',
+      phase,
       status: 'failed',
       success: false,
       durationMs: Date.now() - startTime,
