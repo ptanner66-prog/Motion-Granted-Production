@@ -3364,6 +3364,28 @@ async function executePhaseVII1(input: PhaseInput): Promise<PhaseOutput> {
 }
 
 // ============================================================================
+// DRAFT TEXT EXTRACTION HELPER
+// ============================================================================
+
+/**
+ * Reliably extract draft text from various phase output shapes.
+ * Handles string outputs, objects with revisedMotion/draftMotion/draft/content/text fields.
+ * Returns empty string if no text field found (caller should provide fallback).
+ */
+function extractDraftText(phaseOutput: unknown): string {
+  if (typeof phaseOutput === 'string') return phaseOutput;
+  if (typeof phaseOutput === 'object' && phaseOutput !== null) {
+    const obj = phaseOutput as Record<string, unknown>;
+    if (typeof obj.revisedMotion === 'string') return obj.revisedMotion;
+    if (typeof obj.draftMotion === 'string') return obj.draftMotion;
+    if (typeof obj.draft === 'string') return obj.draft;
+    if (typeof obj.content === 'string') return obj.content;
+    if (typeof obj.text === 'string') return obj.text;
+  }
+  return '';
+}
+
+// ============================================================================
 // SP-07 TASK-05: FACT FABRICATION DETECTION
 // ============================================================================
 
@@ -4887,13 +4909,10 @@ Assemble and check. Provide as JSON.`;
     // BUG-09 FIX: Filter citation list to only include citations that actually
     // appear in the final motion text. The full caseCitationBank includes all
     // researched citations, but only a subset may appear in the final draft.
-    const finalMotionText = (typeof phaseVIIIOutput?.revisedMotion === 'string'
-      ? phaseVIIIOutput.revisedMotion
-      : typeof phaseVOutput?.draftMotion === 'string'
-        ? phaseVOutput.draftMotion
-        : typeof (finalMotion as Record<string, unknown>)?.content === 'string'
-          ? (finalMotion as Record<string, unknown>).content as string
-          : JSON.stringify(finalMotion || ''));
+    const finalMotionText = extractDraftText(phaseVIIIOutput)
+      || extractDraftText(phaseVOutput)
+      || extractDraftText(finalMotion)
+      || JSON.stringify(finalMotion || '');
 
     const finalMotionTextNormalized = finalMotionText.toLowerCase().replace(/\s+/g, ' ');
 
@@ -4944,13 +4963,10 @@ Assemble and check. Provide as JSON.`;
       const { MotionData } = await import('@/lib/documents/types') as { MotionData: never };
 
       // Extract the draft text from Phase V or Phase VIII (revised)
-      const draftText = (typeof phaseVIIIOutput?.revisedMotion === 'string'
-        ? phaseVIIIOutput.revisedMotion
-        : typeof phaseVOutput?.draftMotion === 'string'
-          ? phaseVOutput.draftMotion
-          : typeof (finalMotion as Record<string, unknown>)?.content === 'string'
-            ? (finalMotion as Record<string, unknown>).content as string
-            : JSON.stringify(finalMotion));
+      const draftText = extractDraftText(phaseVIIIOutput)
+        || extractDraftText(phaseVOutput)
+        || extractDraftText(finalMotion)
+        || JSON.stringify(finalMotion);
 
       const motionData = {
         orderId: input.orderId,
