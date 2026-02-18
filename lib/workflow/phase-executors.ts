@@ -2211,7 +2211,7 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
           citationType: 'case' as const,
           proposition: c.proposition,
           authorityLevel: c.authorityLevel === 'binding' ? 'binding' : 'persuasive',
-          verificationStatus: c.courtlistener_id ? 'verified' : 'unverified',
+          verificationStatus: 'pending_civ' as const,
           verificationMethod: c.verification_method || 'courtlistener_api',
           displayOrder: index + 1,
         };
