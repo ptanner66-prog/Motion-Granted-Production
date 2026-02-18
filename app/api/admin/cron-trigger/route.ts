@@ -41,7 +41,11 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!baseUrl) {
+      log.error('NEXT_PUBLIC_APP_URL not configured');
+      return NextResponse.json({ error: 'App URL not configured' }, { status: 500 });
+    }
     const cronResponse = await fetch(`${baseUrl}/api/automation/cron`, {
       method: 'POST',
       headers: {
