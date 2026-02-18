@@ -107,12 +107,15 @@ Classification definitions:
     // Parse error - return conservative default
   }
 
+  // BUG-FIX A10-P0-004 (related): Parse error must default to RESTRICTIVE values.
+  // Confidence 50 on 0-100 scale = 0.50 normalized → borderline.
+  // Set to 0 to ensure this citation is flagged for manual review.
   return {
     result: 'PARTIAL',
-    confidence: 50,
+    confidence: 0,
     classification: 'PARTIAL',
     isFromMajority: true,
-    reasoning: 'Stage 1 parse error — defaulting to conservative result',
+    reasoning: 'Stage 1 parse error — defaulting to zero confidence (conservative)',
   };
 }
 
@@ -193,13 +196,16 @@ Respond in JSON format ONLY:
     // Parse error - return conservative default
   }
 
+  // BUG-FIX A10-P0-004: Parse error must NOT default to UPHELD.
+  // UPHELD = "citation is fine" which is the PERMISSIVE default.
+  // Safety gate must default to RESTRICTIVE: WEAKENED triggers manual review.
   return {
-    result: 'UPHELD',
+    result: 'WEAKENED',
     strength: 50,
     classification: stage1Analysis.classification,
-    agreesWithStage1: true,
-    disagreementReasons: [],
-    reasoning: 'Stage 2 parse error — defaulting to UPHELD',
+    agreesWithStage1: false,
+    disagreementReasons: ['Stage 2 adversarial review returned unparseable response'],
+    reasoning: 'Stage 2 parse error — defaulting to WEAKENED (conservative)',
   };
 }
 

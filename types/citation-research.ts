@@ -335,7 +335,7 @@ export interface PhaseIVOutput {
     candidatesFound: number;
     candidatesVerified: number;
     citationsSelected: number;
-    allCitationsVerified: true;
+    allCitationsVerified: boolean; // BUG-FIX A10-P0-002: was literal `true` — TypeScript PREVENTED setting `false`
     verificationSource: 'CourtListener API';
     verificationTimestamp: string;
   };

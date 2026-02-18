@@ -54,10 +54,14 @@ export function compileVerificationOutput(
   const parsedCitation = parseCitation(citationInput);
 
   // Calculate composite confidence
+  // BUG-FIX A10-P0-001: Step 2 returns confidence on 0-100 scale (from GPT-4 Turbo Stage 1).
+  // calculateCompositeConfidence expects ALL inputs on 0-1 scale.
+  // Without normalization, step2's 85 * 0.35 weight = 29.75, clamped to 1.0 → always VERIFIED.
+  const step2Normalized = step2.finalConfidence > 1 ? step2.finalConfidence / 100 : step2.finalConfidence;
   const step4Confidence = step4.result === 'N/A' ? null : step4.similarityScore ?? 0.9;
   const compositeConfidence = calculateCompositeConfidence(
     step1.confidence,
-    step2.finalConfidence,
+    step2Normalized,
     step3.confidence,
     step4Confidence,
     step5.confidence
