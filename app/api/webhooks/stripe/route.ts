@@ -782,14 +782,14 @@ async function handleCheckoutSessionCompleted(
 
           const checkoutAutoGen = process.env.ENABLE_AUTO_GENERATION !== 'false';
 
-          if (checkoutAutoGen && order?.filing_deadline) {
+          if (checkoutAutoGen) {
             try {
               await inngest.send({
                 name: "order/submitted",
                 data: {
                   orderId,
-                  priority: calculatePriority(order.filing_deadline),
-                  filingDeadline: order.filing_deadline,
+                  priority: calculatePriority(order?.filing_deadline || null),
+                  filingDeadline: order?.filing_deadline || null,
                 },
               });
               console.log(`[Stripe Webhook] Order ${order.order_number} queued for draft generation via checkout`);
@@ -802,7 +802,7 @@ async function handleCheckoutSessionCompleted(
                 status: 'pending',
                 payload: {
                   source: 'checkout_webhook_fallback',
-                  filingDeadline: order.filing_deadline,
+                  filingDeadline: order?.filing_deadline || null,
                   error: inngestError instanceof Error ? inngestError.message : 'Inngest send failed',
                 },
               });
