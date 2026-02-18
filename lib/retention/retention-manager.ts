@@ -62,12 +62,7 @@ export async function deleteOrderData(orderId: string): Promise<{
     }
     storageDeleted = true;
   } catch (err) {
-    console.error('[retention] Storage cleanup failed, queuing retry:', orderId, err);
-    // Queue async retry — DB is already clean, just storage remains
-    await inngest.send({
-      name: 'retention/storage-cleanup-retry',
-      data: { orderId },
-    });
+    console.error(`[retention] CRITICAL: Storage cleanup failed for order ${orderId}. DB records deleted but storage files remain orphaned. Manual cleanup required.`, err);
   }
 
   return { success: true, dbDeleted, storageDeleted };

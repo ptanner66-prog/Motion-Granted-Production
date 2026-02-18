@@ -17,6 +17,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { HOLD_TIMEOUTS } from '@/lib/config/workflow-config';
 import type { OperationResult } from '@/types/automation';
 import { createLogger } from '@/lib/security/logger';
@@ -118,7 +119,8 @@ export async function triggerCheckpoint(
   checkpoint: CheckpointType,
   data: Partial<CheckpointData>
 ): Promise<OperationResult> {
-  const supabase = await createClient();
+  // Uses admin client because this is called from Inngest (no cookies available)
+  const supabase = getServiceSupabase();
 
   try {
     const checkpointData: CheckpointData = {
@@ -657,7 +659,8 @@ export async function processRevisionPayment(
   revisionId: string,
   paymentIntentId: string
 ): Promise<OperationResult> {
-  const supabase = await createClient();
+  // Uses admin client because this is called from Stripe webhook (no user session)
+  const supabase = getServiceSupabase();
 
   try {
     // Update revision record
@@ -727,7 +730,8 @@ async function createCheckpointHandoff(
   checkpoint: CheckpointType,
   data: CheckpointData
 ): Promise<void> {
-  const supabase = await createClient();
+  // Uses admin client because this is called from triggerCheckpoint (Inngest context)
+  const supabase = getServiceSupabase();
 
   const { data: workflow } = await supabase
     .from('order_workflows')
@@ -783,7 +787,8 @@ export async function triggerHoldCheckpoint(
   documentGap: string,
   riskAssessment: string
 ): Promise<OperationResult> {
-  const supabase = await createClient();
+  // Uses admin client because this is a background workflow function
+  const supabase = getServiceSupabase();
 
   try {
     const now = new Date();

@@ -61,6 +61,7 @@ interface OrderInfo {
   motionType: string
   jurisdiction: string
   status: string
+  statusVersion: number
   filingDeadline?: string
   qualityScore?: number
   revisionCount?: number
@@ -133,6 +134,7 @@ export default function ReviewPage() {
         orderId: string
         orderNumber: string
         orderStatus: string
+        statusVersion: number
         documents: OrderDocument[]
       }
 
@@ -151,6 +153,7 @@ export default function ReviewPage() {
         motionType: (orderData.motion_type as string) ?? '',
         jurisdiction: (orderData.jurisdiction as string) ?? '',
         status: docsData.orderStatus ?? (orderData.status as string) ?? '',
+        statusVersion: docsData.statusVersion ?? (orderData.status_version as number) ?? 0,
         filingDeadline: (orderData.filing_deadline as string) ?? undefined,
         qualityScore: (orderData.quality_score as number) ?? undefined,
         revisionCount: (orderData.revision_count as number) ?? 0,
@@ -160,11 +163,12 @@ export default function ReviewPage() {
       setDocuments(docsData.documents ?? [])
 
       // If the order isn't in a reviewable state, redirect to order detail
-      const reviewableStatuses = ['draft_delivered', 'pending_review']
+      const reviewableStatuses = ['AWAITING_APPROVAL', 'draft_delivered', 'pending_review']
       if (
         docsData.orderStatus &&
         !reviewableStatuses.includes(docsData.orderStatus) &&
-        docsData.orderStatus !== 'completed'
+        docsData.orderStatus !== 'completed' &&
+        docsData.orderStatus !== 'COMPLETED'
       ) {
         router.replace(`/orders/${orderId}`)
         return
@@ -189,6 +193,7 @@ export default function ReviewPage() {
       const response = await fetch(`/api/orders/${orderId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status_version: order?.statusVersion ?? 0 }),
       })
 
       const result = await response.json() as {
@@ -236,7 +241,10 @@ export default function ReviewPage() {
       const response = await fetch(`/api/orders/${orderId}/request-changes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: changeNotes.trim() }),
+        body: JSON.stringify({
+          reason: changeNotes.trim(),
+          status_version: order?.statusVersion ?? 0,
+        }),
       })
 
       if (!response.ok) {
@@ -289,9 +297,9 @@ export default function ReviewPage() {
 
   if (!order) return null
 
-  const isCompleted = order.status === 'completed'
+  const isCompleted = order.status === 'completed' || order.status === 'COMPLETED'
   const isAlreadyApproved = isCompleted || approveSuccess
-  const isInRevision = changesSuccess || order.status === 'revision_requested'
+  const isInRevision = changesSuccess || order.status === 'revision_requested' || order.status === 'REVISION_REQ'
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">

@@ -27,7 +27,7 @@ export async function GET(
     // Fetch the order
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, client_id, order_number, status')
+      .select('id, client_id, order_number, status, status_version')
       .eq('id', orderId)
       .single()
 
@@ -81,6 +81,7 @@ export async function GET(
       orderId: order.id,
       orderNumber: order.order_number,
       orderStatus: order.status,
+      statusVersion: order.status_version ?? 0,
       documents: formattedDocuments,
     })
   } catch (err) {

@@ -20,7 +20,7 @@ export type OrderSubmittedEvent = {
   data: {
     orderId: string;
     priority: number;
-    filingDeadline: string;
+    filingDeadline: string | null;
   };
 };
 
