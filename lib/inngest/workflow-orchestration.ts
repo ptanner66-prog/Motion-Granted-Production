@@ -2663,18 +2663,8 @@ export const generateOrderWorkflow = inngest.createFunction(
       });
 
       if (v1DispatchResult.holdRequired) {
-        await step.sendEvent('send-hold-event-v1', {
-          name: 'workflow/hold-required',
-          data: {
-            orderId,
-            holdProtocol: v1DispatchResult.holdProtocol,
-            phase: 'V.1',
-          },
-        });
-
-        // SP-22 FIX: Set on_hold status inline and emit checkpoint/hold.created
-        // to start timer cascade. Without this, checkAndWaitForHold() finds status
-        // is NOT on_hold and returns 'continue', silently bypassing the HOLD.
+        // Set on_hold status inline and emit checkpoint/hold.created
+        // to start timer cascade. checkAndWaitForHold() reads this status.
         await step.run('set-hold-status-v1', async () => {
           const holdReason = `citation_critical_failure:${v1DispatchResult.holdProtocol ?? 'P7'}`;
           await supabase
@@ -3168,16 +3158,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         });
 
         if (vii1DispatchResult.holdRequired) {
-          await step.sendEvent('send-hold-event-vii1', {
-            name: 'workflow/hold-required',
-            data: {
-              orderId,
-              holdProtocol: vii1DispatchResult.holdProtocol,
-              phase: 'VII.1',
-            },
-          });
-
-          // SP-22 FIX: Set on_hold status inline and emit checkpoint/hold.created
+          // Set on_hold status inline and emit checkpoint/hold.created
           await step.run(`set-hold-status-vii1-loop-${loopNum}`, async () => {
             const holdReason = `citation_critical_failure:${vii1DispatchResult.holdProtocol ?? 'P7'}`;
             await supabase
@@ -3556,16 +3537,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       });
 
       if (ix1DispatchResult.holdRequired) {
-        await step.sendEvent('send-hold-event-ix1', {
-          name: 'workflow/hold-required',
-          data: {
-            orderId,
-            holdProtocol: ix1DispatchResult.holdProtocol,
-            phase: 'IX.1',
-          },
-        });
-
-        // SP-22 FIX: Set on_hold status inline and emit checkpoint/hold.created
+        // Set on_hold status inline and emit checkpoint/hold.created
         await step.run('set-hold-status-ix1', async () => {
           const holdReason = `citation_critical_failure:${ix1DispatchResult.holdProtocol ?? 'P7'}`;
           await supabase

@@ -158,7 +158,7 @@ export async function POST(
         proposition: c.proposition || c.relevantHolding,
         locationInMotion: c.forElement || c.for_element,
         authorityLevel: c.authorityLevel || c.authority_level,
-        verificationStatus: (c.verificationStatus || c.verification_status || 'unverified') as 'verified' | 'unverified' | 'flagged',
+        verificationStatus: (c.verificationStatus || c.verification_status || 'unverified') as 'verified' | 'unverified' | 'flagged' | 'pending_civ',
         verificationMethod: c.verification_method || 'courtlistener_search',
         displayOrder: i,
       });
@@ -179,7 +179,7 @@ export async function POST(
         caseName: s.name || citationString,
         citationType: 'statute',
         proposition: s.purpose,
-        verificationStatus: (s.verificationStatus || s.verification_status || 'unverified') as 'verified' | 'unverified' | 'flagged',
+        verificationStatus: (s.verificationStatus || s.verification_status || 'unverified') as 'verified' | 'unverified' | 'flagged' | 'pending_civ',
         verificationMethod: 'manual',
         displayOrder: caseCitations.length + i,
       });
