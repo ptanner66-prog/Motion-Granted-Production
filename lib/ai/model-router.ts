@@ -75,40 +75,40 @@ const configCache: Map<MotionTier, CacheEntry> = new Map();
 
 const DEFAULT_CONFIGS: Record<MotionTier, Record<TaskType, string>> = {
   'A': {
-    stage_1_holding: 'gpt-4-turbo',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
-    dicta_detection: 'claude-haiku-4-5-20251001',
-    bad_law_analysis: 'claude-haiku-4-5-20251001',
-    drafting: 'claude-sonnet-4-20250514',
-    judge_simulation: 'claude-opus-4-5-20251101',
-    tiebreaker: 'gpt-4-turbo',
+    stage_1_holding: MODELS.GPT4_TURBO,
+    stage_2_adversarial: MODELS.OPUS,
+    dicta_detection: MODELS.HAIKU,
+    bad_law_analysis: MODELS.HAIKU,
+    drafting: MODELS.SONNET,
+    judge_simulation: MODELS.OPUS,
+    tiebreaker: MODELS.GPT4_TURBO,
   },
   'B': {
-    stage_1_holding: 'gpt-4-turbo',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
-    dicta_detection: 'claude-haiku-4-5-20251001',
-    bad_law_analysis: 'claude-haiku-4-5-20251001',
-    drafting: 'claude-sonnet-4-20250514',
-    judge_simulation: 'claude-opus-4-5-20251101',
-    tiebreaker: 'gpt-4-turbo',
+    stage_1_holding: MODELS.GPT4_TURBO,
+    stage_2_adversarial: MODELS.OPUS,
+    dicta_detection: MODELS.HAIKU,
+    bad_law_analysis: MODELS.HAIKU,
+    drafting: MODELS.SONNET,
+    judge_simulation: MODELS.OPUS,
+    tiebreaker: MODELS.GPT4_TURBO,
   },
   'C': {
-    stage_1_holding: 'gpt-4-turbo',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
-    dicta_detection: 'claude-sonnet-4-20250514',
-    bad_law_analysis: 'claude-sonnet-4-20250514',
-    drafting: 'claude-opus-4-5-20251101',
-    judge_simulation: 'claude-opus-4-5-20251101',
-    tiebreaker: 'gpt-4-turbo',
+    stage_1_holding: MODELS.GPT4_TURBO,
+    stage_2_adversarial: MODELS.OPUS,
+    dicta_detection: MODELS.SONNET,
+    bad_law_analysis: MODELS.SONNET,
+    drafting: MODELS.OPUS,
+    judge_simulation: MODELS.OPUS,
+    tiebreaker: MODELS.GPT4_TURBO,
   },
   'D': {
-    stage_1_holding: 'gpt-4-turbo',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
-    dicta_detection: 'claude-sonnet-4-20250514',
-    bad_law_analysis: 'claude-sonnet-4-20250514',
-    drafting: 'claude-opus-4-5-20251101',
-    judge_simulation: 'claude-opus-4-5-20251101',
-    tiebreaker: 'gpt-4-turbo',
+    stage_1_holding: MODELS.GPT4_TURBO,
+    stage_2_adversarial: MODELS.OPUS,
+    dicta_detection: MODELS.SONNET,
+    bad_law_analysis: MODELS.SONNET,
+    drafting: MODELS.OPUS,
+    judge_simulation: MODELS.OPUS,
+    tiebreaker: MODELS.GPT4_TURBO,
   },
 };
 
@@ -240,7 +240,7 @@ export async function getModelForTask(tier: MotionTier, taskType: TaskType): Pro
 
   if (!model) {
     log.warn(`[ModelRouter] No config for tier ${tier}, task ${taskType}, using default`);
-    return DEFAULT_CONFIGS[tier][taskType] || 'claude-sonnet-4-20250514';
+    return DEFAULT_CONFIGS[tier][taskType] || MODELS.SONNET;
   }
 
   // Log model selection for audit
