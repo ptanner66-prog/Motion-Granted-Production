@@ -51,7 +51,7 @@ export async function POST(
   const serviceClient = getServiceSupabase();
   const { data: order, error: orderError } = await serviceClient
     .from('orders')
-    .select('id, status, status_version, workflow_id, client_id, tier, amount_paid_cents, current_phase, attorney_email, order_number')
+    .select('id, status, status_version, workflow_id, client_id, tier, amount_paid_cents, current_phase, attorney_email, order_number, stripe_payment_intent_id')
     .eq('id', orderId)
     .single();
 
@@ -182,9 +182,9 @@ export async function POST(
   // P2-2: Process Stripe refund (pre-CP3 = 100% refund)
   if (refundAmountCents > 0 && order.stripe_payment_intent_id) {
     try {
-      const Stripe = (await import('stripe')).default;
-      const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: '2025-01-27.acacia' as Stripe.LatestApiVersion,
+      const StripeModule = await import('stripe');
+      const stripeClient = new StripeModule.default(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: '2025-01-27.acacia' as never,
       });
 
       await stripeClient.refunds.create({

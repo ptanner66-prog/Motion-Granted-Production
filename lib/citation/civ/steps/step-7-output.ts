@@ -41,7 +41,7 @@ export function compileVerificationOutput(
   step6: AuthorityStrengthOutput,
   metadata: {
     orderId?: string;
-    phase: 'V.1' | 'VII.1';
+    phase: 'V.1' | 'VII.1' | 'IX.1';
     startTime: number;
     modelsUsed: string[];
     apiCallsMade: number;

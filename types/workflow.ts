@@ -748,6 +748,7 @@ export type CitationVerificationStatus =
   | 'QUOTE_NOT_FOUND'       // Quoted text not in opinion - Protocol 3: Correct or remove
   | 'NOT_FOUND'             // Citation doesn't exist - possible hallucination
   | 'OVERRULED'             // Case has been overruled - limited historical use only
+  | 'EXISTENCE_CONFIRMED'   // Found in CourtListener, pending holding verification
   | 'PENDING'               // Not yet verified
   | 'SKIPPED';              // Intentionally skipped (e.g., statute)
 

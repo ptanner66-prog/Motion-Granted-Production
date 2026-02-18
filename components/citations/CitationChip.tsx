@@ -21,7 +21,7 @@ export interface CitationChipProps {
     caseName?: string;
     courtlistenerOpinionId?: string;
     citationType?: 'case' | 'statute' | 'regulation';
-    verificationStatus?: 'verified' | 'unverified' | 'flagged';
+    verificationStatus?: 'verified' | 'unverified' | 'flagged' | 'pending_civ';
     authorityLevel?: 'binding' | 'persuasive';
   };
   onClick?: () => void;

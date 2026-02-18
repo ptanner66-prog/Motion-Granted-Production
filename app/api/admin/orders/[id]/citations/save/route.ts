@@ -41,6 +41,8 @@ interface CaseCitationInput {
   authority_level?: 'binding' | 'persuasive';
   forElement?: string;
   for_element?: string;
+  verificationStatus?: string;
+  verification_status?: string;
   verification_method?: string;
 }
 
@@ -49,6 +51,8 @@ interface StatutoryCitationInput {
   name?: string;
   purpose?: string;
   relevantText?: string;
+  verificationStatus?: string;
+  verification_status?: string;
 }
 
 interface SaveCitationsRequestBody {
@@ -154,7 +158,7 @@ export async function POST(
         proposition: c.proposition || c.relevantHolding,
         locationInMotion: c.forElement || c.for_element,
         authorityLevel: c.authorityLevel || c.authority_level,
-        verificationStatus: c.verificationStatus || c.verification_status || 'unverified',
+        verificationStatus: (c.verificationStatus || c.verification_status || 'unverified') as 'verified' | 'unverified' | 'flagged',
         verificationMethod: c.verification_method || 'courtlistener_search',
         displayOrder: i,
       });
@@ -175,7 +179,7 @@ export async function POST(
         caseName: s.name || citationString,
         citationType: 'statute',
         proposition: s.purpose,
-        verificationStatus: s.verificationStatus || s.verification_status || 'unverified',
+        verificationStatus: (s.verificationStatus || s.verification_status || 'unverified') as 'verified' | 'unverified' | 'flagged',
         verificationMethod: 'manual',
         displayOrder: caseCitations.length + i,
       });

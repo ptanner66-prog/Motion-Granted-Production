@@ -55,7 +55,7 @@ const log = createLogger('citation-civ-pipeline');
 export async function verifyCitation(
   citation: CitationToVerify,
   orderId?: string,
-  phase: 'V.1' | 'VII.1' = 'V.1',
+  phase: 'V.1' | 'VII.1' | 'IX.1' = 'V.1',
   config: CIVConfig = DEFAULT_CIV_CONFIG
 ): Promise<FinalVerificationOutput> {
   const startTime = Date.now();
@@ -275,7 +275,7 @@ export async function verifyCitation(
       step: 4 as const,
       name: 'quote_verification' as const,
       result: 'N/A' as const,
-      actionTaken: 'FLAG' as const,
+      actionTaken: 'FLAGGED' as const,
       proceedToStep5: true,
     };
   }

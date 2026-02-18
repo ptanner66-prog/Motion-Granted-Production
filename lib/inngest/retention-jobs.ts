@@ -49,11 +49,11 @@ export const sendDeletionReminders = inngest.createFunction(
           const { data: profile } = await supabase
             .from('profiles')
             .select('email, full_name')
-            .eq('id', order.user_id)
+            .eq('id', order.client_id)
             .single();
 
           if (!profile?.email) {
-            logger.warn(`No email for user ${order.user_id}`);
+            logger.warn(`No email for user ${order.client_id}`);
             return false;
           }
 

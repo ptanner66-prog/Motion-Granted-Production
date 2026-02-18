@@ -200,7 +200,7 @@ export async function extendRetention(
  */
 export async function getOrdersDueForReminder(): Promise<Array<{
   id: string;
-  user_id: string;
+  client_id: string;
   motion_type: string;
   case_number: string | null;
   retention_expires_at: string;

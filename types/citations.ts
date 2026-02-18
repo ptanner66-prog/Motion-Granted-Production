@@ -184,7 +184,7 @@ export interface OrderCitation {
   authorityLevel?: 'binding' | 'persuasive';
 
   // Verification
-  verificationStatus: 'verified' | 'unverified' | 'flagged';
+  verificationStatus: 'verified' | 'unverified' | 'flagged' | 'pending_civ';
   verificationTimestamp?: string;
   verificationMethod?: string;
 
@@ -301,7 +301,7 @@ export interface SaveCitationInput {
   proposition?: string;
   locationInMotion?: string;
   authorityLevel?: 'binding' | 'persuasive';
-  verificationStatus?: 'verified' | 'unverified' | 'flagged';
+  verificationStatus?: 'verified' | 'unverified' | 'flagged' | 'pending_civ';
   verificationMethod?: string;
   displayOrder?: number;
 }
