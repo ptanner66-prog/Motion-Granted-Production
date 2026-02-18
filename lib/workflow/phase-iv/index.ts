@@ -378,7 +378,7 @@ Total Duration: ${totalDuration}ms
         candidatesFound: 0,
         candidatesVerified: 0,
         citationsSelected: 0,
-        allCitationsVerified: true,
+        allCitationsVerified: false, // BUG-FIX A10-P0-003: was `true` — error path must NOT claim verification
         verificationSource: 'CourtListener API',
         verificationTimestamp: new Date().toISOString(),
       },
