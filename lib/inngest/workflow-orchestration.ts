@@ -1263,13 +1263,10 @@ async function persistDeliverableRecords(
     }
   }
 
-  await supabase
-    .from('orders')
-    .update({
-      deliverable_urls: deliverableUrls,
-      deliverables_generated_at: new Date().toISOString(),
-    })
-    .eq('id', orderId);
+  await updateOrderColumns(supabase, orderId, {
+    deliverable_urls: deliverableUrls as unknown as Record<string, unknown>,
+    deliverables_generated_at: new Date().toISOString(),
+  }, 'persist-deliverable-records');
 
   await supabase.from('automation_logs').insert({
     order_id: orderId,
@@ -3873,15 +3870,19 @@ export const generateOrderWorkflow = inngest.createFunction(
     // Fresh service role client for reliability at end-of-workflow
     await step.run('update-status-awaiting-approval', async () => {
       const svc = getServiceSupabase();
+      const now = new Date().toISOString();
       const { error } = await svc.from('orders').update({
         status: 'AWAITING_APPROVAL',
-        cp3_entered_at: new Date().toISOString(),
+        cp3_entered_at: now,
         cp3_status: 'PENDING',
-        generation_completed_at: new Date().toISOString(),
+        generation_completed_at: now,
         generation_error: null,
         last_error: null,
-        deliverable_ready_at: new Date().toISOString(),
+        deliverable_ready_at: now,
         current_phase: 'CP3',
+        // P0 FIX: Persist accumulated phase_outputs so they survive crashes
+        // and are available in admin dashboard / crash recovery.
+        phase_outputs: workflowState.phaseOutputs as Record<string, unknown>,
       }).eq('id', orderId);
 
       if (error) {

@@ -37,6 +37,7 @@ export interface OrderColumnUpdates {
   cp3_entered_at?: string | null;
   cp3_approved_at?: string;
   cp3_approved_by?: string;
+  cp3_change_notes?: string | null;
 
   // Group C: Deliverables
   deliverable_urls?: Record<string, unknown>;
@@ -56,15 +57,52 @@ export interface OrderColumnUpdates {
   court_name?: string;
   attorney_email?: string;
   deadline_normal?: string;
+  plaintiffs?: string[];
+  defendants?: string[];
+  attorney_side?: string;
 
   // Group F: Retention / Lifecycle
   retention_expires_at?: string;
+  archive_status?: string;
 
   // Group G: Revision Tracking
   revision_count?: number;
   revision_requested_at?: string;
+  attorney_rework_count?: number;
+  protocol_10_disclosure?: string | null;
+  protocol_10_triggered_at?: string | null;
 
-  // Group H: Miscellaneous
+  // Group H: Hold Management
+  hold_triggered_at?: string;
+  hold_phase?: string;
+  hold_reason?: string;
+  hold_details?: string;
+  hold_resolved_at?: string;
+  hold_escalated?: boolean;
+  hold_reminder_sent?: boolean;
+
+  // Group I: Cancellation & Refund
+  cancellation_type?: string;
+  cancelled_at?: string;
+  cancellation_reason?: string | null;
+  refund_reason?: string;
+  refunded_at?: string;
+  refund_status?: string;
+  refund_amount?: number;
+  stripe_payment_status?: string;
+
+  // Group J: Tier Management
+  upgrade_from_tier?: string;
+  upgrade_to_tier?: string;
+  tier?: string;
+
+  // Group K: Quality & Review
+  needs_manual_review?: boolean;
+  quality_notes?: string;
+  completed_at?: string;
+  deadline_warned?: string;
+
+  // Group L: Miscellaneous
   last_error?: string | null;
 }
 

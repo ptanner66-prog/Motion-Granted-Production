@@ -10,6 +10,7 @@ import {
 import { inngest, calculatePriority } from '@/lib/inngest/client';
 import { ADMIN_EMAIL, ALERT_EMAIL } from '@/lib/config/notifications';
 import { createLogger } from '@/lib/security/logger';
+import { updateOrderColumns } from '@/lib/orders/update-columns';
 
 const log = createLogger('api-automation-cron');
 
@@ -219,7 +220,7 @@ export async function POST(request: Request) {
             status: 'pending',
           });
 
-          await supabase.from('orders').update({ deadline_warned: new Date().toISOString() }).eq('id', order.id);
+          await updateOrderColumns(supabase, order.id, { deadline_warned: new Date().toISOString() }, 'cron-deadline-warning');
           stuckOrderResults.deadlineWarnings++;
         }
       }

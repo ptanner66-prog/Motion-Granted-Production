@@ -6,6 +6,7 @@ import { inngest } from './client';
 import { checkForConflicts } from '@/lib/conflicts';
 import { getServiceSupabase } from '@/lib/supabase/admin';
 import { createLogger } from '@/lib/security/logger';
+import { updateOrderColumns } from '@/lib/orders/update-columns';
 
 const log = createLogger('inngest-conflict-check');
 
@@ -51,19 +52,15 @@ export const conflictCheckJob = inngest.createFunction(
     // Step 3: Write-back conflict check results to orders table
     await step.run('write-conflict-results', async () => {
       const supabase = getServiceSupabase();
-      const now = new Date().toISOString();
 
-      await supabase
-        .from('orders')
-        .update({
-          conflict_checked: true,
-          conflict_cleared: !result.hasBlockingConflicts,
-          conflict_check_completed_at: now,
-          conflict_notes: result.hasBlockingConflicts
-            ? `Blocking conflicts detected: ${result.summary || 'See conflict details'}`
-            : 'No blocking conflicts found',
-        })
-        .eq('id', orderId);
+      await updateOrderColumns(supabase, orderId, {
+        conflict_checked: true,
+        conflict_cleared: !result.hasBlockingConflicts,
+        conflict_check_completed_at: new Date().toISOString(),
+        conflict_notes: result.hasBlockingConflicts
+          ? `Blocking conflicts detected: ${result.summary || 'See conflict details'}`
+          : 'No blocking conflicts found',
+      }, 'conflict-check-job');
     });
 
     // Step 4: Handle blocking conflicts
