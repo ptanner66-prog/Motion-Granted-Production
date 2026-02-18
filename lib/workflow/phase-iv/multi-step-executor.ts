@@ -1141,7 +1141,7 @@ export async function executePhaseIVAggregate(
       candidatesFound: allCandidates.length,
       candidatesVerified: uniqueCandidates.length,
       citationsSelected: citationCount,
-      allCitationsVerified: true,
+      allCitationsVerified: citationCount > 0,
       verificationSource: 'CourtListener API',
       verificationTimestamp: new Date().toISOString(),
     },

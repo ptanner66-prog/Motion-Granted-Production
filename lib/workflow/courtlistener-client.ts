@@ -758,10 +758,14 @@ export function determineVerificationStatus(
   if (stage3 === 'mismatch') return 'HOLDING_MISMATCH';
   if (stage3 === 'partial') return 'HOLDING_PARTIAL';
 
+  // Error in stage 2 or 3 means verification incomplete — do not claim VERIFIED
+  if (stage2 === 'error' || stage3 === 'error') return 'PENDING';
+
   if (stage2 === 'not_retrieved' && stage1 === 'found') {
     return 'VERIFIED_WEB_ONLY';
   }
 
+  // Only reach VERIFIED if stage1=found, stage2=retrieved, stage3=verified
   return 'VERIFIED';
 }
 

@@ -337,7 +337,7 @@ Total Duration: ${totalDuration}ms
         candidatesFound: searchResult.totalCandidates,
         candidatesVerified: verificationResult.totalVerified,
         citationsSelected: verificationResult.totalSelected,
-        allCitationsVerified: true,
+        allCitationsVerified: verificationResult.totalSelected > 0,
         verificationSource: 'CourtListener API',
         verificationTimestamp: new Date().toISOString(),
       },
