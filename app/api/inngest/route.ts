@@ -53,6 +53,9 @@ import { holdRecoveryCron } from "@/lib/inngest/functions/hold-recovery-cron";
 // SP-21: Checkpoint recovery cron (stuck AWAITING_APPROVAL orders)
 import { checkpointRecoveryCron } from "@/lib/inngest/checkpoint-recovery";
 
+// FIX-D: Email queue consumer (reads email_queue → Resend, every 60s)
+import { processEmailQueue } from "@/lib/inngest/process-email-queue";
+
 /**
  * Inngest API Route Handler
  *
@@ -66,7 +69,7 @@ import { checkpointRecoveryCron } from "@/lib/inngest/checkpoint-recovery";
  * - INNGEST_SIGNING_KEY: For verifying webhook signatures
  */
 
-// All registered Inngest functions — v7.4.2: 22 functions (was 11)
+// All registered Inngest functions — v7.4.3: 23 functions (was 22; +1 email queue consumer)
 const registeredFunctions = [
   // PRIMARY: 14-phase workflow (handles order/submitted, revision-requested, protocol-10-exit)
   generateOrderWorkflow,
@@ -101,6 +104,8 @@ const registeredFunctions = [
   holdRecoveryCron,
   // SP-21: Checkpoint recovery (every 6h: recover stuck AWAITING_APPROVAL orders)
   checkpointRecoveryCron,
+  // FIX-D: Email queue consumer (every 60s: email_queue → Resend)
+  processEmailQueue,
 ];
 
 // IV-003: Required function registration validator
@@ -128,6 +133,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
   { ref: hold7dTerminalAction, name: 'hold7dTerminalAction' },
   { ref: holdRecoveryCron, name: 'holdRecoveryCron' },
   { ref: checkpointRecoveryCron, name: 'checkpointRecoveryCron' },
+  { ref: processEmailQueue, name: 'processEmailQueue' },
 ] as const;
 
 const missingFns = REQUIRED_FUNCTION_EXPORTS.filter(f => !f.ref);

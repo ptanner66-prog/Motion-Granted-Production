@@ -49,14 +49,103 @@ export async function getAnthropicClient(): Promise<Anthropic | null> {
   return anthropic;
 }
 
-// Default model configuration - Use Sonnet 4 for utility tasks (cost-effective)
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+// Default model configuration - Use Sonnet for utility tasks (cost-effective)
+const DEFAULT_MODEL = 'claude-sonnet-4-5-20250929';
 const DEFAULT_MAX_TOKENS = 64000; // MAXED OUT - cost is irrelevant at $700/motion
 
 // For motion generation (use Opus for best legal reasoning)
-export const MOTION_MODEL = 'claude-opus-4-5-20251101';
+export const MOTION_MODEL = 'claude-opus-4-6';
 export const MOTION_MAX_TOKENS = 64000; // ~50 pages of output
 export const MAX_CONTEXT_TOKENS = 180000; // Leave buffer from 200K limit
+
+// ============================================================================
+// FIX-D: RETRY WITH EXPONENTIAL BACKOFF + RATE LIMITING
+// ============================================================================
+
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000;
+
+/**
+ * Determines whether an API error is transient and safe to retry.
+ * Covers Anthropic rate limits (429), overload (529), and server errors (500, 503).
+ */
+function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    msg.includes('rate_limit') ||
+    msg.includes('rate limit') ||
+    msg.includes('overloaded') ||
+    msg.includes('529') ||
+    msg.includes('500') ||
+    msg.includes('503') ||
+    msg.includes('timeout') ||
+    msg.includes('econnreset') ||
+    msg.includes('socket hang up')
+  );
+}
+
+/**
+ * Execute an async function with retry and exponential backoff + jitter.
+ * Only retries on transient errors (rate limit, overload, server errors).
+ *
+ * @param fn - The async operation to execute
+ * @param retries - Maximum number of retry attempts (default: MAX_RETRIES)
+ * @returns The result of fn()
+ * @throws The last error if all retries are exhausted or error is non-retryable
+ */
+async function callWithRetry<T>(fn: () => Promise<T>, retries = MAX_RETRIES): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: unknown) {
+      if (!isRetryableError(error) || attempt === retries) {
+        throw error;
+      }
+      // Exponential backoff with ±20% jitter
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt) * (0.8 + Math.random() * 0.4);
+      logger.warn(
+        `[Claude API] Retryable error (attempt ${attempt + 1}/${retries}), waiting ${Math.round(delay)}ms: ` +
+        (error instanceof Error ? error.message : String(error))
+      );
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error('callWithRetry: unreachable');
+}
+
+/**
+ * Simple token bucket rate limiter — 50 requests per minute.
+ * Matches Anthropic's Tier 1 rate limit for automated calls.
+ * Module-scoped so all callers share the same bucket.
+ */
+let rateLimitTokens = 50;
+let rateLimitLastRefill = Date.now();
+const RATE_LIMIT_CAPACITY = 50;
+const RATE_LIMIT_REFILL_MS = 60_000;
+
+/**
+ * Acquire a rate limit token. If none available, waits until one is.
+ * Callers block briefly rather than getting a hard rejection.
+ */
+async function acquireRateLimitToken(): Promise<void> {
+  const now = Date.now();
+  const elapsed = now - rateLimitLastRefill;
+  if (elapsed >= RATE_LIMIT_REFILL_MS) {
+    rateLimitTokens = RATE_LIMIT_CAPACITY;
+    rateLimitLastRefill = now;
+  }
+  if (rateLimitTokens > 0) {
+    rateLimitTokens--;
+    return;
+  }
+  // Wait for next refill window, then acquire
+  const waitMs = RATE_LIMIT_REFILL_MS - elapsed;
+  logger.info(`[Claude API] Rate limit reached, waiting ${Math.round(waitMs)}ms for token refill`);
+  await new Promise(resolve => setTimeout(resolve, waitMs));
+  rateLimitTokens = RATE_LIMIT_CAPACITY - 1;
+  rateLimitLastRefill = Date.now();
+}
 
 // ============================================================================
 // SYSTEM PROMPTS
@@ -161,7 +250,8 @@ export async function callClaude<T>(
   logger.info(`[Claude API - callClaudeWithRetry] Using model: ${model}`);
 
   try {
-    const response = await client.messages.create({
+    await acquireRateLimitToken();
+    const response = await callWithRetry<Anthropic.Message>(() => client.messages.create({
       model,
       max_tokens: maxTokens,
       temperature: options?.temperature ?? 0.2,
@@ -172,7 +262,7 @@ export async function callClaude<T>(
           content: userMessage,
         },
       ],
-    });
+    }) as Promise<Anthropic.Message>);
 
     logger.info(`[Claude API] Response model: ${response.model}`);
 
@@ -244,13 +334,14 @@ export async function askClaude(options: {
   logger.info(`[Claude API] Using model: ${model} | Max tokens: ${maxTokens} | Streaming: ${useStreaming}`);
 
   try {
+    await acquireRateLimitToken();
     // Use STREAMING for high-token operations (64K+) to prevent timeouts
     if (useStreaming) {
       let fullContent = '';
       let totalInputTokens = 0;
       let totalOutputTokens = 0;
 
-      const stream = await client.messages.stream({
+      const stream = client.messages.stream({
         model,
         max_tokens: maxTokens,
         temperature: options.temperature ?? 0.2,
@@ -289,7 +380,7 @@ export async function askClaude(options: {
     }
 
     // Standard non-streaming request for smaller operations
-    const response = await client.messages.create({
+    const response = await callWithRetry<Anthropic.Message>(() => client.messages.create({
       model,
       max_tokens: maxTokens,
       temperature: options.temperature ?? 0.2,
@@ -300,7 +391,7 @@ export async function askClaude(options: {
           content: options.prompt,
         },
       ],
-    });
+    }) as Promise<Anthropic.Message>);
 
     logger.info(`[Claude API - askClaude] Response model: ${response.model}`);
 
@@ -662,6 +753,7 @@ export async function createMessageWithStreaming(
   const startTime = Date.now();
 
   try {
+    await acquireRateLimitToken();
     if (useStreaming) {
       logger.info(`[Claude API] Starting streaming request...`);
       const stream = client.messages.stream(params);
@@ -694,7 +786,9 @@ export async function createMessageWithStreaming(
 
     // Standard non-streaming for smaller operations
     logger.info(`[Claude API] Starting non-streaming request...`);
-    const response = await client.messages.create(params) as Anthropic.Message;
+    const response = await callWithRetry<Anthropic.Message>(() =>
+      client.messages.create(params) as Promise<Anthropic.Message>
+    );
     const duration = Date.now() - startTime;
 
     logger.info(`[Claude API] Non-streaming complete in ${duration}ms`);
@@ -753,12 +847,13 @@ export async function generateMotion(options: {
   logger.info(`[Motion Generation] Starting STREAMING generation with ${maxTokens} max tokens`);
 
   try {
+    await acquireRateLimitToken();
     let fullContent = '';
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
 
     // Use STREAMING API for long-running operations (required for 128K tokens)
-    const stream = await client.messages.stream({
+    const stream = client.messages.stream({
       model: MOTION_MODEL,
       max_tokens: maxTokens,
       temperature: 0.3,
