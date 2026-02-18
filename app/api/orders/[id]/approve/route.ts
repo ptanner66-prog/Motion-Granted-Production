@@ -87,7 +87,7 @@ export async function POST(
       packageId: pkg.id,
       tier: order.tier,
       attorneyEmail: order.attorney_email,
-      action: 'APPROVED',
+      action: 'APPROVE',
     },
   });
 
