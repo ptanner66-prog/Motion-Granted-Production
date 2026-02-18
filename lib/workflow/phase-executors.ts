@@ -1153,6 +1153,20 @@ Provide your Phase I analysis as JSON.`;
       console.log(`[Phase I] Consent status detected: ${phaseOutput.consent_status}`);
     }
 
+    // M-06: Effective tier floor — ensure workflow runs at the higher of
+    // the motion-type tier and the paid tier (prevents downgrade).
+    const classifiedTier = phaseOutput.classification?.tier || input.tier;
+    if (classifiedTier && input.tier && classifiedTier !== input.tier) {
+      const { resolveEffectiveTier } = await import('@/lib/config/tier-config');
+      const effectiveTier = resolveEffectiveTier(classifiedTier, input.tier);
+      if (effectiveTier !== classifiedTier) {
+        console.log(`[Phase I] Tier floor applied: classified=${classifiedTier}, paid=${input.tier}, effective=${effectiveTier}`);
+        if (phaseOutput.classification) {
+          phaseOutput.classification.tier = effectiveTier;
+        }
+      }
+    }
+
     console.log(`[Phase I] ========== PHASE I COMPLETE ==========`);
     console.log(`[Phase I] Total duration: ${Date.now() - start}ms`);
 
@@ -4932,23 +4946,55 @@ Assemble and check. Provide as JSON.`;
 
     console.log(`[Phase X] BUG-09: Filtered ${caseCitationBank.length} total citations to ${citationsInFinalMotion.length} actually in final motion`);
 
-    // Build citation metadata for the final package — using FILTERED citations
+    // =========================================================================
+    // FIX-1A: Query ACTUAL verification results from citation_verifications table.
+    // CARDINAL SIN RULE: Citations without verification records → 'UNVERIFIED' + null confidence.
+    // NEVER default to VERIFIED or 1.0.
+    // =========================================================================
+    let verifications: Array<{ citation_name: string; verification_status: string; confidence_score: number | null }> | null = null;
+    try {
+      const adminSb = getServiceSupabase();
+      const { data: civData, error: civError } = await adminSb
+        .from('citation_verifications')
+        .select('citation_name, verification_status, confidence_score')
+        .eq('order_id', input.orderId);
+      if (civError) {
+        console.error(`[Phase X] CIV query failed for order ${input.orderId}:`, civError);
+      } else {
+        verifications = civData;
+      }
+    } catch (civQueryError) {
+      console.error(`[Phase X] CIV query exception:`, civQueryError);
+    }
+
+    const normalizeCitationName = (name: string): string =>
+      name.toLowerCase().replace(/\s+/g, ' ').replace(/[–—]/g, '-').trim();
+
+    // Build citation metadata for the final package — using FILTERED citations + DB verification
     const citationMetadata = {
       totalCitations: citationsInFinalMotion.length + statutoryCitationBank.length,
       caseCitations: citationsInFinalMotion.length,
       statutoryCitations: statutoryCitationBank.length,
       bindingAuthority: citationsInFinalMotion.filter(c => c.authorityLevel === 'binding').length,
       persuasiveAuthority: citationsInFinalMotion.filter(c => c.authorityLevel === 'persuasive').length,
-      verifiedViaCourtListener: citationsInFinalMotion.filter(c => c.courtlistener_id).length,
+      verified: verifications?.filter(v => v.verification_status === 'VERIFIED').length ?? 0,
       savedToDatabase: citationsSaved?.total || 0,
-      // Include citation list for quick reference — only citations in final motion
-      citationList: citationsInFinalMotion.slice(0, 20).map(c => ({
-        caseName: c.caseName,
-        citation: c.citation,
-        court: c.court,
-        dateFiled: c.date_filed,
-        opinionId: c.courtlistener_id?.toString(),
-      })),
+      // Include citation list with ACTUAL verification status from DB
+      citationList: citationsInFinalMotion.slice(0, 20).map(c => {
+        const citationKey = normalizeCitationName(c.caseName || c.citation || '');
+        const verification = verifications?.find(v =>
+          normalizeCitationName(v.citation_name) === citationKey
+        );
+        return {
+          caseName: c.caseName,
+          citation: c.citation,
+          court: c.court,
+          dateFiled: c.date_filed,
+          opinionId: c.courtlistener_id?.toString(),
+          verificationStatus: verification?.verification_status || 'UNVERIFIED',
+          confidence: verification?.confidence_score ?? null,
+        };
+      }),
     };
 
     console.log(`[Phase X] Citation metadata: ${citationMetadata.totalCitations} total citations`);

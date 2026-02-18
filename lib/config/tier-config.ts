@@ -84,4 +84,22 @@ export function getAllTiers(): string[] {
   return Object.keys(TIER_CONFIG);
 }
 
+/**
+ * Effective tier floor rule (M-06).
+ * If the motion type requires a higher tier than what was paid,
+ * use the motion type tier. If the paid tier is higher (upgrade),
+ * use the paid tier. This ensures the workflow never runs at a
+ * tier below what the motion type requires.
+ *
+ * @param motionTypeTier - Tier determined by motion type classification
+ * @param paidTier - Tier the customer actually paid for
+ * @returns The higher of the two tiers
+ */
+export function resolveEffectiveTier(motionTypeTier: string, paidTier: string): string {
+  const tierRank: Record<string, number> = { A: 1, B: 2, C: 3, D: 4 };
+  const motionRank = tierRank[motionTypeTier] ?? 1;
+  const paidRank = tierRank[paidTier] ?? 1;
+  return motionRank >= paidRank ? motionTypeTier : paidTier;
+}
+
 export { TIER_CONFIG };

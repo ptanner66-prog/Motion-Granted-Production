@@ -142,7 +142,21 @@ export type OrderStatus =
   | 'CANCELLED_CONFLICT'
   | 'DISPUTED'
   | 'REFUNDED'
-  | 'FAILED';
+  | 'FAILED'
+  | 'AWAITING_API_RECOVERY'
+  | 'PAUSED_CB'
+  | 'VERIFICATION_DEFERRED';
+
+/** Zod validator for OrderStatus — keeps runtime validation in sync with the type. */
+import { z } from 'zod';
+export const OrderStatusSchema = z.enum([
+  'INTAKE', 'PROCESSING', 'AWAITING_OPUS', 'HOLD_PENDING',
+  'PROTOCOL_10_EXIT', 'UPGRADE_PENDING', 'PENDING_CONFLICT_REVIEW',
+  'AWAITING_APPROVAL', 'REVISION_REQ', 'COMPLETED',
+  'CANCELLED_USER', 'CANCELLED_SYSTEM', 'CANCELLED_CONFLICT',
+  'DISPUTED', 'REFUNDED', 'FAILED',
+  'AWAITING_API_RECOVERY', 'PAUSED_CB', 'VERIFICATION_DEFERRED',
+]);
 
 /**
  * D7-CORR-004: Cancellation status helper.

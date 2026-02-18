@@ -43,6 +43,9 @@ export const ORDER_STATUSES = [
   'DISPUTED',
   'REFUNDED',
   'FAILED',
+  'AWAITING_API_RECOVERY',
+  'PAUSED_CB',
+  'VERIFICATION_DEFERRED',
 ] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
@@ -91,6 +94,10 @@ export const VALID_TRANSITIONS: Record<OrderStatus, ReadonlySet<OrderStatus>> = 
   DISPUTED: new Set<OrderStatus>(['COMPLETED', 'AWAITING_APPROVAL', 'REFUNDED']),
   REFUNDED: new Set<OrderStatus>(),
   FAILED: new Set<OrderStatus>(),
+  // Recovery / transient statuses — can resume processing or be cancelled
+  AWAITING_API_RECOVERY: new Set<OrderStatus>(['PROCESSING', 'CANCELLED', 'FAILED']),
+  PAUSED_CB: new Set<OrderStatus>(['PROCESSING', 'CANCELLED', 'FAILED']),
+  VERIFICATION_DEFERRED: new Set<OrderStatus>(['PROCESSING', 'AWAITING_APPROVAL', 'CANCELLED']),
 };
 
 // ============================================================================

@@ -32,6 +32,9 @@ export const STATUS_DISPLAY_MAP: Record<OrderStatus, string> = {
   'DISPUTED': 'DISPUTED',               // Red badge (DELTA-003)
   'REFUNDED': 'REFUNDED',               // Gray badge (DELTA-003)
   'FAILED': 'FAILED',
+  'AWAITING_API_RECOVERY': 'IN_PROGRESS',  // SP-GOD-2: API outage recovery
+  'PAUSED_CB': 'IN_PROGRESS',              // SP-GOD-2: Circuit breaker pause
+  'VERIFICATION_DEFERRED': 'IN_PROGRESS',  // SP-GOD-2: CIV deferred
 };
 
 // DB value helper: converts TypeScript status to DB-safe value
