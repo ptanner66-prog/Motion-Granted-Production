@@ -330,7 +330,8 @@ export async function batchExistenceCheck(
       batch.map(({ citation, caseName }) => executeExistenceCheck(citation, caseName))
     );
 
-    for (const settled of batchSettled) {
+    for (let j = 0; j < batchSettled.length; j++) {
+      const settled = batchSettled[j];
       if (settled.status === 'fulfilled') {
         results.push(settled.value);
       } else {
@@ -338,7 +339,7 @@ export async function batchExistenceCheck(
         results.push({
           step: 1,
           name: 'existence_check',
-          citationInput: batch[batchSettled.indexOf(settled)]?.citation ?? '',
+          citationInput: batch[j].citation,
           result: 'NOT_FOUND' as const,
           citationNormalized: '',
           sourcesChecked: [],

@@ -6,6 +6,7 @@
  */
 
 import { getServiceSupabase } from '@/lib/supabase/admin';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('automation-conflict-checker');
@@ -544,7 +545,7 @@ function performBasicMatching(
  * Store conflict matches in database
  */
 async function storeConflictMatches(
-  supabase: ReturnType<typeof getServiceSupabase>,
+  supabase: SupabaseClient,
   orderId: string,
   matches: ConflictMatchResult[]
 ): Promise<void> {
@@ -567,7 +568,7 @@ async function storeConflictMatches(
  * Update order conflict status
  */
 async function updateOrderConflictStatus(
-  supabase: ReturnType<typeof getServiceSupabase>,
+  supabase: SupabaseClient,
   orderId: string,
   flagged: boolean,
   cleared: boolean,
@@ -587,7 +588,7 @@ async function updateOrderConflictStatus(
  * Create an approval queue item for conflict review
  */
 async function createConflictApproval(
-  supabase: ReturnType<typeof getServiceSupabase>,
+  supabase: SupabaseClient,
   orderId: string,
   matches: ConflictMatchResult[],
   recommendation: 'clear' | 'review' | 'reject',
@@ -659,7 +660,7 @@ function generateReasoningSummary(matches: ConflictMatchResult[]): string {
  * Log an automation action
  */
 async function logAutomationAction(
-  supabase: ReturnType<typeof getServiceSupabase>,
+  supabase: SupabaseClient,
   orderId: string | null,
   actionType: string,
   details: Record<string, unknown>
