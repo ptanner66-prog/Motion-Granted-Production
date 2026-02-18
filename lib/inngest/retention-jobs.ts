@@ -11,7 +11,7 @@ import {
 } from '@/lib/retention';
 import { deleteOrderData } from '@/lib/retention';
 import { sendDeletionReminderEmail } from '@/lib/email/retention-emails';
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('retention-jobs');
@@ -43,7 +43,7 @@ export const sendDeletionReminders = inngest.createFunction(
     for (const order of ordersToRemind) {
       const success = await step.run(`remind-${order.id}`, async () => {
         try {
-          const supabase = await createClient();
+          const supabase = getServiceSupabase();
 
           // Get user email
           const { data: profile } = await supabase

@@ -18,9 +18,9 @@
 
   User Checkpoint     Post-VII notification (non-blocking)
 
-  Minimum Grade       B+ to proceed
+  Minimum Grade       Tier-specific (see thresholds below)
 
-  Max Revision Loops  3 (Protocol 10)
+  Max Revision Loops  Tier-specific: A=2, B=3, C=3, D=4 (Protocol 10)
   -----------------------------------------------------------------------
 
 ### YOUR ROLE
@@ -57,7 +57,13 @@ persuasiveness
   C or below   Below 77        Unacceptable - restructure needed
   -----------------------------------------------------------------------
 
-Minimum passing grade: B+ (87%)
+## Grading Thresholds (Tier-Specific)
+- **Tier A:** Minimum passing grade: B (83%). Max revision loops: 2.
+- **Tier B:** Minimum passing grade: B+ (87%). Max revision loops: 3.
+- **Tier C:** Minimum passing grade: B+ (87%). Max revision loops: 3.
+- **Tier D:** Minimum passing grade: B+ (87%). Max revision loops: 4.
+
+The tier for this motion is provided in the input. Apply the corresponding threshold.
 
 ### GRADING CATEGORIES
 

@@ -22,6 +22,31 @@ import { getCitationModel, CITATION_GPT_MODELS } from '@/lib/config/citation-mod
 import { MODELS } from '@/lib/config/models';
 
 // ============================================================================
+// CIV RETRY UTILITY
+// ============================================================================
+
+/**
+ * Retry wrapper with exponential backoff and jitter for CIV API calls.
+ * Retries on rate limits, overloaded errors, and transient server errors.
+ */
+async function withCIVRetry<T>(fn: () => Promise<T>, maxRetries = 3, baseDelay = 1000): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const isRetryable = msg.includes('rate_limit') || msg.includes('overloaded') ||
+        msg.includes('529') || msg.includes('500') || msg.includes('503') || msg.includes('timeout');
+      if (!isRetryable || attempt === maxRetries) throw error;
+      const delay = baseDelay * Math.pow(2, attempt) * (0.8 + Math.random() * 0.4);
+      log.warn(`[CIV Retry] Attempt ${attempt + 1} failed (${msg}), retrying in ${Math.round(delay)}ms`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error('withCIVRetry: unreachable');
+}
+
+// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -76,38 +101,38 @@ const configCache: Map<MotionTier, CacheEntry> = new Map();
 const DEFAULT_CONFIGS: Record<MotionTier, Record<TaskType, string>> = {
   'A': {
     stage_1_holding: 'gpt-4-turbo',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
+    stage_2_adversarial: MODELS.OPUS,
     dicta_detection: 'claude-haiku-4-5-20251001',
     bad_law_analysis: 'claude-haiku-4-5-20251001',
-    drafting: 'claude-sonnet-4-20250514',
-    judge_simulation: 'claude-opus-4-5-20251101',
+    drafting: MODELS.SONNET,
+    judge_simulation: MODELS.OPUS,
     tiebreaker: 'gpt-4-turbo',
   },
   'B': {
     stage_1_holding: 'gpt-4-turbo',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
+    stage_2_adversarial: MODELS.OPUS,
     dicta_detection: 'claude-haiku-4-5-20251001',
     bad_law_analysis: 'claude-haiku-4-5-20251001',
-    drafting: 'claude-sonnet-4-20250514',
-    judge_simulation: 'claude-opus-4-5-20251101',
+    drafting: MODELS.SONNET,
+    judge_simulation: MODELS.OPUS,
     tiebreaker: 'gpt-4-turbo',
   },
   'C': {
     stage_1_holding: 'gpt-4-turbo',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
-    dicta_detection: 'claude-sonnet-4-20250514',
-    bad_law_analysis: 'claude-sonnet-4-20250514',
-    drafting: 'claude-opus-4-5-20251101',
-    judge_simulation: 'claude-opus-4-5-20251101',
+    stage_2_adversarial: MODELS.OPUS,
+    dicta_detection: MODELS.SONNET,
+    bad_law_analysis: MODELS.SONNET,
+    drafting: MODELS.OPUS,
+    judge_simulation: MODELS.OPUS,
     tiebreaker: 'gpt-4-turbo',
   },
   'D': {
     stage_1_holding: 'gpt-4-turbo',
-    stage_2_adversarial: 'claude-opus-4-5-20251101',
-    dicta_detection: 'claude-sonnet-4-20250514',
-    bad_law_analysis: 'claude-sonnet-4-20250514',
-    drafting: 'claude-opus-4-5-20251101',
-    judge_simulation: 'claude-opus-4-5-20251101',
+    stage_2_adversarial: MODELS.OPUS,
+    dicta_detection: MODELS.SONNET,
+    bad_law_analysis: MODELS.SONNET,
+    drafting: MODELS.OPUS,
+    judge_simulation: MODELS.OPUS,
     tiebreaker: 'gpt-4-turbo',
   },
 };
@@ -240,7 +265,7 @@ export async function getModelForTask(tier: MotionTier, taskType: TaskType): Pro
 
   if (!model) {
     log.warn(`[ModelRouter] No config for tier ${tier}, task ${taskType}, using default`);
-    return DEFAULT_CONFIGS[tier][taskType] || 'claude-sonnet-4-20250514';
+    return DEFAULT_CONFIGS[tier][taskType] || MODELS.SONNET;
   }
 
   // Log model selection for audit
@@ -491,7 +516,7 @@ export async function getCIVOpenAIClient(): Promise<OpenAI> {
   return civOpenAIClient;
 }
 
-/** Call OpenAI directly (for CIV Stage 1 holding verification) */
+/** Call OpenAI directly (for CIV Stage 1 holding verification) — with retry */
 export async function callCIVOpenAI(
   model: string,
   prompt: string,
@@ -499,21 +524,24 @@ export async function callCIVOpenAI(
 ): Promise<string> {
   const client = await getCIVOpenAIClient();
 
-  const response = await client.chat.completions.create({
-    model,
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: maxTokens,
-    temperature: 0.1,
-  });
+  return withCIVRetry(async () => {
+    const response = await client.chat.completions.create({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens,
+      temperature: 0.1,
+    });
 
-  return response.choices[0]?.message?.content || '';
+    return response.choices[0]?.message?.content || '';
+  });
 }
 
-/** Call Anthropic directly (for CIV Stage 2 and Steps 3-5) */
+/** Call Anthropic directly (for CIV Stage 2 and Steps 3-5) — with retry and configurable temperature */
 export async function callCIVAnthropic(
   model: string,
   prompt: string,
-  maxTokens: number = 32000
+  maxTokens: number = 32000,
+  temperature: number = 0
 ): Promise<string> {
   const client = await getAnthropicClient();
 
@@ -521,14 +549,17 @@ export async function callCIVAnthropic(
     throw new Error('Anthropic client not configured');
   }
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: maxTokens,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  return withCIVRetry(async () => {
+    const response = await client.messages.create({
+      model,
+      max_tokens: maxTokens,
+      temperature,
+      messages: [{ role: 'user', content: prompt }],
+    });
 
-  const textBlock = response.content.find((block: { type: string }) => block.type === 'text');
-  return (textBlock && 'text' in textBlock) ? (textBlock as { type: 'text'; text: string }).text : '';
+    const textBlock = response.content.find((block: { type: string }) => block.type === 'text');
+    return (textBlock && 'text' in textBlock) ? (textBlock as { type: 'text'; text: string }).text : '';
+  });
 }
 
 /**

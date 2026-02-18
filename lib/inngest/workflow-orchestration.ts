@@ -1093,7 +1093,8 @@ async function generateAndUploadCitationReport(
       seenNormalized.add(normalized);
 
       // SP-18 FIX: Read confidenceScore (CIV field name), NOT confidence
-      let status = String(compositeResult?.status ?? r.status ?? (r.verified ? 'VERIFIED' : 'UNVERIFIED'));
+      // FIX-E: Use CIV pipeline status only — legacy r.verified field is not trusted
+      let status = String(compositeResult?.status ?? r.status ?? 'UNVERIFIED');
       const confidence = Number(compositeResult?.confidenceScore ?? compositeResult?.confidence ?? r.confidence ?? 0);
 
       // SP-18: IX.1 final audit rejection overrides previous VERIFIED
@@ -2105,8 +2106,12 @@ export const generateOrderWorkflow = inngest.createFunction(
             return data;
           });
 
-          if (currentOrder?.status === 'cancelled' || currentOrder?.status === 'CANCELLED_SYSTEM') {
-            return { status: 'cancelled', orderId, reason: 'hold_timeout_event_lost' };
+          // FIX-E FIX 11: Whitelist instead of blacklist — only resume for known safe statuses
+          const allowedStatuses = ['in_progress', 'processing', 'on_hold', 'hold_pending'];
+          if (!allowedStatuses.includes(currentOrder?.status || '')) {
+            // Order is refunded, cancelled, completed, or unknown — EXIT cleanly
+            console.log(`[Orchestration] HOLD timeout: order status is '${currentOrder?.status}' — not resuming workflow`);
+            return { status: 'skipped', orderId, reason: `order status '${currentOrder?.status}' not in allowed list` };
           }
 
           if (currentOrder?.status === 'on_hold' || currentOrder?.status === 'hold_pending') {
@@ -2118,7 +2123,7 @@ export const generateOrderWorkflow = inngest.createFunction(
             return { status: 'cancelled', orderId, reason: 'hold_timeout_fallback' };
           }
 
-          // Status is something else (in_progress) — attorney resolved but event lost. Continue.
+          // Status is in_progress/processing — attorney resolved but event lost. Continue.
           console.warn('[Orchestration] HOLD resolved but event lost — continuing workflow', { status: currentOrder?.status });
         } else if (holdResolutionEvent.data.action === 'CANCELLED') {
           // HOLD was cancelled (auto-cancel or admin cancel)

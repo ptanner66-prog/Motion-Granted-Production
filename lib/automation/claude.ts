@@ -14,6 +14,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { ClaudeAnalysisRequest, ClaudeAnalysisResponse } from '@/types/automation';
 import { getAnthropicAPIKey } from '@/lib/api-keys';
 import { logger } from '@/lib/logger';
+import { MODELS } from '@/lib/config/models';
 
 // ============================================================================
 // CONFIGURATION
@@ -49,14 +50,43 @@ export async function getAnthropicClient(): Promise<Anthropic | null> {
   return anthropic;
 }
 
-// Default model configuration - Use Sonnet 4 for utility tasks (cost-effective)
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+// Default model configuration - Use Sonnet 4.5 for utility tasks (cost-effective)
+const DEFAULT_MODEL = MODELS.SONNET;
 const DEFAULT_MAX_TOKENS = 64000; // MAXED OUT - cost is irrelevant at $700/motion
 
 // For motion generation (use Opus for best legal reasoning)
-export const MOTION_MODEL = 'claude-opus-4-5-20251101';
+export const MOTION_MODEL = MODELS.OPUS;
 export const MOTION_MAX_TOKENS = 64000; // ~50 pages of output
 export const MAX_CONTEXT_TOKENS = 180000; // Leave buffer from 200K limit
+
+// ============================================================================
+// RETRY UTILITY (FIX-E FIX 21)
+// ============================================================================
+
+const MAX_RETRIES = 3;
+const BASE_DELAY = 1000;
+
+/**
+ * Retry wrapper with exponential backoff and jitter for Anthropic API calls.
+ * Retries on rate limits, overloaded errors, and transient server errors.
+ * Does NOT change any exported function signatures.
+ */
+async function callWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const isRetryable = msg.includes('rate_limit') || msg.includes('overloaded') ||
+        msg.includes('529') || msg.includes('500') || msg.includes('503');
+      if (!isRetryable || attempt === MAX_RETRIES) throw error;
+      const delay = BASE_DELAY * Math.pow(2, attempt) * (0.8 + Math.random() * 0.4);
+      logger.warn(`[Claude API Retry] Attempt ${attempt + 1} failed (${msg}), retrying in ${Math.round(delay)}ms`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error('callWithRetry: unreachable');
+}
 
 // ============================================================================
 // SYSTEM PROMPTS
@@ -161,7 +191,7 @@ export async function callClaude<T>(
   logger.info(`[Claude API - callClaudeWithRetry] Using model: ${model}`);
 
   try {
-    const response = await client.messages.create({
+    const response = await callWithRetry(() => client.messages.create({
       model,
       max_tokens: maxTokens,
       temperature: options?.temperature ?? 0.2,
@@ -172,7 +202,7 @@ export async function callClaude<T>(
           content: userMessage,
         },
       ],
-    });
+    })) as Anthropic.Message;
 
     logger.info(`[Claude API] Response model: ${response.model}`);
 
@@ -250,7 +280,7 @@ export async function askClaude(options: {
       let totalInputTokens = 0;
       let totalOutputTokens = 0;
 
-      const stream = await client.messages.stream({
+      const stream = client.messages.stream({
         model,
         max_tokens: maxTokens,
         temperature: options.temperature ?? 0.2,
@@ -289,7 +319,7 @@ export async function askClaude(options: {
     }
 
     // Standard non-streaming request for smaller operations
-    const response = await client.messages.create({
+    const response = await callWithRetry(() => client.messages.create({
       model,
       max_tokens: maxTokens,
       temperature: options.temperature ?? 0.2,
@@ -300,7 +330,7 @@ export async function askClaude(options: {
           content: options.prompt,
         },
       ],
-    });
+    })) as Anthropic.Message;
 
     logger.info(`[Claude API - askClaude] Response model: ${response.model}`);
 
@@ -694,7 +724,7 @@ export async function createMessageWithStreaming(
 
     // Standard non-streaming for smaller operations
     logger.info(`[Claude API] Starting non-streaming request...`);
-    const response = await client.messages.create(params) as Anthropic.Message;
+    const response = await callWithRetry(() => client.messages.create(params)) as Anthropic.Message;
     const duration = Date.now() - startTime;
 
     logger.info(`[Claude API] Non-streaming complete in ${duration}ms`);

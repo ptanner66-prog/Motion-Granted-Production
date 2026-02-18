@@ -69,6 +69,20 @@ Motion for Summary Judgment (MSJ), Motion for Summary Adjudication
 (MSA), SLAPP motions, TRO with dispositive effect, Motions for judgment
 on the pleadings
 
+TIER D (Premium):
+
+Premium motion types requiring maximum research depth, extended thinking,
+and comprehensive legal analysis. Includes complex constitutional
+challenges, multi-party motions, and cases with extensive procedural
+history. Max revision loops: 4.
+
+### FILING DEADLINE VALIDATION
+
+When a filing deadline is provided, validate that:
+1. The date includes a 4-digit year (not just month/day)
+2. The year is the current year or next year (not a past year)
+3. If the deadline appears to be in the past, flag it for attorney review
+
 ### PATH DETERMINATION
 
 PATH A (Initiating): Customer is filing the motion
@@ -87,7 +101,7 @@ PATH B Validation: Require opponent_motion_document upload
 >
 > "matter_id": "string",
 >
-> "tier": "A | B | C",
+> "tier": "A | B | C | D",
 >
 > "path": "A | B",
 >

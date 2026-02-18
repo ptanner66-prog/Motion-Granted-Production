@@ -5,7 +5,7 @@
  * including email delivery with retry logic and quiet hours support.
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/resend';
 import { OrderConfirmationEmail } from '@/emails/order-confirmation';
 import { DraftReadyEmail } from '@/emails/draft-ready';
@@ -68,7 +68,7 @@ interface NotificationQueueRecord {
 
 async function getNotificationSettings(): Promise<NotificationSettings> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
 
     const { data: settings } = await supabase
       .from('automation_settings')
@@ -130,7 +130,7 @@ async function getNotificationSettings(): Promise<NotificationSettings> {
 export async function queueNotification(
   request: QueueNotificationRequest
 ): Promise<OperationResult<{ notificationId: string }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const settings = await getNotificationSettings();
@@ -191,7 +191,7 @@ export async function queueNotification(
 export async function processNotificationQueue(): Promise<
   OperationResult<{ processed: number; sent: number; failed: number }>
 > {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const settings = await getNotificationSettings();
@@ -586,7 +586,7 @@ export async function queueOrderNotification(
   type: NotificationType,
   additionalData?: Record<string, unknown>
 ): Promise<OperationResult<{ notificationId: string }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Fetch order with client info
@@ -785,7 +785,7 @@ function formatStatus(status: string): string {
  * Log automation action
  */
 async function logAutomationAction(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   orderId: string | null,
   actionType: string,
   details: Record<string, unknown>
@@ -805,7 +805,7 @@ async function logAutomationAction(
  * Cancel a pending notification
  */
 export async function cancelNotification(notificationId: string): Promise<OperationResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const { error } = await supabase
@@ -836,7 +836,7 @@ export async function getNotificationQueueStatus(): Promise<
     failed: number;
   }>
 > {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const { data, error } = await supabase

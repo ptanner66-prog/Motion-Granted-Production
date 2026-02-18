@@ -212,7 +212,7 @@ export async function getOrdersDueForReminder(): Promise<Array<{
 
   const { data, error } = await supabase
     .from('orders')
-    .select('id, user_id, motion_type, case_number, retention_expires_at')
+    .select('id, client_id, motion_type, case_number, retention_expires_at')
     .lte('retention_expires_at', reminderCutoff.toISOString())
     .is('deleted_at', null)
     .eq('deletion_reminder_sent', false)

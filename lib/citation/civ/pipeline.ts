@@ -414,10 +414,19 @@ export async function verifyBatch(
 
     const batch = dedupedCitations.slice(i, i + parallelLimit);
 
-    const batchResults = await Promise.all(
+    const batchSettled = await Promise.allSettled(
       batch.map(citation => verifyCitation(citation, orderId, phase))
     );
 
+    const batchResults: FinalVerificationOutput[] = [];
+    for (const settled of batchSettled) {
+      if (settled.status === 'fulfilled') {
+        batchResults.push(settled.value);
+      } else {
+        log.error(`[CIV_PIPELINE] Citation verification rejected:`, settled.reason);
+        // Rejected citations are excluded — they won't count as VERIFIED
+      }
+    }
     results.push(...batchResults);
 
     // CIV-008: Count failures in this batch
@@ -555,7 +564,7 @@ export async function verifyNewCitations(
       blocked: 0,
       results: [],
       summary: {
-        averageConfidence: 1,
+        averageConfidence: 0,
         totalDurationMs: 0,
         totalApiCalls: 0,
         estimatedTotalCost: 0,
