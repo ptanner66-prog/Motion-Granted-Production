@@ -48,7 +48,7 @@ export async function sendAlertEmail(input: AlertEmailInput): Promise<boolean> {
 
   try {
     const { error } = await resend.emails.send({
-      from: 'Motion Granted Alerts <alerts@motiongranted.io>',
+      from: 'Motion Granted Alerts <alerts@motiongranted.com>',
       to: input.to,
       subject: input.subject,
       html: htmlBody,

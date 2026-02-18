@@ -38,6 +38,7 @@ import { verifyHoldings } from './holding-verification';
 import { countByCourtType } from './scoring';
 import { validateCourtListenerConfig } from '@/lib/courtlistener/client';
 import { logger } from '@/lib/logger';
+import { getModel, getThinkingBudget, getMaxTokens } from '@/lib/config/phase-registry';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -134,6 +135,21 @@ export async function executeLegalGradeResearch(
 
   try {
     // ═══════════════════════════════════════════════════════════════════════
+    // MODEL ROUTING: Resolve model from phase registry (source of truth)
+    // Phase IV: Sonnet A, Opus B/C, Opus+ET 16K D
+    // ═══════════════════════════════════════════════════════════════════════
+    const tier = input.tier as 'A' | 'B' | 'C' | 'D';
+    const phaseIVModel = getModel('IV', tier);
+    const phaseIVThinkingBudget = getThinkingBudget('IV', tier);
+    const phaseIVMaxTokens = getMaxTokens('IV', tier);
+
+    logger.info(`[Phase IV] Model: ${phaseIVModel} (from phase registry)`);
+    if (phaseIVThinkingBudget) {
+      logger.info(`[Phase IV] Extended Thinking: ${phaseIVThinkingBudget} tokens`);
+    }
+    logger.info(`[Phase IV] Max Tokens: ${phaseIVMaxTokens}`);
+
+    // ═══════════════════════════════════════════════════════════════════════
     // PREREQUISITE: Validate CourtListener API
     // ═══════════════════════════════════════════════════════════════════════
     const configCheck = await validateCourtListenerConfig();
@@ -153,7 +169,7 @@ export async function executeLegalGradeResearch(
       statementOfFacts: input.statementOfFacts,
       phaseIIOutput: input.phaseIIOutput,
       phaseIIIOutput: input.phaseIIIOutput,
-    }, anthropicClient);
+    }, anthropicClient, phaseIVModel ?? undefined, phaseIVThinkingBudget, phaseIVMaxTokens);
 
     const phaseADuration = Date.now() - phaseAStart;
 
@@ -200,7 +216,7 @@ export async function executeLegalGradeResearch(
       candidates: searchResult.candidates,
       elements: elementResult.elements,
       jurisdiction: input.jurisdiction,
-    }, anthropicClient);
+    }, anthropicClient, phaseIVModel ?? undefined, phaseIVThinkingBudget);
 
     const phaseCDuration = Date.now() - phaseCStart;
 

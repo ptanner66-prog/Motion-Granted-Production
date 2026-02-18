@@ -166,10 +166,10 @@ async function logEmailAttempt(
     await supabase.from('email_log').insert({
       order_id: orderId === 'no-order' ? null : orderId,
       email_type: 'workflow_notification',
-      recipient: Array.isArray(to) ? to.join(', ') : to,
+      recipient_email: Array.isArray(to) ? to.join(', ') : to,
       subject,
-      success,
-      message_id: messageId || null,
+      status: success ? 'sent' : 'failed',
+      resend_id: messageId || null,
       error_message: errorMessage || null,
     });
   } catch (err) {
