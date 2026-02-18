@@ -505,7 +505,7 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
  * @returns Model string or null
  *
  * @example
- * getModel('VII', 'B')           // → 'claude-opus-4-5-20251101'
+ * getModel('VII', 'B')           // → 'claude-opus-4-6'
  * getModel('VI', 'A')            // → null (skipped)
  * getModel('V.1', 'C', 'stage1') // → 'gpt-4-turbo'
  */

@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { HOLD_TIMEOUTS, getHoldStageAndNextAction, type Phase } from '@/lib/config/workflow-config';
 import { createLogger } from '@/lib/security/logger';
+import { inngest } from '@/lib/inngest/client';
 
 const log = createLogger('workflow-hold-service');
 
@@ -56,7 +57,18 @@ export async function resumeFromHold(orderId: string): Promise<HoldResult> {
     await supabase.from('orders').update({ status: 'in_progress', hold_resolved_at: now, updated_at: now }).eq('id', orderId);
     await supabase.from('checkpoint_events').insert({ order_id: orderId, event_type: 'HOLD_RESOLVED', phase: order.hold_phase, data: { resolved_at: now }, created_at: now });
 
-    log.info('Order resumed from HOLD', { orderId });
+    // FIX-E FIX 10: Emit checkpoint/hold.resolved so the orchestrator's waitForEvent unblocks
+    await inngest.send({
+      name: 'checkpoint/hold.resolved',
+      data: {
+        orderId,
+        action: 'RESUMED',
+        holdReason: 'customer_resolved',
+        resolvedBy: 'customer',
+      },
+    });
+
+    log.info('Order resumed from HOLD (event emitted)', { orderId });
     return { success: true };
   } catch (error) {
     return { success: false, error: String(error) };

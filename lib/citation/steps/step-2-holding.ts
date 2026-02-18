@@ -87,7 +87,7 @@ const STAGE_2_CONFIDENCE_LOW_THRESHOLD = 0.70;
 const MODELS = {
   TIER_A_B_STAGE_1: 'gpt-4-turbo',
   TIER_C_STAGE_1: 'gpt-4-turbo',
-  STAGE_2: 'claude-opus-4-5-20251101',
+  STAGE_2: 'claude-opus-4-6',
   TIEBREAKER: 'gpt-4-turbo',
 };
 

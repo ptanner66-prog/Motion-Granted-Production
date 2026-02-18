@@ -33,8 +33,8 @@ import { saveOrderCitations } from '@/lib/services/citations/citation-service';
 import type { SaveCitationInput } from '@/types/citations';
 import { extractCaseName } from '@/lib/citations/extract-case-name';
 
-// FIX-D: Prompt guardrails — phase enforcement + output boundary validation
-import { buildPhasePrompt, detectOutputViolation, detectPhaseSkipAttempt } from '@/lib/workflow/prompt-guardrails';
+// FIX-D/FIX-E: Prompt guardrails — phase enforcement, output boundary validation, input sanitization
+import { buildPhasePrompt, detectOutputViolation, detectPhaseSkipAttempt, sanitizeForAI } from '@/lib/workflow/prompt-guardrails';
 
 // SP-07: CIV pipeline imports for 7-step citation verification
 import { verifyBatch, verifyNewCitations, verifyUnauthorizedCitation } from '@/lib/civ';
@@ -50,6 +50,15 @@ import { executePhaseV1 as executePhaseV1CIV } from '@/lib/workflow/phase-v1-exe
 
 // SP-14 TASK-16: Louisiana article selection for Phase II
 import { getArticlesForMotion } from '@/lib/workflow/article-selection';
+
+// FIX-E FIX 6: Anti-inflation grading lock for Phase VII loop 2+
+import { getGradingLockPreamble, validateGradeConsistency } from '@/lib/workflow/judge-grading-lock';
+import type { LoopGrade } from '@/lib/workflow/judge-grading-lock';
+
+// FIX-E FIX 7: Hard-coded rules for Phase VII (zero-citation fail, etc.)
+import { applyPhaseVIIHardRules } from '@/lib/workflow/phase-vii-hardcoded-rules';
+import type { PhaseVIIOutput, PhaseVIISectionGrade } from '@/lib/workflow/phase-vii-hardcoded-rules';
+
 
 // ============================================================================
 // HELPERS
@@ -992,21 +1001,22 @@ async function executePhaseI(input: PhaseInput): Promise<PhaseOutput> {
 
     const systemPrompt = buildPhasePrompt('I', PHASE_PROMPTS.PHASE_I);
 
+    // FIX-E FIX 20: Sanitize user inputs before LLM interpolation
     const userMessage = `Analyze this submission for Phase I intake:
 
 MOTION TYPE: ${input.motionType}
 JURISDICTION: ${input.jurisdiction}
 CASE NUMBER: ${input.caseNumber}
-CASE CAPTION: ${input.caseCaption}
+CASE CAPTION: ${sanitizeForAI(input.caseCaption)}
 
 STATEMENT OF FACTS:
-${input.statementOfFacts}
+${sanitizeForAI(input.statementOfFacts)}
 
 PROCEDURAL HISTORY:
-${input.proceduralHistory}
+${sanitizeForAI(input.proceduralHistory)}
 
 CLIENT INSTRUCTIONS:
-${input.instructions}
+${sanitizeForAI(input.instructions)}
 
 UPLOADED DOCUMENTS:
 ${input.documents?.join('\n') || 'None provided'}
@@ -3110,18 +3120,100 @@ Provide your judicial evaluation as JSON.`;
       );
     }
 
+    // FIX-E FIX 6: Grade consistency validation on loop 2+
+    let adjustedScore = numericScore;
+    if (loopNumber >= 2) {
+      const prevVIIOutputForConsistency = (input.previousPhaseOutputs?.['VII'] ?? {}) as Record<string, unknown>;
+      const prevArgAssessment = (prevVIIOutputForConsistency.argument_assessment ?? []) as Array<Record<string, unknown>>;
+      const currentArgAssessment = (phaseOutput.argument_assessment ?? []) as Array<Record<string, unknown>>;
+
+      const previousGrade: LoopGrade = {
+        loop: loopNumber - 1,
+        overallScore: Number(prevVIIOutputForConsistency.numeric_score ?? 0),
+        sectionScores: Object.fromEntries(
+          prevArgAssessment.map((a: Record<string, unknown>) => [String(a.argument_title ?? ''), Number(a.sub_grade_numeric ?? 0)])
+        ),
+        deficiencies: (prevVIIOutputForConsistency.deficiencies ?? []) as string[],
+        authorityFlags: Object.fromEntries(
+          prevArgAssessment.map((a: Record<string, unknown>) => [String(a.argument_title ?? ''), Boolean(a.authority_appropriate)])
+        ),
+      };
+      const currentGrade: LoopGrade = {
+        loop: loopNumber,
+        overallScore: numericScore,
+        sectionScores: Object.fromEntries(
+          currentArgAssessment.map((a: Record<string, unknown>) => [String(a.argument_title ?? ''), Number(a.sub_grade_numeric ?? 0)])
+        ),
+        deficiencies: (phaseOutput.deficiencies ?? []) as string[],
+        authorityFlags: Object.fromEntries(
+          currentArgAssessment.map((a: Record<string, unknown>) => [String(a.argument_title ?? ''), Boolean(a.authority_appropriate)])
+        ),
+      };
+
+      const consistencyResult = validateGradeConsistency(previousGrade, currentGrade);
+      if (!consistencyResult.valid && consistencyResult.adjustedScore !== null) {
+        console.warn(`[Phase VII] Grade inflation detected — adjusting score from ${numericScore} to ${consistencyResult.adjustedScore}`, {
+          hardFails: consistencyResult.hardFails,
+          warnings: consistencyResult.warnings,
+        });
+        adjustedScore = consistencyResult.adjustedScore;
+      }
+      if (consistencyResult.warnings.length > 0) {
+        console.warn(`[Phase VII] Grade consistency warnings:`, consistencyResult.warnings);
+      }
+    }
+
+    // FIX-E FIX 7: Apply hard-coded rules (zero-citation fail, etc.)
+    const argAssessmentForRules = (phaseOutput.argument_assessment ?? []) as Array<Record<string, unknown>>;
+    const hardRuleInput: PhaseVIIOutput = {
+      overallGrade: letterGrade || '',
+      overallScore: adjustedScore,
+      sections: argAssessmentForRules.map((a: Record<string, unknown>): PhaseVIISectionGrade => ({
+        sectionName: String(a.argument_title ?? ''),
+        grade: String(a.sub_grade ?? ''),
+        numericScore: Number(a.sub_grade_numeric ?? 0),
+        authorityAppropriate: Boolean(a.authority_appropriate),
+        citationCount: Number(a.citation_count ?? 0),
+        deficiencies: (a.notes ? [String(a.notes)] : []),
+      })),
+      deficiencies: (phaseOutput.deficiencies ?? []) as string[],
+      passesThreshold: adjustedScore >= threshold,
+      loopComparison: phaseOutput.loop_comparison as PhaseVIIOutput['loopComparison'],
+    };
+
+    const hardRuleResult = applyPhaseVIIHardRules(
+      hardRuleInput,
+      input.tier as 'A' | 'B' | 'C' | 'D',
+      loopNumber
+    );
+
+    if (hardRuleResult.overriddenToFail) {
+      console.warn(`[Phase VII] Hard rules triggered — motion FAILS regardless of score`, {
+        violations: hardRuleResult.ruleViolations,
+        originalScore: hardRuleResult.originalScore,
+        adjustedScore: hardRuleResult.adjustedScore,
+      });
+      adjustedScore = hardRuleResult.adjustedScore ?? adjustedScore;
+    }
+    if (hardRuleResult.warnings.length > 0) {
+      console.warn(`[Phase VII] Hard rule warnings:`, hardRuleResult.warnings);
+    }
+
+    const finalPasses = hardRuleResult.overriddenToFail ? false : (adjustedScore >= threshold);
+
     return {
       success: true,
       phase: 'VII',
       status: 'completed',
       output: {
         ...phaseOutput,
-        numeric_score: numericScore,           // 0-100 percentage scale (BINDING)
+        numeric_score: adjustedScore,           // 0-100 percentage scale (BINDING), possibly adjusted
         grade: letterGrade,
         numericGrade: rawGrade,                // Original GPA for reference
         loopNumber,
+        hardRuleResult: hardRuleResult.overriddenToFail ? hardRuleResult : undefined,
       },
-      nextPhase: passes ? 'VIII.5' : 'VIII',
+      nextPhase: finalPasses ? 'VIII.5' : 'VIII',
       requiresReview: true, // CP2: Notify admin of grade
       tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
       durationMs: Date.now() - start,

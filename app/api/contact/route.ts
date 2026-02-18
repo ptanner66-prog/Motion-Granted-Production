@@ -13,6 +13,16 @@ interface ContactFormData {
   message: string
 }
 
+/** Escape user input for safe HTML interpolation */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export async function POST(request: Request) {
   try {
     const data: ContactFormData = await request.json()
@@ -34,13 +44,21 @@ export async function POST(request: Request) {
       )
     }
 
+    // FIX-E FIX 16: Escape all user inputs before HTML interpolation
+    const safeFirstName = escapeHtml(data.firstName)
+    const safeLastName = escapeHtml(data.lastName)
+    const safeEmail = escapeHtml(data.email)
+    const safePhone = data.phone ? escapeHtml(data.phone) : ''
+    const safeSubject = escapeHtml(data.subject)
+    const safeMessage = escapeHtml(data.message)
+
     const adminEmail = process.env.ADMIN_EMAIL || 'support@motiongranted.com'
 
     // Send notification to admin
     await resend.emails.send({
       from: 'Motion Granted <noreply@motiongranted.com>',
       to: adminEmail,
-      subject: `Contact Form: ${data.subject}`,
+      subject: `Contact Form: ${safeSubject}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #0f172a; border-bottom: 2px solid #c5a059; padding-bottom: 10px;">
@@ -50,29 +68,29 @@ export async function POST(request: Request) {
           <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
             <tr>
               <td style="padding: 10px; border-bottom: 1px solid #e5e5e5; font-weight: bold; width: 120px;">Name:</td>
-              <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">${data.firstName} ${data.lastName}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">${safeFirstName} ${safeLastName}</td>
             </tr>
             <tr>
               <td style="padding: 10px; border-bottom: 1px solid #e5e5e5; font-weight: bold;">Email:</td>
               <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">
-                <a href="mailto:${data.email}" style="color: #0f172a;">${data.email}</a>
+                <a href="mailto:${safeEmail}" style="color: #0f172a;">${safeEmail}</a>
               </td>
             </tr>
-            ${data.phone ? `
+            ${safePhone ? `
             <tr>
               <td style="padding: 10px; border-bottom: 1px solid #e5e5e5; font-weight: bold;">Phone:</td>
-              <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">${data.phone}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">${safePhone}</td>
             </tr>
             ` : ''}
             <tr>
               <td style="padding: 10px; border-bottom: 1px solid #e5e5e5; font-weight: bold;">Subject:</td>
-              <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">${data.subject}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">${safeSubject}</td>
             </tr>
           </table>
 
           <div style="background: #f8f8f8; padding: 20px; border-radius: 8px; margin: 20px 0;">
             <h3 style="color: #0f172a; margin-top: 0;">Message:</h3>
-            <p style="color: #4a5568; line-height: 1.6; white-space: pre-wrap;">${data.message}</p>
+            <p style="color: #4a5568; line-height: 1.6; white-space: pre-wrap;">${safeMessage}</p>
           </div>
 
           <p style="color: #718096; font-size: 12px; margin-top: 30px;">
@@ -94,7 +112,7 @@ export async function POST(request: Request) {
           </h2>
 
           <p style="color: #4a5568; line-height: 1.6;">
-            Hi ${data.firstName},
+            Hi ${safeFirstName},
           </p>
 
           <p style="color: #4a5568; line-height: 1.6;">
@@ -103,8 +121,8 @@ export async function POST(request: Request) {
 
           <div style="background: #f8f8f8; padding: 20px; border-radius: 8px; margin: 20px 0;">
             <h3 style="color: #0f172a; margin-top: 0;">Your Message:</h3>
-            <p style="color: #718096; font-size: 14px;"><strong>Subject:</strong> ${data.subject}</p>
-            <p style="color: #4a5568; line-height: 1.6; white-space: pre-wrap;">${data.message}</p>
+            <p style="color: #718096; font-size: 14px;"><strong>Subject:</strong> ${safeSubject}</p>
+            <p style="color: #4a5568; line-height: 1.6; white-space: pre-wrap;">${safeMessage}</p>
           </div>
 
           <p style="color: #4a5568; line-height: 1.6;">

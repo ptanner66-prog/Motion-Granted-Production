@@ -98,11 +98,11 @@ export async function submitFeedback(
   // Verify user owns the order
   const { data: order } = await supabase
     .from('orders')
-    .select('id, user_id')
+    .select('id, client_id')
     .eq('id', feedback.orderId)
     .single();
 
-  if (!order || order.user_id !== user.id) {
+  if (!order || order.client_id !== user.id) {
     log.error('[Feedback] User does not own order');
     return null;
   }
@@ -297,7 +297,7 @@ export async function scheduleFeedbackRequest(
   // Get order details
   const { data: order } = await supabase
     .from('orders')
-    .select('id, user_id, status')
+    .select('id, client_id, status')
     .eq('id', orderId)
     .single();
 

@@ -279,6 +279,23 @@ export function validateCitationsAgainstBank(
 /**
  * Detect if Claude is trying to skip ahead in its output.
  */
+/**
+ * Sanitize user input before interpolation into AI prompts.
+ * Strips XML-like tags and prompt injection patterns that could
+ * manipulate Claude into ignoring system constraints.
+ */
+export function sanitizeForAI(input: string): string {
+  if (!input || typeof input !== 'string') return '';
+
+  return input
+    // Strip XML-like system/assistant tags that could inject instructions
+    .replace(/<\/?(?:system|assistant|human|user|instruction|tool_use|tool_result|thinking|SYSTEM_ENFORCEMENT)[^>]*>/gi, '')
+    // Strip markdown-style system blocks
+    .replace(/```(?:system|instruction)[^`]*```/gi, '')
+    // Collapse excessive whitespace
+    .replace(/\n{4,}/g, '\n\n\n');
+}
+
 export function detectPhaseSkipAttempt(
   currentPhase: string,
   output: string

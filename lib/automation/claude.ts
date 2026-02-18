@@ -14,6 +14,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { ClaudeAnalysisRequest, ClaudeAnalysisResponse } from '@/types/automation';
 import { getAnthropicAPIKey } from '@/lib/api-keys';
 import { logger } from '@/lib/logger';
+import { MODELS } from '@/lib/config/models';
 
 // ============================================================================
 // CONFIGURATION

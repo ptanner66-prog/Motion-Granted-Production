@@ -573,7 +573,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
           conversationId: conversation?.id,
           inputTokens: generatedMotion.inputTokens,
           outputTokens: generatedMotion.outputTokens,
-          model: "claude-opus-4-5-20251101",
+          model: "claude-opus-4-6",
           fileOperations: operations.length,
           generationTimeMs:
             Date.now() - new Date(orderData.generation_started_at || Date.now()).getTime(),

@@ -41,7 +41,7 @@ export async function deleteOrderData(
     // Step 1: Verify order exists and isn't already deleted
     const { data: order, error: fetchError } = await supabase
       .from('orders')
-      .select('id, user_id, deleted_at')
+      .select('id, client_id, deleted_at')
       .eq('id', orderId)
       .single();
 
@@ -104,7 +104,7 @@ export async function deleteOrderData(
         court_name: null,
         judge_name: null,
         federal_district: null, // SP-C Task 28: clear federal_district on deletion
-        // Retain: id, user_id, motion_type, tier, state, court_type, timestamps
+        // Retain: id, client_id, motion_type, tier, state, court_type, timestamps
       })
       .eq('id', orderId);
 
@@ -115,7 +115,7 @@ export async function deleteOrderData(
 
     // Step 7: Log activity
     await logActivity({
-      user_id: actorUserId || order.user_id,
+      user_id: actorUserId || order.client_id,
       action: 'order.deleted',
       resource_type: 'order',
       resource_id: orderId,
