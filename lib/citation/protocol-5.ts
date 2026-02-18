@@ -16,8 +16,7 @@
  */
 
 import { extractStatutoryCitations, type StatutoryCitation } from './statutory-extractor';
-import { loadCitationBank } from './citation-bank';
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 
 // ============================================================================
 // TYPES
@@ -69,9 +68,16 @@ export async function runProtocol5(
     };
   }
 
-  // 2. Load existing citation bank
-  const bank = await loadCitationBank(orderId);
-  const bankStatutes = bank?.statutes ?? [];
+  // 2. Load existing citation bank (inline, uses service-role for Inngest context)
+  const supabase = getServiceSupabase();
+  const { data: orderData } = await supabase
+    .from('orders')
+    .select('phase_outputs')
+    .eq('id', orderId)
+    .single();
+  const phaseOutputs = (orderData?.phase_outputs || {}) as Record<string, unknown>;
+  const phaseIV = (phaseOutputs['IV'] || {}) as Record<string, unknown>;
+  const bankStatutes = ((phaseIV.statutoryCitationBank || []) as Array<{ citation: string }>);
 
   // Build a normalized lookup set from bank
   const bankNormalized = new Set(
@@ -163,7 +169,7 @@ async function addStatuteToBank(
   orderId: string,
 ): Promise<boolean> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
 
     const { data: order, error: fetchError } = await supabase
       .from('orders')

@@ -53,12 +53,11 @@ function inchesToDXA(inches: number): number {
   return Math.round(inches * 1440);
 }
 
-/**
- * Normalize confidence values. If > 1, divide by 100.
- */
+// Canonical confidence normalization from lib/citation/utils.ts
+import { normalizeConfidence as canonicalNormalizeConfidence } from '@/lib/citation/utils';
 function normalizeConfidence(value: number | undefined): number {
   if (value === undefined || value === null) return 0.5;
-  return value > 1 ? value / 100 : value;
+  return canonicalNormalizeConfidence(value);
 }
 
 export class RuleLookupService {
