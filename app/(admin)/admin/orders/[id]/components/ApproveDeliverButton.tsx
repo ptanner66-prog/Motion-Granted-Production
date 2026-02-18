@@ -3,7 +3,6 @@
 
 import { useState } from 'react';
 import { CheckCircle, AlertTriangle, Loader2, ShieldAlert } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 
 interface ApproveDeliverButtonProps {
   orderId: string;
@@ -15,48 +14,17 @@ interface ApproveDeliverButtonProps {
   onDeliveryComplete: () => void;
 }
 
-interface AuditLogEntry {
-  orderId: string;
-  action: 'CITATION_OVERRIDE_DELIVERY' | 'STANDARD_DELIVERY';
-  metadata: {
-    unauthorizedCount?: number;
-    warnings?: string[];
-    strippedCitations?: string[];
-    isValid?: boolean;
-  };
-  adminId: string;
-  timestamp: string;
-}
-
-async function logAdminAction(entry: AuditLogEntry): Promise<boolean> {
-  try {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('admin_audit_log')
-      .insert({
-        order_id: entry.orderId,
-        action: entry.action,
-        metadata: entry.metadata,
-        admin_id: entry.adminId,
-        created_at: entry.timestamp,
-      });
-
-    if (error) {
-      console.error('[AuditLog] Failed to log action:', error);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error('[AuditLog] Unexpected error:', err);
-    return false;
-  }
-}
-
-async function deliverOrder(orderId: string): Promise<{ success: boolean; error?: string }> {
+// Audit logging now happens server-side in the deliver route (A16-P0-005 fix)
+async function deliverOrder(
+  orderId: string,
+  action: string,
+  metadata: Record<string, unknown>
+): Promise<{ success: boolean; error?: string }> {
   try {
     const response = await fetch(`/api/admin/orders/${orderId}/deliver`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, metadata }),
     });
 
     if (!response.ok) {
@@ -109,16 +77,7 @@ export function ApproveDeliverButton({
       setIsLoading(true);
       setError(null);
 
-      // Log standard delivery
-      await logAdminAction({
-        orderId,
-        action: 'STANDARD_DELIVERY',
-        metadata: { isValid: true },
-        adminId,
-        timestamp: new Date().toISOString(),
-      });
-
-      const result = await deliverOrder(orderId);
+      const result = await deliverOrder(orderId, 'STANDARD_DELIVERY', { isValid: true });
       setIsLoading(false);
 
       if (result.success) {
@@ -164,36 +123,12 @@ export function ApproveDeliverButton({
     setIsLoading(true);
     setError(null);
 
-    // Log the override to audit trail
-    const logSuccess = await logAdminAction({
-      orderId,
-      action: 'CITATION_OVERRIDE_DELIVERY',
-      metadata: {
-        unauthorizedCount,
-        warnings,
-        strippedCitations,
-      },
-      adminId,
-      timestamp: new Date().toISOString(),
+    // Audit logging happens server-side in deliver route
+    const result = await deliverOrder(orderId, 'CITATION_OVERRIDE_DELIVERY', {
+      unauthorizedCount,
+      warnings,
+      strippedCitations,
     });
-
-    if (!logSuccess) {
-      // Retry once
-      const retrySuccess = await logAdminAction({
-        orderId,
-        action: 'CITATION_OVERRIDE_DELIVERY',
-        metadata: { unauthorizedCount, warnings, strippedCitations },
-        adminId,
-        timestamp: new Date().toISOString(),
-      });
-
-      if (!retrySuccess) {
-        console.warn('[Override] Audit log failed after retry');
-      }
-    }
-
-    // Proceed with delivery
-    const result = await deliverOrder(orderId);
     setIsLoading(false);
 
     if (result.success) {

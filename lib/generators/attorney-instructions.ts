@@ -8,6 +8,14 @@
 
 import { Paragraph, TextRun, AlignmentType } from 'docx';
 
+export interface CitationVerificationSummary {
+  totalCitations: number;
+  verifiedCount: number;
+  unverifiedCount: number;
+  flaggedCount: number;
+  pendingCount: number;
+}
+
 export interface InstructionsInput {
   orderNumber: string;
   motionType: string;
@@ -17,6 +25,7 @@ export interface InstructionsInput {
   localRuleFlags: string[];
   citationWarnings: string[];
   formatNotes: string[];
+  citationVerification?: CitationVerificationSummary;
 }
 
 /**
@@ -275,6 +284,70 @@ export function generateAttorneyInstructions(input: InstructionsInput): Paragrap
             }),
           ],
           spacing: { after: 60 },
+          indent: { left: 360 },
+        })
+      );
+    }
+  }
+
+  // Citation Verification Summary (CS-P0-006 fix)
+  if (input.citationVerification) {
+    const cv = input.citationVerification;
+    paragraphs.push(new Paragraph({ spacing: { after: 120 } }));
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: 'CITATION VERIFICATION SUMMARY:',
+            bold: true,
+            underline: {},
+            font: fontFamily,
+            size: fontSize,
+          }),
+        ],
+        spacing: { after: 120 },
+      })
+    );
+
+    const verificationLines = [
+      `Total citations: ${cv.totalCitations}`,
+      `Verified (passed all CIV steps): ${cv.verifiedCount}`,
+      `Unverified (CIV incomplete or failed): ${cv.unverifiedCount}`,
+      `Flagged (requires attorney review): ${cv.flaggedCount}`,
+    ];
+    if (cv.pendingCount > 0) {
+      verificationLines.push(`Pending verification: ${cv.pendingCount}`);
+    }
+
+    for (const line of verificationLines) {
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `\u2022 ${line}`,
+              font: fontFamily,
+              size: fontSize,
+            }),
+          ],
+          spacing: { after: 60 },
+          indent: { left: 360 },
+        })
+      );
+    }
+
+    if (cv.unverifiedCount > 0 || cv.flaggedCount > 0 || cv.pendingCount > 0) {
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: '\u26A0 UNVERIFIED AND FLAGGED CITATIONS REQUIRE INDEPENDENT VERIFICATION BY THE FILING ATTORNEY BEFORE SUBMISSION TO THE COURT.',
+              bold: true,
+              font: fontFamily,
+              size: fontSize,
+              color: 'FF0000',
+            }),
+          ],
+          spacing: { before: 120, after: 120 },
           indent: { left: 360 },
         })
       );

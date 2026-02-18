@@ -29,6 +29,7 @@ import {
   type GoodLawStatus,
 } from '@/types/citation-research';
 import { MODELS } from '@/lib/config/models';
+import { getModel } from '@/lib/config/phase-registry';
 import {
   scoreCandidate,
   selectTopCitations,
@@ -302,7 +303,10 @@ MATCHING CRITERIA:
 - NO_SUPPORT: Does not support the proposition`;
 
   try {
-    const resolvedModel = modelId || MODELS.SONNET;
+    if (!modelId) {
+      log.warn('[Phase IV-C] No modelId passed — falling back to phase-registry default (caller should pass model from registry)');
+    }
+    const resolvedModel = modelId || getModel('IV', 'A') || MODELS.SONNET;
     const response = await client.messages.create({
       model: resolvedModel,
       max_tokens: 1024,

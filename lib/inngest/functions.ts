@@ -51,6 +51,9 @@ import { checkpointRecoveryCron } from './checkpoint-recovery';
 // FIX-D: Email queue consumer (reads email_queue, sends via Resend)
 import { processEmailQueue } from './process-email-queue';
 
+// A3-ST5-001: D3 Cost monitoring crons
+import { costAnomalyDetector, budgetAlertCron, costReportCron, spendTrackerCron } from './cost-monitoring';
+
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -970,4 +973,9 @@ export const functions = [
   checkpointRecoveryCron,   // Every 6h: recover stuck AWAITING_APPROVAL orders
   // FIX-D: Email queue consumer (reads email_queue → Resend, every 60s)
   processEmailQueue,
+  // A3-ST5-001: D3 Cost monitoring crons
+  costAnomalyDetector,          // Daily 7:00 AM CT: detect per-order cost spikes
+  budgetAlertCron,              // Daily 7:30 AM CT: check monthly spend vs budget
+  costReportCron,               // Weekly Monday 8:00 AM CT: generate cost summary
+  spendTrackerCron,             // Daily 6:00 AM CT: record daily spend snapshot
 ];

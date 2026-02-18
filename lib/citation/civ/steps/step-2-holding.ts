@@ -268,9 +268,9 @@ export async function step2HoldingVerification(
     `result=${stage1.result} is_majority=${stage1.isFromMajority}`
   );
 
-  // CIV-003: Threshold-based routing
-  // Normalize confidence to 0-1 scale
-  const normalizedConf = stage1.confidence > 1 ? stage1.confidence / 100 : stage1.confidence;
+  // CIV-003: Threshold-based routing — canonical normalization
+  const { normalizeConfidence } = await import('@/lib/citation/utils');
+  const normalizedConf = normalizeConfidence(stage1.confidence);
 
   // Check if Stage 2 needed using confidence thresholds
   const needsStage2 = shouldTriggerStage2(stage1.confidence, flags);

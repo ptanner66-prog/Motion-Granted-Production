@@ -20,6 +20,7 @@ import { askClaude, getAnthropicClient } from '@/lib/automation/claude';
 import { getOpenAIAPIKey } from '@/lib/api-keys';
 import { getCitationModel, CITATION_GPT_MODELS } from '@/lib/config/citation-models';
 import { MODELS } from '@/lib/config/models';
+import { normalizeConfidence } from '@/lib/citation/utils';
 
 // ============================================================================
 // CIV RETRY UTILITY
@@ -575,7 +576,7 @@ export function shouldTriggerStage2(
   confidence: number,
   flags: string[] = []
 ): boolean {
-  const normalizedConf = confidence > 1 ? confidence / 100 : confidence;
+  const normalizedConf = normalizeConfidence(confidence);
 
   if (normalizedConf >= 0.95) {
     return false;

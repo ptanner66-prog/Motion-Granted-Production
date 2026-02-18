@@ -1352,6 +1352,10 @@ export const generateOrderWorkflow = inngest.createFunction(
       { limit: 1, key: "event.data.orderId" },  // Per-order lock — prevents duplicate phase runs
     ],
     retries: 3,
+    // A16-P0-004: Cancel running workflow when admin resets queue
+    cancelOn: [
+      { event: "workflow/order.reset", match: "data.orderId", if: "event.data.orderId == async.data.orderId" },
+    ],
     // TASK-25: Timeout tuning for full 14-phase pipeline
     // finish: Total accumulated runtime across all steps
     // start: Max time from scheduling to first step invocation

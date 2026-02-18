@@ -1614,7 +1614,7 @@ async function executePhaseIV(input: PhaseInput): Promise<PhaseOutput> {
       bindingCount: result.bindingCount,
       persuasiveCount: result.persuasiveCount,
       citationVerificationEnforced: true,
-      allCitationsVerified: true,
+      allCitationsVerified: result.verificationProof?.allCitationsVerified ?? false,
       verificationProof: result.verificationProof,
       _phaseIV_meta: result._phaseIV_meta,
     };
