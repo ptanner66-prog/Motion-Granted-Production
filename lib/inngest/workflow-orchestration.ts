@@ -2579,6 +2579,33 @@ export const generateOrderWorkflow = inngest.createFunction(
             phase: 'V.1',
           },
         });
+
+        // SP-22 FIX: Set on_hold status inline and emit checkpoint/hold.created
+        // to start timer cascade. Without this, checkAndWaitForHold() finds status
+        // is NOT on_hold and returns 'continue', silently bypassing the HOLD.
+        await step.run('set-hold-status-v1', async () => {
+          const holdReason = `citation_critical_failure:${v1DispatchResult.holdProtocol ?? 'P7'}`;
+          await supabase
+            .from('orders')
+            .update({
+              status: 'on_hold',
+              hold_reason: holdReason,
+              hold_triggered_at: new Date().toISOString(),
+            })
+            .eq('id', orderId);
+
+          const { inngest: inngestClient } = await import('@/lib/inngest/client');
+          await inngestClient.send({
+            name: 'checkpoint/hold.created',
+            data: {
+              orderId,
+              holdReason,
+              customerEmail: workflowState.orderContext?.firmEmail ?? '',
+              createdAt: new Date().toISOString(),
+              details: { type: 'citation_critical_failure', phase: 'V.1', protocol: v1DispatchResult.holdProtocol },
+            },
+          });
+        });
       }
     }
 
@@ -3057,6 +3084,31 @@ export const generateOrderWorkflow = inngest.createFunction(
               phase: 'VII.1',
             },
           });
+
+          // SP-22 FIX: Set on_hold status inline and emit checkpoint/hold.created
+          await step.run(`set-hold-status-vii1-loop-${loopNum}`, async () => {
+            const holdReason = `citation_critical_failure:${vii1DispatchResult.holdProtocol ?? 'P7'}`;
+            await supabase
+              .from('orders')
+              .update({
+                status: 'on_hold',
+                hold_reason: holdReason,
+                hold_triggered_at: new Date().toISOString(),
+              })
+              .eq('id', orderId);
+
+            const { inngest: inngestClient } = await import('@/lib/inngest/client');
+            await inngestClient.send({
+              name: 'checkpoint/hold.created',
+              data: {
+                orderId,
+                holdReason,
+                customerEmail: workflowState.orderContext?.firmEmail ?? '',
+                createdAt: new Date().toISOString(),
+                details: { type: 'citation_critical_failure', phase: 'VII.1', protocol: vii1DispatchResult.holdProtocol },
+              },
+            });
+          });
         }
       }
 
@@ -3420,6 +3472,38 @@ export const generateOrderWorkflow = inngest.createFunction(
             phase: 'IX.1',
           },
         });
+
+        // SP-22 FIX: Set on_hold status inline and emit checkpoint/hold.created
+        await step.run('set-hold-status-ix1', async () => {
+          const holdReason = `citation_critical_failure:${ix1DispatchResult.holdProtocol ?? 'P7'}`;
+          await supabase
+            .from('orders')
+            .update({
+              status: 'on_hold',
+              hold_reason: holdReason,
+              hold_triggered_at: new Date().toISOString(),
+            })
+            .eq('id', orderId);
+
+          const { inngest: inngestClient } = await import('@/lib/inngest/client');
+          await inngestClient.send({
+            name: 'checkpoint/hold.created',
+            data: {
+              orderId,
+              holdReason,
+              customerEmail: workflowState.orderContext?.firmEmail ?? '',
+              createdAt: new Date().toISOString(),
+              details: { type: 'citation_critical_failure', phase: 'IX.1', protocol: ix1DispatchResult.holdProtocol },
+            },
+          });
+        });
+      }
+
+      // SP-22 FIX: Check if order was placed on HOLD after Phase IX.1 citation verification.
+      // Previously missing — workflow proceeded directly to Phase X, bypassing HOLD.
+      const holdCheckIX1 = await checkAndWaitForHold(step, supabase, orderId, 'post-ix1-citation');
+      if (holdCheckIX1 === 'cancelled') {
+        return { status: 'cancelled', orderId, reason: 'hold_cancel_post_ix1' };
       }
     }
 
