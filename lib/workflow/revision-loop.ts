@@ -10,7 +10,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { FAILURE_THRESHOLDS, isProtocol10Triggered } from '@/lib/config/workflow-config';
-
+import { updateOrderColumns } from '@/lib/orders/update-columns';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('workflow-revision-loop');
@@ -64,10 +64,10 @@ export async function incrementRevisionLoop(orderId: string, judgeGrade?: string
 
   if (triggered) {
     const disclosure = generateProtocol10Disclosure(newCount, judgeGrade);
-    await supabase.from('orders').update({
+    await updateOrderColumns(supabase, orderId, {
       protocol_10_disclosure: disclosure,
       protocol_10_triggered_at: new Date().toISOString(),
-    }).eq('id', orderId);
+    }, 'protocol-10-trigger');
 
     await supabase.from('checkpoint_events').insert({
       order_id: orderId,
@@ -141,7 +141,11 @@ export async function getRevisionStatus(orderId: string): Promise<{ count: numbe
 
 export async function resetRevisionLoop(orderId: string): Promise<void> {
   const supabase = await createClient();
-  await supabase.from('orders').update({ revision_count: 0, protocol_10_disclosure: null, protocol_10_triggered_at: null }).eq('id', orderId);
+  await updateOrderColumns(supabase, orderId, {
+    revision_count: 0,
+    protocol_10_disclosure: null,
+    protocol_10_triggered_at: null,
+  }, 'revision-loop-reset');
 }
 
 /**

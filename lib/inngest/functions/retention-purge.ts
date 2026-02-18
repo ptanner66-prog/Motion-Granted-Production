@@ -14,6 +14,7 @@
 import { inngest } from '@/lib/inngest/client';
 import { getServiceSupabase } from '@/lib/supabase/admin';
 import { STORAGE_BUCKETS } from '@/lib/config/storage';
+import { updateOrderColumns } from '@/lib/orders/update-columns';
 
 export const retentionPurgeCron = inngest.createFunction(
   { id: 'retention-storage-purge', retries: 2 },
@@ -58,9 +59,9 @@ export const retentionPurgeCron = inngest.createFunction(
           }
 
           // Mark as purged
-          await supabase.from('orders').update({
+          await updateOrderColumns(supabase, order.id, {
             archive_status: 'PURGED',
-          }).eq('id', order.id);
+          }, 'retention-purge');
 
           purged++;
         } catch (err) {

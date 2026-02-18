@@ -5,6 +5,7 @@ import { getServiceSupabase } from '@/lib/supabase/admin';
 import { HOLD_TIMEOUTS, getHoldStageAndNextAction, type Phase } from '@/lib/config/workflow-config';
 import { createLogger } from '@/lib/security/logger';
 import { inngest } from '@/lib/inngest/client';
+import { updateOrderColumns } from '@/lib/orders/update-columns';
 
 const log = createLogger('workflow-hold-service');
 
@@ -108,11 +109,11 @@ export async function processHoldTimeouts(): Promise<{ processed: number; errors
       const { currentStage, shouldAutoRefund } = getHoldStageAndNextAction(new Date(order.hold_triggered_at));
       if (shouldAutoRefund) { await processHoldAutoRefund(order.id); processed++; continue; }
       if (currentStage === 'escalated' && !order.hold_escalated) {
-        await supabase.from('orders').update({ hold_escalated: true }).eq('id', order.id);
+        await updateOrderColumns(supabase, order.id, { hold_escalated: true }, 'hold-timeout-escalate');
         await supabase.from('email_queue').insert({ order_id: order.id, template: HOLD_TIMEOUTS.EMAIL_TEMPLATES.escalation_72h, data: {}, status: 'pending', created_at: new Date().toISOString() });
         processed++;
       } else if (currentStage === 'reminder_sent' && !order.hold_reminder_sent) {
-        await supabase.from('orders').update({ hold_reminder_sent: true }).eq('id', order.id);
+        await updateOrderColumns(supabase, order.id, { hold_reminder_sent: true }, 'hold-timeout-reminder');
         await supabase.from('email_queue').insert({ order_id: order.id, template: HOLD_TIMEOUTS.EMAIL_TEMPLATES.reminder_24h, data: {}, status: 'pending', created_at: new Date().toISOString() });
         processed++;
       }

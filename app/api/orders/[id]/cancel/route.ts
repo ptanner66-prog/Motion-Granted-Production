@@ -11,6 +11,7 @@ import { getServiceSupabase } from '@/lib/supabase/admin';
 import { inngest } from '@/lib/inngest/client';
 import { CANONICAL_EVENTS, CP3_REFUND_PERCENTAGE } from '@/lib/workflow/checkpoint-types';
 import { checkRateLimit } from '@/lib/security/rate-limiter';
+import { updateOrderColumns } from '@/lib/orders/update-columns';
 
 export async function POST(
   req: NextRequest,
@@ -191,16 +192,16 @@ export async function POST(
         payment_intent: order.stripe_payment_intent_id,
       });
 
-      await serviceClient.from('orders').update({
+      await updateOrderColumns(serviceClient, orderId, {
         refund_status: 'completed',
         stripe_payment_status: 'refunded',
-      }).eq('id', orderId);
+      }, 'cancel-refund-success');
     } catch (refundError) {
       // Non-fatal: refund failed but cancellation stands — admin can retry manually
       console.error(`[Cancel] Stripe refund failed for order ${orderId}:`, refundError);
-      await serviceClient.from('orders').update({
+      await updateOrderColumns(serviceClient, orderId, {
         refund_status: 'failed',
-      }).eq('id', orderId);
+      }, 'cancel-refund-failed');
     }
   }
 

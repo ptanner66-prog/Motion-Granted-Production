@@ -54,6 +54,8 @@ import { processEmailQueue } from './process-email-queue';
 // A3-ST5-001: D3 Cost monitoring crons
 import { costAnomalyDetector, budgetAlertCron, costReportCron, spendTrackerCron } from './cost-monitoring';
 
+import { updateOrderColumns } from '@/lib/orders/update-columns';
+
 // Initialize Supabase client for background jobs (service role)
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -620,10 +622,10 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
         // If critical issues, flag for manual review
         const criticalIssues = validation.issues.filter(i => i.severity === 'critical');
         if (criticalIssues.length > 0) {
-          await supabase.from("orders").update({
+          await updateOrderColumns(supabase, orderId, {
             needs_manual_review: true,
             quality_notes: `Quality check found ${criticalIssues.length} critical issue(s): ${criticalIssues.map(i => i.title).join(', ')}`,
-          }).eq("id", orderId);
+          }, 'quality-check-critical');
         }
 
         return {
@@ -702,9 +704,9 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
           log.warn('Citation warning', { orderId, qualityMessage });
 
           // Update order with quality warning (non-blocking)
-          await supabase.from("orders").update({
+          await updateOrderColumns(supabase, orderId, {
             quality_notes: `Citation warning: ${qualityMessage}`,
-          }).eq("id", orderId);
+          }, 'citation-warning');
         } else {
           log.info('Citation verification passed', { orderId, qualityMessage });
         }

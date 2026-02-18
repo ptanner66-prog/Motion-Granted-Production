@@ -5,6 +5,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { checkForConflicts } from '@/lib/services/conflict/conflict-check-service';
 import { createLogger } from '@/lib/security/logger';
+import { updateOrderColumns } from '@/lib/orders/update-columns';
 import type { IntakeConflictCheckRequest, IntakeConflictCheckResult } from '@/types/conflict';
 
 const log = createLogger('conflict-integration');
@@ -49,14 +50,13 @@ export async function runPrePaymentConflictCheck(
 
   // Update order with conflict status
   const supabase = await createClient();
-  await supabase.from('orders').update({
+  await updateOrderColumns(supabase, orderId, {
     conflict_status: result.action === 'PROCEED' ? 'clear' :
                      result.action === 'BLOCK' ? 'rejected' : 'pending_review',
     plaintiffs: parties.plaintiffs,
     defendants: parties.defendants,
     attorney_side: parties.attorneySide,
-    updated_at: new Date().toISOString(),
-  }).eq('id', orderId);
+  }, 'pre-payment-conflict-check');
 
   // Determine if order can proceed to payment
   switch (result.action) {
