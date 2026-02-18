@@ -21,6 +21,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '@/lib/security/logger';
 import { MODELS } from '@/lib/config/models';
+import { getModel } from '@/lib/config/phase-registry';
 
 const log = createLogger('workflow-phase-iv-element-extraction');
 import {
@@ -307,7 +308,10 @@ OUTPUT FORMAT (JSON only):
 }`;
 
   try {
-    const resolvedModel = modelId || MODELS.SONNET;
+    if (!modelId) {
+      log.warn('[Phase IV-A] No modelId passed — falling back to phase-registry default (caller should pass model from registry)');
+    }
+    const resolvedModel = modelId || getModel('IV', 'A') || MODELS.SONNET;
     const resolvedMaxTokens = maxTokens || 4096;
     log.info(`[Phase IV-A] Using model: ${resolvedModel} (max_tokens: ${resolvedMaxTokens}${thinkingBudget ? `, ET: ${thinkingBudget}` : ''})`);
 
