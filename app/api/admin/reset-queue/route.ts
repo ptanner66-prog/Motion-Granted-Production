@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { inngest } from '@/lib/inngest/client';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('api-admin-reset-queue');
@@ -37,7 +38,14 @@ export async function POST(request: NextRequest) {
     // Requires admin RLS policies on orders/workflows tables (see Task 10 migration).
 
     // Statuses that indicate stuck/failed orders needing reset
-    const stuckStatuses = ['under_review', 'in_progress', 'generation_failed', 'pending_review', 'in_review', 'blocked'];
+    const stuckStatuses = [
+      'under_review', 'UNDER_REVIEW',
+      'in_progress', 'IN_PROGRESS',
+      'generation_failed', 'GENERATION_FAILED',
+      'pending_review', 'PENDING_REVIEW',
+      'in_review', 'IN_REVIEW',
+      'blocked', 'BLOCKED',
+    ];
 
     // Get orders that need to be reset
     const { data: stuckOrders, error: fetchError } = await supabase
@@ -130,11 +138,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Cancel running Inngest workflows for these orders before DB reset
+    try {
+      const cancellationEvents = orderIds.map((oid: string) => ({
+        name: 'workflow/order.reset' as const,
+        data: { orderId: oid, resetBy: user.id, resetAt: new Date().toISOString() },
+      }));
+      if (cancellationEvents.length > 0) {
+        await inngest.send(cancellationEvents);
+      }
+    } catch (inngestError) {
+      log.error('Failed to cancel Inngest workflows (non-fatal)', {
+        error: inngestError instanceof Error ? inngestError.message : inngestError,
+      });
+    }
+
     // Update order statuses to 'submitted' (ready to restart)
     const { data: updatedOrders, error: updateError } = await supabase
       .from('orders')
       .update({
-        status: 'submitted',
+        status: 'SUBMITTED',
         generation_error: null,
         updated_at: new Date().toISOString()
       })
@@ -154,7 +177,7 @@ export async function POST(request: NextRequest) {
         orders_reset: updatedOrders?.length || 0,
         workflows_cleared: workflowIds.length,
         previous_statuses: statusCounts,
-        new_status: 'submitted',
+        new_status: 'SUBMITTED',
         timestamp: new Date().toISOString(),
       },
     });

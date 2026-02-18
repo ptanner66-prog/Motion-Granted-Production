@@ -1,7 +1,7 @@
 // /lib/workflow/hold-service.ts
 // VERSION: 1.0 — January 28, 2026
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { HOLD_TIMEOUTS, getHoldStageAndNextAction, type Phase } from '@/lib/config/workflow-config';
 import { createLogger } from '@/lib/security/logger';
 import { inngest } from '@/lib/inngest/client';
@@ -12,7 +12,7 @@ export interface HoldResult { success: boolean; holdId?: string; error?: string;
 
 export async function triggerHold(orderId: string, phase: Phase, reason: string): Promise<HoldResult> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
     const now = new Date().toISOString();
 
     const { error: orderError } = await supabase
@@ -39,7 +39,7 @@ export async function triggerHold(orderId: string, phase: Phase, reason: string)
 
 export async function resumeFromHold(orderId: string): Promise<HoldResult> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
     const now = new Date().toISOString();
 
     const { data: order, error: fetchError } = await supabase
@@ -77,7 +77,7 @@ export async function resumeFromHold(orderId: string): Promise<HoldResult> {
 
 export async function processHoldAutoRefund(orderId: string): Promise<HoldResult> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
     const now = new Date().toISOString();
 
     await supabase.from('orders').update({ status: 'REFUNDED', refund_reason: 'hold_timeout', refunded_at: now, updated_at: now }).eq('id', orderId);
@@ -92,7 +92,7 @@ export async function processHoldAutoRefund(orderId: string): Promise<HoldResult
 }
 
 export async function processHoldTimeouts(): Promise<{ processed: number; errors: string[] }> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
   const errors: string[] = [];
   let processed = 0;
 
