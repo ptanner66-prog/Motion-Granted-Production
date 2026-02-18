@@ -330,20 +330,25 @@ export async function batchExistenceCheck(
       batch.map(({ citation, caseName }) => executeExistenceCheck(citation, caseName))
     );
 
-    for (const settled of batchSettled) {
+    for (let j = 0; j < batchSettled.length; j++) {
+      const settled = batchSettled[j];
       if (settled.status === 'fulfilled') {
         results.push(settled.value);
       } else {
         // Failed citation gets a safe NOT_FOUND result instead of crashing the batch
         results.push({
+          step: 1,
+          name: 'existence_check',
+          citationInput: batch[j].citation,
           result: 'NOT_FOUND' as const,
           citationNormalized: '',
           sourcesChecked: [],
+          isPublished: false,
           confidence: 0,
           proceedToStep2: false,
           durationMs: 0,
           error: settled.reason instanceof Error ? settled.reason.message : 'Batch citation check failed',
-        } as ExistenceCheckOutput);
+        });
       }
     }
 
