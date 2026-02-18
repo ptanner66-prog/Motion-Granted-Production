@@ -406,6 +406,23 @@ export async function generateAndStoreFilingPackage(
       if (docxResult.success) {
         uploaded.docxPath = docxResult.path;
         uploaded.docxUrl = docxResult.signedUrl;
+
+        // FIX-B FIX-12: Create DB record in documents table so download page can find files.
+        // Previously, files were uploaded to storage but no database records were created,
+        // meaning the download page query returned zero results.
+        const { error: insertErr } = await supabase.from('documents').insert({
+          order_id: input.orderId,
+          file_name: docxFilename,
+          file_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          file_size: doc.buffer.byteLength,
+          file_url: docxResult.path,
+          document_type: doc.type === 'attorney_instructions' ? 'instructions' : doc.type,
+          uploaded_by: order.client_id,
+          is_deliverable: true,
+        });
+        if (insertErr) {
+          warnings.push(`Failed to insert DB record for ${docxFilename}: ${insertErr.message}`);
+        }
       } else {
         warnings.push(`Failed to upload ${docxFilename}: ${docxResult.error}`);
       }

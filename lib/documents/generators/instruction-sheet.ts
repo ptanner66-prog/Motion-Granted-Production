@@ -1,6 +1,11 @@
 /**
  * Instruction Sheet Generator (Task 57 + Task 65)
  *
+ * @deprecated FIX-B FIX-11: This DOCX generator is NOT used by the active delivery pipeline.
+ * The active instruction sheet is generated as plain text by
+ * `generateInstructionSheetContent()` in `lib/inngest/workflow-orchestration.ts`.
+ * This file is retained for potential future use but is not invoked during order processing.
+ *
  * Generates Attorney Instruction Sheet included with every delivery.
  *
  * Contents:
@@ -548,8 +553,9 @@ export async function generateInstructionSheet(
   const fileName = `instruction_sheet_${Date.now()}.docx`;
   const storagePath = `orders/${data.orderId}/generated/${fileName}`;
 
+  // FIX-B FIX-4: Use canonical 'order-documents' bucket instead of legacy 'documents'
   const { error: uploadError } = await supabase.storage
-    .from('documents')
+    .from('order-documents')
     .upload(storagePath, buffer, {
       contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       upsert: true,

@@ -20,11 +20,14 @@ const log = createLogger('storage-service');
 /**
  * Upload a generated document to Supabase Storage.
  *
+ * FIX-B FIX-3: Returns signed URL (1hr) instead of permanent public URL.
+ * Legal documents must never be accessible via unauthenticated permanent URLs.
+ *
  * @param orderId - The order this document belongs to
  * @param filename - Name of the file (e.g., "motion.docx")
  * @param buffer - File contents as Buffer
  * @param mimeType - MIME type of the file
- * @returns The storage path and public URL
+ * @returns The storage path and a time-limited signed URL
  */
 export async function uploadDocument(
   orderId: string,
@@ -54,30 +57,37 @@ export async function uploadDocument(
     throw new Error(`[STORAGE] Upload failed for ${filePath}: ${error.message}`);
   }
 
-  const { data: { publicUrl } } = supabase.storage
+  // FIX-B FIX-3: Use signed URL instead of permanent public URL
+  const { data: signedData, error: signedError } = await supabase.storage
     .from(BUCKET)
-    .getPublicUrl(filePath);
+    .createSignedUrl(filePath, 3600); // 1 hour expiry
 
-  // Update the order record with the document URL
+  const signedUrl = signedData?.signedUrl ?? filePath;
+  if (signedError) {
+    log.error('Failed to create signed URL, using path as fallback', { orderId, error: signedError.message });
+  }
+
+  // Update the order record with the document path (not the signed URL — those expire)
   const { error: updateError } = await supabase
     .from('orders')
     .update({
-      document_url: publicUrl,
+      document_url: filePath,
       document_generated_at: new Date().toISOString(),
     })
     .eq('id', orderId);
 
   if (updateError) {
     log.error('Failed to update order with document URL', { orderId, error: updateError.message });
-    // Don't throw — the document is uploaded, just the order record wasn't updated
   }
 
   log.info('Document uploaded', { filename, orderId, path: filePath });
-  return { path: filePath, publicUrl };
+  return { path: filePath, publicUrl: signedUrl };
 }
 
 /**
- * Get the download URL for a document.
+ * Get a time-limited download URL for a document.
+ *
+ * FIX-B FIX-3: Returns signed URL (1hr) instead of permanent public URL.
  */
 export async function getDocumentUrl(orderId: string, filename: string): Promise<string | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -87,11 +97,16 @@ export async function getDocumentUrl(orderId: string, filename: string): Promise
 
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const { data: { publicUrl } } = supabase.storage
+  const { data, error } = await supabase.storage
     .from(BUCKET)
-    .getPublicUrl(`${orderId}/${filename}`);
+    .createSignedUrl(`${orderId}/${filename}`, 3600); // 1 hour expiry
 
-  return publicUrl || null;
+  if (error || !data?.signedUrl) {
+    log.error('Failed to create signed URL', { orderId, filename, error: error?.message });
+    return null;
+  }
+
+  return data.signedUrl;
 }
 
 /**

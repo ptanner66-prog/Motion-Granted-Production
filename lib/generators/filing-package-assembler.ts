@@ -206,6 +206,21 @@ function estimateWordCount(text: string): number {
   return text.split(/\s+/).filter(w => w.length > 0).length;
 }
 
+/**
+ * FIX-B FIX-9: Convert body text string into Paragraph objects for DOCX.
+ * Previously, body text was computed but never converted to paragraphs,
+ * resulting in empty document bodies (caption + signature only).
+ */
+function textToParagraphs(text: string): Paragraph[] {
+  if (!text) return [];
+  return text.split('\n\n').filter(Boolean).map(para =>
+    new Paragraph({
+      children: [new TextRun({ text: para.trim() })],
+      spacing: { after: 240 },
+    })
+  );
+}
+
 function estimatePageCount(wordCount: number): number {
   return Math.max(1, Math.ceil(wordCount / 250));
 }
@@ -319,6 +334,9 @@ async function generateSingleDocument(
       const bodyText = input.content.memorandumBody || input.content.motionBody;
       wordCount = estimateWordCount(bodyText);
 
+      // FIX-B FIX-9: Convert body text to Paragraph objects so the document has content.
+      const bodyParagraphs = textToParagraphs(bodyText);
+
       // LA Tier A: append inline certificate of service (no separate POS)
       const isLATierA = input.jurisdiction.stateCode.toUpperCase() === 'LA'
         && !input.jurisdiction.isFederal
@@ -332,7 +350,7 @@ async function generateSingleDocument(
         isFederal: input.jurisdiction.isFederal,
         county: input.jurisdiction.county,
         federalDistrict: input.jurisdiction.federalDistrict,
-        content: [...captionParagraphs, ...signatureParagraphs, ...inlineCert],
+        content: [...captionParagraphs, ...bodyParagraphs, ...signatureParagraphs, ...inlineCert],
         includeHeader: rules.header?.required,
         includeFooter: rules.footer?.required,
         documentTitle: `Memorandum of Points and Authorities in Support of ${input.motionTypeDisplay}`,
@@ -341,12 +359,16 @@ async function generateSingleDocument(
     }
 
     case 'notice_of_motion': {
-      wordCount = 200;
+      // FIX-B FIX-9: Include motion body paragraphs in the notice document.
+      const noticeBody = input.content.motionBody || '';
+      wordCount = estimateWordCount(noticeBody) || 200;
+      const noticeParagraphs = textToParagraphs(noticeBody);
+
       buffer = await createFormattedDocument({
         stateCode: input.jurisdiction.stateCode,
         isFederal: false,
         county: input.jurisdiction.county,
-        content: [...captionParagraphs, ...signatureParagraphs],
+        content: [...captionParagraphs, ...noticeParagraphs, ...signatureParagraphs],
         documentTitle: `Notice of Motion \u2014 ${input.motionTypeDisplay}`,
       });
       break;
@@ -394,12 +416,21 @@ async function generateSingleDocument(
     case 'proposed_order': {
       const relief = input.content.proposedOrderRelief || [];
       wordCount = relief.reduce((sum, r) => sum + estimateWordCount(r), 0) + 100;
+
+      // FIX-B FIX-9: Convert proposed order relief items to paragraphs.
+      const reliefParagraphs = relief.map((r, i) =>
+        new Paragraph({
+          children: [new TextRun({ text: `${i + 1}. ${r}` })],
+          spacing: { after: 240 },
+        })
+      );
+
       buffer = await createFormattedDocument({
         stateCode: input.jurisdiction.stateCode,
         isFederal: input.jurisdiction.isFederal,
         county: input.jurisdiction.county,
         federalDistrict: input.jurisdiction.federalDistrict,
-        content: captionParagraphs,
+        content: [...captionParagraphs, ...reliefParagraphs],
         documentTitle: '[PROPOSED] ORDER',
       });
       break;
@@ -434,14 +465,28 @@ async function generateSingleDocument(
     }
 
     case 'separate_statement': {
-      wordCount = (input.content.separateStatementFacts || []).reduce(
+      const facts = input.content.separateStatementFacts || [];
+      wordCount = facts.reduce(
         (sum, f) => sum + estimateWordCount(f.fact) + estimateWordCount(f.evidence), 0
       );
+
+      // FIX-B FIX-9: Convert fact/evidence pairs to paragraphs.
+      const factParagraphs = facts.flatMap((f, i) => [
+        new Paragraph({
+          children: [new TextRun({ text: `${i + 1}. ${f.fact}`, bold: true })],
+          spacing: { after: 120 },
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: `Evidence: ${f.evidence}` })],
+          spacing: { after: 240 },
+        }),
+      ]);
+
       buffer = await createFormattedDocument({
         stateCode: input.jurisdiction.stateCode,
         isFederal: false,
         county: input.jurisdiction.county,
-        content: captionParagraphs,
+        content: [...captionParagraphs, ...factParagraphs],
         documentTitle: 'Separate Statement of Undisputed Material Facts',
       });
       break;

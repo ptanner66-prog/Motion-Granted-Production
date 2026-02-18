@@ -162,9 +162,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Failed to upload DOCX: ${uploadError.message}` }, { status: 500 });
     }
 
-    const { data: { publicUrl: fileUrl } } = supabase.storage
+    // FIX-B FIX-3: Use signed URL (1hr) instead of permanent public URL.
+    // Legal documents must never be accessible via unauthenticated permanent URLs.
+    const { data: signedData } = await supabase.storage
       .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
-      .getPublicUrl(storagePath);
+      .createSignedUrl(storagePath, 3600);
+    const fileUrl = signedData?.signedUrl ?? storagePath;
 
     // Insert document record
     await supabase.from('documents').insert({

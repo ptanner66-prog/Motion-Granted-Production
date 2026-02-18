@@ -17,7 +17,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('integration-storage-manager');
-const BUCKET_NAME = 'filing-packages';
+// FIX-B FIX-4: Use canonical bucket 'order-documents' so files are reachable
+// by the download page and Fn2 handleApprove (which both read from order-documents).
+// Previously used 'filing-packages' which was a dead-end bucket.
+const BUCKET_NAME = 'order-documents';
 const SIGNED_URL_EXPIRY = 60 * 60 * 24; // 24 hours
 const MAX_UPLOAD_RETRIES = 1;
 

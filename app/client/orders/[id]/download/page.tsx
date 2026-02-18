@@ -204,28 +204,38 @@ export default function DownloadPortal() {
           max_revisions: orderData.max_revisions || 2,
         });
 
-        // Get workflow files
+        // FIX-B FIX-2: Query `documents` table (where workflow writes deliverables)
+        // instead of `workflow_files` (wrong table — is_final column doesn't exist).
         const { data: filesData } = await supabase
-          .from('workflow_files')
-          .select('*')
+          .from('documents')
+          .select('id, file_name, file_type, file_size, file_url, document_type, created_at')
           .eq('order_id', orderId)
-          .eq('is_final', true);
+          .eq('is_deliverable', true)
+          .order('created_at', { ascending: false });
 
         // Transform to downloadable documents
         const docs: DownloadableDocument[] = [];
 
         for (const file of filesData || []) {
           try {
-            const { url, expiresAt } = await getSignedDownloadUrl(orderId, file.storage_path);
+            // file_url stores the storage path within the order-documents bucket
+            const { url, expiresAt } = await getSignedDownloadUrl(orderId, file.file_url);
+
+            // Map document_type to frontend enum values
+            let docType: DownloadableDocument['documentType'] = 'other';
+            if (file.document_type === 'motion') docType = 'motion';
+            else if (file.document_type === 'instructions' || file.document_type === 'instruction_sheet') docType = 'instructions';
+            else if (file.document_type === 'separate_statement') docType = 'separate_statement';
+            else if (file.document_type === 'exhibits') docType = 'exhibits';
 
             docs.push({
               id: file.id,
               filename: file.file_name,
-              type: file.file_type || 'application/pdf',
+              type: file.file_type || 'application/octet-stream',
               sizeBytes: file.file_size || 0,
               downloadUrl: url,
               expiresAt,
-              documentType: file.document_type || 'other',
+              documentType: docType,
             });
           } catch {
             // Skip files that can't be accessed

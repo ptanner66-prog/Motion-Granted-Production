@@ -84,10 +84,10 @@ export async function POST(
       return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
+    // FIX-B FIX-3: Use signed URL instead of permanent public URL
+    const { data: urlData } = await supabase.storage
       .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
-      .getPublicUrl(filePath)
+      .createSignedUrl(filePath, 3600) // 1 hour expiry
 
     // Save to database with is_deliverable = true
     const { data: doc, error: dbError } = await supabase
@@ -117,7 +117,7 @@ export async function POST(
       document: {
         id: doc.id,
         fileName: doc.file_name,
-        fileUrl: urlData.publicUrl,
+        fileUrl: urlData?.signedUrl ?? filePath,
         isDeliverable: true
       }
     })
@@ -192,11 +192,18 @@ export async function GET(
       return NextResponse.json({ deliverables: [] })
     }
 
-    // Add public URLs
-    const deliverablesWithUrls = (deliverables || []).map((doc: { file_url: string; [key: string]: unknown }) => ({
-      ...doc,
-      publicUrl: supabase.storage.from(STORAGE_BUCKETS.ORDER_DOCUMENTS).getPublicUrl(doc.file_url).data.publicUrl
-    }))
+    // FIX-B FIX-3: Generate signed URLs instead of public URLs
+    const deliverablesWithUrls = await Promise.all(
+      (deliverables || []).map(async (doc: { file_url: string; [key: string]: unknown }) => {
+        const { data: signedData } = await supabase.storage
+          .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
+          .createSignedUrl(doc.file_url, 3600) // 1 hour expiry
+        return {
+          ...doc,
+          publicUrl: signedData?.signedUrl ?? null,
+        }
+      })
+    )
 
     return NextResponse.json({ deliverables: deliverablesWithUrls })
 
@@ -258,8 +265,9 @@ export async function DELETE(
 
     // Delete from Supabase Storage first
     if (doc.file_url) {
+      // FIX-B FIX-4: Use canonical bucket constant instead of hardcoded legacy 'documents'
       const { error: storageError } = await supabase.storage
-        .from('documents')
+        .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
         .remove([doc.file_url])
 
       if (storageError) {
