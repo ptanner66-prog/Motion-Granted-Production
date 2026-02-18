@@ -762,7 +762,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
           citationStatus: citationVerification.qualityStatus || 'unknown',
           qualityScore,
           criticalIssues,
-          reviewUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/admin/orders/${orderId}`,
+          reviewUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'}/admin/orders/${orderId}`,
         },
         priority: 9, // Higher priority than draft_ready
         status: "pending",

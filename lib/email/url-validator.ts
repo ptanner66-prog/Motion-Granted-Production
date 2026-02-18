@@ -11,9 +11,9 @@ const log = createLogger('email-url-validator');
 
 // Allowed domains for email links
 const ALLOWED_DOMAINS = [
-  'motiongranted.com',
-  'www.motiongranted.com',
-  'app.motiongranted.com',
+  'motion-granted.com',
+  'www.motion-granted.com',
+  'app.motion-granted.com',
   // Add localhost for development
   ...(process.env.NODE_ENV === 'development' ? ['localhost', '127.0.0.1'] : []),
 ];

@@ -44,7 +44,7 @@ const sentEmails = new Map<string, { sentAt: Date; messageId: string }>();
 const DEDUP_WINDOW_MS = 60 * 60 * 1000;
 
 export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
-  const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'Motion Granted <noreply@motiongranted.com>';
+  const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'Motion Granted <noreply@motion-granted.com>';
 
   try {
     if (options.idempotencyKey) {
@@ -63,7 +63,7 @@ export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
       subject: options.subject,
       html: options.html,
       text: options.text,
-      replyTo: options.replyTo || process.env.EMAIL_REPLY_TO || 'support@motiongranted.com',
+      replyTo: options.replyTo || process.env.EMAIL_REPLY_TO || 'support@motion-granted.com',
       tags: options.tags,
     });
 

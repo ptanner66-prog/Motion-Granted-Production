@@ -26,7 +26,7 @@ const REQUIRED_VARS = [
 const OPTIONAL_VARS = [
   { name: 'SENTRY_DSN', hint: 'Sentry error tracking DSN' },
   { name: 'NEXT_PUBLIC_SENTRY_DSN', hint: 'Sentry client-side DSN' },
-  { name: 'NEXT_PUBLIC_APP_URL', hint: 'Public app URL for email links (default: https://motiongranted.com)' },
+  { name: 'NEXT_PUBLIC_APP_URL', hint: 'Public app URL for email links (default: https://motion-granted.com)' },
   { name: 'ADMIN_EMAIL', hint: 'Admin notification email address' },
   { name: 'ALERT_EMAIL', hint: 'Alert notification email address' },
   { name: 'CRON_SECRET', hint: 'Secret for authenticating cron job requests' },

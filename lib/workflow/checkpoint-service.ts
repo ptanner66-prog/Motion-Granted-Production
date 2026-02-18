@@ -551,7 +551,7 @@ async function processCP2Response(
       }
 
       // Generate payment URL
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com';
       const paymentUrl = `${baseUrl}/api/workflow/revisions/checkout?workflowId=${workflow.id}`;
 
       log.info('CP2 paid revision required', { revisionPrice, revisionId: revision.id });

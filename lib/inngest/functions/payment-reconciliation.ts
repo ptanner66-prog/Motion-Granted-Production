@@ -201,8 +201,8 @@ export const paymentReconciliation = inngest.createFunction(
           const resend = new Resend(process.env.RESEND_API_KEY);
 
           await resend.emails.send({
-            from: 'Motion Granted <alerts@motiongranted.com>',
-            to: process.env.ADMIN_ALERT_EMAIL || 'admin@motiongranted.com',
+            from: 'Motion Granted <alerts@motion-granted.com>',
+            to: process.env.ADMIN_ALERT_EMAIL || 'admin@motion-granted.com',
             subject: `[${criticalCount > 0 ? 'CRITICAL' : 'WARNING'}] Payment Reconciliation: ${mismatches.length} mismatch(es)`,
             text: `Daily reconciliation found ${mismatches.length} mismatches (${criticalCount} critical).\n\nReport ID: ${report.reportId}\n\nDetails:\n${JSON.stringify(mismatches, null, 2)}`,
           });

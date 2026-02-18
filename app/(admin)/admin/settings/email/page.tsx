@@ -35,7 +35,7 @@ export default function EmailSettingsPage() {
     orderCompleted: true,
     paymentReceived: true,
     adminEmail: '',
-    replyToEmail: 'support@motiongranted.com',
+    replyToEmail: 'support@motion-granted.com',
     emailFooter: 'Motion Granted - Professional Legal Motion Drafting',
   })
 
@@ -200,7 +200,7 @@ export default function EmailSettingsPage() {
                 <Input
                   id="adminEmail"
                   type="email"
-                  placeholder="admin@motiongranted.com"
+                  placeholder="admin@motion-granted.com"
                   value={settings.adminEmail}
                   onChange={(e) => setSettings(s => ({ ...s, adminEmail: e.target.value }))}
                   className="border-gray-200"
@@ -211,7 +211,7 @@ export default function EmailSettingsPage() {
                 <Input
                   id="replyTo"
                   type="email"
-                  placeholder="support@motiongranted.com"
+                  placeholder="support@motion-granted.com"
                   value={settings.replyToEmail}
                   onChange={(e) => setSettings(s => ({ ...s, replyToEmail: e.target.value }))}
                   className="border-gray-200"

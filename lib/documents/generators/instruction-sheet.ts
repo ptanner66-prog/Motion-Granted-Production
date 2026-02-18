@@ -480,8 +480,8 @@ function generateInstructionSheetDocument(data: InstructionSheetData): Document 
 
   const contactInfo = [
     'Motion Granted Support',
-    'Email: support@motiongranted.com',
-    'Website: www.motiongranted.com',
+    'Email: support@motion-granted.com',
+    'Website: www.motion-granted.com',
     'Hours: Monday-Friday, 9am-6pm PT',
   ];
 

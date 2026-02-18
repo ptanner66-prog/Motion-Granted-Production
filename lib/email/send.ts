@@ -42,7 +42,7 @@ export async function sendAdminAlert(
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #cc0000;">Admin Alert</h2>
       <pre style="background: #f5f5f5; padding: 16px; border-radius: 8px; white-space: pre-wrap; font-family: monospace; font-size: 13px;">${escapeHtml(body)}</pre>
-      ${orderId ? `<p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/admin/orders/${orderId}">View in Admin Dashboard</a></p>` : ''}
+      ${orderId ? `<p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'}/admin/orders/${orderId}">View in Admin Dashboard</a></p>` : ''}
     </div>
   `;
 

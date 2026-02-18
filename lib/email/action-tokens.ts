@@ -125,7 +125,7 @@ export async function validateActionToken(token: string): Promise<ActionTokenRes
  * Build action URL for email
  */
 export function buildActionUrl(token: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_URL || 'https://motiongranted.com';
+  const baseUrl = process.env.NEXT_PUBLIC_URL || 'https://motion-granted.com';
   return `${baseUrl}/api/email-actions/${token}`;
 }
 

@@ -422,7 +422,7 @@ async function alertAdminOfFailure(failed: CredentialStatus[]): Promise<void> {
     const { sendAlertEmail } = await import('@/lib/monitoring/alert-sender');
 
     await sendAlertEmail({
-      to: process.env.ADMIN_ALERT_EMAIL || 'admin@motiongranted.com',
+      to: process.env.ADMIN_ALERT_EMAIL || 'admin@motion-granted.com',
       subject: '[Motion Granted] CRITICAL: API Credential Verification Failed',
       level: 'FATAL',
       message: 'Critical API credentials failed verification on startup',

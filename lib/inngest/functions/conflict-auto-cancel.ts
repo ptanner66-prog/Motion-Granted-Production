@@ -92,10 +92,10 @@ export const conflictAutoCancelV2 = inngest.createFunction(
           const resend = new Resend(process.env.RESEND_API_KEY);
 
           await resend.emails.send({
-            from: 'Motion Granted <orders@motiongranted.com>',
+            from: 'Motion Granted <orders@motion-granted.com>',
             to: profile.email,
             subject: 'Order Update — Review Period Expired',
-            text: `Your order for case ${order.case_number} has been cancelled because the review period has expired. You have not been charged. If you believe this was in error, please contact us at support@motiongranted.com.`,
+            text: `Your order for case ${order.case_number} has been cancelled because the review period has expired. You have not been charged. If you believe this was in error, please contact us at support@motion-granted.com.`,
           });
         } catch (emailError) {
           console.error('[CONFLICT_AUTO_CANCEL] Email send failed (non-fatal):', emailError);

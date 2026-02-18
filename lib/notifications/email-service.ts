@@ -74,8 +74,8 @@ function getResendClient(): Resend {
 // ============================================================================
 
 const COMPANY_NAME = 'Motion Granted';
-const SUPPORT_EMAIL = 'support@motiongranted.com';
-const FROM_EMAIL = 'Motion Granted <noreply@motiongranted.com>';
+const SUPPORT_EMAIL = 'support@motion-granted.com';
+const FROM_EMAIL = 'Motion Granted <noreply@motion-granted.com>';
 
 /**
  * Get email template for a specific type

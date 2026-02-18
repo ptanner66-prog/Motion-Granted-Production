@@ -62,7 +62,7 @@ export default function HoldEscalation72h({
           <Hr style={divider} />
           <Section style={footerSection}>
             <Text style={footer}>Motion Granted | Legal Process Outsourcing</Text>
-            <Text style={footer}>Questions? Reply to this email or contact support@motiongranted.com</Text>
+            <Text style={footer}>Questions? Reply to this email or contact support@motion-granted.com</Text>
           </Section>
         </Container>
       </Body>

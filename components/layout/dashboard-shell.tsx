@@ -70,7 +70,7 @@ const resourceLinks = [
   },
   {
     name: 'Help & Support',
-    href: 'mailto:support@motiongranted.com',
+    href: 'mailto:support@motion-granted.com',
     icon: HelpCircle,
     external: true
   },

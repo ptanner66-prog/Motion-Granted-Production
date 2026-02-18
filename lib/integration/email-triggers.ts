@@ -161,7 +161,7 @@ function buildEmailEvent(
   event: WorkflowEvent,
   ctx: OrderEmailContext
 ): EmailEvent | null {
-  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com'}/dashboard`;
+  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'}/dashboard`;
 
   switch (event) {
     case 'order_confirmed':

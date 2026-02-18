@@ -13,7 +13,7 @@ export const TEST_USER = {
 };
 
 export const TEST_ADMIN = {
-  email: process.env.TEST_ADMIN_EMAIL || 'admin@motiongranted.com',
+  email: process.env.TEST_ADMIN_EMAIL || 'admin@motion-granted.com',
   password: process.env.TEST_ADMIN_PASSWORD || 'AdminPassword123!',
   name: 'Test Admin',
 };

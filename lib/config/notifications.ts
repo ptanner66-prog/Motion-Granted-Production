@@ -6,16 +6,16 @@
  */
 
 // Admin notification email - override with ADMIN_EMAIL env var
-export const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@motiongranted.com';
+export const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@motion-granted.com';
 
 // Alert email for system failures - override with ALERT_EMAIL env var
 export const ALERT_EMAIL = process.env.ALERT_EMAIL || ADMIN_EMAIL;
 
 // From addresses for different email types
 export const EMAIL_FROM = {
-  notifications: 'Motion Granted <noreply@motiongranted.com>',
-  alerts: 'Motion Granted Alerts <alerts@motiongranted.com>',
-  support: 'Motion Granted Support <support@motiongranted.com>',
+  notifications: 'Motion Granted <noreply@motion-granted.com>',
+  alerts: 'Motion Granted Alerts <alerts@motion-granted.com>',
+  support: 'Motion Granted Support <support@motion-granted.com>',
 };
 
 // Notification priorities

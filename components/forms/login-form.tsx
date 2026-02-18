@@ -94,7 +94,7 @@ export function LoginForm() {
     } catch {
       toast({
         title: 'Unable to Sign In',
-        description: 'We encountered an unexpected error. Please try again, or contact support@motiongranted.com if the issue persists.',
+        description: 'We encountered an unexpected error. Please try again, or contact support@motion-granted.com if the issue persists.',
         variant: 'destructive',
       })
     } finally {

@@ -55,7 +55,7 @@ export default function CP1Notification({
               Motion Granted | Legal Process Outsourcing
             </Text>
             <Text style={footer}>
-              Questions? Reply to this email or contact support@motiongranted.com
+              Questions? Reply to this email or contact support@motion-granted.com
             </Text>
           </Section>
         </Container>

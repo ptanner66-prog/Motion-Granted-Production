@@ -16,7 +16,7 @@ export default function TermsPage() {
               Terms of Service
             </h1>
             <p className="mt-6 text-lg text-gray-600">
-              Last updated: January 2025
+              Last updated: February 2026
             </p>
           </div>
         </div>
@@ -43,12 +43,23 @@ export default function TermsPage() {
 
             <h2>3. Description of Services</h2>
             <p>
-              Motion Granted provides legal drafting assistance to attorneys. Our law clerks
-              prepare draft documents based on instructions and materials provided by the
-              ordering attorney. We are not a law firm and do not provide legal advice or
-              representation. See our Disclaimer for important information about the nature
-              of our services.
+              Motion Granted provides AI-assisted legal drafting support to licensed attorneys. Our
+              platform uses a multi-phase workflow pipeline to generate draft legal motions,
+              memoranda, supporting documents, and related materials based on information and
+              instructions provided by the ordering attorney. We are not a law firm and do not
+              provide legal advice or representation. See our Disclaimer for important information
+              about the nature of our services.
             </p>
+            <h3>3.1 Service Tiers</h3>
+            <p>
+              Motion types are organized into four tiers based on complexity:
+            </p>
+            <ul>
+              <li><strong>Tier A</strong> &mdash; Procedural motions (e.g., extensions of time, continuances, pro hac vice)</li>
+              <li><strong>Tier B</strong> &mdash; Standard substantive motions (e.g., motions to compel, demurrers, motions to dismiss)</li>
+              <li><strong>Tier C</strong> &mdash; Complex motions (e.g., complex anti-SLAPP, motions in limine, JNOV)</li>
+              <li><strong>Tier D</strong> &mdash; Highly complex/dispositive motions (e.g., summary judgment, preliminary injunctions, class certification, Daubert motions)</li>
+            </ul>
 
             <h2>4. Artificial Intelligence Assistance</h2>
             <h3>4.1 Use of AI Technology</h3>
@@ -58,9 +69,9 @@ export default function TermsPage() {
               acknowledge and agree that:
             </p>
             <ul>
-              <li>AI systems may be used to generate initial drafts of legal documents</li>
-              <li>AI systems may assist with legal research and citation checking</li>
-              <li>All AI-generated content is reviewed by qualified legal professionals</li>
+              <li>AI systems are used to generate drafts of legal documents through a multi-phase workflow pipeline</li>
+              <li>AI systems assist with legal research, citation verification, and quality checking</li>
+              <li>All AI-generated content passes through quality gates and citation integrity verification</li>
               <li>AI is a tool that enhances, but does not replace, human professional judgment</li>
             </ul>
             <h3>4.2 No Guarantee of Outcome</h3>
@@ -81,9 +92,9 @@ export default function TermsPage() {
               <li>Complying with all applicable rules of professional conduct regarding AI</li>
             </ul>
             <p>
-              Our Services include AI disclosure language that you may choose to include in
-              filed documents, but the decision and responsibility to include such disclosures
-              remains with you.
+              Our Services include ABA Formal Opinion 512 disclosure language that you may choose
+              to include in filed documents, but the decision and responsibility to include such
+              disclosures remains with you.
             </p>
 
             <h2>5. Account Registration</h2>
@@ -98,37 +109,47 @@ export default function TermsPage() {
             </ul>
 
             <h2>6. Orders and Payment</h2>
-            <h3>5.1 Placing Orders</h3>
+            <h3>6.1 Placing Orders</h3>
             <p>
               When you place an order, you agree to provide all necessary information and
               materials for us to complete the work. You acknowledge that the quality of
-              our work depends on the information you provide.
+              our work depends on the accuracy and completeness of the information you provide.
             </p>
-            <h3>5.2 Pricing</h3>
+            <h3>6.2 Pricing</h3>
             <p>
-              Prices for our services are listed on our website. We reserve the right to
-              change prices at any time, but price changes will not affect orders already
-              placed and paid for.
+              Prices for our services are listed on our website and are organized by motion tier
+              (Tier A through Tier D). We reserve the right to change prices at any time, but
+              price changes will not affect orders already placed and paid for. Rush delivery
+              options (72-hour and 48-hour) are available at additional cost.
             </p>
-            <h3>5.3 Payment</h3>
+            <h3>6.3 Payment</h3>
             <p>
               Payment is due at the time of order submission. We accept major credit cards
-              via Stripe. All payments are processed securely and are non-refundable except
-              as provided in these Terms.
+              via Stripe. All payments are processed securely.
             </p>
-            <h3>5.4 Additional Charges</h3>
+            <h3>6.4 Conflict Check</h3>
             <p>
-              If your order requires substantially more work than typical for that motion
-              type, we may contact you with a supplemental quote. We will not charge
-              additional fees without your prior approval.
+              All orders are subject to a conflict check before processing. If a potential
+              conflict is identified, your order will be placed under review and you will not
+              be charged until the review is resolved. We reserve the right to decline any
+              order due to conflicts of interest.
             </p>
 
-            <h2>7. Delivery</h2>
+            <h2>7. Delivery and Review</h2>
+            <h3>7.1 Delivery Timeframes</h3>
             <p>
               We will deliver completed drafts within the timeframe specified for your
               order type. Delivery times are estimates and not guarantees. We will make
               reasonable efforts to meet deadlines but are not liable for delays beyond
               our control.
+            </p>
+            <h3>7.2 Attorney Review Checkpoint</h3>
+            <p>
+              Upon completion of the drafting process, your motion package will be made
+              available for your review. You will have 14 days to review, approve, request
+              changes, or cancel. If no action is taken within 14 days, a final 7-day notice
+              will be sent. If no action is taken within the full 21-day review period, the
+              order will be automatically cancelled with a 50% refund.
             </p>
 
             <h2>8. Your Responsibilities</h2>
@@ -142,35 +163,73 @@ export default function TermsPage() {
               <li>You will maintain confidentiality of your client information</li>
             </ul>
 
-            <h2>9. Intellectual Property</h2>
-            <h3>8.1 Work Product</h3>
+            <h2>9. Cancellations and Refunds</h2>
+            <h3>9.1 Refund Policy</h3>
+            <p>
+              Refund amounts are determined by the stage of work completion at the time of
+              cancellation. Our status-based refund schedule is as follows:
+            </p>
+            <ul>
+              <li><strong>Phases I&ndash;III</strong> (Intake through Evidence Strategy): 85% refund</li>
+              <li><strong>Phase IV</strong> (Authority Research): 65% refund</li>
+              <li><strong>Phases V&ndash;VI</strong> (Drafting and Opposition Anticipation): 40% refund</li>
+              <li><strong>Phases VII&ndash;IX</strong> (Judge Simulation through Supporting Documents): 20% refund</li>
+              <li><strong>Phase X</strong> (Final Assembly complete / delivered): No refund</li>
+            </ul>
+            <h3>9.2 Conflict-Related Cancellations</h3>
+            <p>
+              If an order is cancelled due to a conflict of interest detected during our
+              conflict check process, no charge will be applied.
+            </p>
+            <h3>9.3 Timeout Cancellations</h3>
+            <p>
+              Orders that remain unreviewed for 21 days after draft delivery will be
+              automatically cancelled with a 50% refund.
+            </p>
+            <h3>9.4 How Refunds Are Processed</h3>
+            <p>
+              Refunds are issued to the original payment method via Stripe. Processing
+              times vary by financial institution.
+            </p>
+
+            <h2>10. Intellectual Property</h2>
+            <h3>10.1 Work Product</h3>
             <p>
               Upon full payment, you own the work product delivered to you. You may use,
               modify, and file the work product as you see fit.
             </p>
-            <h3>8.2 Our Materials</h3>
+            <h3>10.2 Our Materials</h3>
             <p>
               All other content on our website, including text, graphics, logos, and
               software, is owned by Motion Granted or our licensors and is protected
               by intellectual property laws.
             </p>
 
-            <h2>10. Confidentiality</h2>
+            <h2>11. Confidentiality</h2>
             <p>
               We will maintain the confidentiality of your case information and will not
-              disclose it to third parties except as required by law. All staff are bound
-              by confidentiality obligations. However, you acknowledge that electronic
-              transmission of information cannot be guaranteed to be completely secure.
+              disclose it to third parties except as required by law. All processing is
+              performed in isolated environments. We do not use your case data for AI model
+              training. However, you acknowledge that electronic transmission of information
+              cannot be guaranteed to be completely secure.
             </p>
 
-            <h2>11. Conflicts of Interest</h2>
+            <h2>12. Data Retention</h2>
+            <p>
+              Order data and associated work product are retained for 365 days following
+              order completion or cancellation, after which they are permanently deleted.
+              You may request earlier deletion at any time by contacting support.
+            </p>
+
+            <h2>13. Conflicts of Interest</h2>
             <p>
               We maintain a conflicts database and check all new orders against it. If a
-              potential conflict is identified, we will notify you. We reserve the right
-              to decline any order due to conflicts of interest.
+              potential conflict is identified, we will notify you and your order will be
+              placed under review. We reserve the right to decline any order due to conflicts
+              of interest.
             </p>
 
-            <h2>12. Limitation of Liability</h2>
+            <h2>14. Limitation of Liability</h2>
             <p>
               TO THE MAXIMUM EXTENT PERMITTED BY LAW, MOTION GRANTED&apos;S LIABILITY FOR ANY
               CLAIM ARISING FROM OR RELATED TO THESE TERMS OR OUR SERVICES IS LIMITED TO
@@ -179,14 +238,14 @@ export default function TermsPage() {
               DAMAGES.
             </p>
 
-            <h2>13. Disclaimer of Warranties</h2>
+            <h2>15. Disclaimer of Warranties</h2>
             <p>
               OUR SERVICES ARE PROVIDED &quot;AS IS&quot; WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR
               IMPLIED. WE DO NOT WARRANT THAT OUR SERVICES WILL BE UNINTERRUPTED OR ERROR-FREE.
               WE DO NOT GUARANTEE ANY PARTICULAR OUTCOME IN ANY LEGAL PROCEEDING.
             </p>
 
-            <h2>14. Indemnification</h2>
+            <h2>16. Indemnification</h2>
             <p>
               You agree to indemnify and hold harmless Motion Granted, its officers, directors,
               employees, and agents from any claims, damages, or expenses arising from your use
@@ -194,14 +253,14 @@ export default function TermsPage() {
               of a third party.
             </p>
 
-            <h2>15. Termination</h2>
+            <h2>17. Termination</h2>
             <p>
               We may terminate or suspend your account at any time for violation of these Terms.
               You may close your account at any time. Termination does not affect orders already
               paid for and in progress.
             </p>
 
-            <h2>16. Dispute Resolution</h2>
+            <h2>18. Dispute Resolution</h2>
             <p>
               Any dispute arising from these Terms or our Services shall be resolved through
               binding arbitration in Baton Rouge, Louisiana, in accordance with the rules of
@@ -209,27 +268,27 @@ export default function TermsPage() {
               class action lawsuit or class-wide arbitration.
             </p>
 
-            <h2>17. Governing Law</h2>
+            <h2>19. Governing Law</h2>
             <p>
               These Terms are governed by the laws of the State of Louisiana, without regard
               to conflict of law principles.
             </p>
 
-            <h2>18. Changes to Terms</h2>
+            <h2>20. Changes to Terms</h2>
             <p>
               We may update these Terms from time to time. We will notify you of material
               changes by email or by posting a notice on our website. Continued use of our
               Services after changes constitutes acceptance of the new Terms.
             </p>
 
-            <h2>19. Contact</h2>
+            <h2>21. Contact</h2>
             <p>
               Questions about these Terms should be directed to:
             </p>
             <p>
               Motion Granted, LLC<br />
               Louisiana-based legal drafting service<br />
-              support@motiongranted.com
+              support@motion-granted.com
             </p>
 
             <div className="rounded-xl bg-gray-50 border border-gray-200 p-8 mt-12">

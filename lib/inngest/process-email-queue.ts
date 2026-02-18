@@ -41,7 +41,7 @@ const MAX_RETRIES = 3;
 const BATCH_SIZE = 10;
 
 /** Admin fallback recipient for admin-alert and system emails. */
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@motiongranted.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@motion-granted.com';
 
 // ============================================================================
 // TEMPLATE → SUBJECT MAPPING
@@ -106,7 +106,7 @@ function buildEmailBody(
   data: Record<string, unknown>,
   orderNumber?: string
 ): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com';
   const orderId = data.orderId as string | undefined;
   const orderUrl = orderId ? `${baseUrl}/orders/${orderId}` : `${baseUrl}/dashboard`;
   const adminUrl = orderId ? `${baseUrl}/admin/orders/${orderId}` : `${baseUrl}/admin`;
@@ -122,7 +122,7 @@ function buildEmailBody(
         '',
         `Please log in to your portal to review: ${orderUrl}`,
         '',
-        'If you have questions, reply to this email or contact support@motiongranted.com.',
+        'If you have questions, reply to this email or contact support@motion-granted.com.',
         '',
         '— Motion Granted',
       ].join('\n');
@@ -195,7 +195,7 @@ function buildEmailBody(
         '',
         'If a refund is applicable, it will be processed to your original payment method.',
         '',
-        `Questions? Contact support@motiongranted.com`,
+        `Questions? Contact support@motion-granted.com`,
         '',
         '— Motion Granted',
       ].join('\n');
@@ -257,7 +257,7 @@ function buildEmailBody(
         '',
         `The lockout will expire in ${data.lockout_duration_minutes || 30} minutes.`,
         '',
-        `If you need immediate access, contact ${data.support_email || 'support@motiongranted.com'}.`,
+        `If you need immediate access, contact ${data.support_email || 'support@motion-granted.com'}.`,
         '',
         '— Motion Granted Security',
       ].join('\n');

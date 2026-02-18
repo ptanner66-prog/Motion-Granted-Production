@@ -48,7 +48,7 @@ export function OrderConfirmationEmail({
 
       <hr style={{ border: 'none', borderTop: '1px solid #ddd', margin: '30px 0' }} />
       <p style={{ fontSize: '12px', color: '#666' }}>
-        Questions? Contact support@motiongranted.com
+        Questions? Contact support@motion-granted.com
       </p>
     </div>
   );

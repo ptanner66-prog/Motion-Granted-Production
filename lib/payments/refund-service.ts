@@ -333,7 +333,7 @@ async function sendRefundNotification(
     }[reason] || 'Your refund has been processed';
 
     await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'noreply@motiongranted.com',
+      from: process.env.RESEND_FROM_EMAIL || 'noreply@motion-granted.com',
       to: profile.email,
       subject: `[Motion Granted] Refund Processed - Order ${order.order_number}`,
       text: `

@@ -190,11 +190,11 @@ export async function DELETE(request: NextRequest) {
         const { Resend } = await import('resend');
         const resend = new Resend(process.env.RESEND_API_KEY);
         await resend.emails.send({
-          from: 'Motion Granted <noreply@motiongranted.com>',
+          from: 'Motion Granted <noreply@motion-granted.com>',
           to: userEmail,
           subject: 'Account Deleted — Motion Granted',
           html: `<p>Your Motion Granted account has been deleted. All your data has been removed from our systems.</p>
-                 <p>If you did not request this, please contact support immediately at support@motiongranted.com.</p>`,
+                 <p>If you did not request this, please contact support immediately at support@motion-granted.com.</p>`,
         });
       } catch (emailErr) {
         log.warn('Confirmation email failed', { error: emailErr instanceof Error ? emailErr.message : emailErr });

@@ -529,8 +529,8 @@ export default function StatusPage() {
           <p>This page auto-refreshes every 60 seconds.</p>
           <p className="mt-1">
             For urgent issues, contact{' '}
-            <a href="mailto:support@motiongranted.com" className="text-blue-600 hover:underline">
-              support@motiongranted.com
+            <a href="mailto:support@motion-granted.com" className="text-blue-600 hover:underline">
+              support@motion-granted.com
             </a>
           </p>
         </div>

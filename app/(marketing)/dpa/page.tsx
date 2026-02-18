@@ -277,7 +277,7 @@ export default function DPAPage() {
               Motion Granted, LLC<br />
               Data Protection Inquiries<br />
               Louisiana-based legal drafting service<br />
-              privacy@motiongranted.com
+              privacy@motion-granted.com
             </p>
 
             <div className="rounded-xl bg-blue-50 border border-blue-200 p-8 mt-12">
@@ -289,7 +289,7 @@ export default function DPAPage() {
                 requirements. Contact our team to discuss your needs.
               </p>
               <a
-                href="mailto:enterprise@motiongranted.com"
+                href="mailto:enterprise@motion-granted.com"
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 Contact Enterprise Sales

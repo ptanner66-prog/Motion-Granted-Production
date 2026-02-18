@@ -218,7 +218,7 @@ interface NotificationPayload {
  * Sends email alerts for HIGH/CRITICAL violations in production.
  */
 async function sendAdminNotification(payload: NotificationPayload): Promise<void> {
-  const adminEmail = process.env.ADMIN_ALERT_EMAIL || 'admin@motiongranted.com';
+  const adminEmail = process.env.ADMIN_ALERT_EMAIL || 'admin@motion-granted.com';
 
   if (process.env.NODE_ENV === 'production') {
     try {

@@ -266,10 +266,10 @@ export default function SecurityPage() {
                 For security concerns or to report a vulnerability:
               </p>
               <a
-                href="mailto:security@motiongranted.com"
+                href="mailto:security@motion-granted.com"
                 className="text-blue-600 hover:text-blue-700 font-medium"
               >
-                security@motiongranted.com
+                security@motion-granted.com
               </a>
               <p className="mt-4 text-sm text-gray-500">
                 Please include as much detail as possible about the potential

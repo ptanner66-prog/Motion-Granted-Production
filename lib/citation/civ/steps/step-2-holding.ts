@@ -268,6 +268,35 @@ export async function step2HoldingVerification(
     `result=${stage1.result} is_majority=${stage1.isFromMajority}`
   );
 
+  // D2-007: Persist GPT-4 Stage 1 results for audit trail
+  if (context?.orderId) {
+    try {
+      const { getServiceSupabase } = await import('@/lib/supabase/admin');
+      const svc = getServiceSupabase();
+      await svc.from('automation_logs').insert({
+        order_id: context.orderId,
+        action_type: 'civ_stage_1_result',
+        action_details: {
+          citation: citation.substring(0, 200),
+          caseName,
+          stage: 'STAGE_1',
+          result: stage1.result,
+          confidence: stage1.confidence,
+          classification: stage1.classification,
+          isFromMajority: stage1.isFromMajority,
+          reasoning: stage1.reasoning?.substring(0, 500),
+          citationId: context.citationId,
+          tier,
+          verified_at: new Date().toISOString(),
+        },
+        confidence_score: stage1.confidence / 100,
+      });
+    } catch (persistErr) {
+      // Non-fatal: audit persistence failure shouldn't break CIV pipeline
+      log.warn('[CIV_STEP2] Failed to persist Stage 1 result:', persistErr);
+    }
+  }
+
   // CIV-003: Threshold-based routing — canonical normalization
   const { normalizeConfidence } = await import('@/lib/citation/utils');
   const normalizedConf = normalizeConfidence(stage1.confidence);

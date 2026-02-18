@@ -352,7 +352,7 @@ function buildEmailComponent(
   type: NotificationType,
   data: Record<string, unknown>
 ): React.ReactElement | null {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com';
 
   switch (type) {
     case 'order_confirmation':

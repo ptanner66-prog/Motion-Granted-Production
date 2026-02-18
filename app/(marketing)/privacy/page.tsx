@@ -182,7 +182,7 @@ export default function PrivacyPage() {
               <li>Withdraw consent where processing is based on consent</li>
             </ul>
             <p>
-              To exercise these rights, contact us at privacy@motiongranted.com.
+              To exercise these rights, contact us at privacy@motion-granted.com.
             </p>
 
             <h2>9. Cookies and Tracking</h2>
@@ -256,7 +256,7 @@ export default function PrivacyPage() {
               Motion Granted, LLC<br />
               Privacy Inquiries<br />
               Louisiana-based legal drafting service<br />
-              privacy@motiongranted.com
+              privacy@motion-granted.com
             </p>
 
             <div className="rounded-xl bg-gray-50 border border-gray-200 p-8 mt-12">

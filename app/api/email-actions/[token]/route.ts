@@ -11,7 +11,7 @@ import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('api-email-actions');
 
-const BASE_URL = process.env.NEXT_PUBLIC_URL || 'https://motiongranted.com';
+const BASE_URL = process.env.NEXT_PUBLIC_URL || 'https://motion-granted.com';
 
 export async function GET(
   request: NextRequest,

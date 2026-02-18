@@ -87,7 +87,7 @@ async function logInvalidWebhookAttempt(
       // Send security alert to admin
       try {
         const { sendAlertEmail } = await import('@/lib/monitoring/alert-sender');
-        const adminEmail = process.env.ADMIN_ALERT_EMAIL || 'admin@motiongranted.com';
+        const adminEmail = process.env.ADMIN_ALERT_EMAIL || 'admin@motion-granted.com';
         await sendAlertEmail({
           to: adminEmail,
           subject: `[SECURITY] Suspected Stripe webhook attack — ${count} invalid attempts`,

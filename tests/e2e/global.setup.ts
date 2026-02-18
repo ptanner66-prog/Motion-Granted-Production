@@ -58,7 +58,7 @@ setup('authenticate as user', async ({ page }) => {
  */
 setup('authenticate as admin', async ({ page }) => {
   // Skip if credentials are not configured
-  if (!TEST_ADMIN.email || TEST_ADMIN.email === 'admin@motiongranted.com') {
+  if (!TEST_ADMIN.email || TEST_ADMIN.email === 'admin@motion-granted.com') {
     console.log('Skipping admin auth setup - TEST_ADMIN credentials not configured');
     return;
   }

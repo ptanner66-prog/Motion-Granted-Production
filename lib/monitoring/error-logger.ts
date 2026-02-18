@@ -83,7 +83,7 @@ const DEFAULT_MIN_LOG_LEVEL: LogLevel = process.env.NODE_ENV === 'production' ? 
 
 const DEFAULT_ALERT_CONFIG: AlertConfig = {
   enabled: process.env.NODE_ENV === 'production',
-  adminEmail: process.env.ADMIN_EMAIL || 'admin@motiongranted.com',
+  adminEmail: process.env.ADMIN_EMAIL || 'admin@motion-granted.com',
   errorThreshold: 5,
   errorWindowMinutes: 5,
 };

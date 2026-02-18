@@ -23,6 +23,7 @@ type CardStatus =
   | 'in_revision'
   | 'completed'
   | 'cancelled'
+  | 'pending_conflict_review'
 
 interface OrderStatusCardProps {
   orderId: string
@@ -105,6 +106,14 @@ const STATUS_CONFIG: Record<
     textColor: 'text-gray-600',
     borderColor: 'border-gray-200',
   },
+  pending_conflict_review: {
+    label: 'Under Review',
+    icon: AlertTriangle,
+    dotColor: 'bg-amber-500',
+    bgColor: 'bg-amber-50',
+    textColor: 'text-amber-700',
+    borderColor: 'border-amber-200',
+  },
 }
 
 export function OrderStatusCard({
@@ -151,6 +160,16 @@ export function OrderStatusCard({
             <span className="hidden sm:inline">{config.label}</span>
           </div>
         </div>
+
+        {/* Conflict review notice */}
+        {status === 'pending_conflict_review' && (
+          <div className="mt-3 rounded-md bg-amber-50 border border-amber-200 p-3">
+            <p className="text-amber-800 text-xs font-medium">Your order is under review.</p>
+            <p className="text-amber-700 text-xs mt-1">
+              You have not been charged. We will notify you when review is complete.
+            </p>
+          </div>
+        )}
 
         {/* Phase progress for processing status */}
         {status === 'processing' && currentPhase != null && (

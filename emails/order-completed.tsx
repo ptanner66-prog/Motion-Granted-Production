@@ -29,9 +29,9 @@ export function OrderCompletedEmail({
   caseCaption = 'Smith v. Jones',
   completedDate = 'January 18, 2024',
   turnaround = 'Standard (delivered in 4 days)',
-  feedbackUrl = 'https://motiongranted.com/feedback/123',
-  portalUrl = 'https://motiongranted.com/dashboard',
-  orderUrl = 'https://motiongranted.com/orders/123',
+  feedbackUrl = 'https://motion-granted.com/feedback/123',
+  portalUrl = 'https://motion-granted.com/dashboard',
+  orderUrl = 'https://motion-granted.com/orders/123',
 }: OrderCompletedEmailProps) {
   return (
     <Html>
@@ -137,8 +137,8 @@ export function OrderCompletedEmail({
           <Section style={footer}>
             <Text style={footerText}>
               Questions about your order? Reply to this email or contact us at{' '}
-              <Link href="mailto:support@motiongranted.com" style={link}>
-                support@motiongranted.com
+              <Link href="mailto:support@motion-granted.com" style={link}>
+                support@motion-granted.com
               </Link>
             </Text>
             <Text style={footerDisclaimer}>

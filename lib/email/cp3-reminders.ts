@@ -18,7 +18,7 @@ import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('email-cp3-reminders');
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://motiongranted.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://motion-granted.com';
 
 /**
  * Fetch order + attorney profile for email context.
@@ -223,7 +223,7 @@ function buildReminderHtml(params: {
   </div>
   <hr style="border-color:#e2e8f0;margin:0">
   <div style="padding:24px;text-align:center">
-    <p style="color:#64748b;font-size:14px;margin:0 0 12px">Questions? Contact <a href="mailto:support@motiongranted.com" style="color:#00d4aa">support@motiongranted.com</a></p>
+    <p style="color:#64748b;font-size:14px;margin:0 0 12px">Questions? Contact <a href="mailto:support@motion-granted.com" style="color:#00d4aa">support@motion-granted.com</a></p>
     <p style="color:#94a3b8;font-size:12px;margin:0">Motion Granted is not a law firm. All work product requires attorney review before filing.</p>
   </div>
 </div>
@@ -277,7 +277,7 @@ function buildFinalNoticeHtml(params: {
   </div>
   <hr style="border-color:#e2e8f0;margin:0">
   <div style="padding:24px;text-align:center">
-    <p style="color:#64748b;font-size:14px;margin:0 0 12px">Questions? Contact <a href="mailto:support@motiongranted.com" style="color:#00d4aa">support@motiongranted.com</a></p>
+    <p style="color:#64748b;font-size:14px;margin:0 0 12px">Questions? Contact <a href="mailto:support@motion-granted.com" style="color:#00d4aa">support@motion-granted.com</a></p>
     <p style="color:#94a3b8;font-size:12px;margin:0">Motion Granted is not a law firm. All work product requires attorney review before filing.</p>
   </div>
 </div>

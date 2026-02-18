@@ -42,15 +42,15 @@ const TEST_EMAIL_PATTERNS = [
  */
 const SPECIFIC_TEST_EMAILS: string[] = [
   // Add specific test emails, e.g.:
-  // 'porter+test@motiongranted.com',
-  // 'demo@motiongranted.com',
+  // 'porter+test@motion-granted.com',
+  // 'demo@motion-granted.com',
 ];
 
 /**
  * Email patterns to NEVER delete (safety guard).
  */
 const PROTECTED_PATTERNS = [
-  '%@motiongranted.com',  // Protect all @motiongranted.com accounts by default
+  '%@motion-granted.com',  // Protect all @motion-granted.com accounts by default
 ];
 
 // ============================================================================

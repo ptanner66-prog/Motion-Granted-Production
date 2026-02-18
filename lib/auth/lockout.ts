@@ -171,7 +171,7 @@ async function queueLockoutNotification(email: string): Promise<void> {
     to_email: email.toLowerCase(),
     data: {
       lockout_duration_minutes: LOCKOUT_CONFIG.LOCKOUT_DURATION_MINUTES,
-      support_email: 'support@motiongranted.com',
+      support_email: 'support@motion-granted.com',
     },
     status: 'pending',
     created_at: new Date().toISOString(),
