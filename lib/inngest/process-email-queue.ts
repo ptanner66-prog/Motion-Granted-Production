@@ -82,6 +82,13 @@ function getSubjectForTemplate(template: string, orderNumber?: string): string {
 
     // Reconciliation
     'reconciliation-alert': `[Admin] Reconciliation Alert${suffix}`,
+
+    // T-14 FIX: Missing template subjects (Area 11 A11-P1-023)
+    'delivery_complete': `Your Motion Has Been Delivered${suffix}`,
+    'attorney_package_ready': `Your Attorney Package is Ready${suffix}`,
+    'cp3_reminder': `Reminder: Motion Awaiting Your Approval${suffix}`,
+    'cp3_timeout_escalation': `Action Required: Motion Approval Timeout${suffix}`,
+    'cancellation_confirmation': `Order Cancellation Confirmed${suffix}`,
   };
 
   return subjects[template] || `Motion Granted Notification${suffix}`;
@@ -260,6 +267,64 @@ function buildEmailBody(
         `If you need immediate access, contact ${data.support_email || 'support@motion-granted.com'}.`,
         '',
         '— Motion Granted Security',
+      ].join('\n');
+
+    // T-14 FIX: Missing template bodies (Area 11 A11-P1-023)
+    case 'delivery_complete':
+      return [
+        `Your motion${orderNumber ? ` (${orderNumber})` : ''} has been delivered and is ready for download.`,
+        '',
+        'You can access your completed filing package from your dashboard.',
+        '',
+        `Download your documents: ${orderUrl}`,
+        '',
+        '— Motion Granted',
+      ].join('\n');
+
+    case 'attorney_package_ready':
+      return [
+        `The attorney package for${orderNumber ? ` order ${orderNumber}` : ' your order'} is ready for review.`,
+        '',
+        'The filing package includes your motion, supporting documents, and filing instructions.',
+        '',
+        `Review your package: ${orderUrl}`,
+        '',
+        '— Motion Granted',
+      ].join('\n');
+
+    case 'cp3_reminder':
+      return [
+        `Reminder: Your motion${orderNumber ? ` (${orderNumber})` : ''} is awaiting your approval.`,
+        '',
+        'Please log in to review the draft and either approve it for delivery or request revisions.',
+        '',
+        `Review now: ${orderUrl}`,
+        '',
+        '— Motion Granted',
+      ].join('\n');
+
+    case 'cp3_timeout_escalation':
+      return [
+        `ACTION REQUIRED: Your motion${orderNumber ? ` (${orderNumber})` : ''} approval is approaching its deadline.`,
+        '',
+        'If no action is taken, the order may be automatically cancelled.',
+        '',
+        `Please take action now: ${orderUrl}`,
+        '',
+        '— Motion Granted',
+      ].join('\n');
+
+    case 'cancellation_confirmation':
+      return [
+        `Your order${orderNumber ? ` (${orderNumber})` : ''} has been cancelled.`,
+        '',
+        `Reason: ${data.reason || 'Cancelled per request.'}`,
+        '',
+        'If a refund is applicable, it will be processed to your original payment method within 5-10 business days.',
+        '',
+        `If you have questions, contact support@motion-granted.com.`,
+        '',
+        '— Motion Granted',
       ].join('\n');
 
     default:

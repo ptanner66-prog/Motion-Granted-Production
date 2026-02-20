@@ -155,6 +155,9 @@ import { generateAndStoreFilingPackage } from "@/lib/integration/doc-gen-bridge"
 // SP-20 D5: Checkpoint event types (shared across Fn1, Fn2, dashboard)
 import type { CP3ApprovalEvent } from "@/lib/types/checkpoint-events";
 
+// T-17: Structured step logging for phase execution
+import { loggedStep, logPhaseSkip } from "@/lib/logging/step-logger";
+
 // SP23: Tiered max revision loops per XDC-004 / WF-04-A
 // Tier A (procedural) = 2, Tier B/C (substantive) = 3, Tier D (complex) = 4
 const TIERED_MAX_LOOPS: Record<string, number> = {
@@ -1490,13 +1493,16 @@ export const generateOrderWorkflow = inngest.createFunction(
     { event: "order/revision-requested" },   // Attorney rework
     { event: "order/protocol-10-exit" },     // Protocol 10 re-assembly
   ],
-  async ({ event, step }) => {
+  async ({ event, step, runId }) => {
     const { orderId } = event.data;
     const supabase = getSupabase();
+    // T-17: runId for structured logging correlation (falls back to event timestamp)
+    const effectiveRunId = runId ?? `run-${Date.now()}`;
 
     console.log(`[workflow:${orderId}] Starting 14-phase workflow`, {
       eventName: event.name,
       orderId,
+      runId: effectiveRunId,
       timestamp: new Date().toISOString(),
     });
 
@@ -2025,7 +2031,8 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
     // STEP 2: Phase I - Document Parsing
     // ========================================================================
-    const phaseIResult = await step.run("phase-i-document-parsing", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseIResult = await loggedStep(step, "phase-i-document-parsing", effectiveRunId, async () => {
       console.log('[Orchestration] Phase I starting');
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("I", input);
@@ -2037,12 +2044,26 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "I", result);
       return result;
-    });
+    }, { orderId, phaseCode: 'I', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseIResult?.output) {
       workflowState.phaseOutputs["I"] = phaseIResult.output;
     }
     console.log('[Orchestration] Accumulated after I:', Object.keys(workflowState.phaseOutputs));
+
+    // T-20: Persist after Phase I for crash recovery
+    await step.run('persist-phase-I', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'I',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-I] FAILED:', error.message);
+    });
 
     // Write-back: Populate filing metadata columns from order context after Phase I
     await updateOrderColumns(supabase, orderId, {
@@ -2065,7 +2086,8 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
     // STEP 3: Phase II - Legal Framework
     // ========================================================================
-    const phaseIIResult = await step.run("phase-ii-legal-framework", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseIIResult = await loggedStep(step, "phase-ii-legal-framework", effectiveRunId, async () => {
       console.log('[Orchestration] Phase II - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("II", input);
@@ -2077,17 +2099,32 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "II", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'II', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseIIResult?.output) {
       workflowState.phaseOutputs["II"] = phaseIIResult.output;
     }
     console.log('[Orchestration] Accumulated after II:', Object.keys(workflowState.phaseOutputs));
 
+    // T-20: Persist after Phase II for crash recovery
+    await step.run('persist-phase-II', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'II',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-II] FAILED:', error.message);
+    });
+
     // ========================================================================
     // STEP 4: Phase III - Legal Research
     // ========================================================================
-    const phaseIIIResult = await step.run("phase-iii-legal-research", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseIIIResult = await loggedStep(step, "phase-iii-legal-research", effectiveRunId, async () => {
       console.log('[Orchestration] Phase III - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("III", input);
@@ -2099,12 +2136,26 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "III", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'III', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseIIIResult?.output) {
       workflowState.phaseOutputs["III"] = phaseIIIResult.output;
     }
     console.log('[Orchestration] Accumulated after III:', Object.keys(workflowState.phaseOutputs));
+
+    // T-20: Persist after Phase III for crash recovery
+    await step.run('persist-phase-III', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'III',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-III] FAILED:', error.message);
+    });
 
     // ========================================================================
     // BUG-04: HOLD CHECKPOINT AFTER PHASE III — ENHANCED DETECTION
@@ -2413,6 +2464,20 @@ export const generateOrderWorkflow = inngest.createFunction(
     console.log('[Orchestration] Accumulated after IV:', Object.keys(workflowState.phaseOutputs));
     console.log('[Orchestration] Citation count:', workflowState.citationCount);
 
+    // T-20: Persist after Phase IV for crash recovery
+    await step.run('persist-phase-IV', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'IV',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-IV] FAILED:', error.message);
+    });
+
     // Log Phase IV execution for audit trail
     await step.run("log-phase-iv-execution", async () => {
       await supabase.from("automation_logs").insert({
@@ -2589,7 +2654,8 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
     // STEP 6: Phase V - Draft Motion
     // ========================================================================
-    const phaseVResult = await step.run("phase-v-draft-motion", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseVResult = await loggedStep(step, "phase-v-draft-motion", effectiveRunId, async () => {
       console.log('========== PHASE V START ==========');
       console.log('Order ID:', workflowState.orderId);
       console.log('[Orchestration] Phase V - has previous:', Object.keys(workflowState.phaseOutputs));
@@ -2616,12 +2682,26 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "V", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'V', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseVResult?.output) {
       workflowState.phaseOutputs["V"] = phaseVResult.output;
     }
     console.log('[Orchestration] Accumulated after V:', Object.keys(workflowState.phaseOutputs));
+
+    // T-20: Persist after Phase V for crash recovery
+    await step.run('persist-phase-V', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'V',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-V] FAILED:', error.message);
+    });
 
     // ========================================================================
     // STEP 5.5: Mark citations that appear in the draft motion (in_draft)
@@ -2756,7 +2836,8 @@ export const generateOrderWorkflow = inngest.createFunction(
     // For Tier C/D, each 2-citation batch gets its own Inngest step for
     // checkpointing (high cost, high risk). Tier A/B runs as one step.
     // ========================================================================
-    const phaseV1Result = await step.run("phase-v1-citation-accuracy", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseV1Result = await loggedStep(step, "phase-v1-citation-accuracy", effectiveRunId, async () => {
       console.log('[Orchestration] Phase V.1 - has previous:', Object.keys(workflowState.phaseOutputs));
       console.log('[Orchestration] Phase V.1 - Phase IV present:', !!workflowState.phaseOutputs['IV']);
       console.log('[Orchestration] Phase V.1 - Phase V present:', !!workflowState.phaseOutputs['V']);
@@ -2774,12 +2855,26 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "V.1", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'V.1', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseV1Result?.output) {
       workflowState.phaseOutputs["V.1"] = phaseV1Result.output;
     }
     console.log('[Orchestration] Accumulated after V.1:', Object.keys(workflowState.phaseOutputs));
+
+    // T-20: Persist after Phase V.1 for crash recovery
+    await step.run('persist-phase-V.1', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'V.1',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-V.1] FAILED:', error.message);
+    });
 
     // ========================================================================
     // WIRE-1: Hard gate check — halt workflow if CIV pipeline failed
@@ -2811,6 +2906,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       const v1HasBlocked = !!(v1Output?.protocol7 as Record<string, unknown>)?.triggered;
       const v1DispatchStatus = v1HasBlocked ? 'VERIFICATION_DEFERRED' as const : 'VERIFIED' as const;
 
+      // T-10 FIX: Pass supabase as 3rd arg so Protocol 7 handler can call RPC
       const v1DispatchResult = await step.run('dispatch-protocols-v1', async () => {
         return dispatchProtocols({
           orderId,
@@ -2820,7 +2916,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           citation: { id: orderId, text: '' }, // Order-level dispatch
           verificationResult: { status: v1DispatchStatus },
           detectionOnly: false,
-        });
+        }, undefined, supabase);
       });
 
       await step.run('persist-protocol-results-v1', async () => {
@@ -2868,10 +2964,22 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
     // STEP 8: Phase VI - Opposition Anticipation
     // ========================================================================
-    const phaseVIResult = await step.run("phase-vi-opposition-anticipation", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseVIResult = await loggedStep(step, "phase-vi-opposition-anticipation", effectiveRunId, async () => {
       // TIER A SKIP: Procedural motions rarely face substantive opposition
       if (workflowState.tier === 'A') {
-        console.log('[Orchestration] Phase VI SKIPPED - Tier A procedural motion');
+        // T-12 FIX: Structured log when Tier A skips Phase VI
+        console.log(JSON.stringify({
+          level: 'info',
+          event: 'phase_vi_skipped',
+          orderId,
+          tier: workflowState.tier,
+          reason: 'Tier A procedural motions rarely face substantive opposition',
+          motionType: workflowState.orderContext.motionType,
+          timestamp: new Date().toISOString(),
+        }));
+        // T-17: Also log skip to phase_execution_logs
+        await logPhaseSkip(orderId, effectiveRunId, 'VI', 'Tier A procedural motion', supabase);
         return {
           success: true,
           phase: 'VI' as WorkflowPhaseCode,
@@ -2899,17 +3007,32 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "VI", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'VI', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseVIResult?.output) {
       workflowState.phaseOutputs["VI"] = phaseVIResult.output;
     }
     console.log('[Orchestration] Accumulated after VI:', Object.keys(workflowState.phaseOutputs));
 
+    // T-20: Persist after Phase VI for crash recovery
+    await step.run('persist-phase-VI', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'VI',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-VI] FAILED:', error.message);
+    });
+
     // ========================================================================
     // STEP 9: Phase VII - Judge Simulation + CP2 Checkpoint
     // ========================================================================
-    let phaseVIIResult = await step.run("phase-vii-judge-simulation", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    let phaseVIIResult = await loggedStep(step, "phase-vii-judge-simulation", effectiveRunId, async () => {
       console.log('[Orchestration] Phase VII - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("VII", input);
@@ -2922,7 +3045,7 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "VII", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'VII', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseVIIResult?.output) {
       workflowState.phaseOutputs["VII"] = phaseVIIResult.output;
@@ -2932,6 +3055,20 @@ export const generateOrderWorkflow = inngest.createFunction(
     }
     console.log('[Orchestration] Accumulated after VII:', Object.keys(workflowState.phaseOutputs));
     console.log('[Orchestration] Current grade:', workflowState.currentGrade);
+
+    // T-20: Persist after Phase VII for crash recovery
+    await step.run('persist-phase-VII', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'VII',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-VII] FAILED:', error.message);
+    });
 
     // CP2 Checkpoint - Customer reviews draft and grade
     await step.run("checkpoint-cp2", async () => {
@@ -3057,6 +3194,33 @@ export const generateOrderWorkflow = inngest.createFunction(
       console.log(`[Orchestration] ===== REVISION LOOP ${loopNum}/${maxLoopsForTier} =====`);
       console.log(`[Orchestration] Current numericScore: ${currentNumericGrade}, threshold: ${qualityThreshold} (Tier ${workflowState.tier}: needs ${workflowState.tier === 'A' ? 'B / 83%' : 'B+ / 87%'})`);
 
+      // T-13 FIX: Emit email event when entering revision loop
+      await step.run(`revision-loop-email-${loopNum}`, async () => {
+        try {
+          await supabase
+            .from('email_queue')
+            .insert({
+              order_id: orderId,
+              template: 'admin-alert',
+              to_email: null,
+              data: {
+                alertType: 'revision_loop_entered',
+                loopNumber: loopNum,
+                maxLoops: maxLoopsForTier,
+                tier: workflowState.tier,
+                currentScore: currentNumericGrade,
+                threshold: qualityThreshold,
+                motionType: workflowState.orderContext.motionType,
+                message: `Order ${workflowState.orderContext.orderNumber || orderId} entering revision loop ${loopNum}/${maxLoopsForTier}. Current score: ${currentNumericGrade}, threshold: ${qualityThreshold}.`,
+              },
+              status: 'pending',
+            });
+          console.log(`[Orchestration] Revision loop ${loopNum} email event emitted for order ${orderId}`);
+        } catch (emailErr) {
+          console.warn(`[Orchestration] Failed to emit revision loop email (non-fatal):`, emailErr);
+        }
+      });
+
       // STEP A: Phase VIII — Apply revisions based on Phase VII feedback
       const phaseVIIIRevisionResult = await step.run(`phase-viii-revision-loop-${loopNum}`, async () => {
         console.log(`[Orchestration] Phase VIII Loop ${loopNum} - applying revisions`);
@@ -3101,26 +3265,23 @@ export const generateOrderWorkflow = inngest.createFunction(
         return { status: 'cancelled', orderId, reason: 'hold_cancel_revision_loop' };
       }
 
-      // SP-05: Crash recovery — persist Phase VIII output to DB so Inngest replay
-      // can recover the latest revision if the function crashes mid-loop
+      // SP-05 + T-20 FIX: Crash recovery — persist Phase VIII output to DB.
+      // Uses correct workflow_state columns (phase_outputs JSONB, not phase_viii_output).
       await step.run(`persist-revision-${loopNum}`, async () => {
-        const { error: persistError } = await supabase
+        const { error } = await supabase
           .from("workflow_state")
           .update({
             current_phase: 'VIII',
             phase_status: 'REVISION_LOOP',
-            revision_loop_count: loopNum,
             phase_outputs: workflowState.phaseOutputs,
+            revision_loop_count: loopNum,
             updated_at: new Date().toISOString(),
           })
-          .eq("order_id", orderId);
-
-        if (persistError) {
-          console.error(`[Orchestration] persist-revision-${loopNum} FAILED:`, persistError.message);
-          // Non-fatal: in-memory state is correct, workflow continues.
-          // But crash recovery will be incomplete.
+          .eq('order_id', orderId);
+        if (error) {
+          console.error(`[persist-revision-${loopNum}] FAILED:`, error.message);
         } else {
-          console.log(`[Orchestration] Loop ${loopNum} revision persisted for crash recovery`);
+          console.log(`[Orchestration] Loop ${loopNum} Phase VIII output persisted for crash recovery`);
         }
       });
 
@@ -3343,6 +3504,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         const vii1Escalated = !!(vii1Output?.escalated);
         const vii1DispatchStatus = vii1Escalated ? 'VERIFICATION_DEFERRED' as const : 'VERIFIED' as const;
 
+        // T-10 FIX: Pass supabase as 3rd arg so Protocol 7 handler can call RPC
         const vii1DispatchResult = await step.run(`dispatch-protocols-vii1-loop-${loopNum}`, async () => {
           return dispatchProtocols({
             orderId,
@@ -3352,7 +3514,7 @@ export const generateOrderWorkflow = inngest.createFunction(
             citation: { id: orderId, text: '' },
             verificationResult: { status: vii1DispatchStatus },
             detectionOnly: false,
-          });
+          }, undefined, supabase);
         });
 
         await step.run(`persist-protocol-results-vii1-loop-${loopNum}`, async () => {
@@ -3551,7 +3713,8 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
     // STEP 12: Phase VIII.5 - Caption Validation
     // ========================================================================
-    const phaseVIII5Result = await step.run("phase-viii5-caption-validation", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseVIII5Result = await loggedStep(step, "phase-viii5-caption-validation", effectiveRunId, async () => {
       console.log('[Orchestration] Phase VIII.5 - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("VIII.5", input);
@@ -3563,12 +3726,26 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "VIII.5", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'VIII.5', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseVIII5Result?.output) {
       workflowState.phaseOutputs["VIII.5"] = phaseVIII5Result.output;
     }
     console.log('[Orchestration] Accumulated after VIII.5:', Object.keys(workflowState.phaseOutputs));
+
+    // T-20: Persist after Phase VIII.5 for crash recovery
+    await step.run('persist-phase-VIII.5', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'VIII.5',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-VIII.5] FAILED:', error.message);
+    });
 
     // ========================================================================
     // STEP 12.5: Protocol 5 — Statutory Reference Verification (SP-11)
@@ -3597,7 +3774,8 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
     // STEP 13: Phase IX - Supporting Documents
     // ========================================================================
-    const phaseIXResult = await step.run("phase-ix-supporting-documents", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseIXResult = await loggedStep(step, "phase-ix-supporting-documents", effectiveRunId, async () => {
       console.log('[Orchestration] Phase IX - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("IX", input);
@@ -3609,12 +3787,26 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "IX", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'IX', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseIXResult?.output) {
       workflowState.phaseOutputs["IX"] = phaseIXResult.output;
     }
     console.log('[Orchestration] Accumulated after IX:', Object.keys(workflowState.phaseOutputs));
+
+    // T-20: Persist after Phase IX for crash recovery
+    await step.run('persist-phase-IX', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'IX',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-IX] FAILED:', error.message);
+    });
 
     // SP8: Inject motion type advisories into Phase IX output
     const detectedTypes = detectMotionType(
@@ -3680,7 +3872,8 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
     // STEP 14: Phase IX.1 - Separate Statement Check (MSJ/MSA only)
     // ========================================================================
-    const phaseIX1Result = await step.run("phase-ix1-separate-statement", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseIX1Result = await loggedStep(step, "phase-ix1-separate-statement", effectiveRunId, async () => {
       console.log('[Orchestration] Phase IX.1 - has previous:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("IX.1", input);
@@ -3692,12 +3885,26 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "IX.1", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'IX.1', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseIX1Result?.output) {
       workflowState.phaseOutputs["IX.1"] = phaseIX1Result.output;
     }
     console.log('[Orchestration] Accumulated after IX.1:', Object.keys(workflowState.phaseOutputs));
+
+    // T-20: Persist after Phase IX.1 for crash recovery
+    await step.run('persist-phase-IX.1', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'IX.1',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-IX.1] FAILED:', error.message);
+    });
 
     // ========================================================================
     // WIRE-1: Hard gate check — halt workflow if final CIV audit failed
@@ -3729,6 +3936,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       const ix1HasRejected = ((ix1AuditForDispatch?.rejected as number) ?? 0) > 0 || ((ix1AuditForDispatch?.blocked as number) ?? 0) > 0;
       const ix1DispatchStatus = ix1HasRejected ? 'VERIFICATION_DEFERRED' as const : 'VERIFIED' as const;
 
+      // T-10 FIX: Pass supabase as 3rd arg so Protocol 7 handler can call RPC
       const ix1DispatchResult = await step.run('dispatch-protocols-ix1', async () => {
         return dispatchProtocols({
           orderId,
@@ -3738,7 +3946,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           citation: { id: orderId, text: '' },
           verificationResult: { status: ix1DispatchStatus },
           detectionOnly: false,
-        });
+        }, undefined, supabase);
       });
 
       await step.run('persist-protocol-results-ix1', async () => {
@@ -3786,7 +3994,8 @@ export const generateOrderWorkflow = inngest.createFunction(
     // ========================================================================
     // STEP 15: Phase X - Final Assembly + CP3 Checkpoint (Admin Approval)
     // ========================================================================
-    const phaseXResult = await step.run("phase-x-final-assembly", async () => {
+    // T-17: Wrapped with loggedStep for structured phase execution logging
+    const phaseXResult = await loggedStep(step, "phase-x-final-assembly", effectiveRunId, async () => {
       console.log('[Orchestration] Phase X - ALL previous outputs:', Object.keys(workflowState.phaseOutputs));
       const input = buildPhaseInput(workflowState);
       const result = await executePhase("X", input);
@@ -3798,12 +4007,26 @@ export const generateOrderWorkflow = inngest.createFunction(
 
       await logPhaseExecution(supabase, workflowState, "X", result, result.tokensUsed);
       return result;
-    });
+    }, { orderId, phaseCode: 'X', tier: workflowState.tier, supabase });
     // CRITICAL: Store output OUTSIDE step.run() for persistence across steps
     if (phaseXResult?.output) {
       workflowState.phaseOutputs["X"] = phaseXResult.output;
     }
     console.log('[Orchestration] FINAL - All accumulated phases:', Object.keys(workflowState.phaseOutputs));
+
+    // T-20: Persist after Phase X for crash recovery
+    await step.run('persist-phase-X', async () => {
+      const { error } = await supabase
+        .from('workflow_state')
+        .update({
+          current_phase: 'X',
+          phase_status: 'COMPLETED',
+          phase_outputs: workflowState.phaseOutputs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId);
+      if (error) console.error('[persist-phase-X] FAILED:', error.message);
+    });
 
     // ========================================================================
     // STEP 15: Generate Filing Package (SP-GOD-4: doc-gen-bridge)
