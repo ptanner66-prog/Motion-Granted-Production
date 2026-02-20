@@ -133,7 +133,7 @@ export async function startOrderAutomation(
     await supabase
       .from('orders')
       .update({
-        status: 'IN_PROGRESS',
+        status: 'PROCESSING',
         updated_at: new Date().toISOString(),
       })
       .eq('id', orderId);
@@ -486,19 +486,19 @@ export async function syncOrderWithWorkflow(orderId: string): Promise<OperationR
 
     switch (workflow.status) {
       case 'pending':
-        orderStatus = 'under_review';
+        orderStatus = 'UNDER_REVIEW';
         break;
       case 'in_progress':
-        orderStatus = 'in_progress';
+        orderStatus = 'PROCESSING';
         break;
       case 'blocked':
-        orderStatus = 'in_progress'; // Don't show 'blocked' to client
+        orderStatus = 'PROCESSING'; // Don't show 'blocked' to client
         break;
       case 'completed':
-        orderStatus = 'draft_delivered';
+        orderStatus = 'DRAFT_DELIVERED';
         break;
       default:
-        orderStatus = 'in_progress';
+        orderStatus = 'PROCESSING';
     }
 
     await updateOrderStatus(orderId, orderStatus);
@@ -597,7 +597,7 @@ export async function processPendingOrders(
 
         await supabase
           .from('orders')
-          .update({ status: 'IN_PROGRESS', updated_at: new Date().toISOString() })
+          .update({ status: 'PROCESSING', updated_at: new Date().toISOString() })
           .eq('id', order.id);
 
         processed++;

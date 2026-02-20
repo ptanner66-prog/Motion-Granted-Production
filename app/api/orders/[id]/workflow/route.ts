@@ -208,7 +208,7 @@ export async function POST(
     // Update order status
     await supabase
       .from('orders')
-      .update({ status: 'in_progress' })
+      .update({ status: 'PROCESSING' })
       .eq('id', orderId);
 
     // Log automation event

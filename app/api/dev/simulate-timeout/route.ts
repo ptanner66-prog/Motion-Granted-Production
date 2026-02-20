@@ -89,7 +89,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case 'conflict_7d':
         // Simulate the conflict auto-cancel directly
         await supabase.from('orders').update({
-          status: 'cancelled',
+          status: 'CANCELLED',
           conflict_notes: `${order.status} | Simulated 7-day timeout via dev endpoint.`,
           updated_at: new Date().toISOString(),
         }).eq('id', orderId);

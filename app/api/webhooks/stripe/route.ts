@@ -561,7 +561,7 @@ async function handleChargeRefunded(
   const isFullRefund = charge.amount_refunded === charge.amount;
 
   // Update order status if full refund and not already completed
-  if (isFullRefund && order.status !== 'completed') {
+  if (isFullRefund && order.status !== 'COMPLETED') {
     await supabase
       .from('orders')
       .update({

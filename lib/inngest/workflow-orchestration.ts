@@ -1479,7 +1479,7 @@ async function checkAndWaitForHold(
     return data;
   });
 
-  if (!order || (order.status !== 'on_hold' && order.status !== 'hold_pending')) {
+  if (!order || (order.status !== 'ON_HOLD' && order.status !== 'HOLD_PENDING')) {
     return 'continue';
   }
 
@@ -1501,11 +1501,11 @@ async function checkAndWaitForHold(
       return data;
     });
 
-    if (current?.status === 'cancelled' || current?.status === 'CANCELLED_SYSTEM') {
+    if (current?.status === 'CANCELLED' || current?.status === 'CANCELLED_SYSTEM') {
       return 'cancelled';
     }
 
-    if (current?.status === 'on_hold' || current?.status === 'hold_pending') {
+    if (current?.status === 'ON_HOLD' || current?.status === 'HOLD_PENDING') {
       // Fallback: timeout function failed
       const { handleHoldTimeout } = await import('@/lib/inngest/checkpoint-timeout');
       await step.run(`fallback-cancel-${currentPhase}`, async () => {
@@ -1752,7 +1752,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         // Only skip if order is in a terminal state — already completed or cancelled.
         // All intermediate statuses (paid, submitted, under_review, in_progress,
         // processing, assigned, on_hold, etc.) are allowed to proceed.
-        const terminalStatuses = ['completed', 'draft_delivered', 'revision_delivered', 'cancelled', 'refunded'];
+        const terminalStatuses = ['COMPLETED', 'DRAFT_DELIVERED', 'REVISION_DELIVERED', 'CANCELLED', 'REFUNDED'];
         if (terminalStatuses.includes(data.status)) {
           console.log(`[check-existing-workflow] Skipping: order ${orderId} already in terminal status '${data.status}'`);
           return { skip: true, reason: `order_already_${data.status}` };
@@ -2421,14 +2421,14 @@ export const generateOrderWorkflow = inngest.createFunction(
           });
 
           // FIX-E FIX 11: Whitelist instead of blacklist — only resume for known safe statuses
-          const allowedStatuses = ['in_progress', 'processing', 'on_hold', 'hold_pending'];
+          const allowedStatuses = ['IN_PROGRESS', 'PROCESSING', 'ON_HOLD', 'HOLD_PENDING'];
           if (!allowedStatuses.includes(currentOrder?.status || '')) {
             // Order is refunded, cancelled, completed, or unknown — EXIT cleanly
             console.log(`[Orchestration] HOLD timeout: order status is '${currentOrder?.status}' — not resuming workflow`);
             return { status: 'skipped', orderId, reason: `order status '${currentOrder?.status}' not in allowed list` };
           }
 
-          if (currentOrder?.status === 'on_hold' || currentOrder?.status === 'hold_pending') {
+          if (currentOrder?.status === 'ON_HOLD' || currentOrder?.status === 'HOLD_PENDING') {
             // Fallback: timeout function failed, we cancel ourselves
             const { handleHoldTimeout: fallbackTimeout } = await import('@/lib/inngest/checkpoint-timeout');
             await step.run('fallback-hold-cancel', async () => {
@@ -3020,7 +3020,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       console.error(`[Orchestration] WIRE-1: Phase V.1 hard gate FAILED — halting workflow for order ${orderId}`);
       await step.run('v1-hard-gate-update-status', async () => {
         await supabase.from('orders').update({
-          status: 'on_hold',
+          status: 'ON_HOLD',
           hold_reason: 'CITATION_VERIFICATION_FAILED',
           hold_details: `CIV hard gate failed: holdingMismatches=${v1OutputForGate.holdingMismatches}, rate=${v1OutputForGate.verificationRate}`,
         }).eq('id', orderId);
@@ -3068,7 +3068,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           await supabase
             .from('orders')
             .update({
-              status: 'on_hold',
+              status: 'ON_HOLD',
               hold_reason: holdReason,
               hold_triggered_at: new Date().toISOString(),
             })
@@ -3601,7 +3601,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         console.error(`[Orchestration] WIRE-1: Phase VII.1 hard gate FAILED in loop ${loopNum} — halting workflow for order ${orderId}`);
         await step.run(`vii1-hard-gate-update-status-loop-${loopNum}`, async () => {
           await supabase.from('orders').update({
-            status: 'on_hold',
+            status: 'ON_HOLD',
             hold_reason: 'CITATION_VERIFICATION_FAILED',
             hold_details: `CIV hard gate failed at VII.1 loop ${loopNum}: holdingMismatches=${vii1OutputForGate.holdingMismatches}, rate=${vii1OutputForGate.verificationRate}`,
           }).eq('id', orderId);
@@ -3687,7 +3687,7 @@ export const generateOrderWorkflow = inngest.createFunction(
             await supabase
               .from('orders')
               .update({
-                status: 'on_hold',
+                status: 'ON_HOLD',
                 hold_reason: holdReason,
                 hold_triggered_at: new Date().toISOString(),
               })
@@ -4071,7 +4071,7 @@ export const generateOrderWorkflow = inngest.createFunction(
       console.error(`[Orchestration] WIRE-1: Phase IX.1 final CIV audit hard gate FAILED — halting workflow for order ${orderId}`);
       await step.run('ix1-hard-gate-update-status', async () => {
         await supabase.from('orders').update({
-          status: 'on_hold',
+          status: 'ON_HOLD',
           hold_reason: 'CITATION_VERIFICATION_FAILED',
           hold_details: `CIV hard gate failed at IX.1 final audit: holdingMismatches=${ix1Audit?.holdingMismatches}, rate=${ix1Audit?.verificationRate}`,
         }).eq('id', orderId);
@@ -4119,7 +4119,7 @@ export const generateOrderWorkflow = inngest.createFunction(
           await supabase
             .from('orders')
             .update({
-              status: 'on_hold',
+              status: 'ON_HOLD',
               hold_reason: holdReason,
               hold_triggered_at: new Date().toISOString(),
             })

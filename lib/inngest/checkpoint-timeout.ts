@@ -89,7 +89,7 @@ export async function handleHoldTimeout(
   const { error: updateError } = await supabase
     .from('orders')
     .update({
-      status: 'cancelled',
+      status: 'CANCELLED',
       cancel_reason: 'hold_timeout',
       resume_phase: null,
       hold_reason: order.hold_reason,

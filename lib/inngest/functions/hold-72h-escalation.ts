@@ -41,7 +41,7 @@ export const hold72hEscalation = inngest.createFunction(
     });
 
     // Skip if no longer on hold
-    if (order.status !== 'on_hold' && order.status !== 'hold_pending') {
+    if (order.status !== 'ON_HOLD' && order.status !== 'HOLD_PENDING') {
       return { skipped: true, reason: `status_${order.status}` };
     }
 

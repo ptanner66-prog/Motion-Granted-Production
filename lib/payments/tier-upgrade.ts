@@ -207,9 +207,9 @@ export async function processUpgradePaymentFull(
   }
 
   // Step 2: Verify UPGRADE_PENDING status
-  if (order.status !== 'upgrade_pending') {
+  if (order.status !== 'UPGRADE_PENDING') {
     // Race condition: order was cancelled while customer was on upgrade checkout
-    if (order.status === 'cancelled') {
+    if (order.status === 'CANCELLED') {
       console.error(`[UPGRADE] Payment received for cancelled order ${orderId}. Issuing refund.`);
       if (session.payment_intent) {
         await stripe!.refunds.create({
@@ -278,7 +278,7 @@ export async function processUpgradePaymentFull(
     .update({
       tier: newTier,
       total_price: TIER_PRICES[newTier] || order.total_price,
-      status: 'in_progress',
+      status: 'PROCESSING',
       amount_paid_cents: newAmountPaid,
       upgrade_resolved_at: new Date().toISOString(),
       status_version: (order.status_version || 1) + 1,
@@ -303,7 +303,7 @@ export async function processUpgradePaymentFull(
         .update({
           tier: newTier,
           total_price: TIER_PRICES[newTier] || order.total_price,
-          status: 'in_progress',
+          status: 'PROCESSING',
           amount_paid_cents: newAmountPaid,
           upgrade_resolved_at: new Date().toISOString(),
           status_version: (refreshed.status_version || 1) + 1,

@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('orders')
       .update({
-        status: 'submitted',
+        status: 'SUBMITTED',
         generation_error: null,
         generation_started_at: null,
         generation_completed_at: null,

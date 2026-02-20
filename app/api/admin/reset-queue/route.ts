@@ -39,12 +39,12 @@ export async function POST(request: NextRequest) {
 
     // Statuses that indicate stuck/failed orders needing reset
     const stuckStatuses = [
-      'under_review', 'UNDER_REVIEW',
-      'in_progress', 'IN_PROGRESS',
-      'generation_failed', 'GENERATION_FAILED',
-      'pending_review', 'PENDING_REVIEW',
-      'in_review', 'IN_REVIEW',
-      'blocked', 'BLOCKED',
+      'UNDER_REVIEW',
+      'PROCESSING', 'IN_PROGRESS',
+      'GENERATION_FAILED',
+      'PENDING_REVIEW',
+      'IN_REVIEW',
+      'BLOCKED',
     ];
 
     // Get orders that need to be reset

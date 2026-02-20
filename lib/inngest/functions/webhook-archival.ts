@@ -35,8 +35,8 @@ export const webhookArchival = inngest.createFunction(
 
       // Active statuses — never archive events for these orders
       const ACTIVE_STATUSES = [
-        'paid', 'in_progress', 'awaiting_approval',
-        'upgrade_pending', 'pending_conflict_review', 'disputed',
+        'PAID', 'PROCESSING', 'AWAITING_APPROVAL',
+        'UPGRADE_PENDING', 'PENDING_CONFLICT_REVIEW', 'DISPUTED',
       ];
 
       // Get candidate events (processed, older than 90 days)

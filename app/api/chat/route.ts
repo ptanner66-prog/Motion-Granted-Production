@@ -103,7 +103,7 @@ export async function POST(request: Request) {
         .single();
 
       // Only allow regenerate for orders that have been through the workflow
-      const workflowCompletedStatuses = ['draft_delivered', 'completed', 'revision_requested', 'revision_delivered'];
+      const workflowCompletedStatuses = ['DRAFT_DELIVERED', 'COMPLETED', 'REVISION_REQUESTED', 'REVISION_DELIVERED'];
       if (!order || !workflowCompletedStatuses.includes(order.status)) {
         return new Response(JSON.stringify({
           error: 'Cannot regenerate via chat. Initial motion must be generated via the 14-phase workflow.',

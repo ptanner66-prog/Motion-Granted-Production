@@ -602,7 +602,7 @@ export async function initializeWorkflow(
     // Step 7: Update order status
     await supabase
       .from('orders')
-      .update({ status: 'in_progress' })
+      .update({ status: 'PROCESSING' })
       .eq('id', orderId);
 
     // Fire-and-forget confirmation email

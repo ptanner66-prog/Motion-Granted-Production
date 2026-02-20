@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   }
 
   // Check if order is in a valid state to start automation
-  const validStatuses = ['submitted', 'under_review', 'assigned'];
+  const validStatuses = ['submitted', 'under_review', 'assigned', 'SUBMITTED', 'UNDER_REVIEW', 'ASSIGNED'];
   if (!validStatuses.includes(order.status)) {
     return NextResponse.json({
       error: `Order is already in '${order.status}' status. Automation can only be started for new orders.`,
@@ -148,7 +148,7 @@ export async function POST(request: Request) {
     // Update order status to show it's queued
     await supabase
       .from('orders')
-      .update({ status: 'under_review' })
+      .update({ status: 'UNDER_REVIEW' })
       .eq('id', orderId);
 
     // Log the queue event

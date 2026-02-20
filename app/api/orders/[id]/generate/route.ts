@@ -81,7 +81,7 @@ export async function POST(
       .single();
 
     const workflowIsStuck = workflow && ['blocked', 'failed'].includes(workflow.status);
-    const blockedStatuses = ['pending_review', 'draft_delivered', 'completed'];
+    const blockedStatuses = ['pending_review', 'draft_delivered', 'COMPLETED'];
 
     // Block if order is in a final/review state, unless workflow is stuck
     if (blockedStatuses.includes(order.status)) {
@@ -92,7 +92,7 @@ export async function POST(
     }
 
     // Block if currently in progress AND workflow is not stuck
-    if (order.status === 'in_progress' && !workflowIsStuck) {
+    if ((order.status === 'PROCESSING' || order.status === 'IN_PROGRESS') && !workflowIsStuck) {
       return NextResponse.json(
         { error: `Workflow is currently running. Please wait or use the restart button.` },
         { status: 400 }
@@ -103,7 +103,7 @@ export async function POST(
     const { error: updateError } = await supabase
       .from('orders')
       .update({
-        status: 'IN_PROGRESS',
+        status: 'PROCESSING',
         generation_started_at: new Date().toISOString(),
         generation_error: null,
       })
@@ -352,7 +352,7 @@ export async function POST(
               await bgClient
                 .from('orders')
                 .update({
-                  status: 'on_hold',
+                  status: 'ON_HOLD',
                   generation_error: `Phase ${currentPhase} requires additional information before continuing`,
                 })
                 .eq('id', orderId);
@@ -481,7 +481,7 @@ export async function POST(
     await supabase
       .from('orders')
       .update({
-        status: 'paid',
+        status: 'PAID',
         generation_error: error instanceof Error ? error.message : 'Failed to start workflow',
       })
       .eq('id', orderId);

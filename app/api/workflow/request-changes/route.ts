@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('orders')
       .update({
-        status: 'in_progress',
+        status: 'PROCESSING',
         updated_at: new Date().toISOString(),
       })
       .eq('id', workflow.order_id);

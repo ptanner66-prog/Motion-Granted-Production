@@ -28,24 +28,22 @@ export async function GET() {
     // Define status groups
     const activeStatuses = [
       'PAID',
-      'IN_PROGRESS',
+      'PROCESSING',
       'REVISION_REQ',
-      'submitted',
-      'in_progress',
-      'revision_requested',
-      'assigned',
-      'processing',
+      'SUBMITTED',
+      'REVISION_REQUESTED',
+      'ASSIGNED',
     ];
 
     const pendingReviewStatuses = [
       'AWAITING_APPROVAL',
       'HOLD_PENDING',
-      'draft_delivered',
-      'pending_review',
-      'on_hold',
+      'DRAFT_DELIVERED',
+      'PENDING_REVIEW',
+      'ON_HOLD',
     ];
 
-    const completedStatuses = ['COMPLETED', 'completed'];
+    const completedStatuses = ['COMPLETED'];
 
     // Run all three counts in parallel
     const [activeResult, pendingResult, completedResult] = await Promise.all([

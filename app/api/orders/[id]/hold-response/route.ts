@@ -57,7 +57,7 @@ export async function POST(
   // HOLD status is IN_PROGRESS with an active HOLD checkpoint
   // Also accept legacy hold statuses
   const result = await authenticateAndLoadOrder(orderId, [
-    'IN_PROGRESS', 'in_progress', 'HOLD_PENDING', 'on_hold',
+    'PROCESSING', 'HOLD_PENDING', 'ON_HOLD',
   ]);
   if (result instanceof NextResponse) return result;
   const { order, userId } = result;

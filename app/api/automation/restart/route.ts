@@ -137,7 +137,7 @@ export async function POST(request: Request) {
     await supabase
       .from('orders')
       .update({
-        status: 'submitted',
+        status: 'SUBMITTED',
         generation_error: null,
         generation_attempts: 0,
         updated_at: new Date().toISOString(),

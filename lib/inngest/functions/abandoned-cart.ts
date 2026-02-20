@@ -25,7 +25,7 @@ export const abandonedCartCleanup = inngest.createFunction(
       const { data, error } = await supabase
         .from('orders')
         .select('id, client_id, status, created_at')
-        .eq('status', 'submitted')
+        .eq('status', 'SUBMITTED')
         .lt('created_at', twentyFourHoursAgo)
         .gt('created_at', fortyEightHoursAgo);
 
@@ -68,7 +68,7 @@ export const abandonedCartCleanup = inngest.createFunction(
       const { data, error } = await supabase
         .from('orders')
         .select('id, client_id, status, created_at')
-        .eq('status', 'submitted')
+        .eq('status', 'SUBMITTED')
         .lt('created_at', sevenDaysAgo);
 
       if (error) {
@@ -88,7 +88,7 @@ export const abandonedCartCleanup = inngest.createFunction(
             await supabase
               .from('orders')
               .update({
-                status: 'cancelled',
+                status: 'CANCELLED',
                 cancellation_type: 'ABANDONED',
                 updated_at: new Date().toISOString(),
               })

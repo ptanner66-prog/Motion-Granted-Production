@@ -177,7 +177,7 @@ export async function processUpgradePayment(
     amount_paid_cents: newAmountPaidCents,
     tier: currentOrder.upgrade_to_tier || meta.tier || currentOrder.tier,
     upgrade_resolved_at: new Date().toISOString(),
-    status: 'IN_PROGRESS', // Resume processing after upgrade
+    status: 'PROCESSING', // Resume processing after upgrade
     updated_at: new Date().toISOString(),
   };
 

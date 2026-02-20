@@ -48,7 +48,7 @@ export const GET = withCronAuth(async (_request: NextRequest) => {
     const { data: needsStripeRefund } = await supabase
       .from('orders')
       .select('id, order_number, stripe_payment_intent_id, stripe_payment_status')
-      .eq('status', 'refunded')
+      .eq('status', 'REFUNDED')
       .eq('refund_reason', 'hold_timeout')
       .not('stripe_payment_intent_id', 'is', null)
       .neq('stripe_payment_status', 'refunded')
