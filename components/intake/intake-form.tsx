@@ -79,6 +79,8 @@ const intakeSchema = z.object({
   statement_of_facts: z.string().min(200, 'Please provide more detail (minimum 200 characters)'),
   procedural_history: z.string().min(100, 'Procedural history requires minimum 100 characters'),
   drafting_instructions: z.string().min(50, 'Drafting instructions requires minimum 50 characters'),
+  // T-65: AI disclosure toggle (IW-001-DEC: advisory only, never locked)
+  include_ai_disclosure: z.boolean(),
 }).refine(
   (data) => data.case_not_filed || (data.case_number && data.case_number.length > 0),
   { message: 'Please provide the case number', path: ['case_number'] }
@@ -122,6 +124,7 @@ export function IntakeForm() {
       statement_of_facts: '',
       procedural_history: '',
       drafting_instructions: '',
+      include_ai_disclosure: false,
     },
     mode: 'onBlur',
   })
@@ -333,6 +336,7 @@ export function IntakeForm() {
         procedural_history: data.procedural_history,
         instructions: data.drafting_instructions,
         related_entities: data.judge_name ? `Judge: ${data.judge_name}` : null,
+        include_ai_disclosure: data.include_ai_disclosure ?? false,
         parties,
         documents: [],
       }
@@ -526,6 +530,26 @@ export function IntakeForm() {
                   className="mt-2"
                 />
               )}
+            </div>
+          </div>
+
+          {/* AI Disclosure Toggle (T-65, IW-001-DEC: advisory only, never locked) */}
+          <div className="space-y-2 p-4 rounded-lg bg-blue-50 border border-blue-200">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="include_ai_disclosure"
+                checked={watch('include_ai_disclosure')}
+                onCheckedChange={(checked) => setValue('include_ai_disclosure', !!checked)}
+              />
+              <div>
+                <Label htmlFor="include_ai_disclosure" className="text-sm font-medium cursor-pointer">
+                  Include AI disclosure page in filing
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Optional. Some jurisdictions recommend or require disclosure of AI-assisted legal document preparation.
+                  You may always override this selection.
+                </p>
+              </div>
             </div>
           </div>
 

@@ -59,6 +59,11 @@ export async function createOrderFromCheckout(
     updatePayload.pricing_multiplier_applied = parseFloat(meta.pricingMultiplier) || 1.0;
   }
 
+  // T-65: AI disclosure preference from checkout metadata
+  if (meta.ai_disclosure_requested) {
+    updatePayload.include_ai_disclosure = meta.ai_disclosure_requested === 'true';
+  }
+
   try {
     const { data, error } = await supabase
       .from('orders')

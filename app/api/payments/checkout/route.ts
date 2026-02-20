@@ -386,6 +386,8 @@ export async function POST(req: Request) {
           pricingMultiplier: String(pricingMultiplier),
           clientId: user.id,
           orderNumber: order.order_number,
+          // T-65: AI disclosure preference
+          ai_disclosure_requested: String(order.include_ai_disclosure ?? false),
           // Session type (D7-R5-005-META)
           session_type: 'initial',
         },

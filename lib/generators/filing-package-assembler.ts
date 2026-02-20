@@ -37,6 +37,7 @@ import {
   validateNoPlaceholders,
   categorizePlaceholders,
 } from '@/lib/workflow/validators/placeholder-validator';
+import { generateAiDisclosurePage } from '@/lib/documents/generators/ai-disclosure-page';
 
 /** Tier threshold for TOC inclusion */
 const TOC_THRESHOLD_PAGES = 15;
@@ -49,6 +50,7 @@ export type DocumentType =
   | 'affidavit'
   | 'separate_statement'
   | 'proposed_order'
+  | 'ai_disclosure_page'
   | 'proof_of_service'
   | 'attorney_instructions'
   | 'citation_report'
@@ -114,6 +116,8 @@ export interface AssemblerInput {
   };
   // A-013: Protocol findings text from D9 dispatcher
   protocolFindingsText?: string;
+  // T-67: AI disclosure toggle (IW-001-DEC: advisory only)
+  includeAiDisclosure?: boolean;
 }
 
 /**
@@ -140,6 +144,7 @@ const FILING_ORDER: Record<DocumentType, number> = {
   proposed_order: 4,
   separate_statement: 5,
   exhibit_index: 6,
+  ai_disclosure_page: 6.5,  // T-67: IW-003-DEC — after signature block, before POS
   proof_of_service: 7,
   citation_report: 8,       // Internal only — not filed
   attorney_instructions: 9,  // Internal only, always last
@@ -178,6 +183,11 @@ function determineRequiredDocuments(input: AssemblerInput): DocumentType[] {
     // Proof of Service: separate only for Tier B/C (Tier A uses inline cert)
     if (input.tier !== 'A') {
       docs.push('proof_of_service');
+    }
+
+    // T-67: AI Disclosure Page (IW-001-DEC: advisory, IW-003-DEC: separate page before POS)
+    if (input.includeAiDisclosure) {
+      docs.push('ai_disclosure_page');
     }
 
     // Citation report: include when citation verification data is available
@@ -219,6 +229,11 @@ function determineRequiredDocuments(input: AssemblerInput): DocumentType[] {
     if (input.content.proposedOrderRelief && input.content.proposedOrderRelief.length > 0) {
       docs.push('proposed_order');
     }
+  }
+
+  // T-67: AI Disclosure Page (IW-001-DEC: advisory, IW-003-DEC: separate page before POS)
+  if (input.includeAiDisclosure) {
+    docs.push('ai_disclosure_page');
   }
 
   // Proof of Service: always required
@@ -628,6 +643,29 @@ async function generateSingleDocument(
       break;
     }
 
+    case 'ai_disclosure_page': {
+      // T-67: AI Disclosure Page (IW-003-DEC: separate page, IW-002-DEC: generic language)
+      const disclosureParagraphs = generateAiDisclosurePage({
+        includeAiDisclosure: true,
+        attorneyName: input.attorney.name,
+      });
+
+      if (!disclosureParagraphs) {
+        return null;
+      }
+
+      wordCount = 80;
+      buffer = await createFormattedDocument({
+        stateCode: input.jurisdiction.stateCode,
+        isFederal: input.jurisdiction.isFederal,
+        county: input.jurisdiction.county,
+        federalDistrict: input.jurisdiction.federalDistrict,
+        content: [...captionParagraphs, ...disclosureParagraphs],
+        documentTitle: 'Disclosure of AI-Assisted Preparation',
+      });
+      break;
+    }
+
     case 'exhibit_index': {
       // Exhibit index: list of exhibits with estimated page counts
       const indexParagraphs: Paragraph[] = [];
@@ -743,6 +781,7 @@ const SEQUENCE_MAP: Record<string, string> = {
   separate_statement: '04',
   proposed_order: '05',
   exhibit_index: '06',
+  ai_disclosure_page: '06a',
   proof_of_service: '07',
   citation_report: '08',
   attorney_instructions: '09',

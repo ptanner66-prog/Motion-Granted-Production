@@ -68,6 +68,15 @@ export interface InstructionSheetData {
     defendants: string[];
     courtName: string;
   };
+  // T-68: AI disclosure fields (IW-004-DEC: always generated)
+  state?: string;
+  stateConfig?: {
+    ai_disclosure_required?: boolean;
+    ai_disclosure_text?: string;
+  };
+  order?: {
+    include_ai_disclosure?: boolean;
+  };
 }
 
 export interface InstructionSheetResult {
@@ -486,6 +495,65 @@ function generateInstructionSheetDocument(data: InstructionSheetData): Document 
       spacing: { after: 120 },
     })
   );
+
+  // ============================================================
+  // Section: AI-ASSISTED PREPARATION DISCLOSURE (T-68, IW-004-DEC: always generated)
+  // This section is ALWAYS included regardless of toggle state.
+  // Toggle controls only the in-motion disclosure page (Layer 1).
+  // This AIS section is Layer 2 (always-on).
+  // ============================================================
+
+  children.push(
+    new Paragraph({
+      children: [new TextRun({ text: 'AI-ASSISTED PREPARATION DISCLOSURE', bold: true, size: 24 })],
+      spacing: { before: 400, after: 200 },
+    })
+  );
+
+  // Model list
+  children.push(
+    new Paragraph({
+      children: [new TextRun({
+        text: 'This document was prepared using the following AI models under attorney direction: Claude Opus 4.5, Claude Sonnet 4.5, GPT-4 Turbo. All AI-generated content has been reviewed, verified, and approved by the supervising attorney.',
+        size: 20,
+      })],
+      indent: { left: convertInchesToTwip(0.5) },
+      spacing: { after: 120 },
+    })
+  );
+
+  // Jurisdiction advisory
+  const disclosureRequired = data.stateConfig?.ai_disclosure_required ?? false;
+
+  children.push(
+    new Paragraph({
+      children: [new TextRun({
+        text: disclosureRequired
+          ? `JURISDICTION NOTICE: ${data.state || 'This jurisdiction'} requires disclosure of AI-assisted legal document preparation.`
+          : 'JURISDICTION NOTICE: AI disclosure is voluntary in this jurisdiction but recommended as a professional best practice.',
+        size: 20,
+        italics: true,
+      })],
+      indent: { left: convertInchesToTwip(0.5) },
+      spacing: { after: 120 },
+    })
+  );
+
+  // Toggle status warning (IW-004-DEC: warn if opted out in required state)
+  if (disclosureRequired && !data.order?.include_ai_disclosure) {
+    children.push(
+      new Paragraph({
+        children: [new TextRun({
+          text: 'WARNING: The attorney has opted OUT of including the AI disclosure page in the filed document. This jurisdiction requires AI-assisted preparation disclosure. The attorney assumes full responsibility for this decision.',
+          size: 20,
+          bold: true,
+          color: 'CC0000',
+        })],
+        indent: { left: convertInchesToTwip(0.5) },
+        spacing: { after: 200 },
+      })
+    );
+  }
 
   // Revision Instructions Section (renumbered from 7 → 8)
   children.push(

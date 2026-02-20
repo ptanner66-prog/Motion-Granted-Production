@@ -48,6 +48,8 @@ const createOrderSchema = z.object({
   judge_name: z.string().optional(),
   opposing_counsel_name: z.string().optional(),
   opposing_counsel_firm: z.string().optional(),
+  // T-65: AI disclosure toggle (IW-001-DEC: advisory only)
+  include_ai_disclosure: z.boolean().optional().default(false),
 })
 
 export async function GET() {
@@ -209,6 +211,7 @@ export async function POST(req: Request) {
         related_entities: relatedEntities,
         stripe_payment_intent_id: paymentIntent?.id || null,
         stripe_payment_status: paymentIntent ? 'pending' : (stripePaymentRequired ? 'not_configured' : 'not_required'),
+        include_ai_disclosure: body.include_ai_disclosure ?? false,
       })
       .select()
       .single()
