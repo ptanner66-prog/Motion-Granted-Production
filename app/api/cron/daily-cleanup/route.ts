@@ -56,7 +56,7 @@ export const GET = withCronAuth(async (_request: NextRequest) => {
     const { data: staleOrders, error: queryError } = await supabase
       .from('orders')
       .select('id, order_number, status, updated_at, generation_started_at')
-      .in('status', ['in_progress', 'under_review'])
+      .in('status', ['PROCESSING', 'UNDER_REVIEW'])
       .lt('updated_at', staleThreshold)
       .limit(20);
 

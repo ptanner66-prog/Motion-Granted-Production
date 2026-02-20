@@ -309,7 +309,7 @@ async function runDeadlineCheck(): Promise<OperationResult<{ alertsSent: number 
       .from('orders')
       .select('id, order_number, filing_deadline, status')
       .lte('filing_deadline', warningDate.toISOString())
-      .not('status', 'in', '("completed","cancelled","draft_delivered")')
+      .not('status', 'in', '("COMPLETED","CANCELLED","DRAFT_DELIVERED")')
       .order('filing_deadline', { ascending: true });
 
     let alertsSent = 0;

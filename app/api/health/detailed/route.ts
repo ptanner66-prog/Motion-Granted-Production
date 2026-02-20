@@ -231,7 +231,7 @@ async function getSystemMetrics(): Promise<SystemMetrics> {
     supabase
       .from('orders')
       .select('*', { count: 'exact', head: true })
-      .not('status', 'in', '("completed","cancelled")'),
+      .not('status', 'in', '("COMPLETED","CANCELLED")'),
     supabase
       .from('order_workflows')
       .select('*', { count: 'exact', head: true })

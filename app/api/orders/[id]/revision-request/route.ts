@@ -49,7 +49,7 @@ export async function POST(
     }
 
     // Check order is in delivered status
-    if (order.status !== 'draft_delivered' && order.status !== 'revision_delivered') {
+    if (order.status !== 'DRAFT_DELIVERED' && order.status !== 'REVISION_DELIVERED') {
       return NextResponse.json({
         error: 'Revisions can only be requested on delivered orders',
       }, { status: 400 });

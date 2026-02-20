@@ -33,7 +33,7 @@ export async function processCP3Response(
     .eq('id', workflow.order_id)
     .single();
 
-  if (currentOrder?.status === 'completed') {
+  if (currentOrder?.status === 'COMPLETED') {
     log.warn('CP3 duplicate completion prevented — order already completed', {
       workflowId: workflow.id,
       orderId: workflow.order_id,

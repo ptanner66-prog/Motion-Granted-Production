@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       const { data: stuckOrders } = await supabase
         .from('orders')
         .select('id, order_number, filing_deadline, status, created_at')
-        .in('status', ['submitted', 'under_review'])
+        .in('status', ['SUBMITTED', 'UNDER_REVIEW'])
         .eq('stripe_payment_status', 'succeeded')
         .lt('updated_at', stuckThreshold)
         .is('generation_started_at', null)
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
               data: { orderId: order.id, priority, filingDeadline: order.filing_deadline, recoveryAttempt: true },
             });
 
-            await supabase.from('orders').update({ status: 'under_review', updated_at: new Date().toISOString() }).eq('id', order.id);
+            await supabase.from('orders').update({ status: 'UNDER_REVIEW', updated_at: new Date().toISOString() }).eq('id', order.id);
             await supabase.from('automation_logs').insert({
               order_id: order.id,
               action_type: 'order_recovered',
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
       const { data: timedOutOrders } = await supabase
         .from('orders')
         .select('id, order_number, filing_deadline, generation_attempts, generation_started_at')
-        .eq('status', 'in_progress')
+        .eq('status', 'PROCESSING')
         .lt('generation_started_at', timeoutThreshold)
         .limit(5);
 

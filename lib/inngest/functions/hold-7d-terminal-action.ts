@@ -54,7 +54,7 @@ export const hold7dTerminalAction = inngest.createFunction(
     });
 
     // Accept both on_hold and hold_pending (SP12-07 FIX)
-    if (order.status !== 'on_hold' && order.status !== 'hold_pending') {
+    if (order.status !== 'ON_HOLD' && order.status !== 'HOLD_PENDING') {
       return { skipped: true, reason: `status_${order.status}` };
     }
 

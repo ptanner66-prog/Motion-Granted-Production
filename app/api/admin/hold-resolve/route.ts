@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    if (order.status !== 'on_hold' && order.status !== 'hold_pending') {
+    if (order.status !== 'ON_HOLD' && order.status !== 'HOLD_PENDING') {
       return NextResponse.json(
         { error: `Order is not on hold (status: ${order.status})` },
         { status: 400 }
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
         await supabase
           .from('orders')
           .update({
-            status: 'in_progress',
+            status: 'PROCESSING',
             hold_resolved_at: now,
             updated_at: now,
           })

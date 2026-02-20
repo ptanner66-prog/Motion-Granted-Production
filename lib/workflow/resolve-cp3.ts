@@ -66,7 +66,7 @@ export async function resolveCP3(
         const { error: updateError } = await supabase
           .from('orders')
           .update({
-            status: 'completed',
+            status: 'COMPLETED',
             cp3_entered_at: null,
           })
           .eq('id', orderId);
@@ -137,7 +137,7 @@ export async function resolveCP3(
           .update({
             attorney_rework_count: newCount,
             cp3_change_notes: parseAttorneyNotes(notes),
-            status: 'in_progress',
+            status: 'PROCESSING',
             cp3_entered_at: null,
           })
           .eq('id', orderId);
@@ -169,7 +169,7 @@ export async function resolveCP3(
         const { error: cancelError } = await supabase
           .from('orders')
           .update({
-            status: 'cancelled',
+            status: 'CANCELLED',
             cancellation_type: 'CP3_CANCEL',
             cp3_entered_at: null,
           })

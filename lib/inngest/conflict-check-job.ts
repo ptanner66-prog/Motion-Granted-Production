@@ -42,8 +42,8 @@ export const conflictCheckJob = inngest.createFunction(
       if (error) throw new Error(`Failed to fetch order: ${error.message}`);
 
       // T-90: Skip conflict check for terminal status orders
-      if (data.status === 'cancelled' || data.status === 'CANCELLED' ||
-          data.status === 'completed' || data.status === 'COMPLETED') {
+      if (data.status === 'CANCELLED' ||
+          data.status === 'COMPLETED') {
         return { ...data, _skipConflictCheck: true, clientName: '' };
       }
 

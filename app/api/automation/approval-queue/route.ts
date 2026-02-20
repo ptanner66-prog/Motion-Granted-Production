@@ -215,7 +215,7 @@ export async function POST(request: Request) {
           // Mark order as ready for delivery
           await supabase
             .from('orders')
-            .update({ status: 'draft_delivered' })
+            .update({ status: 'DRAFT_DELIVERED' })
             .eq('id', approval.order_id);
 
           nextAction = 'Draft approved for delivery';
@@ -273,7 +273,7 @@ export async function POST(request: Request) {
               conflict_flagged: true,
               conflict_cleared: false,
               conflict_notes: notes || 'Conflict confirmed - order rejected',
-              status: 'cancelled',
+              status: 'CANCELLED',
             })
             .eq('id', approval.order_id);
 

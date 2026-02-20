@@ -63,14 +63,14 @@ async function getOrderSummary(supabase: Awaited<ReturnType<typeof createClient>
 
   // Calculate completion rate - include draft_delivered and revision_delivered as "completed"
   const completed = orders?.filter((o: OrderRow) =>
-    ['completed', 'draft_delivered', 'revision_delivered'].includes(o.status)
+    ['COMPLETED', 'DRAFT_DELIVERED', 'REVISION_DELIVERED'].includes(o.status)
   ).length || 0;
-  const total = orders?.filter((o: OrderRow) => !['cancelled', 'refunded'].includes(o.status)).length || 1;
+  const total = orders?.filter((o: OrderRow) => !['CANCELLED', 'REFUNDED'].includes(o.status)).length || 1;
   const completionRate = Math.round((completed / total) * 100);
 
   // Calculate average turnaround - include all "completed" states
   const completedOrders = orders?.filter((o: OrderRow) =>
-    ['completed', 'draft_delivered', 'revision_delivered'].includes(o.status)
+    ['COMPLETED', 'DRAFT_DELIVERED', 'REVISION_DELIVERED'].includes(o.status)
   ) || [];
   const avgTurnaroundDays = completedOrders.length > 0
     ? completedOrders.reduce((sum: number, o: OrderRow) => {
@@ -114,7 +114,7 @@ async function getWorkflowMetrics(supabase: Awaited<ReturnType<typeof createClie
   const { count: pendingReviewCount } = await supabase
     .from('orders')
     .select('*', { count: 'exact', head: true })
-    .in('status', ['pending_review', 'under_review', 'revision_requested']);
+    .in('status', ['PENDING_REVIEW', 'UNDER_REVIEW', 'REVISION_REQUESTED']);
 
   // Get completed workflows for metrics
   const { data: completedWorkflows } = await supabase

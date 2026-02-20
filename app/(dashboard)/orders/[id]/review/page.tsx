@@ -163,11 +163,10 @@ export default function ReviewPage() {
       setDocuments(docsData.documents ?? [])
 
       // If the order isn't in a reviewable state, redirect to order detail
-      const reviewableStatuses = ['AWAITING_APPROVAL', 'draft_delivered', 'pending_review']
+      const reviewableStatuses = ['AWAITING_APPROVAL', 'DRAFT_DELIVERED', 'PENDING_REVIEW']
       if (
         docsData.orderStatus &&
         !reviewableStatuses.includes(docsData.orderStatus) &&
-        docsData.orderStatus !== 'completed' &&
         docsData.orderStatus !== 'COMPLETED'
       ) {
         router.replace(`/orders/${orderId}`)

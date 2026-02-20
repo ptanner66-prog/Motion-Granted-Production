@@ -62,19 +62,19 @@ export async function getQueueStats(
     supabase
       .from('orders')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['submitted', 'under_review']),
+      .in('status', ['SUBMITTED', 'UNDER_REVIEW']),
 
     // R-02: Processing — orders actively being generated
     supabase
       .from('orders')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'in_progress'),
+      .eq('status', 'PROCESSING'),
 
     // R-03: Completed Today — matches the Recently Completed section filter
     supabase
       .from('orders')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['pending_review', 'draft_delivered', 'completed'])
+      .in('status', ['PENDING_REVIEW', 'DRAFT_DELIVERED', 'COMPLETED'])
       .gte('generation_completed_at', twentyFourHoursAgo),
 
     // R-04: Failed — matches the Active Queue table's "Failed" badge filter
@@ -96,7 +96,7 @@ export async function getQueueStats(
     supabase
       .from('orders')
       .select('created_at')
-      .in('status', ['submitted', 'under_review'])
+      .in('status', ['SUBMITTED', 'UNDER_REVIEW'])
       .order('created_at', { ascending: true })
       .limit(1),
   ])

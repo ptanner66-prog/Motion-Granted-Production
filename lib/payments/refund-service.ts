@@ -90,9 +90,9 @@ function getRefundPercentage(reason: RefundReason, orderStatus: string): number 
 
     case 'CUSTOMER_REQUEST':
       // Depends on order status
-      if (orderStatus === 'under_review' || orderStatus === 'in_progress') {
+      if (orderStatus === 'UNDER_REVIEW' || orderStatus === 'PROCESSING') {
         return 80; // 80% refund before draft delivered
-      } else if (orderStatus === 'pending_review' || orderStatus === 'draft_delivered') {
+      } else if (orderStatus === 'PENDING_REVIEW' || orderStatus === 'DRAFT_DELIVERED') {
         return 50; // 50% refund after draft delivered
       }
       return 0; // No refund after completion

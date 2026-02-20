@@ -34,7 +34,7 @@ export const holdRecoveryCron = inngest.createFunction(
       const { data } = await supabase
         .from('orders')
         .select('id, status, hold_reason, hold_triggered_at, updated_at, order_number')
-        .in('status', ['on_hold', 'hold_pending'])
+        .in('status', ['ON_HOLD', 'HOLD_PENDING'])
         .lt('updated_at', cutoff);
 
       return data ?? [];

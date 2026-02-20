@@ -140,10 +140,10 @@ export default function AdminRetriesPage() {
       const filteredOrders = allOrders.filter((order) => {
         // Failed orders: status is generation_failed OR has generation_error
         const isFailed = order.status === 'generation_failed' ||
-          (order.status === 'in_progress' && order.generation_error);
+          (order.status === 'PROCESSING' && order.generation_error);
 
-        // Stuck orders: in_progress for more than 15 minutes
-        const isStuck = order.status === 'in_progress' &&
+        // Stuck orders: PROCESSING for more than 15 minutes
+        const isStuck = order.status === 'PROCESSING' &&
           order.generation_started_at &&
           order.generation_started_at < fifteenMinutesAgo;
 
@@ -166,11 +166,11 @@ export default function AdminRetriesPage() {
 
       // Calculate stats from all data (not search filtered)
       const failedCount = allOrders.filter(
-        (o) => o.status === 'generation_failed' || (o.status === 'in_progress' && o.generation_error)
+        (o) => o.status === 'generation_failed' || (o.status === 'PROCESSING' && o.generation_error)
       ).length;
       const stuckCount = allOrders.filter(
         (o) =>
-          o.status === 'in_progress' &&
+          o.status === 'PROCESSING' &&
           o.generation_started_at &&
           o.generation_started_at < fifteenMinutesAgo
       ).length;
@@ -204,7 +204,7 @@ export default function AdminRetriesPage() {
       const { error: resetError } = await supabase
         .from('orders')
         .update({
-          status: 'submitted',
+          status: 'SUBMITTED',
           generation_error: null,
           generation_started_at: null,
         })
@@ -252,7 +252,7 @@ export default function AdminRetriesPage() {
       const { error } = await supabase
         .from('orders')
         .update({
-          status: 'cancelled',
+          status: 'CANCELLED',
           updated_at: new Date().toISOString(),
         })
         .eq('id', orderId);
@@ -283,7 +283,7 @@ export default function AdminRetriesPage() {
   const getStatusBadge = (order: FailedOrder) => {
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const isStuck =
-      order.status === 'in_progress' &&
+      order.status === 'PROCESSING' &&
       order.generation_started_at &&
       order.generation_started_at < fifteenMinutesAgo;
 

@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('orders')
       .update({
-        status: 'cancelled',
+        status: 'CANCELLED',
         updated_at: new Date().toISOString(),
       })
       .eq('id', workflow.order_id);

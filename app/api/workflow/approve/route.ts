@@ -108,14 +108,14 @@ export async function POST(request: Request) {
 
     switch (action) {
       case 'approve':
-        newStatus = 'draft_delivered';
+        newStatus = 'DRAFT_DELIVERED';
         notificationType = 'draft_ready';
         break;
       case 'reject':
-        newStatus = 'in_progress'; // Back to generation queue
+        newStatus = 'PROCESSING'; // Back to generation queue
         break;
       case 'request_revision':
-        newStatus = 'revision_requested';
+        newStatus = 'REVISION_REQUESTED';
         break;
       default:
         newStatus = order.status;
