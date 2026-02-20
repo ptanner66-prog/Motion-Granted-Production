@@ -1029,3 +1029,31 @@ export interface PhaseV1VerificationOutput {
   };
   overallStatus: 'pass' | 'citations_removed';
 }
+
+// ============================================================================
+// T-19: Phase Execution Logs Types (table from T-15)
+// ============================================================================
+
+export type PhaseExecutionLogStatus = 'STARTED' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+
+export interface PhaseExecutionLog {
+  id: string;
+  order_id: string;
+  run_id: string | null;
+  phase_code: string;
+  step_name: string;
+  status: PhaseExecutionLogStatus;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  metadata: Record<string, unknown>;
+  error_message: string | null;
+  created_at: string;
+}
+
+export type PhaseExecutionLogInsert = Omit<PhaseExecutionLog, 'id' | 'created_at'> & {
+  id?: string;
+  created_at?: string;
+};
+
+export type PhaseExecutionLogUpdate = Partial<Omit<PhaseExecutionLog, 'id' | 'order_id' | 'created_at'>>;
