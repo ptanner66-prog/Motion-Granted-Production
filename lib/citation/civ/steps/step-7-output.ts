@@ -58,7 +58,7 @@ export function compileVerificationOutput(
   // calculateCompositeConfidence expects ALL inputs on 0-1 scale.
   // Without normalization, step2's 85 * 0.35 weight = 29.75, clamped to 1.0 → always VERIFIED.
   const step2Normalized = step2.finalConfidence > 1 ? step2.finalConfidence / 100 : step2.finalConfidence;
-  const step4Confidence = step4.result === 'N/A' ? null : step4.similarityScore ?? 0.9;
+  const step4Confidence = step4.result === 'N/A' ? null : step4.similarityScore ?? 0;
   const compositeConfidence = calculateCompositeConfidence(
     step1.confidence,
     step2Normalized,

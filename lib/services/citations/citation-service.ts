@@ -84,7 +84,7 @@ function transformDbToOrderCitation(row: Record<string, unknown>): OrderCitation
     proposition: row.proposition as string | undefined,
     locationInMotion: row.location_in_motion as string | undefined,
     authorityLevel: row.authority_level as 'binding' | 'persuasive' | undefined,
-    verificationStatus: (row.verification_status as 'verified' | 'unverified' | 'flagged') || 'unverified',
+    verificationStatus: (row.verification_status as 'verified' | 'unverified' | 'flagged' | 'statutory_presumed') || 'unverified',
     verificationTimestamp: row.verification_timestamp as string | undefined,
     verificationMethod: row.verification_method as string | undefined,
     adminReviewed: row.admin_reviewed as boolean | undefined,
