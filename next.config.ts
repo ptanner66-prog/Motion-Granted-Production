@@ -47,11 +47,11 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://vercel.live",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://api.anthropic.com https://api.openai.com https://www.courtlistener.com https://*.inngest.com https://*.sentry.io",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://api.anthropic.com https://api.openai.com https://www.courtlistener.com https://*.inngest.com https://*.sentry.io https://*.ingest.sentry.io",
               // REMOVED (DST-10): https://*.clerk.accounts.dev — Clerk eliminated by ADR-001
               "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
               "object-src 'none'",
@@ -64,12 +64,24 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // API routes should not be cached
+        // SEC-007: CORS + cache headers for API routes
         source: '/api/:path*',
         headers: [
           {
             key: 'Cache-Control',
             value: 'no-store, no-cache, must-revalidate',
+          },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: process.env.NEXT_PUBLIC_APP_URL || 'https://motiongranted.com',
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, POST, PUT, DELETE, OPTIONS',
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Content-Type, Authorization, X-Request-Id',
           },
         ],
       },

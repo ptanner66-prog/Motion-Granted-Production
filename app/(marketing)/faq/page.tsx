@@ -91,6 +91,35 @@ const FAQ_CATEGORIES: { name: string; items: FAQItem[] }[] = [
       },
     ],
   },
+  {
+    name: 'Security & Privacy',
+    items: [
+      {
+        question: 'How do you handle confidential case materials?',
+        answer: 'All case materials are encrypted in transit (TLS 1.3) and at rest (AES-256). Access is restricted to authorized personnel only. We maintain comprehensive audit logs and permanently delete all case data after 365 days. See our Security page for complete technical details.',
+      },
+      {
+        question: 'How does Motion Granted protect attorney-client privilege and work product protection?',
+        answer: 'Motion Granted operates as a Legal Process Outsourcing (LPO) service under the direct supervision of the hiring attorney. Under ABA Formal Opinion 08-451 and the Restatement (Third) of the Law Governing Lawyers \u00A7\u00A7 70-73, communications and work product shared with LPO providers acting under attorney direction generally maintain their privileged status. We implement multiple safeguards: all data is encrypted in transit (TLS 1.3) and at rest (AES-256), strict access controls limit data visibility to authorized personnel, all AI processing occurs in isolated environments with no cross-client data sharing, and we maintain comprehensive audit trails. We recommend attorneys include Motion Granted in their privilege logs as a vendor operating under attorney supervision, consistent with the common interest doctrine and agency principles recognized in Clark v. United States, 289 U.S. 1 (1933). See our Security page for complete technical details.',
+      },
+      {
+        question: 'Is my data used to train AI models?',
+        answer: 'No. Your case materials and documents are never used to train AI models. Our AI providers (Anthropic, OpenAI) contractually guarantee that API inputs are not used for model training. Each order is processed in an isolated environment with no cross-client data sharing.',
+      },
+      {
+        question: 'What steps should I take to preserve privilege when using Motion Granted?',
+        answer: 'We recommend five best practices: (1) Include Motion Granted in your privilege log as an LPO vendor operating under attorney direction \u2014 this is consistent with how firms log other litigation support vendors. (2) In multi-party litigation, consider whether a common interest agreement with co-counsel addresses shared work product. (3) For matters involving government investigations or regulatory proceedings, be aware that some jurisdictions apply heightened scrutiny to privilege claims involving third-party vendors \u2014 consult your jurisdiction\u2019s ethics opinions. (4) Maintain your own copies of all case materials submitted to Motion Granted; our 365-day retention policy means materials are permanently deleted after that period. (5) If opposing counsel challenges privilege over Motion Granted work product, the key factors courts examine are: (a) whether the attorney maintained supervisory control (our workflow ensures this via mandatory attorney review), (b) whether the work product was created in anticipation of litigation, and (c) whether reasonable steps were taken to maintain confidentiality.',
+      },
+      {
+        question: 'What about ABA Formal Opinion 512?',
+        answer: 'ABA Formal Opinion 512 addresses AI-assisted legal drafting disclosure obligations. We comply fully: every filing package includes an Attorney Instruction Sheet that identifies applicable AI disclosure requirements for your jurisdiction. The filing attorney retains full control over whether and how to disclose AI assistance, consistent with their obligations under applicable rules of professional conduct.',
+      },
+      {
+        question: 'Who is responsible for the final work product?',
+        answer: 'The hiring attorney of record is solely responsible for all documents filed with the court. Motion Granted provides drafting support under attorney supervision, but the attorney must review, approve, and take responsibility for all content before filing. This is consistent with ABA Model Rule 5.3 regarding supervisory responsibility over non-lawyer assistance.',
+      },
+    ],
+  },
 ];
 
 export default function FAQPage() {

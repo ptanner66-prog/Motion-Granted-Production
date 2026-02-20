@@ -120,6 +120,8 @@ export interface OrderContext {
   motionType: string;
   motionTier: MotionTier;
   jurisdiction: string;
+  stateCode: string;          // 50-State: 2-letter state code (Gap 45: derived from legacy jurisdiction if NULL)
+  courtType: string;          // 50-State: 'STATE' | 'FEDERAL'
   courtDivision: string | null;
   caseNumber: string;
   caseCaption: string;
@@ -172,6 +174,43 @@ export interface OrchestrationResult {
   message?: string;
   error?: string;
   outputs?: Record<string, unknown>;
+}
+
+// ============================================================================
+// GAP 45: Legacy jurisdiction → state_code derivation
+// ============================================================================
+
+const JURISDICTION_STATE_MAP: Record<string, string> = {
+  'louisiana': 'LA', 'california': 'CA', 'texas': 'TX', 'new york': 'NY',
+  'florida': 'FL', 'illinois': 'IL', 'pennsylvania': 'PA', 'ohio': 'OH',
+  'georgia': 'GA', 'michigan': 'MI', 'north carolina': 'NC',
+};
+
+function deriveStateFromJurisdiction(jurisdiction: string | null | undefined): string {
+  if (!jurisdiction) return 'CA'; // Default per 50S-BD-4
+
+  const lower = jurisdiction.toLowerCase();
+
+  // Check explicit state references
+  for (const [name, code] of Object.entries(JURISDICTION_STATE_MAP)) {
+    if (lower.includes(name)) return code;
+  }
+
+  // Check 2-letter state codes in the string
+  const codeMatch = jurisdiction.match(/\b([A-Z]{2})\b/);
+  if (codeMatch) {
+    const candidate = codeMatch[1];
+    // Validate it's a real state code (not "NO", "IN" as words, etc.)
+    const validCodes = new Set([
+      'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL',
+      'IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE',
+      'NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD',
+      'TN','TX','UT','VT','VA','WA','WV','WI','WY',
+    ]);
+    if (validCodes.has(candidate)) return candidate;
+  }
+
+  return 'CA'; // Default fallback per 50S-BD-4
 }
 
 // ============================================================================
@@ -263,7 +302,10 @@ export async function gatherOrderContext(orderId: string): Promise<OperationResu
       // Case info
       motionType: order.motion_type || 'general',
       motionTier: normalizeMotionTier(order.motion_tier),
+      // Gap 45: Derive state_code from legacy jurisdiction field for NULL state orders
       jurisdiction: order.jurisdiction || 'Federal',
+      stateCode: order.state_code || deriveStateFromJurisdiction(order.jurisdiction),
+      courtType: order.court_type || (order.jurisdiction?.toLowerCase().includes('federal') ? 'FEDERAL' : 'STATE'),
       courtDivision: order.court_division,
       caseNumber: order.case_number || '[CASE NUMBER]',
       caseCaption: order.case_caption || '[CASE CAPTION]',
