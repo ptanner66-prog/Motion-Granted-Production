@@ -634,6 +634,15 @@ export async function runCIVPipeline(input: {
   // ── Apply hard gate ──────────────────────────────────────────────────
   const hardGateFailReasons: string[] = [];
 
+  // T-02 FIX: Prevent vacuous truth — empty results must NOT pass the hard gate.
+  // If no citations were processed (all rejected, empty input, etc.), the motion
+  // cannot proceed to Phase VI without verified citations.
+  if (allResults.length === 0) {
+    hardGateFailReasons.push(
+      'No CIV results available. Cannot verify citations — hard gate blocked.'
+    );
+  }
+
   if (notFound > 0) {
     hardGateFailReasons.push(
       `${notFound} citation(s) not found in any legal database: ` +

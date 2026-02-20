@@ -557,7 +557,8 @@ function generateInstructionSheetContent(
   orderContext: OrderContext,
   tier: MotionTier,
   citationCount: number,
-  judgeResult?: JudgeSimulationResult
+  judgeResult?: JudgeSimulationResult,
+  verificationSummary?: { verified: number; flagged: number; blocked: number; total: number }
 ): string {
   const content = [];
 
@@ -609,8 +610,22 @@ function generateInstructionSheetContent(
   content.push('AI DISCLOSURE NOTICE');
   content.push('───────────────────────────────────────────────────────────────────────');
   content.push('This motion was generated with AI assistance (Claude Opus 4.5 / Sonnet 4.5).');
-  content.push('All citations have been verified through our 7-step Citation Integrity');
-  content.push('Verification (CIV) pipeline. Attorney review is required before filing.');
+  // T-03 FIX: Conditional verification claim in instruction sheet
+  if (verificationSummary && verificationSummary.total > 0) {
+    const pct = Math.round((verificationSummary.verified / verificationSummary.total) * 100);
+    content.push(`Citation Verification: ${verificationSummary.verified}/${verificationSummary.total} citations verified (${pct}%).`);
+    if (verificationSummary.flagged > 0) {
+      content.push(`${verificationSummary.flagged} citation(s) flagged for attorney review.`);
+    }
+    if (verificationSummary.blocked > 0) {
+      content.push(`WARNING: ${verificationSummary.blocked} citation(s) could not be verified.`);
+      content.push('Attorney MUST independently verify these citations before filing.');
+    }
+  } else {
+    content.push('Citation verification results unavailable. Attorney MUST independently');
+    content.push('verify all citations before filing per Rule 11 obligations.');
+  }
+  content.push('Attorney review is required before filing.');
   content.push('');
   content.push('───────────────────────────────────────────────────────────────────────');
   content.push('REVISION POLICY');
@@ -699,9 +714,21 @@ function generateCitationReportContent(
     }
   }
 
+  // T-03 FIX: Conditional verification footer based on actual CIV results
   content.push('═══════════════════════════════════════════════════════════════════════');
-  content.push('This report confirms all citations have been verified through Motion');
-  content.push('Granted\'s proprietary 7-step Citation Integrity Verification pipeline.');
+  const allVerified = verificationResults.length > 0 &&
+    verificationResults.every(r => r.status === 'VERIFIED');
+
+  if (allVerified) {
+    content.push('All citations passed the 7-step CIV pipeline. Attorney review');
+    content.push('is still required before filing per Rule 11 obligations.');
+  } else if (verificationResults.length > 0) {
+    content.push('Citations were processed through the 7-step CIV pipeline.');
+    content.push('Some require attorney review. See DETAILED RESULTS above.');
+  } else {
+    content.push('ATTENTION: Citation verification results unavailable.');
+    content.push('Attorney MUST independently verify all citations before filing.');
+  }
   content.push('═══════════════════════════════════════════════════════════════════════');
 
   return content.join('\n');
@@ -1088,12 +1115,26 @@ async function generateAndUploadInstructionSheet(
 
     const judgeResult = state.phaseOutputs["VII"] as JudgeSimulationResult | undefined;
 
+    // T-03: Build verification summary from actual CIV results
+    const aisV1Out = (state.phaseOutputs?.["V.1"] ?? {}) as Record<string, unknown>;
+    const aisVII1Out = (state.phaseOutputs?.["VII.1"] ?? {}) as Record<string, unknown>;
+    const aisV1Results = (aisV1Out?.verificationResults ?? []) as Array<Record<string, unknown>>;
+    const aisVII1Results = (aisVII1Out?.verificationResults ?? []) as Array<Record<string, unknown>>;
+    const allVResults = [...aisV1Results, ...aisVII1Results];
+    const verificationSummary = {
+      verified: allVResults.filter(r => r.verified === true && r.action === 'kept').length,
+      flagged: allVResults.filter(r => r.action === 'flagged').length,
+      blocked: allVResults.filter(r => r.action === 'removed').length,
+      total: allVResults.length,
+    };
+
     const content = generateInstructionSheetContent(
       state.orderId,
       state.orderContext,
       state.tier,
       actualCitationCount || state.citationCount,
-      judgeResult
+      judgeResult,
+      verificationSummary
     );
     const txtBuffer = createTextFileBuffer('ATTORNEY INSTRUCTION SHEET', content);
     console.log(`[generate-instruction-sheet] Text file created in ${Date.now() - start}ms`);
@@ -1146,12 +1187,14 @@ async function generateAndUploadCitationReport(
     const allCitations: Array<{ citation: string; status: string; confidence: number }> = [];
     const seenNormalized = new Set<string>();
 
+    // T-03/R5 FIX: Read actual fields from verificationResults items.
+    // Items have: { citation, verified (boolean), action, holdingVerified, failReasons }
+    // Items do NOT have: civResult, compositeResult, status (string), confidence (number).
     for (const r of [...v1Results, ...vii1Results]) {
-      const civResult = r.civResult as Record<string, unknown> | undefined;
-      const compositeResult = civResult?.compositeResult as Record<string, unknown> | undefined;
       const citationStr = String(r.citation ?? r.citationString ?? 'Unknown citation');
       const normalized = citationStr.toLowerCase().replace(/\s+/g, ' ').trim();
 
+      // Dedup: keep latest verification result
       if (seenNormalized.has(normalized)) {
         const idx = allCitations.findIndex(
           c => c.citation.toLowerCase().replace(/\s+/g, ' ').trim() === normalized
@@ -1160,12 +1203,24 @@ async function generateAndUploadCitationReport(
       }
       seenNormalized.add(normalized);
 
-      // SP-18 FIX: Read confidenceScore (CIV field name), NOT confidence
-      // FIX-E: Use CIV pipeline status only — legacy r.verified field is not trusted
-      let status = String(compositeResult?.status ?? r.status ?? 'UNVERIFIED');
-      const confidence = Number(compositeResult?.confidenceScore ?? compositeResult?.confidence ?? r.confidence ?? 0);
+      // Map verified boolean + action to status string
+      let status: string;
+      if (r.verified === true && r.action === 'kept') {
+        status = 'VERIFIED';
+      } else if (r.action === 'flagged') {
+        status = 'FLAGGED';
+      } else if (r.action === 'removed') {
+        status = 'BLOCKED';
+      } else {
+        status = 'UNVERIFIED';
+      }
 
-      // SP-18: IX.1 final audit rejection overrides previous VERIFIED
+      // Confidence: verified + holdingVerified = high, verified only = medium
+      const confidence = r.verified === true
+        ? (r.holdingVerified === true ? 0.95 : 0.75)
+        : 0;
+
+      // IX.1 final audit rejection overrides previous VERIFIED
       if (ix1RejectedCitations.has(normalized) && status === 'VERIFIED') {
         status = 'REJECTED';
         console.warn(`[generate-citation-report] Citation downgraded by IX.1 final audit: ${citationStr}`);
@@ -1260,6 +1315,35 @@ async function persistDeliverableRecords(
 
   const storagePath = `orders/${orderId}/deliverables`;
 
+  // A-002 FIX: Delete prior deliverable records to prevent N+1 duplicates from revision loops.
+  // Phase VIII executor inserts documents on EVERY revision loop, causing duplicate rows.
+  const { error: deleteErr } = await supabase
+    .from('documents')
+    .delete()
+    .eq('order_id', orderId)
+    .eq('is_deliverable', true);
+  if (deleteErr) {
+    console.warn('[persist-deliverable-records] Failed to clean prior deliverables:', deleteErr.message);
+  }
+
+  // A-039 FIX: Query storage to get actual file sizes instead of hardcoding 0.
+  const fileSizeMap = new Map<string, number>();
+  try {
+    const { data: storageFiles } = await supabase.storage
+      .from(STORAGE_BUCKETS.ORDER_DOCUMENTS)
+      .list(storagePath, { limit: 20 });
+    if (storageFiles) {
+      for (const f of storageFiles) {
+        const size = (f.metadata as Record<string, unknown>)?.size;
+        if (typeof size === 'number') {
+          fileSizeMap.set(f.name, size);
+        }
+      }
+    }
+  } catch {
+    console.warn('[persist-deliverable-records] Could not fetch file sizes from storage');
+  }
+
   // FIX-B FIX-6: Align document_type values with download page expectations.
   // Download page maps 'instructions' and 'instruction_sheet' → 'instructions'.
   // Use canonical types: motion, instructions, citation_report, caption_qc_report.
@@ -1277,7 +1361,7 @@ async function persistDeliverableRecords(
         order_id: orderId,
         file_name: entry.name,
         file_type: entry.mimeType,
-        file_size: 0,
+        file_size: fileSizeMap.get(entry.name) ?? 0,
         file_url: `${storagePath}/${entry.name}`,
         document_type: entry.type,
         uploaded_by: uploadedBy,
@@ -3020,15 +3104,24 @@ export const generateOrderWorkflow = inngest.createFunction(
       // SP-05: Crash recovery — persist Phase VIII output to DB so Inngest replay
       // can recover the latest revision if the function crashes mid-loop
       await step.run(`persist-revision-${loopNum}`, async () => {
-        await supabase
+        const { error: persistError } = await supabase
           .from("workflow_state")
-          .upsert({
-            order_id: orderId,
-            phase_viii_output: phaseVIIIRevisionResult.output,
+          .update({
+            current_phase: 'VIII',
+            phase_status: 'REVISION_LOOP',
             revision_loop_count: loopNum,
+            phase_outputs: workflowState.phaseOutputs,
             updated_at: new Date().toISOString(),
-          }, { onConflict: "order_id" });
-        console.log(`[Orchestration] Loop ${loopNum} Phase VIII output persisted for crash recovery`);
+          })
+          .eq("order_id", orderId);
+
+        if (persistError) {
+          console.error(`[Orchestration] persist-revision-${loopNum} FAILED:`, persistError.message);
+          // Non-fatal: in-memory state is correct, workflow continues.
+          // But crash recovery will be incomplete.
+        } else {
+          console.log(`[Orchestration] Loop ${loopNum} revision persisted for crash recovery`);
+        }
       });
 
       // Persist any newly verified case citations to the bank
@@ -3956,6 +4049,32 @@ export const generateOrderWorkflow = inngest.createFunction(
     // (W4-6) — Send T+0 email, update status, emit checkpoint/cp3.reached
     // ========================================================================
 
+    // A-001 FIX: Populate delivery_packages before CP3 steps.
+    // Without this row, CP3 auth gate returns 404 and attorney cannot approve/cancel.
+    const deliveryPackageId = await step.run('create-delivery-package', async () => {
+      const svc = getServiceSupabase();
+      const { data: pkg, error: pkgError } = await svc
+        .from('delivery_packages')
+        .insert({
+          order_id: orderId,
+          workflow_id: workflowState.workflowId,
+          version: 1,
+          status: 'READY',
+          stage: 'DELIVERY',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
+
+      if (pkgError) {
+        console.error('[CP3] Failed to create delivery package:', pkgError.message);
+        return null;
+      }
+      console.log(`[CP3] Delivery package created: ${pkg.id}`);
+      return pkg.id;
+    });
+
     // Step: Send package ready notification (T+0)
     // W4-6: Fresh service role client + non-fatal so workflow completes even if notification fails
     await step.run('send-cp3-package-ready', async () => {
@@ -4097,7 +4216,7 @@ export const handleWorkflowFailure = inngest.createFunction(
       await supabase
         .from("orders")
         .update({
-          status: "generation_failed",
+          status: "GENERATION_FAILED",
           generation_error: errorMessage,
           last_error: errorMessage,
           needs_manual_review: true,
@@ -4196,7 +4315,7 @@ export const handleWorkflowTimeout = inngest.createFunction(
       await supabase
         .from("orders")
         .update({
-          status: "generation_failed",
+          status: "GENERATION_FAILED",
           generation_error: "Workflow timed out after 30 minutes",
           needs_manual_review: true,
         })

@@ -183,7 +183,7 @@ export default function DownloadPortal() {
           .from('orders')
           .select('*')
           .eq('id', orderId)
-          .eq('user_id', user.id)
+          .eq('client_id', user.id)
           .single();
 
         if (orderError || !orderData) {

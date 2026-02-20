@@ -33,7 +33,7 @@ export function DocumentDownloadButton({
     try {
       // Generate a signed URL (valid for 1 hour)
       const { data, error } = await supabase.storage
-        .from('documents')
+        .from('order-documents')
         .createSignedUrl(filePath, 3600)
 
       if (error) {
@@ -113,7 +113,7 @@ export function DocumentViewButton({
     try {
       // Generate a signed URL (valid for 1 hour)
       const { data, error } = await supabase.storage
-        .from('documents')
+        .from('order-documents')
         .createSignedUrl(filePath, 3600)
 
       if (error) {
