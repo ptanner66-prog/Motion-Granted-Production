@@ -41,6 +41,9 @@ import type {
   PropositionType,
 } from '@/lib/citation/civ/types';
 
+// T-111: Quote extraction for Step 4
+import { extractQuoteInDraft } from '@/lib/citation/civ/steps/step-4-quote';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -566,10 +569,14 @@ export async function runCIVPipeline(input: {
         ? 'SECONDARY'
         : 'CONTEXT';
 
+    // T-111: Extract quotes attributed to this citation from the draft
+    const quoteInDraft = extractQuoteInDraft(draftText, cit, undefined);
+
     return {
       citationString: cit,
       proposition,
       propositionType,
+      quoteInDraft,
       jurisdictionContext: 'LA',
     };
   });

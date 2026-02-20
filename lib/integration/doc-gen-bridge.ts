@@ -297,7 +297,15 @@ export async function generateAndStoreFilingPackage(
       name: profile?.full_name || '',
       firmName: profile?.firm_name || undefined,
       barNumber: profile?.bar_number || '',
-      barState: 'LA',
+      // T-38: Use resolveBarState instead of hardcoded 'LA'
+      barState: (() => {
+        try {
+          return resolveBarState(order.jurisdiction || 'LA');
+        } catch {
+          console.warn(`[doc-gen-bridge] Unknown jurisdiction "${order.jurisdiction}" for bar state — defaulting to LA`);
+          return 'LA';
+        }
+      })(),
       address: [
         profile?.firm_address || '',
       ].filter(Boolean),
@@ -343,6 +351,33 @@ export async function generateAndStoreFilingPackage(
     const phaseIX = phaseOutputs['IX'] as Record<string, unknown> | undefined;
     const proposedOrderRelief = (phaseIX?.proposedOrderTerms || phaseIX?.proposedOrder) as string[] | undefined;
 
+    // ── 6b. Query protocol findings for AIS (A-013) ───────────────────────
+    let protocolFindingsText: string | undefined;
+    try {
+      const { data: protocolRows } = await supabase
+        .from('protocol_results')
+        .select('protocol_number, triggered, severity, ais_entry')
+        .eq('order_id', input.orderId)
+        .eq('triggered', true)
+        .order('severity', { ascending: true });
+
+      if (protocolRows && protocolRows.length > 0) {
+        const lines: string[] = [];
+        for (const row of protocolRows) {
+          const entry = row.ais_entry as { title?: string; description?: string; recommendation?: string } | null;
+          if (entry) {
+            lines.push(`[${row.severity}] Protocol ${row.protocol_number}: ${entry.title || 'Finding'}`);
+            if (entry.description) lines.push(entry.description);
+            if (entry.recommendation) lines.push(`Recommendation: ${entry.recommendation}`);
+            lines.push('');
+          }
+        }
+        protocolFindingsText = lines.join('\n');
+      }
+    } catch (protoError) {
+      warnings.push('Protocol findings could not be loaded for AIS');
+    }
+
     // ── 7. Assemble filing package ────────────────────────────────────────
     const motionType = order.motion_type || 'MCOMPEL';
     const motionTypeDisplay = getMotionDisplayName(motionType);
@@ -363,8 +398,33 @@ export async function generateAndStoreFilingPackage(
         proposedOrderRelief: proposedOrderRelief || undefined,
       },
       filingDeadline: order.filing_deadline || undefined,
-      localRuleFlags: [],
-      citationWarnings: [],
+      // T-39: Populate localRuleFlags from Phase II procedural_requirements
+      localRuleFlags: (() => {
+        const phaseII = phaseOutputs['II'] as Record<string, unknown> | undefined;
+        const reqs = phaseII?.procedural_requirements as string[] | undefined;
+        return Array.isArray(reqs) ? reqs.filter(r => typeof r === 'string' && r.trim()) : [];
+      })(),
+      // T-39: Populate citationWarnings from Phase V.1 CIV verification results
+      citationWarnings: (() => {
+        const phaseV1 = phaseOutputs['V.1'] as Record<string, unknown> | undefined;
+        const results = phaseV1?.verificationResults as Array<{
+          citation: string;
+          verified: boolean;
+          action: string;
+          failReasons?: string[];
+        }> | undefined;
+        if (!Array.isArray(results)) return [];
+        return results
+          .filter(r => !r.verified || r.action === 'flagged' || r.action === 'removed')
+          .map(r => {
+            const reasons = Array.isArray(r.failReasons) && r.failReasons.length > 0
+              ? r.failReasons.join('; ')
+              : r.action === 'removed' ? 'Citation removed by CIV' : 'Flagged for review';
+            return `${r.citation}: ${reasons}`;
+          });
+      })(),
+      // A-013: Protocol findings from D9 dispatcher → AIS
+      protocolFindingsText,
     };
 
     let filingPackage: FilingPackage;

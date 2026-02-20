@@ -1411,7 +1411,8 @@ export async function buildVerifiedCitationBank(
     jurisdiction: string;
   }>,
   minCitations: number = 12,  // INCREASED from 2 per element to 12 total minimum
-  maxCitations: number = 20   // NEW: cap to avoid over-fetching
+  maxCitations: number = 20,  // NEW: cap to avoid over-fetching
+  tier?: string               // A-025: Tier for tiered citation limits
 ): Promise<{
   success: boolean;
   data?: {
@@ -1424,13 +1425,21 @@ export async function buildVerifiedCitationBank(
   };
   error?: string;
 }> {
-  // EXPANDED CITATION RESEARCH — TARGET 12-20 CITATIONS
+  // A-025: Tiered citation limits (override flat defaults if tier provided)
+  if (tier) {
+    const tierMin: Record<string, number> = { 'A': 5, 'B': 10, 'C': 15, 'D': 20 };
+    const tierMax: Record<string, number> = { 'A': 10, 'B': 15, 'C': 25, 'D': 30 };
+    minCitations = tierMin[tier] ?? minCitations;
+    maxCitations = tierMax[tier] ?? maxCitations;
+  }
+
+  // EXPANDED CITATION RESEARCH — TARGET tiered CITATIONS
   log.info(`╔══════════════════════════════════════════════════════════════╗`);
-  log.info(`║  EXPANDED CITATION RESEARCH — TARGET: 12-20 CITATIONS       ║`);
+  log.info(`║  EXPANDED CITATION RESEARCH — TARGET: ${minCitations}-${maxCitations} CITATIONS       ║`);
   log.info(`║  Version: 2026-01-30-CITATION-ENFORCEMENT                   ║`);
   log.info(`╚══════════════════════════════════════════════════════════════╝`);
   log.info(`[buildVerifiedCitationBank] Total queries received: ${queries.length}`);
-  log.info(`[buildVerifiedCitationBank] Target citations: ${minCitations}-${maxCitations}`);
+  log.info(`[buildVerifiedCitationBank] Target citations: ${minCitations}-${maxCitations} (tier: ${tier || 'unset'})`);
   log.info(`[buildVerifiedCitationBank] API Key present: ${!!process.env.COURTLISTENER_API_KEY}`);
 
   const citations: VerifiedCitation[] = [];

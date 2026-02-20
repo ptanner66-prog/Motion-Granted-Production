@@ -26,6 +26,8 @@ export interface InstructionsInput {
   citationWarnings: string[];
   formatNotes: string[];
   citationVerification?: CitationVerificationSummary;
+  // A-013: Protocol findings from D9 dispatcher (rendered via renderProtocolSection)
+  protocolFindingsText?: string;
 }
 
 /**
@@ -391,6 +393,41 @@ function generateAttorneyInstructionsInner(input: InstructionsInput): Paragraph[
             }),
           ],
           spacing: { before: 120, after: 120 },
+          indent: { left: 360 },
+        })
+      );
+    }
+  }
+
+  // A-013: Protocol findings section (D9 dispatcher results → AIS)
+  if (input.protocolFindingsText && input.protocolFindingsText.trim()) {
+    paragraphs.push(new Paragraph({ spacing: { after: 120 } }));
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: 'QUALITY PROTOCOL FINDINGS:',
+            bold: true,
+            underline: {},
+            font: fontFamily,
+            size: fontSize,
+          }),
+        ],
+        spacing: { after: 120 },
+      })
+    );
+
+    for (const line of input.protocolFindingsText.split('\n').filter(l => l.trim())) {
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: line,
+              font: fontFamily,
+              size: fontSize,
+            }),
+          ],
+          spacing: { after: 60 },
           indent: { left: 360 },
         })
       );

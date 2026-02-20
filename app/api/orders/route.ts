@@ -2,9 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
-import { sendEmail } from '@/lib/resend'
-import { OrderConfirmationEmail } from '@/emails/order-confirmation'
-import { formatMotionType } from '@/config/motion-types'
+// A-010: sendEmail/OrderConfirmationEmail removed — confirmation sent by Stripe webhook
 import { startOrderAutomation } from '@/lib/workflow/automation-service'
 import { createLogger } from '@/lib/security/logger'
 
@@ -282,38 +280,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // Send confirmation email (non-blocking)
-    const turnaroundLabels: Record<string, string> = {
-      standard: 'Standard (5-7 business days)',
-      rush_72: '72-Hour Rush',
-      rush_48: '48-Hour Rush',
-    }
-
-    // Only send email if user has an email address
-    if (user.email) {
-      sendEmail({
-        to: user.email,
-        subject: `Order Confirmed: ${order.order_number}`,
-        react: OrderConfirmationEmail({
-          orderNumber: order.order_number,
-          motionType: formatMotionType(body.motion_type),
-          caseCaption: body.case_caption,
-          turnaround: turnaroundLabels[body.turnaround] || body.turnaround,
-          expectedDelivery: new Date(expectedDelivery).toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }),
-          totalPrice: `$${body.total_price.toFixed(2)}`,
-          portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'}/orders/${order.id}`,
-        }),
-      }).catch((err) => {
-        log.error('Failed to send confirmation email', { error: err instanceof Error ? err.message : err })
-      })
-    } else {
-      log.warn('User has no email address, skipping confirmation email')
-    }
+    // A-010: Confirmation email REMOVED from order creation route.
+    // The Stripe webhook (POST /api/webhooks/stripe) sends sendOrderConfirmation()
+    // after payment succeeds. Sending here causes a duplicate email before payment.
 
     // NOTE: Automation is NOT started here. It is triggered by:
     // 1. Client calling POST /api/automation/start after documents are uploaded

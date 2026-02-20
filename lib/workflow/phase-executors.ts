@@ -1429,12 +1429,16 @@ IMPORTANT: The statement of facts and uploaded documents above ARE the client's 
 
 Provide your Phase III evidence strategy as JSON.`;
 
-    const response = await createMessageWithStreaming(client, {
+    // T-109: Extended thinking wiring for Phase III (Tier C/D get thinking budget)
+    const phaseIIIParams: Anthropic.MessageCreateParams = {
       model: resolveModelForExecution('III', input.tier),
       max_tokens: resolveMaxTokensForExecution('III', input.tier), // Phase III: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-    });
+      ...buildExtendedThinkingParams('III', input.tier),
+    } as Anthropic.MessageCreateParams;
+
+    const response = await createMessageWithStreaming(client, phaseIIIParams) as Anthropic.Message;
 
     const textContent = response.content.find(c => c.type === 'text');
     const outputText = textContent?.type === 'text' ? textContent.text : '';
@@ -1977,13 +1981,17 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
     console.log(`[Phase V] Calling Claude with model: ${model}, max_tokens: ${resolveMaxTokensForExecution('V', input.tier)}`);
     console.log(`[Phase V] User message length: ${userMessage.length} chars`);
 
-    const callStart = Date.now();
-    const response = await createMessageWithStreaming(client, {
+    // T-110: Extended thinking wiring for Phase V (Tier C/D get thinking budget)
+    const phaseVParams: Anthropic.MessageCreateParams = {
       model,
       max_tokens: resolveMaxTokensForExecution('V', input.tier), // Phase V: Registry-driven
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-    });
+      ...buildExtendedThinkingParams('V', input.tier),
+    } as Anthropic.MessageCreateParams;
+
+    const callStart = Date.now();
+    const response = await createMessageWithStreaming(client, phaseVParams) as Anthropic.Message;
     const callDuration = Date.now() - callStart;
 
     console.log(`[Phase V] Claude responded in ${callDuration}ms`);
@@ -4424,6 +4432,19 @@ Attorney for ${getRepresentedPartyName()}`.trim();
       year: 'numeric'
     });
 
+    // T-28: Jurisdiction-aware formatting context for Phase IX
+    const jurisdictionFormatNote = (() => {
+      const j = (input.jurisdiction || '').toLowerCase();
+      if (j.includes('la') || j.includes('louisiana')) {
+        return 'JURISDICTION FORMAT: Louisiana. Paper size: Legal (8.5x14). Line numbers NOT required for state court.';
+      } else if (j.includes('ca') || j.includes('california')) {
+        return 'JURISDICTION FORMAT: California. Paper size: Letter (8.5x11). Line numbers REQUIRED (28 lines per page). Margins: 1" all sides.';
+      } else if (j.includes('federal') || j.includes('usdc')) {
+        return 'JURISDICTION FORMAT: Federal. Paper size: Letter (8.5x11). Check local rules for line numbering. Double-spaced unless local rules specify otherwise.';
+      }
+      return `JURISDICTION FORMAT: ${input.jurisdiction || 'Unknown'}. Follow applicable local rules for paper size, margins, and spacing.`;
+    })();
+
     const systemPrompt = buildPhasePrompt('IX', PHASE_PROMPTS.PHASE_IX) + `
 
 CRITICAL: ATTORNEY INFO FOR CERTIFICATE OF SERVICE
@@ -4433,7 +4454,16 @@ ${signatureBlock}
 The Certificate of Service MUST include this EXACT signature block.
 DO NOT use [ATTORNEY NAME] or similar placeholders.
 
-Today's Date: ${todayDate}`;
+Today's Date: ${todayDate}
+
+${jurisdictionFormatNote}
+
+### DOCUMENT QUALITY CHECKLIST
+- All required sections present (caption, body, signature block, certificate of service)
+- No placeholder text ([NAME], [DATE], etc.)
+- Attorney information matches exactly as provided
+- Date format matches jurisdiction convention
+- Proper case caption and case number on all pages`;
 
     const userMessage = `Generate supporting documents for:
 
@@ -5006,69 +5036,8 @@ Assemble and check. Provide as JSON.`;
 
     console.log(`[Phase X] Citation metadata: ${citationMetadata.totalCitations} total citations`);
 
-    // =========================================================================
-    // DOCX GENERATION — Produce court-ready document
-    // =========================================================================
-    let documentUrl: string | null = null;
-    try {
-      const { generateMotionDocx } = await import('@/lib/documents/docx-generator');
-      const { uploadDocument } = await import('@/lib/documents/storage-service');
-      const { MotionData } = await import('@/lib/documents/types') as { MotionData: never };
-
-      // Extract the draft text from Phase V or Phase VIII (revised)
-      const draftText = extractDraftText(phaseVIIIOutput)
-        || extractDraftText(phaseVOutput)
-        || extractDraftText(finalMotion)
-        || JSON.stringify(finalMotion);
-
-      const motionData = {
-        orderId: input.orderId,
-        orderNumber: input.orderNumber || '',
-        caseNumber: input.caseNumber || '',
-        caseCaption: input.caseCaption || '',
-        court: input.court || '',
-        jurisdiction: input.jurisdiction || 'la_state',
-        parish: input.parish,
-        division: input.division,
-        plaintiffs: (Array.isArray(input.parties) ? input.parties : []).filter((p: { role: string; name: string }) => p.role === 'plaintiff').map((p: { name: string }) => p.name),
-        defendants: (Array.isArray(input.parties) ? input.parties : []).filter((p: { role: string; name: string }) => p.role === 'defendant').map((p: { name: string }) => p.name),
-        clientRole: (input.clientRole || 'plaintiff') as 'plaintiff' | 'defendant' | 'petitioner' | 'respondent',
-        attorneyName: input.attorneyName || '',
-        barNumber: input.barNumber || '',
-        firmName: input.firmName || '',
-        firmAddress: input.firmAddress || '',
-        firmPhone: input.firmPhone || '',
-        firmEmail: input.firmEmail || '',
-        motionTitle: input.motionType || 'MOTION',
-        motionBody: draftText,
-        sections: [],
-        // BUG-09 FIX: Use filtered citations (only those in final motion text)
-        citations: citationsInFinalMotion.map(c => ({
-          caseName: c.caseName || '',
-          citation: c.citation || '',
-          court: c.court || '',
-          year: c.date_filed ? parseInt(c.date_filed.split('-')[0]) : 0,
-          propositionSupported: '',
-          courtlistenerUrl: c.courtlistener_id ? `https://www.courtlistener.com/opinion/${c.courtlistener_id}/` : undefined,
-        })),
-        tier: input.tier as 'A' | 'B' | 'C' | 'D',
-        filingDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-      };
-
-      const docxBuffer = await generateMotionDocx(motionData);
-      const { publicUrl } = await uploadDocument(
-        input.orderId,
-        'motion.docx',
-        docxBuffer,
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      );
-
-      documentUrl = publicUrl;
-      console.log(`[Phase X] DOCX generated and uploaded: ${publicUrl}`);
-    } catch (docxError) {
-      // Don't fail the phase on document generation error — log and continue
-      console.error(`[Phase X] DOCX generation failed (non-blocking):`, docxError);
-    }
+    // T-22: DOCX generation removed from Phase X — handled by orchestration
+    // via doc-gen-bridge (generateAndStoreFilingPackage). Phase X validates only.
 
     // TASK-12: Single source of truth for delivery readiness.
     // Citation placeholder scan already blocked 3+ above. For 1-2, flag for
@@ -5087,7 +5056,6 @@ Assemble and check. Provide as JSON.`;
         citationPlaceholderScan,   // TASK-10: Citation gap details for admin
         aisCompliance,             // TASK-09: AIS compliance report for admin
         citationMetadata,          // Citation Viewer Feature
-        documentUrl,
         ...(hasCitationGaps ? {
           adminSummary: {
             ...(phaseOutput.adminSummary || {}),

@@ -65,6 +65,16 @@ persuasiveness
 
 The tier for this motion is provided in the input. Apply the corresponding threshold.
 
+### REVISION DEPTH BY TIER
+
+**Tier A (Procedural):** Light revision. Focus on formatting, grammar, and citation format. Do NOT add new legal arguments or citations. Maximum 1 revision loop.
+
+**Tier B (Intermediate):** Moderate revision. Strengthen existing arguments. Improve transitions and flow. Verify citation support for each point. Maximum 2 revision loops.
+
+**Tier C (Complex):** Deep revision. Challenge weak arguments. Verify every holding attribution. Ensure opposition analysis is addressed point-by-point. Maximum 3 revision loops.
+
+**Tier D (Highly Complex):** Comprehensive revision. Full argument structure review. Cross-reference every citation against proposition. Verify standard of review accuracy. Address all anticipated counterarguments. Maximum 3 revision loops.
+
 ### GRADING CATEGORIES
 
 1. Legal Accuracy (30%): Correct statement of law, proper citation

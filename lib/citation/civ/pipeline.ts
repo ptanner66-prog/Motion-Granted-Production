@@ -21,7 +21,7 @@ import {
 import { executeExistenceCheck, normalizeAndParseCitation } from './steps/step-1-existence';
 import { executeHoldingVerification } from './steps/step-2-holding';
 import { executeDictaDetection, extractSurroundingContext } from './steps/step-3-dicta';
-import { executeQuoteVerification } from './steps/step-4-quote';
+import { executeQuoteVerification, extractQuoteInDraft } from './steps/step-4-quote';
 import { executeBadLawCheck } from './steps/step-5-bad-law';
 import { executeAuthorityStrength } from './steps/step-6-strength';
 import { compileVerificationOutput, generateVerificationSummary } from './steps/step-7-output';

@@ -117,6 +117,19 @@ export async function uploadDocument(
     return { success: false, error: 'Supabase client not available' };
   }
 
+  // A-008: DOCX buffer validation — verify ZIP magic bytes (PK\x03\x04)
+  // DOCX files are ZIP archives; corrupt or empty buffers caught early.
+  if (contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    if (!buffer || buffer.length < 4) {
+      return { success: false, error: 'DOCX buffer is empty or too small to be valid' };
+    }
+    // ZIP magic bytes: 0x50 0x4B 0x03 0x04
+    if (buffer[0] !== 0x50 || buffer[1] !== 0x4B || buffer[2] !== 0x03 || buffer[3] !== 0x04) {
+      log.error(`[storage-manager] DOCX magic bytes check failed for ${filename}. Got: ${buffer.slice(0, 4).toString('hex')}`);
+      return { success: false, error: 'DOCX buffer failed magic bytes validation — file may be corrupt' };
+    }
+  }
+
   const filePath = `${orderId}/${filename}`;
 
   for (let attempt = 0; attempt <= MAX_UPLOAD_RETRIES; attempt++) {

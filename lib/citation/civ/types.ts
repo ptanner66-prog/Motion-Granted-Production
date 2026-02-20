@@ -162,6 +162,7 @@ export interface Step2Result {
   };
   final_result: VerificationResult;
   final_confidence: number;
+  propositionSupported: boolean | 'INCONCLUSIVE'; // T-23: Explicit proposition support flag
   proceed_to_step_3: boolean;
 }
 

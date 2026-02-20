@@ -314,3 +314,50 @@ function extractImportantWords(text: string): string[] {
     .split(/\s+/)
     .filter(word => word.length > 4 && !commonWords.has(word.toLowerCase()));
 }
+
+/**
+ * T-111: Extract quotes from the draft text that are attributed to a citation.
+ *
+ * Scans the draft for quoted text (in double-quotes or block-quote patterns)
+ * that appears near the citation string. Returns the first match, or undefined
+ * if no attributed quote is found.
+ */
+export function extractQuoteInDraft(
+  draftText: string,
+  citationString: string,
+  caseName?: string
+): string | undefined {
+  if (!draftText || !citationString) return undefined;
+
+  // Build a regex-safe version of the citation and case name
+  const escapedCitation = citationString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedCaseName = caseName
+    ? caseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    : null;
+
+  // Strategy 1: Find quoted text immediately before or after the citation
+  // Matches: "quoted text" CitationString or CitationString ("quoted text")
+  const quotePatterns = [
+    // "quote" followed by citation within 200 chars
+    new RegExp(`["\u201C]([^"\u201D]{10,500})["\u201D][^"]{0,200}${escapedCitation}`, 'i'),
+    // Citation followed by "quote" within 100 chars
+    new RegExp(`${escapedCitation}[^"]{0,100}["\u201C]([^"\u201D]{10,500})["\u201D]`, 'i'),
+  ];
+
+  // Also try with case name if available
+  if (escapedCaseName) {
+    quotePatterns.push(
+      new RegExp(`["\u201C]([^"\u201D]{10,500})["\u201D][^"]{0,200}${escapedCaseName}`, 'i'),
+      new RegExp(`${escapedCaseName}[^"]{0,100}["\u201C]([^"\u201D]{10,500})["\u201D]`, 'i'),
+    );
+  }
+
+  for (const pattern of quotePatterns) {
+    const match = draftText.match(pattern);
+    if (match?.[1] && match[1].trim().length >= 10) {
+      return match[1].trim();
+    }
+  }
+
+  return undefined;
+}

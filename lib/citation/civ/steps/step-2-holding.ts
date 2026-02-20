@@ -251,6 +251,23 @@ export async function step2HoldingVerification(
 ): Promise<Step2Result> {
   const tier = getTierFromMotionType(motionType);
 
+  // T-23: If proposition text is not available, skip proposition check
+  if (!proposition || !proposition.trim()) {
+    log.warn(`[CIV_STEP2] citation=${citation.substring(0, 50)} — no proposition text, marking INCONCLUSIVE`);
+    return {
+      step: 2,
+      name: 'holding_verification',
+      proposition: proposition || '',
+      proposition_type: propositionType,
+      stage_1: { model: 'skipped', result: 'VERIFICATION_DEFERRED' as VerificationResult, confidence: 0 },
+      stage_2: { triggered: false },
+      final_result: 'VERIFICATION_DEFERRED' as VerificationResult,
+      final_confidence: 0,
+      propositionSupported: 'INCONCLUSIVE',
+      proceed_to_step_3: true, // Don't block pipeline on missing proposition
+    };
+  }
+
   // Stage 1: GPT-4o
   const stage1 = await runStage1(
     caseName,
@@ -394,6 +411,8 @@ export async function step2HoldingVerification(
       : { triggered: false },
     final_result: finalResult,
     final_confidence: finalConfidence,
+    // T-23: Proposition supported if holding is VERIFIED or PARTIAL (not REJECTED/DICTA_ONLY)
+    propositionSupported: finalResult === 'VERIFIED' || finalResult === 'PARTIAL',
     proceed_to_step_3: finalResult !== 'REJECTED' && finalConfidence >= proceedThreshold,
   };
 }

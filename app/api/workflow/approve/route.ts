@@ -160,7 +160,20 @@ export async function POST(request: Request) {
         orderId,
         action,
       });
-      // Don't fail the request — the DB update succeeded, and the event can be retried
+      // A-003: Revert status — Fn2 will never process if event wasn't sent
+      const { error: revertError } = await supabase
+        .from('orders')
+        .update({ status: order.status, updated_at: new Date().toISOString() })
+        .eq('id', orderId);
+      if (revertError) {
+        log.error('[CP3] Status revert ALSO failed — order stuck in wrong state', {
+          orderId, attemptedStatus: newStatus, originalStatus: order.status,
+        });
+      }
+      return NextResponse.json(
+        { error: 'Approval event failed to dispatch. Status has been reverted. Please retry.' },
+        { status: 502 }
+      );
     }
 
     // Log the approval action

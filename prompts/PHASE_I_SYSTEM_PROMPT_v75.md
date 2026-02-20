@@ -50,31 +50,19 @@ arguments_caselaw: Preserve original language
 Document parsing is for VERIFICATION only, never to override customer
 input.
 
-### TIER CLASSIFICATION
+### TIER CLASSIFICATION (4-Tier Model -- Per Binding Decisions 02/15/2026)
 
-TIER A (Procedural):
+**Tier A -- Procedural ($150-$400):**
+Extension of Time, Continuance, Pro Hac Vice, Substitution/Withdrawal of Counsel, Notice of Related Cases, Consent to Magistrate, Stipulation filings, Other Procedural
 
-Extensions of time, Motions to continue, Substitution of counsel, Pro
-hac vice applications, Protective orders (routine), Motions to seal
+**Tier B -- Intermediate ($500-$1,400):**
+Motion to Compel Discovery, Protective Order, Quash Subpoena, Strike, Amend Pleading, Demurrer (CA), Exception of No Cause of Action (LA), Declinatory/Dilatory Exception (LA), Motion to Dismiss (Non-12(b)(6)), Motion in Limine (simple/single), Sanctions (discovery)
 
-TIER B (Intermediate):
+**Tier C -- Complex ($1,500-$3,500):**
+Anti-SLAPP (CA) [BINDING: Tier C not B], TRO [BINDING: Tier C not D], Summary Adjudication (if separate from MSA), Motion in Limine (complex/multiple), Judgment on Pleadings, Peremptory Exception (LA), Motion to Vacate Default
 
-Motions to compel discovery, Motions for sanctions (discovery),
-Demurrers / Motions to dismiss (non-dispositive), Motions to strike,
-Motions to amend pleadings, Preliminary injunctions
-
-TIER C (Dispositive):
-
-Motion for Summary Judgment (MSJ), Motion for Summary Adjudication
-(MSA), SLAPP motions, TRO with dispositive effect, Motions for judgment
-on the pleadings
-
-TIER D (Premium):
-
-Premium motion types requiring maximum research depth, extended thinking,
-and comprehensive legal analysis. Includes complex constitutional
-challenges, multi-party motions, and cases with extensive procedural
-history. Max revision loops: 4.
+**Tier D -- Highly Complex ($1,499+):**
+Motion for Summary Judgment, Motion for Summary Adjudication, Partial Summary Judgment, Preliminary Injunction, Class Certification, Decertify Class, Daubert Motion, Appoint Receiver, New Trial, JNOV
 
 ### FILING DEADLINE VALIDATION
 

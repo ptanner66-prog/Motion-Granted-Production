@@ -16,20 +16,44 @@ export async function handleProtocol16(
 ): Promise<ProtocolResult> {
   // Protocol 16 checks required fields at the order level, not citation level.
   // Only evaluate once per phase (use order-level sentinel from dispatcher).
+
+  // T-21: Guard against false positives — P16 receives citation-level context
+  // from the dispatcher, but order-level fields (case_name, case_number, etc.)
+  // only exist when the metadata has been enriched with order-level data.
+  // If motionType is absent, we're operating on citation-level metadata
+  // where required-field checks produce false positives.
+  const metadata = context.verificationResult?.metadata;
+  if (!metadata?.motionType) {
+    return {
+      protocolNumber: 16,
+      triggered: false,
+      severity: null,
+      actionTaken: null,
+      aisEntry: null,
+      holdRequired: false,
+      handlerVersion: VERSION,
+    };
+  }
+
   const missingFields: string[] = [];
 
   try {
     const requiredFields = getRequiredFields(
-      context.verificationResult?.metadata?.motionType as string || '',
+      metadata.motionType as string || '',
       'A' // Default to filing path
     );
 
     for (const field of requiredFields) {
       if (!field.required) continue;
-      const value = context.verificationResult?.metadata?.[field.fieldName];
-      if (!value || (typeof value === 'string' && !value.trim())) {
+      const value = metadata[field.fieldName];
+      // T-21: Tighten value check — only flag truly absent/empty values.
+      // !value caught 0, false, empty arrays as "missing" (false positives).
+      if (value === null || value === undefined) {
+        missingFields.push(field.description);
+      } else if (typeof value === 'string' && value.trim().length === 0) {
         missingFields.push(field.description);
       }
+      // Numbers, booleans, objects, arrays are valid field values
     }
   } catch (error) {
     logger.error('protocol.p16.field_check_error', {
