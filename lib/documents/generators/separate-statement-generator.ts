@@ -577,6 +577,10 @@ function generateSeparateStatementDocument(data: SeparateStatementData): Documen
     sections: [{
       properties: {
         page: {
+          size: {
+            width: 12240,  // 8.5 inches (US Letter)
+            height: 15840, // 11 inches (US Letter)
+          },
           margin: {
             top: convertInchesToTwip(rules?.margins?.top || 1),
             bottom: convertInchesToTwip(rules?.margins?.bottom || 0.5),

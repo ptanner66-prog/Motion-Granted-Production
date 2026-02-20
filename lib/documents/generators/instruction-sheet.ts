@@ -519,6 +519,10 @@ function generateInstructionSheetDocument(data: InstructionSheetData): Document 
     sections: [{
       properties: {
         page: {
+          size: {
+            width: 12240,  // 8.5 inches (US Letter)
+            height: 15840, // 11 inches (US Letter)
+          },
           margin: {
             top: convertInchesToTwip(1),
             bottom: convertInchesToTwip(1),

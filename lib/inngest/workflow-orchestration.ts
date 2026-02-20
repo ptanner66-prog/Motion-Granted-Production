@@ -982,7 +982,17 @@ async function buildFormattedMotionDocx(motionObj: Record<string, unknown>): Pro
   }
 
   const doc = new Document({
-    sections: [{ children }],
+    sections: [{
+      properties: {
+        page: {
+          size: {
+            width: 12240,  // 8.5 inches (US Letter)
+            height: 15840, // 11 inches (US Letter)
+          },
+        },
+      },
+      children,
+    }],
   });
   return Packer.toBuffer(doc);
 }
@@ -997,7 +1007,19 @@ async function buildPlainTextDocx(text: string): Promise<Uint8Array> {
     children: [new TextRun({ text: line, font: 'Times New Roman', size: 24 })],
     spacing: { after: 240 },
   }));
-  const doc = new Document({ sections: [{ children: paragraphs }] });
+  const doc = new Document({
+    sections: [{
+      properties: {
+        page: {
+          size: {
+            width: 12240,  // 8.5 inches (US Letter)
+            height: 15840, // 11 inches (US Letter)
+          },
+        },
+      },
+      children: paragraphs,
+    }],
+  });
   return Packer.toBuffer(doc);
 }
 
