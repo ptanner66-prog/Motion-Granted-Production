@@ -33,7 +33,7 @@ export interface ExportFilters {
   motionType?: string[];
   minAmount?: number;
   maxAmount?: number;
-  userId?: string;
+  clientId?: string;
 }
 
 export interface ExportOptions {
@@ -164,8 +164,8 @@ async function fetchOrders(
       amount,
       payment_status,
       completed_at,
-      user_id,
-      profiles:user_id (
+      client_id,
+      profiles:client_id (
         email
       )
     `)
@@ -196,8 +196,8 @@ async function fetchOrders(
     query = query.lte('amount', filters.maxAmount);
   }
 
-  if (filters.userId) {
-    query = query.eq('user_id', filters.userId);
+  if (filters.clientId) {
+    query = query.eq('client_id', filters.clientId);
   }
 
   const { data, error } = await query.limit(10000);

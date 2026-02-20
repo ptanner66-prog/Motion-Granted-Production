@@ -32,7 +32,7 @@ export async function GET(
     // Verify user owns this order (or is admin)
     const { data: order } = await supabase
       .from('orders')
-      .select('user_id')
+      .select('client_id')
       .eq('id', id)
       .single();
 
@@ -44,7 +44,7 @@ export async function GET(
 
     const isAdmin = profile?.role === 'admin';
 
-    if (!order || (order.user_id !== user.id && !isAdmin)) {
+    if (!order || (order.client_id !== user.id && !isAdmin)) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
@@ -84,7 +84,7 @@ export async function POST(
     // Verify user owns this order (or is admin)
     const { data: order } = await supabase
       .from('orders')
-      .select('user_id')
+      .select('client_id')
       .eq('id', id)
       .single();
 
@@ -96,7 +96,7 @@ export async function POST(
 
     const isAdmin = profile?.role === 'admin';
 
-    if (!order || (order.user_id !== user.id && !isAdmin)) {
+    if (!order || (order.client_id !== user.id && !isAdmin)) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
