@@ -148,6 +148,9 @@ import { loadPhasePrompts } from "@/prompts";
 // Orders table write-back utility
 import { updateOrderColumns, appendPhaseCourse } from "@/lib/orders/update-columns";
 
+// SP-GOD-4: Filing package generation via doc-gen bridge
+import { generateAndStoreFilingPackage } from "@/lib/integration/doc-gen-bridge";
+
 // SP-20 D5: Checkpoint event types (shared across Fn1, Fn2, dashboard)
 import type { CP3ApprovalEvent } from "@/lib/types/checkpoint-events";
 
@@ -3643,18 +3646,56 @@ export const generateOrderWorkflow = inngest.createFunction(
     console.log('[Orchestration] FINAL - All accumulated phases:', Object.keys(workflowState.phaseOutputs));
 
     // ========================================================================
-    // STEP 15: Generate Deliverables (before CP3 handoff)
-    // Split into separate steps so each gets its own 300s timeout.
-    // PDF generation removed — ship DOCX + text reports only.
+    // STEP 15: Generate Filing Package (SP-GOD-4: doc-gen-bridge)
+    // Generates 3-7 DOCX files via filing-package-assembler and uploads
+    // to Supabase Storage with document records.
+    // Split into steps per D6-Dec-6: buffers NEVER cross step boundaries.
     // ========================================================================
-    const motionDocxUrl = await step.run("generate-motion-docx", async () => {
-      return await generateAndUploadMotionDocx(workflowState, supabase);
+
+    // Step 15a: Generate filing package (all DOCX documents)
+    const filingPackageResult = await step.run("phase-x-generate-documents", async () => {
+      console.log('[Orchestration] Generating filing package via doc-gen-bridge...');
+      const result = await generateAndStoreFilingPackage(supabase, {
+        orderId: workflowState.orderId,
+        orderNumber: workflowState.orderContext?.orderNumber || orderId,
+      });
+
+      // Return metadata only — no buffers across step boundaries (ST-D5G-02)
+      return {
+        success: result.success,
+        documentCount: result.uploadedDocuments.length,
+        documents: result.uploadedDocuments.map(d => ({
+          type: d.type,
+          filename: d.filename,
+          pageCount: d.pageCount,
+          wordCount: d.wordCount,
+        })),
+        errors: result.errors,
+        warnings: result.warnings,
+      };
     });
 
-    const instructionSheetUrl = await step.run("generate-instruction-sheet", async () => {
-      return await generateAndUploadInstructionSheet(workflowState, supabase);
-    });
+    if (!filingPackageResult.success) {
+      console.error('[Orchestration] Filing package generation failed:', filingPackageResult.errors);
+      // Non-fatal: fall back to legacy inline generators
+      console.log('[Orchestration] Falling back to legacy deliverable generation...');
+    }
 
+    // Step 15b: Legacy deliverable generation (runs alongside filing package for backward compat)
+    // These produce text-based reports that complement the DOCX filing package.
+    const motionDocxUrl = filingPackageResult.success
+      ? 'generated-via-filing-package'
+      : await step.run("generate-motion-docx", async () => {
+          return await generateAndUploadMotionDocx(workflowState, supabase);
+        });
+
+    const instructionSheetUrl = filingPackageResult.success
+      ? 'generated-via-filing-package'
+      : await step.run("generate-instruction-sheet", async () => {
+          return await generateAndUploadInstructionSheet(workflowState, supabase);
+        });
+
+    // Citation and caption QC reports always generate (text-based supplements)
     const citationReportUrl = await step.run("generate-citation-report", async () => {
       return await generateAndUploadCitationReport(workflowState, supabase);
     });
@@ -3663,14 +3704,33 @@ export const generateOrderWorkflow = inngest.createFunction(
       return await generateAndUploadCaptionQcReport(workflowState, supabase);
     });
 
+    // Step 15c: Persist deliverable records
     await step.run("persist-deliverable-records", async () => {
       await persistDeliverableRecords(workflowState.orderId, workflowState.workflowId, {
-        motionDocx: motionDocxUrl ?? undefined,
-        attorneyInstructionSheet: instructionSheetUrl ?? undefined,
+        motionDocx: typeof motionDocxUrl === 'string' && motionDocxUrl !== 'generated-via-filing-package'
+          ? motionDocxUrl : undefined,
+        attorneyInstructionSheet: typeof instructionSheetUrl === 'string' && instructionSheetUrl !== 'generated-via-filing-package'
+          ? instructionSheetUrl : undefined,
         citationAccuracyReport: citationReportUrl ?? undefined,
         captionQcReport: captionQcReportUrl ?? undefined,
       }, supabase);
     });
+
+    // Step 15d: Log filing package results
+    if (filingPackageResult.success) {
+      await step.run("log-filing-package-result", async () => {
+        await supabase.from("automation_logs").insert({
+          order_id: orderId,
+          action_type: "filing_package_generated",
+          action_details: {
+            workflowId: workflowState.workflowId,
+            documentCount: filingPackageResult.documentCount,
+            documents: filingPackageResult.documents,
+            warnings: filingPackageResult.warnings,
+          },
+        });
+      });
+    }
 
     // ========================================================================
     // STEP 15.5: Finalize Workflow — persist motion & conversation records

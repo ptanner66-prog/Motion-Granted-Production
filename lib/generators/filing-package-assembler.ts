@@ -26,12 +26,21 @@ import { generateSignatureBlock, AttorneyInfo } from './signature-block';
 import { generateDeclaration, DeclarationInput } from './declaration-generator';
 import { generateProofOfService } from './proof-of-service';
 import { generateAttorneyInstructions } from './attorney-instructions';
+import { generateTableOfContents, TOCEntry } from './table-of-contents';
 import { createFormattedDocument } from './formatting-engine';
 import {
   sanitizePartyName,
   sanitizeForDocument,
   sanitizeSectionContent,
 } from '@/lib/utils/text-sanitizer';
+import {
+  validateNoPlaceholders,
+  categorizePlaceholders,
+} from '@/lib/workflow/validators/placeholder-validator';
+
+/** Tier threshold for TOC inclusion */
+const TOC_THRESHOLD_PAGES = 15;
+const TOC_TIERS: Set<string> = new Set(['B', 'C', 'D']);
 
 export type DocumentType =
   | 'notice_of_motion'
@@ -41,7 +50,9 @@ export type DocumentType =
   | 'separate_statement'
   | 'proposed_order'
   | 'proof_of_service'
-  | 'attorney_instructions';
+  | 'attorney_instructions'
+  | 'citation_report'
+  | 'exhibit_index';
 
 export interface GeneratedDocument {
   type: DocumentType;
@@ -93,6 +104,14 @@ export interface AssemblerInput {
   filingDeadline?: string;
   localRuleFlags?: string[];
   citationWarnings?: string[];
+  citationVerification?: {
+    totalCitations: number;
+    verifiedCount: number;
+    unverifiedCount: number;
+    flaggedCount: number;
+    pendingCount: number;
+    citations?: Array<{ citation: string; status: string; confidence: number }>;
+  };
 }
 
 /**
@@ -118,8 +137,10 @@ const FILING_ORDER: Record<DocumentType, number> = {
   affidavit: 3,            // Same position as declaration (jurisdiction determines which)
   proposed_order: 4,
   separate_statement: 5,
-  proof_of_service: 6,
-  attorney_instructions: 7, // Internal only, always last
+  exhibit_index: 6,
+  proof_of_service: 7,
+  citation_report: 8,       // Internal only — not filed
+  attorney_instructions: 9,  // Internal only, always last
 };
 
 function sortByFilingOrder(documents: GeneratedDocument[]): GeneratedDocument[] {
@@ -155,6 +176,11 @@ function determineRequiredDocuments(input: AssemblerInput): DocumentType[] {
     // Proof of Service: separate only for Tier B/C (Tier A uses inline cert)
     if (input.tier !== 'A') {
       docs.push('proof_of_service');
+    }
+
+    // Citation report: include when citation verification data is available
+    if (input.citationVerification && input.citationVerification.totalCitations > 0) {
+      docs.push('citation_report');
     }
 
     docs.push('attorney_instructions');
@@ -195,6 +221,11 @@ function determineRequiredDocuments(input: AssemblerInput): DocumentType[] {
 
   // Proof of Service: always required
   docs.push('proof_of_service');
+
+  // Citation report: include when citation verification data is available
+  if (input.citationVerification && input.citationVerification.totalCitations > 0) {
+    docs.push('citation_report');
+  }
 
   // Attorney Instructions: always (internal, not filed)
   docs.push('attorney_instructions');
@@ -292,6 +323,25 @@ export async function assembleFilingPackage(input: AssemblerInput): Promise<Fili
     }
   }
 
+  // DG-015: Post-assembly placeholder validation on input content.
+  // Scan body text for unresolved placeholders and add warnings.
+  const bodyContent = sanitizedInput.content.memorandumBody || sanitizedInput.content.motionBody || '';
+  if (bodyContent) {
+    const placeholderResult = validateNoPlaceholders(bodyContent);
+    if (!placeholderResult.valid) {
+      const { blocking, nonBlocking } = categorizePlaceholders(placeholderResult.placeholders);
+      if (blocking.length > 0) {
+        warnings.push(`BLOCKING: Motion contains ${blocking.length} unresolved placeholder(s): ${blocking.slice(0, 5).join(', ')}${blocking.length > 5 ? '...' : ''}`);
+      }
+      if (nonBlocking.length > 0) {
+        warnings.push(`Non-blocking placeholders (attorney fills at signing): ${nonBlocking.join(', ')}`);
+      }
+      if (placeholderResult.genericNames.length > 0) {
+        warnings.push(`Generic names detected: ${placeholderResult.genericNames.join(', ')}`);
+      }
+    }
+  }
+
   // ST6-03 FIX: Sort documents into correct court filing order.
   // Ensures extra documents (CoS, Verification) appear after the motion body
   // and before exhibits/proof of service, regardless of generation order.
@@ -327,7 +377,7 @@ async function generateSingleDocument(
 ): Promise<GeneratedDocument | null> {
   let buffer: Buffer;
   let wordCount: number;
-  const isFiled = docType !== 'attorney_instructions';
+  const isFiled = docType !== 'attorney_instructions' && docType !== 'citation_report';
 
   switch (docType) {
     case 'memorandum': {
@@ -336,6 +386,16 @@ async function generateSingleDocument(
 
       // FIX-B FIX-9: Convert body text to Paragraph objects so the document has content.
       const bodyParagraphs = textToParagraphs(bodyText);
+
+      // TOC for Tier B/C/D motions over 15 pages (DOC-007)
+      const estimatedPages = estimatePageCount(wordCount);
+      let tocParagraphs: Paragraph[] = [];
+      if (TOC_TIERS.has(input.tier) && estimatedPages > TOC_THRESHOLD_PAGES) {
+        const tocEntries = extractTOCEntries(bodyText);
+        if (tocEntries.length > 0) {
+          tocParagraphs = generateTableOfContents(tocEntries);
+        }
+      }
 
       // LA Tier A: append inline certificate of service (no separate POS)
       const isLATierA = input.jurisdiction.stateCode.toUpperCase() === 'LA'
@@ -350,7 +410,7 @@ async function generateSingleDocument(
         isFederal: input.jurisdiction.isFederal,
         county: input.jurisdiction.county,
         federalDistrict: input.jurisdiction.federalDistrict,
-        content: [...captionParagraphs, ...bodyParagraphs, ...signatureParagraphs, ...inlineCert],
+        content: [...captionParagraphs, ...tocParagraphs, ...bodyParagraphs, ...signatureParagraphs, ...inlineCert],
         includeHeader: rules.header?.required,
         includeFooter: rules.footer?.required,
         documentTitle: `Memorandum of Points and Authorities in Support of ${input.motionTypeDisplay}`,
@@ -470,6 +530,14 @@ async function generateSingleDocument(
         (sum, f) => sum + estimateWordCount(f.fact) + estimateWordCount(f.evidence), 0
       );
 
+      // DG-020: Warn when MSJ separate statement exceeds 100 UMFs
+      if (facts.length > 100) {
+        warnings.push(
+          `Separate statement contains ${facts.length} undisputed material facts (UMFs). ` +
+          `Many courts require leave for >75 UMFs. Review local rules for any UMF cap.`
+        );
+      }
+
       // FIX-B FIX-9: Convert fact/evidence pairs to paragraphs.
       const factParagraphs = facts.flatMap((f, i) => [
         new Paragraph({
@@ -492,6 +560,98 @@ async function generateSingleDocument(
       break;
     }
 
+    case 'citation_report': {
+      // Citation report: internal document summarizing verification results
+      const cv = input.citationVerification;
+      const reportParagraphs: Paragraph[] = [];
+
+      reportParagraphs.push(new Paragraph({
+        children: [new TextRun({ text: 'CITATION VERIFICATION REPORT', bold: true, size: 28 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 360 },
+      }));
+
+      reportParagraphs.push(new Paragraph({
+        children: [new TextRun({
+          text: `Order: ${input.orderNumber} | ${input.motionTypeDisplay} | Generated: ${new Date().toLocaleDateString('en-US')}`,
+        })],
+        spacing: { after: 240 },
+      }));
+
+      if (cv) {
+        const summaryLines = [
+          `Total citations: ${cv.totalCitations}`,
+          `Verified: ${cv.verifiedCount}`,
+          `Unverified: ${cv.unverifiedCount}`,
+          `Flagged for review: ${cv.flaggedCount}`,
+          ...(cv.pendingCount > 0 ? [`Pending: ${cv.pendingCount}`] : []),
+        ];
+        for (const line of summaryLines) {
+          reportParagraphs.push(new Paragraph({
+            children: [new TextRun({ text: line })],
+            spacing: { after: 60 },
+            indent: { left: 360 },
+          }));
+        }
+
+        // Individual citations
+        if (cv.citations && cv.citations.length > 0) {
+          reportParagraphs.push(new Paragraph({ spacing: { after: 240 } }));
+          reportParagraphs.push(new Paragraph({
+            children: [new TextRun({ text: 'INDIVIDUAL CITATION RESULTS:', bold: true, underline: {} })],
+            spacing: { after: 120 },
+          }));
+
+          for (const c of cv.citations) {
+            reportParagraphs.push(new Paragraph({
+              children: [
+                new TextRun({ text: `[${c.status}] `, bold: true }),
+                new TextRun({ text: c.citation }),
+                new TextRun({ text: ` (confidence: ${(c.confidence * 100).toFixed(0)}%)`, italics: true }),
+              ],
+              spacing: { after: 60 },
+              indent: { left: 360 },
+            }));
+          }
+        }
+      }
+
+      wordCount = 300;
+      buffer = await createFormattedDocument({
+        stateCode: input.jurisdiction.stateCode,
+        isFederal: input.jurisdiction.isFederal,
+        content: reportParagraphs,
+        documentTitle: 'Citation Verification Report',
+      });
+      break;
+    }
+
+    case 'exhibit_index': {
+      // Exhibit index: list of exhibits with estimated page counts
+      const indexParagraphs: Paragraph[] = [];
+      indexParagraphs.push(new Paragraph({
+        children: [new TextRun({ text: 'EXHIBIT INDEX', bold: true, size: 28 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 360 },
+      }));
+      indexParagraphs.push(new Paragraph({
+        children: [new TextRun({
+          text: '[ATTORNEY: Complete exhibit list before filing]',
+          italics: true,
+        })],
+        spacing: { after: 240 },
+      }));
+
+      wordCount = 100;
+      buffer = await createFormattedDocument({
+        stateCode: input.jurisdiction.stateCode,
+        isFederal: input.jurisdiction.isFederal,
+        content: [...captionParagraphs, ...indexParagraphs],
+        documentTitle: 'Exhibit Index',
+      });
+      break;
+    }
+
     case 'attorney_instructions': {
       const instrParagraphs = generateAttorneyInstructions({
         orderNumber: input.orderNumber,
@@ -504,6 +664,7 @@ async function generateSingleDocument(
         localRuleFlags: input.localRuleFlags || [],
         citationWarnings: input.citationWarnings || [],
         formatNotes: [],
+        citationVerification: input.citationVerification,
       });
 
       wordCount = 500;
@@ -522,13 +683,81 @@ async function generateSingleDocument(
   }
 
   const pageCount = estimatePageCount(wordCount);
-  const filename = `${input.orderNumber}_${docType}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+  const filename = buildFilename(input.orderNumber, docType, requiredDocs);
 
   if (rules.pageLimit && pageCount > rules.pageLimit && isFiled) {
     warnings.push(`${docType} may exceed ${rules.pageLimit}-page limit (estimated ${pageCount} pages)`);
   }
 
   return { type: docType, filename, buffer, pageCount, wordCount, isFiled };
+}
+
+/**
+ * Extract TOC entries from memorandum body text.
+ * Looks for heading patterns: lines in ALL CAPS or lines starting with roman/arabic numerals.
+ */
+function extractTOCEntries(bodyText: string): TOCEntry[] {
+  const entries: TOCEntry[] = [];
+  const lines = bodyText.split('\n');
+  let currentPage = 1;
+  let linesOnPage = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      linesOnPage++;
+      if (linesOnPage >= 28) { currentPage++; linesOnPage = 0; }
+      continue;
+    }
+
+    // Detect headings: ALL CAPS lines, or Roman numeral/Arabic numbered sections
+    const isAllCaps = trimmed.length > 3 && trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed);
+    const isRomanNumbered = /^(I{1,3}|IV|V|VI{0,3}|IX|X{0,3})\.\s+/.test(trimmed);
+    const isArabicNumbered = /^\d+\.\s+[A-Z]/.test(trimmed);
+
+    if (isAllCaps) {
+      entries.push({ title: trimmed, level: 1, pageNumber: currentPage });
+    } else if (isRomanNumbered || isArabicNumbered) {
+      entries.push({ title: trimmed, level: 2, pageNumber: currentPage });
+    }
+
+    linesOnPage++;
+    if (linesOnPage >= 28) { currentPage++; linesOnPage = 0; }
+  }
+
+  return entries;
+}
+
+/**
+ * Build a filename following the filing order sequence convention.
+ * Format: {orderNumber}_{sequence}_{document_type}
+ */
+const SEQUENCE_MAP: Record<string, string> = {
+  notice_of_motion: '01',
+  memorandum: '02',
+  declaration: '03a',
+  affidavit: '03a',
+  separate_statement: '04',
+  proposed_order: '05',
+  exhibit_index: '06',
+  proof_of_service: '07',
+  citation_report: '08',
+  attorney_instructions: '09',
+};
+
+function buildFilename(orderNumber: string, docType: DocumentType, requiredDocs: DocumentType[]): string {
+  // Assign sub-sequences for multiple declarations
+  let seq = SEQUENCE_MAP[docType] || '99';
+
+  // Multiple declarations get 03a, 03b, 03c...
+  if (docType === 'declaration' || docType === 'affidavit') {
+    const declIndex = requiredDocs.filter(d => d === docType).indexOf(docType);
+    if (declIndex > 0) {
+      seq = `03${String.fromCharCode(97 + declIndex)}`;
+    }
+  }
+
+  return `${orderNumber}_${seq}_${docType}`;
 }
 
 /**
