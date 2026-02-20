@@ -37,14 +37,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Case number required' }, { status: 400 });
     }
 
-    // Verify user owns this order
+    // Verify user owns this order (Area 14: client_id, not user_id)
     const { data: order } = await supabase
       .from('orders')
-      .select('user_id, status')
+      .select('client_id, status')
       .eq('id', orderId)
       .single();
 
-    if (!order || order.user_id !== user.id) {
+    if (!order || order.client_id !== user.id) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 

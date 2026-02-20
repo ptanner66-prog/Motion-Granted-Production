@@ -2,7 +2,7 @@
 // Conflict resolution functions
 // VERSION: 1.0.0
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import type { ConflictMatch } from './types';
 
 import { createLogger } from '@/lib/security/logger';
@@ -16,7 +16,7 @@ export async function resolveConflict(
   resolvedBy: string,
   resolutionNote: string
 ): Promise<ConflictMatch | null> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { data, error } = await supabase
     .from('conflict_matches')
@@ -42,7 +42,7 @@ export async function resolveConflict(
  * Get all unresolved conflicts for an order
  */
 export async function getUnresolvedConflicts(orderId: string): Promise<ConflictMatch[]> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { data, error } = await supabase
     .from('conflict_matches')
@@ -66,7 +66,7 @@ export async function getAttorneyConflictHistory(
   attorneyId: string,
   limit: number = 50
 ): Promise<ConflictMatch[]> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { data, error } = await supabase
     .from('conflict_matches')
@@ -87,7 +87,7 @@ export async function getAttorneyConflictHistory(
  * Check if order has blocking conflicts
  */
 export async function hasBlockingConflicts(orderId: string): Promise<boolean> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { count, error } = await supabase
     .from('conflict_matches')
@@ -97,8 +97,13 @@ export async function hasBlockingConflicts(orderId: string): Promise<boolean> {
     .eq('resolved', false);
 
   if (error) {
-    log.error('Failed to check blocking conflicts:', error);
-    return false;  // Fail open - don't block on error
+    // T-88: FAIL CLOSED — infrastructure failure = treat as potential conflict.
+    // Admin will see the order in conflict review queue and can clear it manually.
+    log.error('[CONFLICT-CHECK] Infrastructure failure — FAILING CLOSED', {
+      error: error.message,
+      orderId,
+    });
+    return true;
   }
 
   return (count || 0) > 0;

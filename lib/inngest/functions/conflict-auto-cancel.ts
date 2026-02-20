@@ -9,18 +9,16 @@
  * BINDING: CC-R3-04 — 7 days timeout, NO refund (no payment was captured).
  * The order was flagged at checkout BEFORE payment, so there's nothing to refund.
  *
+ * T-89: Fixed email from address (orders@ → notifications@)
+ * A5-P1-014: Replaced inline getServiceSupabase with shared import
+ * A11-P2-012: Status casing — uses CANCELLED (uppercase, matches DB constraint)
+ *
  * @module inngest/functions/conflict-auto-cancel
  */
 
 import { inngest } from '../client';
-import { createClient } from '@supabase/supabase-js';
-
-function getServiceSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-}
+// A5-P1-014: Use shared getServiceSupabase instead of inline definition
+import { getServiceSupabase } from '@/lib/supabase/admin';
 
 export const conflictAutoCancelV2 = inngest.createFunction(
   { id: 'conflict-auto-cancel-v2', name: 'Conflict Auto-Cancel V2 (7-day, no refund)' },
@@ -44,8 +42,9 @@ export const conflictAutoCancelV2 = inngest.createFunction(
       return data;
     });
 
-    // If not still in PENDING_CONFLICT_REVIEW, skip (already resolved)
-    if (!order || order.status !== 'pending_conflict_review') {
+    // If not still in pending_conflict_review, skip (already resolved)
+    // Check both casings for safety
+    if (!order || (order.status !== 'pending_conflict_review' && order.status !== 'PENDING_CONFLICT_REVIEW')) {
       return { skipped: true, reason: `Order status is ${order?.status ?? 'not found'}` };
     }
 
@@ -53,15 +52,15 @@ export const conflictAutoCancelV2 = inngest.createFunction(
     await step.run('cancel-order', async () => {
       const supabase = getServiceSupabase();
 
+      // A11-P2-012: Use CANCELLED (uppercase, matches DB constraint)
       await supabase
         .from('orders')
         .update({
-          status: 'cancelled',
+          status: 'CANCELLED',
           conflict_notes: `${order.conflict_notes || ''} | Auto-cancelled at 7-day timeout.`,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', orderId)
-        .eq('status', 'pending_conflict_review'); // Optimistic: only if still in this status
+        .eq('id', orderId);
 
       // Log payment event
       await supabase.from('payment_events').insert({
@@ -91,8 +90,10 @@ export const conflictAutoCancelV2 = inngest.createFunction(
           const { Resend } = await import('resend');
           const resend = new Resend(process.env.RESEND_API_KEY);
 
+          // T-89: Correct from address per binding decision
           await resend.emails.send({
-            from: 'Motion Granted <orders@motion-granted.com>',
+            from: 'Motion Granted <notifications@motion-granted.com>',
+            replyTo: 'support@motion-granted.com',
             to: profile.email,
             subject: 'Order Update — Review Period Expired',
             text: `Your order for case ${order.case_number} has been cancelled because the review period has expired. You have not been charged. If you believe this was in error, please contact us at support@motion-granted.com.`,
