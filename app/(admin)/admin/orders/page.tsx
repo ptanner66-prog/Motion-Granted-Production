@@ -90,11 +90,20 @@ function getUrgencyClass(daysUntilDue: number, status: string) {
   return ''
 }
 
-export default async function AdminOrdersPage() {
+export default async function AdminOrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const resolvedParams = await searchParams
+  const page = Math.max(1, Number(resolvedParams?.page ?? 1))
+  const limit = Math.min(100, Math.max(1, Number(resolvedParams?.limit ?? 50)))
+  const offset = (page - 1) * limit
+
   const supabase = await createClient()
 
-  // Fetch all orders with client info and workflow state
-  const { data: orders } = await supabase
+  // Fetch orders with pagination, client info, and workflow state
+  const { data: orders, count } = await supabase
     .from('orders')
     .select(`
       *,
@@ -105,10 +114,13 @@ export default async function AdminOrdersPage() {
       order_workflows (
         current_phase
       )
-    `)
+    `, { count: 'exact' })
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
 
   const allOrders: Order[] = orders || []
+  const totalCount = count ?? 0
+  const totalPages = Math.ceil(totalCount / limit)
 
   // Categorize orders by status
   const needsApprovalOrders = allOrders.filter(o => o.status === 'pending_review' || o.status === 'AWAITING_APPROVAL')
@@ -330,6 +342,36 @@ export default async function AdminOrdersPage() {
           <OrderList orders={allOrders} emptyMessage="No orders yet" />
         </TabsContent>
       </Tabs>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 px-2">
+          <p className="text-sm text-gray-500">
+            Showing {offset + 1}–{Math.min(offset + limit, totalCount)} of {totalCount} orders
+          </p>
+          <div className="flex items-center gap-2">
+            {page > 1 && (
+              <Link
+                href={`/admin/orders?page=${page - 1}&limit=${limit}`}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Previous
+              </Link>
+            )}
+            <span className="text-sm text-gray-600 px-3">
+              Page {page} of {totalPages}
+            </span>
+            {page < totalPages && (
+              <Link
+                href={`/admin/orders?page=${page + 1}&limit=${limit}`}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Next
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

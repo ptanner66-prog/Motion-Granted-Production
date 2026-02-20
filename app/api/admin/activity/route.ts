@@ -1,6 +1,6 @@
 // app/api/admin/activity/route.ts
-// Admin activity log API
-// Task 62 | Version 1.0 — January 28, 2026
+// Admin activity log API — consolidated to automation_logs
+// VERSION: 2.0 — February 20, 2026 (A16 audit log consolidation)
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
@@ -10,14 +10,14 @@ const log = createLogger('api-admin-activity');
 
 /**
  * GET /api/admin/activity
- * List activity logs (admin only)
+ * List activity logs from automation_logs (admin only)
  *
  * Query params:
  * - limit: number (default 50, max 100)
  * - offset: number (default 0)
- * - action: filter by action type
- * - resource_type: filter by resource type
- * - user_id: filter by user
+ * - action: filter by action_type
+ * - user_id: filter by triggered_by
+ * - order_id: filter by order_id
  * - from: ISO date string
  * - to: ISO date string
  */
@@ -46,26 +46,26 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
     const offset = parseInt(searchParams.get('offset') || '0');
     const action = searchParams.get('action');
-    const resourceType = searchParams.get('resource_type');
     const userId = searchParams.get('user_id');
+    const orderId = searchParams.get('order_id');
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
-    // Build query
+    // Build query against automation_logs (consolidated from activity_logs)
     let query = supabase
-      .from('activity_logs')
+      .from('automation_logs')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (action) {
-      query = query.eq('action', action);
-    }
-    if (resourceType) {
-      query = query.eq('resource_type', resourceType);
+      query = query.eq('action_type', action);
     }
     if (userId) {
-      query = query.eq('user_id', userId);
+      query = query.eq('triggered_by', userId);
+    }
+    if (orderId) {
+      query = query.eq('order_id', orderId);
     }
     if (from) {
       query = query.gte('created_at', from);

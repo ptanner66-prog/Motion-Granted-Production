@@ -61,16 +61,16 @@ async function getOrderSummary(supabase: Awaited<ReturnType<typeof createClient>
   const totalOrders = orders?.length || 0;
   const totalRevenue = orders?.reduce((sum: number, o: OrderRow) => sum + (o.total_price || 0), 0) || 0;
 
-  // Calculate completion rate - include draft_delivered and revision_delivered as "completed"
+  // Calculate completion rate — only COMPLETED is the canonical terminal success status
   const completed = orders?.filter((o: OrderRow) =>
-    ['COMPLETED', 'DRAFT_DELIVERED', 'REVISION_DELIVERED'].includes(o.status)
+    o.status === 'COMPLETED'
   ).length || 0;
   const total = orders?.filter((o: OrderRow) => !['CANCELLED', 'REFUNDED'].includes(o.status)).length || 1;
   const completionRate = Math.round((completed / total) * 100);
 
-  // Calculate average turnaround - include all "completed" states
+  // Calculate average turnaround — COMPLETED only
   const completedOrders = orders?.filter((o: OrderRow) =>
-    ['COMPLETED', 'DRAFT_DELIVERED', 'REVISION_DELIVERED'].includes(o.status)
+    o.status === 'COMPLETED'
   ) || [];
   const avgTurnaroundDays = completedOrders.length > 0
     ? completedOrders.reduce((sum: number, o: OrderRow) => {
@@ -114,7 +114,7 @@ async function getWorkflowMetrics(supabase: Awaited<ReturnType<typeof createClie
   const { count: pendingReviewCount } = await supabase
     .from('orders')
     .select('*', { count: 'exact', head: true })
-    .in('status', ['PENDING_REVIEW', 'UNDER_REVIEW', 'REVISION_REQUESTED']);
+    .in('status', ['AWAITING_APPROVAL', 'REVISION_REQ']);
 
   // Get completed workflows for metrics
   const { data: completedWorkflows } = await supabase
@@ -208,7 +208,7 @@ async function getRevenueByMonth(supabase: Awaited<ReturnType<typeof createClien
   const { data: orders } = await supabase
     .from('orders')
     .select('created_at, total_price')
-    .not('status', 'in', '("cancelled","refunded")')
+    .not('status', 'in', '("CANCELLED","REFUNDED")')
     .gte('created_at', new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString())
     .order('created_at', { ascending: true });
 
@@ -235,7 +235,7 @@ async function getTopMotionTypes(supabase: Awaited<ReturnType<typeof createClien
   const { data: orders } = await supabase
     .from('orders')
     .select('motion_type, total_price')
-    .not('status', 'in', '("cancelled","refunded")');
+    .not('status', 'in', '("CANCELLED","REFUNDED")');
 
   type MotionTypeRow = { motion_type: string; total_price: number };
   const byType: Map<string, { count: number; revenue: number }> = new Map();
