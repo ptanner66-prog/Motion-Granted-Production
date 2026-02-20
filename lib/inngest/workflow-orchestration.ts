@@ -5305,6 +5305,7 @@ async function handleCancel(
           await stripe!.refunds.create({
             payment_intent: order.stripe_payment_intent_id,
             amount: refundAmount,
+            reason: 'requested_by_customer',
             metadata: {
               orderId,
               cancellationType,

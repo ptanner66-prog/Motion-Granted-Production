@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { ApprovalQueueItem, ApprovalStatus } from '@/types/automation';
 import { createLogger } from '@/lib/security/logger';
+import { buildRefundAuditRecord, calculateAdminRefundSuggestion } from '@/lib/payments/refund-calculator';
 
 const log = createLogger('api-automation-approval-queue');
 
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { approvalId, action, notes, selectedAlternative } = body;
+    const { approvalId, action, notes, selectedAlternative, refundAmountCents, overrideReason, orderId: bodyOrderId, suggestedRefundCents, suggestedPercentage } = body;
 
     if (!approvalId || !action) {
       return NextResponse.json(
@@ -220,9 +221,46 @@ export async function POST(request: Request) {
           nextAction = 'Draft approved for delivery';
           break;
 
-        case 'refund_request':
+        case 'refund_request': {
+          // Log refund decision to payment_events audit trail
+          if (typeof refundAmountCents === 'number' && approval.order_id) {
+            // Recalculate suggestion server-side for audit integrity
+            const { data: orderData } = await supabase
+              .from('orders')
+              .select('amount_paid_cents, current_phase')
+              .eq('id', approval.order_id)
+              .single();
+
+            const suggestion = orderData?.amount_paid_cents && orderData?.current_phase
+              ? calculateAdminRefundSuggestion(orderData.amount_paid_cents, orderData.current_phase)
+              : {
+                  suggestedRefundCents: suggestedRefundCents ?? 0,
+                  suggestedPercentage: suggestedPercentage ?? 0,
+                  reasoning: 'Calculated client-side (order data unavailable server-side)',
+                  phase: 'UNKNOWN',
+                };
+
+            const auditRecord = buildRefundAuditRecord({
+              orderId: approval.order_id,
+              adminId: user.id,
+              suggestion,
+              actualRefundCents: refundAmountCents,
+              overrideReason: overrideReason || undefined,
+            });
+
+            const { error: auditError } = await supabase
+              .from('payment_events')
+              .insert(auditRecord);
+
+            if (auditError) {
+              // Log but don't block — refund approval already recorded
+              log.error('[refund-audit] Failed to log refund audit:', { error: auditError.message });
+            }
+          }
+
           nextAction = 'Process refund in Stripe';
           break;
+        }
       }
     } else {
       // Handle rejection actions

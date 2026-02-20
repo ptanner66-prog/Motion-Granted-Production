@@ -63,3 +63,53 @@ export function calculateAdminRefundSuggestion(
     phase: currentPhase,
   };
 }
+
+/**
+ * Validates admin override reason meets minimum requirements.
+ * Required when admin deviates from the suggested refund amount.
+ */
+export function validateRefundOverrideReason(reason: string): {
+  valid: boolean;
+  error?: string;
+} {
+  const trimmed = reason?.trim() || '';
+  if (trimmed.length < 10) {
+    return {
+      valid: false,
+      error: `Override reason must be at least 10 characters (got ${trimmed.length}). Explain why you're deviating from the suggested amount.`,
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Builds the payment_events audit record for a refund action.
+ * Stores detailed refund decision data in the metadata JSONB column.
+ */
+export function buildRefundAuditRecord(params: {
+  orderId: string;
+  adminId: string;
+  suggestion: RefundSuggestion;
+  actualRefundCents: number;
+  overrideReason?: string;
+}): Record<string, unknown> {
+  const { orderId, adminId, suggestion, actualRefundCents, overrideReason } = params;
+  const deviated = actualRefundCents !== suggestion.suggestedRefundCents;
+
+  return {
+    order_id: orderId,
+    event_type: 'admin_refund_processed',
+    amount_cents: actualRefundCents,
+    metadata: {
+      actor_id: adminId,
+      suggested_refund_cents: suggestion.suggestedRefundCents,
+      suggested_percentage: suggestion.suggestedPercentage,
+      actual_refund_cents: actualRefundCents,
+      override_reason: deviated ? (overrideReason || 'NO REASON PROVIDED') : null,
+      order_phase_at_refund: suggestion.phase,
+      suggestion_reasoning: suggestion.reasoning,
+      deviated_from_suggestion: deviated,
+    },
+    created_at: new Date().toISOString(),
+  };
+}
