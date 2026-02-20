@@ -278,3 +278,52 @@ export async function sendDeliveryNotification(
     { orderId: order.orderId }
   );
 }
+
+// ============================================================================
+// TRIGGER: Progress Notification (CP1/CP2)
+// ============================================================================
+
+export async function sendProgressNotification(
+  order: OrderEmailData,
+  milestone: {
+    type: 'research_complete' | 'draft_reviewed';
+    phaseName: string;
+    grade?: string;
+    citationCount?: number;
+  }
+): Promise<EmailResult> {
+  const milestoneText = milestone.type === 'research_complete'
+    ? 'Legal research for your motion is complete. Our team is now drafting your documents.'
+    : `Your motion draft has been reviewed by our quality assurance system${milestone.grade ? ` and graded ${milestone.grade}` : ''}.`;
+
+  const phaseLabel = milestone.type === 'research_complete'
+    ? 'Research Phase Complete'
+    : 'Draft Review Complete';
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h1 style="color: #1a1a1a;">${phaseLabel}</h1>
+      <p>Your order <strong>${order.orderNumber}</strong> is making progress.</p>
+
+      <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0066cc;">
+        <p style="margin: 0;">${milestoneText}</p>
+      </div>
+
+      ${milestone.citationCount ? `<p style="color: #666;"><strong>Citations verified:</strong> ${milestone.citationCount}</p>` : ''}
+
+      <p>You'll receive another update when your documents are ready for review.</p>
+
+      <p><a href="${APP_URL}/orders/${order.orderId}" style="display: inline-block; background: #0066cc; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none;">View Order Status</a></p>
+
+      <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+      <p style="font-size: 12px; color: #666;">Questions? Contact ${SUPPORT_EMAIL}</p>
+    </div>
+  `;
+
+  return sendEmail(
+    order.customerEmail,
+    `${phaseLabel} — ${order.orderNumber}`,
+    html,
+    { orderId: order.orderId }
+  );
+}
