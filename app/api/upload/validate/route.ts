@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     let existingOrderSizeMB = 0;
     if (orderId) {
       const { data: docs } = await supabase
-        .from('order_documents')
+        .from('documents')
         .select('file_size')
         .eq('order_id', orderId);
 

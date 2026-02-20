@@ -86,6 +86,14 @@ export const EventSchemas = {
     holdReason: z.string(),
     resolvedBy: z.string().optional(),
   }),
+
+  // v7.2: CP3 decision event
+  'checkpoint/cp3.decided': z.object({
+    orderId: z.string(),
+    decision: z.enum(['approved', 'rejected', 'changes_requested']),
+    decidedBy: z.string(),
+    decidedAt: z.string(),
+  }),
 } as const;
 
 export type EventName = keyof typeof EventSchemas;

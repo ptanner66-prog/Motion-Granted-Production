@@ -41,6 +41,19 @@ export const orphanSweepCron = inngest.createFunction(
             .from(bucket)
             .list(folder.name, { limit: 100 });
 
+          // Check if this folder's order has legal_hold before processing files
+          const folderOrderId = folder.name;
+          const { data: folderOrder } = await supabase
+            .from('orders')
+            .select('legal_hold')
+            .eq('id', folderOrderId)
+            .single();
+
+          if (folderOrder?.legal_hold) {
+            log.info(`[orphan-sweep] Skipping folder ${folderOrderId} — legal_hold active`);
+            continue;
+          }
+
           for (const file of folderFiles || []) {
             // Check if file has a database record
             const filePath = `${bucket}/${folder.name}/${file.name}`;

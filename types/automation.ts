@@ -81,7 +81,14 @@ export type NotificationType =
   | 'checkpoint_cp1'
   | 'checkpoint_cp2'
   | 'checkpoint_cp3'
-  | 'revision_payment_required';
+  | 'revision_payment_required'
+  // v7.2: Delivery / CP3 / Hold notifications
+  | 'delivery_complete'
+  | 'attorney_package_ready'
+  | 'cp3_reminder'
+  | 'cp3_timeout_escalation'
+  | 'cancellation_confirmation'
+  | 'hold_manual_escalation';
 
 export type TaskStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired' | 'auto_approved';

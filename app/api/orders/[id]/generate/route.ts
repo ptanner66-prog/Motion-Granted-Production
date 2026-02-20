@@ -99,11 +99,11 @@ export async function POST(
       );
     }
 
-    // Update status to in_progress (user-scoped; admin verified above)
+    // Update status to IN_PROGRESS (user-scoped; admin verified above)
     const { error: updateError } = await supabase
       .from('orders')
       .update({
-        status: 'in_progress',
+        status: 'IN_PROGRESS',
         generation_started_at: new Date().toISOString(),
         generation_error: null,
       })
@@ -238,11 +238,11 @@ export async function POST(
           const MAX_PHASES = 50; // Safety limit to prevent infinite loops
           const MAX_REVISION_LOOPS = 3;
 
-          // Update workflow status to in_progress
+          // Update workflow status to IN_PROGRESS
           await bgClient
             .from('order_workflows')
             .update({
-              status: 'in_progress',
+              status: 'IN_PROGRESS',
               started_at: new Date().toISOString(),
             })
             .eq('id', workflow.id);
@@ -277,7 +277,7 @@ export async function POST(
                 await bgClient
                   .from('orders')
                   .update({
-                    status: 'generation_failed',
+                    status: 'GENERATION_FAILED',
                     generation_error: `Quality threshold not met after ${MAX_REVISION_LOOPS} revisions`,
                   })
                   .eq('id', orderId);
@@ -325,7 +325,7 @@ export async function POST(
               await bgClient
                 .from('orders')
                 .update({
-                  status: 'generation_failed',
+                  status: 'GENERATION_FAILED',
                   generation_error: `Phase ${currentPhase} failed: ${result.error}`,
                 })
                 .eq('id', orderId);
@@ -415,7 +415,7 @@ export async function POST(
             await bgClient
               .from('orders')
               .update({
-                status: 'generation_failed',
+                status: 'GENERATION_FAILED',
                 generation_error: 'Workflow exceeded maximum phase iteration limit',
               })
               .eq('id', orderId);
@@ -442,7 +442,7 @@ export async function POST(
             await bgClient
               .from('orders')
               .update({
-                status: 'generation_failed',
+                status: 'GENERATION_FAILED',
                 generation_error: error instanceof Error ? error.message : 'Workflow execution error',
               })
               .eq('id', orderId);

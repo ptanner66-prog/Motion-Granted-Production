@@ -167,7 +167,7 @@ export async function POST(request: Request) {
           if (attempts >= 3) {
             // Max retries - mark as failed and alert admin
             await supabase.from('orders').update({
-              status: 'generation_failed',
+              status: 'GENERATION_FAILED',
               generation_error: 'Maximum generation attempts exceeded',
               updated_at: new Date().toISOString(),
             }).eq('id', order.id);

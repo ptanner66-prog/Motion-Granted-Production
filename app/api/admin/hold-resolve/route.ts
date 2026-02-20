@@ -15,6 +15,7 @@ import { inngest } from '@/lib/inngest/client';
 import { getResumePhase } from '@/lib/workflow/resume-handler';
 import { handleHoldTimeout } from '@/lib/inngest/checkpoint-timeout';
 import { createLogger } from '@/lib/security/logger';
+import { queueNotification } from '@/lib/automation/notification-sender';
 
 const log = createLogger('api-admin-hold-resolve');
 
@@ -196,17 +197,18 @@ export async function POST(request: Request) {
         // Queue admin notification
         const adminEmail = process.env.ADMIN_EMAIL || process.env.ALERT_EMAIL;
         if (adminEmail) {
-          await supabase.from('notification_queue').insert({
-            notification_type: 'hold_manual_escalation',
-            recipient_email: adminEmail,
-            order_id: orderId,
-            template_data: {
+          await queueNotification({
+            type: 'hold_manual_escalation',
+            recipientId: 'admin',
+            recipientEmail: adminEmail,
+            orderId,
+            subject: `ESCALATION: Hold Requires Attention - ${orderId}`,
+            templateData: {
               holdReason,
               escalatedBy: user.id,
               notes,
             },
             priority: 10,
-            status: 'pending',
           });
         }
 

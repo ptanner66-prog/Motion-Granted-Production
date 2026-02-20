@@ -57,6 +57,9 @@ import { processEmailQueue } from "@/lib/inngest/process-email-queue";
 // T-32: Abandoned cart + stale order cleanup (daily cron)
 import { abandonedCartCleanup } from "@/lib/inngest/functions/abandoned-cart";
 
+// A11-4.1: Admin reconciliation (daily cost/status audit)
+import { adminReconciliation } from "@/lib/inngest/admin-reconciliation";
+
 /**
  * Inngest API Route Handler
  *
@@ -70,7 +73,7 @@ import { abandonedCartCleanup } from "@/lib/inngest/functions/abandoned-cart";
  * - INNGEST_SIGNING_KEY: For verifying webhook signatures
  */
 
-// All registered Inngest functions — v7.4.4: 21 functions (removed handleGenerationFailure, conflictAutoCancel v1)
+// All registered Inngest functions — v7.4.5: 22 functions (added adminReconciliation)
 const registeredFunctions = [
   // PRIMARY: 14-phase workflow (handles order/submitted, revision-requested, protocol-10-exit)
   generateOrderWorkflow,
@@ -107,6 +110,8 @@ const registeredFunctions = [
   processEmailQueue,
   // T-32: Abandoned cart + stale order cleanup (daily)
   abandonedCartCleanup,
+  // A11-4.1: Admin reconciliation (daily cost/status audit)
+  adminReconciliation,
 ];
 
 // IV-003: Required function registration validator
@@ -134,6 +139,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
   { ref: checkpointRecoveryCron, name: 'checkpointRecoveryCron' },
   { ref: processEmailQueue, name: 'processEmailQueue' },
   { ref: abandonedCartCleanup, name: 'abandonedCartCleanup' },
+  { ref: adminReconciliation, name: 'adminReconciliation' },
 ] as const;
 
 const missingFns = REQUIRED_FUNCTION_EXPORTS.filter(f => !f.ref);
