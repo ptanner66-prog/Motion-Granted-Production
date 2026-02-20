@@ -26,8 +26,8 @@ export interface SessionInfo {
   createdAt: Date;
   lastActivityAt: Date;
   expiresAt: Date;
-  ipAddress: string;
-  userAgent: string;
+  ipAddress: string | null;
+  userAgent: string | null;
   isCurrent: boolean;
 }
 

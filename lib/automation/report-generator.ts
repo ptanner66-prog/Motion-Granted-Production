@@ -189,7 +189,7 @@ export async function generateDailyReport(
     });
 
     // Calculate clerk utilization
-    const clerkUtilization: ClerkUtilizationStat[] = (clerks as ClerkRow[] || []).map((c: ClerkRow) => {
+    const clerkUtilization: ClerkUtilizationStat[] = ((clerks || []) as unknown as ClerkRow[]).map((c: ClerkRow) => {
       const profile = c.profiles as { full_name: string };
       return {
         clerkId: c.id,
@@ -287,7 +287,7 @@ export async function generateWeeklyReport(
       client_id: string;
       profiles?: { full_name: string } | null;
     }
-    const orders = (weekOrders || []) as WeekOrder[];
+    const orders = (weekOrders || []) as unknown as WeekOrder[];
 
     // Calculate totals
     const totalOrders = orders.length;

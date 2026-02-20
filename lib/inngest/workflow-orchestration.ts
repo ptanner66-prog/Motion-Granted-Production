@@ -354,6 +354,7 @@ interface WorkflowState {
   revisionLoopCount: number;
   currentGrade?: LetterGrade;
   citationCount: number;
+  protocol10Triggered?: boolean;
 }
 
 interface PhaseExecutionResult {
@@ -2917,12 +2918,13 @@ export const generateOrderWorkflow = inngest.createFunction(
       }));
 
       // Store citation count for downstream gates
-      if (!workflowState.phaseOutputs["V_audit"]) {
-        workflowState.phaseOutputs["V_audit"] = {};
+      const outputs = workflowState.phaseOutputs as Record<string, unknown>;
+      if (!outputs["V_audit"]) {
+        outputs["V_audit"] = {};
       }
-      (workflowState.phaseOutputs["V_audit"] as Record<string, unknown>).citationsInDraft = draftCitations.length;
-      (workflowState.phaseOutputs["V_audit"] as Record<string, unknown>).structuredCitationCount = structuredCitationCount;
-      (workflowState.phaseOutputs["V_audit"] as Record<string, unknown>).auditTimestamp = new Date().toISOString();
+      (outputs["V_audit"] as Record<string, unknown>).citationsInDraft = draftCitations.length;
+      (outputs["V_audit"] as Record<string, unknown>).structuredCitationCount = structuredCitationCount;
+      (outputs["V_audit"] as Record<string, unknown>).auditTimestamp = new Date().toISOString();
     });
 
     // ========================================================================
