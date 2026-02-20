@@ -2852,8 +2852,15 @@ async function executePhaseVI(input: PhaseInput): Promise<PhaseOutput> {
   // TIER A SKIP: Procedural motions rarely face substantive opposition
   // =========================================================================
   if (input.tier === 'A') {
-    console.log('[Phase VI] SKIPPED - Tier A procedural motion');
-    console.log('[Phase VI] Tier A motions (extensions, continuances, pro hac vice) rarely face substantive opposition');
+    // T-12 FIX: Structured log when Tier A skips Phase VI
+    console.log(JSON.stringify({
+      level: 'info',
+      event: 'phase_vi_skipped',
+      orderId: input.orderId,
+      tier: input.tier,
+      reason: 'Tier A procedural motions (extensions, continuances, pro hac vice) rarely face substantive opposition',
+      timestamp: new Date().toISOString(),
+    }));
     return {
       success: true,
       phase: 'VI',
