@@ -103,6 +103,7 @@ import {
   sendPaymentConfirmation,
   sendRevisionNotification,
   sendDeliveryNotification,
+  sendProgressNotification,
 } from "@/lib/email/email-triggers";
 
 // Feature flags for testing bypass
@@ -2335,7 +2336,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         citationCount: workflowState.citationCount,
       });
 
-      // Queue notification
+      // Queue admin notification
       await supabase.from("notification_queue").insert({
         notification_type: "checkpoint_cp1",
         recipient_email: ADMIN_EMAIL,
@@ -2348,6 +2349,28 @@ export const generateOrderWorkflow = inngest.createFunction(
         priority: 7,
         status: "pending",
       });
+
+      // SP-GOD-6: Send progress email to customer at CP1
+      const customerEmail = workflowState.orderContext?.firmEmail;
+      if (customerEmail) {
+        try {
+          await sendProgressNotification(
+            {
+              orderId,
+              orderNumber: workflowState.orderContext.orderNumber,
+              customerEmail,
+              motionType: workflowState.orderContext.motionType,
+            },
+            {
+              type: 'research_complete',
+              phaseName: 'Citation Verification',
+              citationCount: workflowState.citationCount,
+            }
+          );
+        } catch (emailErr) {
+          console.error('[CP1] Progress email failed (non-fatal):', emailErr);
+        }
+      }
     });
 
     // ========================================================================
@@ -2814,7 +2837,7 @@ export const generateOrderWorkflow = inngest.createFunction(
         grade: workflowState.currentGrade,
       });
 
-      // Queue notification
+      // Queue admin notification
       await supabase.from("notification_queue").insert({
         notification_type: "checkpoint_cp2",
         recipient_email: ADMIN_EMAIL,
@@ -2828,6 +2851,28 @@ export const generateOrderWorkflow = inngest.createFunction(
         priority: 8,
         status: "pending",
       });
+
+      // SP-GOD-6: Send progress email to customer at CP2
+      const customerEmail = workflowState.orderContext?.firmEmail;
+      if (customerEmail) {
+        try {
+          await sendProgressNotification(
+            {
+              orderId,
+              orderNumber: workflowState.orderContext.orderNumber,
+              customerEmail,
+              motionType: workflowState.orderContext.motionType,
+            },
+            {
+              type: 'draft_reviewed',
+              phaseName: 'Judge Simulation',
+              grade: workflowState.currentGrade || undefined,
+            }
+          );
+        } catch (emailErr) {
+          console.error('[CP2] Progress email failed (non-fatal):', emailErr);
+        }
+      }
     });
 
     // ========================================================================
