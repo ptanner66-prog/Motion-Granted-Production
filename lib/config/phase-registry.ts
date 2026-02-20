@@ -208,16 +208,16 @@ const OPUS_ET_16K: RouteConfig = {
 const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
 
   // ── Phase I: Intake & Classification ──────────────────────────────
-  // MODE: CODE (no LLM). Pure TypeScript business logic.
-  // Parses order, validates, looks up tier, calculates deadline.
+  // A-021: MODE: CHAT. Phase I uses chat-style prompt for intake analysis.
+  // Analyzes submission, classifies motion type, extracts key details.
   'I': {
     name: 'Intake and Classification',
-    mode: 'CODE',
+    mode: 'CHAT',
     routing: {
-      A: NO_LLM,
-      B: NO_LLM,
-      C: NO_LLM,
-      D: NO_LLM,
+      A: SONNET_STANDARD,
+      B: SONNET_STANDARD,
+      C: SONNET_STANDARD,
+      D: SONNET_STANDARD,
     },
   },
 

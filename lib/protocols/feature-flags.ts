@@ -27,7 +27,8 @@ export function getProtocolFlags(): ProtocolFlags {
     flags[i] = true;
   }
 
-  const envValue = process.env.DISABLED_PROTOCOLS || '';
+  // A-033: Unify env var names — check both server-only and NEXT_PUBLIC_ variants
+  const envValue = process.env.DISABLED_PROTOCOLS || process.env.NEXT_PUBLIC_DISABLED_PROTOCOLS || '';
   if (!envValue.trim()) return flags;
 
   // Parse strictly: only comma-separated integers 1-23

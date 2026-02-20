@@ -160,6 +160,8 @@ import type { CP3ApprovalEvent } from "@/lib/types/checkpoint-events";
 
 // T-17: Structured step logging for phase execution
 import { loggedStep, logPhaseSkip } from "@/lib/logging/step-logger";
+// A-027: PII sanitization for error logging
+import { sanitizeError } from "@/lib/utils/sanitize-error";
 
 // SP23: Tiered max revision loops per XDC-004 / WF-04-A
 // Tier A (procedural) = 2, Tier B/C (substantive) = 3, Tier D (complex) = 4
@@ -1315,7 +1317,8 @@ async function generateAndUploadCaptionQcReport(
   console.log('[generate-caption-qc-report] Starting...');
 
   try {
-    const qcResult = state.phaseOutputs["IX.1"] as { qcPasses: boolean; qcIssues: string[]; qcCorrections: string[] } | undefined;
+    // A-034: Caption QC data comes from Phase VIII.5 (not IX.1 which is citation audit)
+    const qcResult = state.phaseOutputs["VIII.5"] as { qcPasses: boolean; qcIssues: string[]; qcCorrections: string[] } | undefined;
     const content = generateCaptionQcReportContent(qcResult);
     const txtBuffer = createTextFileBuffer('CAPTION QC REPORT', content);
     console.log(`[generate-caption-qc-report] Text file created in ${Date.now() - start}ms`);
@@ -3395,11 +3398,18 @@ export const generateOrderWorkflow = inngest.createFunction(
       // SP23 BUG-1 FIX: Update currentDraft to the latest revision.
       // This ensures Phase VIII(N+1) receives Phase VIII(N) output,
       // NOT the original Phase V draft.
+      // A-024: Null guard — fallback to previous draft if revision returned nothing
       const phaseVIIIOutput = phaseVIIIRevisionResult?.output as Record<string, unknown> | null;
-      if (phaseVIIIOutput?.revisedMotion) {
-        currentDraft = phaseVIIIOutput.revisedMotion;
+      const revisedMotion = phaseVIIIOutput?.revisedMotion
+        ?? phaseVIIIOutput?.draft
+        ?? phaseVIIIOutput?.revised_draft;
+      if (revisedMotion) {
+        currentDraft = revisedMotion;
       } else {
         console.warn(`[${orderId}] Phase VIII loop ${loopNum} returned no revisedMotion — keeping previous draft`);
+        if (!currentDraft) {
+          console.error(`[${orderId}] A-024: No revised motion AND no previous draft available in loop ${loopNum}`);
+        }
       }
       console.log(`[Orchestration] Phase VIII output stored. currentDraft updated. Keys: ${Object.keys(workflowState.phaseOutputs)}`);
 
@@ -4575,7 +4585,8 @@ export const handleWorkflowFailure = inngest.createFunction(
     }
 
     const { orderId } = event.data.event.data as { orderId: string };
-    const errorMessage = event.data.error?.message || "Unknown error";
+    // A-027: Sanitize PII from error messages before logging/storage
+    const errorMessage = sanitizeError(event.data.error?.message || "Unknown error");
     const supabase = getSupabase();
 
     await step.run("log-workflow-failure", async () => {
@@ -4611,8 +4622,9 @@ export const handleWorkflowFailure = inngest.createFunction(
         .single();
 
       try {
-        const { Resend } = await import("resend");
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        // A-030: Use singleton Resend client with rate limiting
+        const { getResendClient } = await import("@/lib/email/resend-client");
+        const resend = getResendClient();
 
         await resend.emails.send({
           from: EMAIL_FROM.alerts,
@@ -4652,6 +4664,42 @@ Admin Dashboard: ${process.env.NEXT_PUBLIC_APP_URL}/admin/orders/${orderId}
           priority: 10,
           status: "pending",
         });
+      }
+    });
+
+    // A-018: Notify customer that their order encountered an issue
+    await step.run("notify-customer-failure", async () => {
+      try {
+        const { data: orderForCustomer } = await supabase
+          .from('orders')
+          .select('client_id')
+          .eq('id', orderId)
+          .single();
+
+        if (orderForCustomer?.client_id) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('email')
+            .eq('id', orderForCustomer.client_id)
+            .single();
+
+          if (profile?.email) {
+            await supabase.from('notification_queue').insert({
+              notification_type: 'order_processing_delayed',
+              recipient_email: profile.email,
+              order_id: orderId,
+              template_data: {
+                orderId,
+                message: 'We encountered an issue processing your order. Our team has been notified and is working to resolve it. You will receive an update within 24 hours.',
+              },
+              priority: 8,
+              status: 'pending',
+            });
+          }
+        }
+      } catch (customerNotifyErr) {
+        // Non-fatal — admin alert already sent
+        console.warn('[A-018] Failed to queue customer failure notification:', customerNotifyErr);
       }
     });
 
@@ -4709,8 +4757,9 @@ export const handleWorkflowTimeout = inngest.createFunction(
         .single();
 
       try {
-        const { Resend } = await import("resend");
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        // A-030: Use singleton Resend client with rate limiting
+        const { getResendClient } = await import("@/lib/email/resend-client");
+        const resend = getResendClient();
 
         await resend.emails.send({
           from: EMAIL_FROM.alerts,
@@ -4944,7 +4993,8 @@ async function processCP3Decision(
       .eq('order_id', orderId)
       .single();
 
-    return { ...data, workflow_id: wf?.id ?? '' };
+    // A-019: Fallback to orderId if workflow_id is empty/missing
+    return { ...data, workflow_id: wf?.id || orderId };
   });
 
   switch (action) {

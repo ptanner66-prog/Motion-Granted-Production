@@ -622,6 +622,7 @@ export async function verifyCitationExists(
   success: boolean;
   data?: {
     exists: boolean;
+    apiReachable: boolean; // A-016: Distinguish "not found" from "couldn't check"
     courtlistenerId?: string;
     courtlistenerUrl?: string;
     caseName?: string;
@@ -633,8 +634,11 @@ export async function verifyCitationExists(
   };
   error?: string;
 }> {
+  // A-016: Track whether any API call succeeded (reachable)
+  let anyApiReachable = false;
   // PRIMARY METHOD: Use v3 citation-lookup endpoint (designed for hallucination detection)
   const lookupResult = await lookupCitation(citation);
+  if (lookupResult.success) anyApiReachable = true;
 
   if (lookupResult.success && lookupResult.data?.found) {
     // Find the first citation with a match
@@ -650,6 +654,7 @@ export async function verifyCitationExists(
         success: true,
         data: {
           exists: true,
+          apiReachable: true,
           courtlistenerId: opinionId,
           courtlistenerUrl: matchedCitation.match_url
             ? `https://www.courtlistener.com${matchedCitation.match_url}`
@@ -662,6 +667,7 @@ export async function verifyCitationExists(
 
   // FALLBACK 1: Try v4 opinions search by citation
   const citationResult = await searchByCitation(citation);
+  if (citationResult.success) anyApiReachable = true;
 
   if (citationResult.success && citationResult.data?.found && citationResult.data.opinions.length > 0) {
     const opinion = citationResult.data.opinions[0];
@@ -669,6 +675,7 @@ export async function verifyCitationExists(
       success: true,
       data: {
         exists: true,
+        apiReachable: true,
         courtlistenerId: String(opinion.id),
         courtlistenerUrl: opinion.absolute_url ? `https://www.courtlistener.com${opinion.absolute_url}` : undefined,
         caseName: opinion.case_name,
@@ -684,6 +691,7 @@ export async function verifyCitationExists(
   // FALLBACK 2: Try case name search if provided
   if (caseName) {
     const nameResult = await searchByCaseName(caseName);
+    if (nameResult.success) anyApiReachable = true;
 
     if (nameResult.success && nameResult.data?.found && nameResult.data.opinions.length > 0) {
       const opinion = nameResult.data.opinions[0];
@@ -691,6 +699,7 @@ export async function verifyCitationExists(
         success: true,
         data: {
           exists: true,
+          apiReachable: true,
           courtlistenerId: String(opinion.id),
           courtlistenerUrl: opinion.absolute_url ? `https://www.courtlistener.com${opinion.absolute_url}` : undefined,
           caseName: opinion.case_name,
@@ -704,11 +713,12 @@ export async function verifyCitationExists(
     }
   }
 
-  // Not found in any source
+  // A-016: Not found — but distinguish "confirmed not found" from "API unreachable"
   return {
     success: true,
     data: {
       exists: false,
+      apiReachable: anyApiReachable,
     },
   };
 }

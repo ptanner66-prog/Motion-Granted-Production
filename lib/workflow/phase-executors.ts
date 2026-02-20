@@ -60,6 +60,8 @@ import type { LoopGrade } from '@/lib/workflow/judge-grading-lock';
 // FIX-E FIX 7: Hard-coded rules for Phase VII (zero-citation fail, etc.)
 import { applyPhaseVIIHardRules } from '@/lib/workflow/phase-vii-hardcoded-rules';
 import type { PhaseVIIOutput, PhaseVIISectionGrade } from '@/lib/workflow/phase-vii-hardcoded-rules';
+// A-027: PII sanitization for error logging
+import { sanitizeError } from '@/lib/utils/sanitize-error';
 
 
 // ============================================================================
@@ -3077,6 +3079,8 @@ ${gradingLockSection}
 **Phase VI Skipped:** ${phaseVISkipped ? 'YES - Tier A procedural motion (DO NOT penalize for missing opposition analysis)' : 'NO'}
 
 Use extended thinking to thoroughly analyze before grading.
+
+CRITICAL GRADING CONSTRAINT (A-005): Do NOT inflate the quality grade based on citation verification status. The grade must reflect the LEGAL ARGUMENT quality only — strength and clarity of legal reasoning, completeness of issue coverage, persuasiveness of argument structure, and proper use of authority (not merely that citations exist or passed verification). Citation verification is handled separately by the CIV pipeline. A motion with all citations verified but weak arguments should receive a LOW grade.
 ${phaseVISkipped ? '\nIMPORTANT: Phase VI (Opposition Anticipation) was skipped because this is a Tier A procedural motion. DO NOT penalize the grade for missing opposition analysis.' : ''}
 ${isConsentOrUnopposed ? `\nIMPORTANT: This is a ${consentStatusVII} motion. Use SIMPLIFIED evaluation — focus on legal sufficiency and proper formatting rather than adversarial strength. ${consentStatusVII === 'consent' ? 'Consent motions are almost always granted if properly formatted.' : 'Unopposed motions face a lower adversarial bar.'} DO NOT penalize for missing opposition analysis.` : ''}`;
 
