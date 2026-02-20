@@ -2256,7 +2256,7 @@ Draft the complete motion with REAL case data - NO PLACEHOLDERS. Provide as JSON
         caseName: s.name || s.citation || 'Statutory Reference',
         citationType: 'statute' as const,
         proposition: s.purpose || s.relevantText,
-        verificationStatus: 'verified' as const, // Statutes are presumed valid
+        verificationStatus: 'statutory_presumed' as const, // Statutes presumed valid — not CIV-verified
         displayOrder: caseCitationInputs.length + index + 1,
       }));
 

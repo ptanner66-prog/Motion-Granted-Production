@@ -423,6 +423,31 @@ export async function generateAndStoreFilingPackage(
             return `${r.citation}: ${reasons}`;
           });
       })(),
+      // CS-T005: Wire citationVerification from CIV phase outputs → assembler → AIS
+      citationVerification: (() => {
+        const phaseV1 = phaseOutputs['V.1'] as Record<string, unknown> | undefined;
+        const phaseVII1 = phaseOutputs['VII.1'] as Record<string, unknown> | undefined;
+        const v1Results = (phaseV1?.verificationResults ?? []) as Array<Record<string, unknown>>;
+        const vii1Results = (phaseVII1?.verificationResults ?? []) as Array<Record<string, unknown>>;
+        const allResults = [...v1Results, ...vii1Results];
+        if (allResults.length === 0) return undefined;
+        const verifiedCount = allResults.filter(r => r.verified === true && r.action === 'kept').length;
+        const flaggedCount = allResults.filter(r => r.action === 'flagged').length;
+        const removedCount = allResults.filter(r => r.action === 'removed').length;
+        const total = allResults.length;
+        return {
+          totalCitations: total,
+          verifiedCount,
+          unverifiedCount: removedCount,
+          flaggedCount,
+          pendingCount: total - verifiedCount - flaggedCount - removedCount,
+          citations: allResults.slice(0, 50).map(r => ({
+            citation: String(r.citation || r.citationText || 'Unknown'),
+            status: r.action === 'kept' && r.verified ? 'VERIFIED' : r.action === 'flagged' ? 'FLAGGED' : r.action === 'removed' ? 'BLOCKED' : 'UNKNOWN',
+            confidence: typeof r.confidence === 'number' ? r.confidence : 0,
+          })),
+        };
+      })(),
       // A-013: Protocol findings from D9 dispatcher → AIS
       protocolFindingsText,
     };
