@@ -74,7 +74,7 @@ interface ErrorRow {
 }
 
 interface UserOrderRow {
-  user_id: string;
+  client_id: string;
 }
 
 interface TurnaroundMetrics {
@@ -281,10 +281,10 @@ async function fetchAnalytics(timeRange: TimeRange): Promise<AnalyticsData> {
   // Active users: users who placed an order in the time range
   const { data: activeUserOrders } = await supabase
     .from('orders')
-    .select('user_id')
+    .select('client_id')
     .gte('created_at', startDate.toISOString());
 
-  const activeUserIds = new Set((activeUserOrders || []).map((o: UserOrderRow) => o.user_id));
+  const activeUserIds = new Set((activeUserOrders || []).map((o: UserOrderRow) => o.client_id));
 
   const userGrowth = (newUsersLastMonth || 0) > 0
     ? (((newUsersThisMonth || 0) - (newUsersLastMonth || 0)) / (newUsersLastMonth || 1)) * 100
