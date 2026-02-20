@@ -14,7 +14,7 @@
  * - Email notifications at key milestones
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { inngest, calculatePriority } from '@/lib/inngest/client';
 import { createLogger } from '@/lib/security/logger';
 
@@ -115,7 +115,7 @@ export async function startOrderAutomation(
   config: Partial<AutomationConfig> = {}
 ): Promise<OperationResult<AutomationResult>> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Get order details (including filing_deadline for priority calculation)
@@ -200,7 +200,7 @@ async function finalizeOrder(
   config: AutomationConfig,
   startTime: number
 ): Promise<OperationResult<AutomationResult>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
   let notificationSent = false;
 
   try {
@@ -268,7 +268,7 @@ export async function resumeOrderAutomation(
   orderId: string,
   config: Partial<AutomationConfig> = {}
 ): Promise<OperationResult<AutomationResult>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
 
   // Get existing workflow
@@ -351,7 +351,7 @@ export async function resumeOrderAutomation(
  * Used by the lawyer dashboard to show real-time status
  */
 export async function getOrderProgress(orderId: string): Promise<OperationResult<OrderProgress>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Get order with workflow
@@ -451,7 +451,7 @@ export async function getOrdersProgress(
  * Update order status based on workflow state
  */
 async function updateOrderStatus(orderId: string, status: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   await supabase
     .from('orders')
@@ -467,7 +467,7 @@ async function updateOrderStatus(orderId: string, status: string): Promise<void>
  * Called periodically or after workflow updates
  */
 export async function syncOrderWithWorkflow(orderId: string): Promise<OperationResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Get workflow
@@ -524,7 +524,7 @@ async function logAutomationEvent(
   eventType: string,
   details: Record<string, unknown>
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     await supabase.from('automation_logs').insert({
@@ -550,7 +550,7 @@ async function logAutomationEvent(
 export async function processPendingOrders(
   limit: number = 10
 ): Promise<OperationResult<{ processed: number; failed: number }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Get pending orders that need processing
@@ -621,7 +621,7 @@ export async function processPendingOrders(
 export async function retryFailedWorkflows(
   limit: number = 5
 ): Promise<OperationResult<{ retried: number; failed: number }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Get blocked/failed workflows with filing deadline for priority

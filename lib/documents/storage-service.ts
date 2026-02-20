@@ -10,7 +10,7 @@
  * Bucket: order-documents (created via migration)
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { encrypt, decrypt } from '@/lib/security/encryption';
 import { createLogger } from '@/lib/security/logger';
 
@@ -35,14 +35,7 @@ export async function uploadDocument(
   buffer: Buffer,
   mimeType: string
 ): Promise<{ path: string; publicUrl: string }> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('[STORAGE] Supabase credentials not configured');
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabase = getServiceSupabase();
 
   const filePath = `${orderId}/${filename}`;
 
@@ -90,12 +83,7 @@ export async function uploadDocument(
  * FIX-B FIX-3: Returns signed URL (1hr) instead of permanent public URL.
  */
 export async function getDocumentUrl(orderId: string, filename: string): Promise<string | null> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) return null;
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabase = getServiceSupabase();
 
   const { data, error } = await supabase.storage
     .from(BUCKET)
@@ -140,12 +128,7 @@ export async function downloadDecryptedFile(
   orderId: string,
   filename: string
 ): Promise<Buffer | null> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) return null;
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabase = getServiceSupabase();
 
   const filePath = `${orderId}/${filename}`;
 

@@ -15,7 +15,7 @@
 
 import { verifyCitationExists as courtListenerVerify, searchRECAP } from '@/lib/courtlistener/client';
 import { lookupPACER, isPACERConfigured } from '@/lib/pacer/client';
-import { waitForToken } from '@/lib/rate-limiter';
+import { waitForToken } from '@/lib/security/rate-limiter';
 import { normalizeCitation, parseCitation, createOrUpdateCitation } from '../database';
 import type { ExistenceCheckOutput, NormalizedCitation } from '../types';
 

@@ -261,6 +261,14 @@ async function getSystemMetrics(): Promise<SystemMetrics> {
 const startTime = Date.now();
 
 export async function GET(request: Request) {
+  // Require CRON_SECRET for access — this endpoint exposes internal system state
+  const authHeader = request.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const verbose = searchParams.get('verbose') === 'true';
 

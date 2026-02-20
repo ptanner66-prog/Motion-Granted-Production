@@ -2,6 +2,7 @@ export const maxDuration = 120; // 2 minutes for deliverable uploads
 
 import { NextResponse } from 'next/server'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
+import { scanFile } from '@/lib/security/malware-scanner'
 import { createLogger } from '@/lib/security/logger'
 import { STORAGE_BUCKETS } from '@/lib/config/storage'
 
@@ -69,6 +70,21 @@ export async function POST(
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer()
     const fileBuffer = new Uint8Array(arrayBuffer)
+
+    // Malware scan before upload (SEC-013)
+    const scanResult = await scanFile(arrayBuffer, file.name)
+    if (!scanResult.safe) {
+      log.error('Malware detected in deliverable upload', {
+        orderId,
+        fileName: file.name,
+        detections: scanResult.detections,
+        threatName: scanResult.threatName,
+      })
+      return NextResponse.json(
+        { error: 'File rejected by security scan' },
+        { status: 400 }
+      )
+    }
 
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage

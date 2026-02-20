@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { getRateLimitStatus } from '@/lib/rate-limit';
+import { getRateLimitStatus } from '@/lib/security/rate-limiter';
 import { getQueueStats } from '@/lib/queue-status';
 import { createLogger } from '@/lib/security/logger';
 
@@ -24,7 +24,15 @@ export const revalidate = 0;
  * - avg_generation_seconds: Average generation time over last 7 days
  * - rate_limit: Current rate limit status
  */
-export async function GET() {
+export async function GET(request: Request) {
+  // Require CRON_SECRET for access — this endpoint exposes queue metrics
+  const authHeader = request.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

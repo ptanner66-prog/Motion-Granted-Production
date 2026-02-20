@@ -2,7 +2,7 @@
 // Account lockout per SECURITY_IMPLEMENTATION_CHECKLIST_v1 Section 2.2
 // VERSION: 1.0 — January 28, 2026
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -41,7 +41,7 @@ export interface LoginAttempt {
  * Record a login attempt
  */
 export async function recordLoginAttempt(attempt: LoginAttempt): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   await supabase.from('login_attempts').insert({
     user_id: attempt.userId,
@@ -68,7 +68,7 @@ export async function recordLoginAttempt(attempt: LoginAttempt): Promise<void> {
  * Check if account is locked
  */
 export async function checkLockoutStatus(email: string): Promise<LockoutStatus> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
   const windowStart = new Date();
   windowStart.setMinutes(windowStart.getMinutes() - LOCKOUT_CONFIG.ATTEMPT_WINDOW_MINUTES);
 
@@ -143,7 +143,7 @@ export async function shouldBlockLogin(email: string): Promise<{ blocked: boolea
  * Log lockout event for audit
  */
 async function logLockoutEvent(email: string, ipAddress: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   await supabase.from('security_events').insert({
     event_type: 'ACCOUNT_LOCKED',
@@ -164,7 +164,7 @@ async function logLockoutEvent(email: string, ipAddress: string): Promise<void> 
  * Queue lockout notification email
  */
 async function queueLockoutNotification(email: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   await supabase.from('email_queue').insert({
     template: 'account_locked',
@@ -182,7 +182,7 @@ async function queueLockoutNotification(email: string): Promise<void> {
  * Clear failed attempts (call after successful login)
  */
 export async function clearFailedAttempts(email: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   // We don't delete - just record successful login which resets the window
   // The window-based counting handles this automatically

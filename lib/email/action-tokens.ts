@@ -3,7 +3,7 @@
 // Per Task 78 — PORTER_TASK_LIST_ADDENDUM_SIGNED_URLS_01282026.md
 // VERSION: 1.0 — January 28, 2026
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import crypto from 'crypto';
 
 import { createLogger } from '@/lib/security/logger';
@@ -44,7 +44,7 @@ export async function generateActionToken(
   expiresInHours: number = 72,
   metadata?: Record<string, unknown>
 ): Promise<string> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
@@ -74,7 +74,7 @@ export async function generateActionToken(
  * Validate and consume an action token
  */
 export async function validateActionToken(token: string): Promise<ActionTokenResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { data, error } = await supabase
     .from('email_action_tokens')
@@ -146,7 +146,7 @@ export async function generateActionUrl(
  * Revoke all unused tokens for an order (e.g., when HOLD is resolved manually)
  */
 export async function revokeOrderTokens(orderId: string): Promise<number> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { data, error } = await supabase
     .from('email_action_tokens')

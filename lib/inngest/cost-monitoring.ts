@@ -13,23 +13,12 @@
  */
 
 import { inngest } from '../inngest/client';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { MODEL_COSTS } from '@/lib/config/models';
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from '@/lib/config/notifications';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('cost-monitoring');
-
-// ============================================================================
-// SHARED HELPERS
-// ============================================================================
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase env vars not configured');
-  return createSupabaseClient(url, key);
-}
 
 /** Monthly budget cap in USD — override via MONTHLY_AI_BUDGET env var */
 const MONTHLY_BUDGET_USD = Number(process.env.MONTHLY_AI_BUDGET) || 5000;
@@ -62,7 +51,7 @@ export const costAnomalyDetector = inngest.createFunction(
   { id: 'cost-anomaly-detector', name: 'Daily Cost Anomaly Detector' },
   { cron: 'TZ=America/Chicago 0 7 * * *' },
   async ({ step }) => {
-    const supabase = getSupabase();
+    const supabase = getServiceSupabase();
 
     const anomalies = await step.run('detect-anomalies', async () => {
       // Look at orders completed in the last 24 hours
@@ -132,7 +121,7 @@ export const budgetAlertCron = inngest.createFunction(
   { id: 'budget-alert-cron', name: 'Daily Budget Alert Check' },
   { cron: 'TZ=America/Chicago 30 7 * * *' },
   async ({ step }) => {
-    const supabase = getSupabase();
+    const supabase = getServiceSupabase();
 
     const result = await step.run('check-budget', async () => {
       // Current month boundaries
@@ -199,7 +188,7 @@ export const costReportCron = inngest.createFunction(
   { id: 'cost-report-cron', name: 'Weekly Cost Report' },
   { cron: 'TZ=America/Chicago 0 8 * * 1' },
   async ({ step }) => {
-    const supabase = getSupabase();
+    const supabase = getServiceSupabase();
 
     const report = await step.run('generate-report', async () => {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -283,7 +272,7 @@ export const spendTrackerCron = inngest.createFunction(
   { id: 'spend-tracker-cron', name: 'Daily Spend Tracker' },
   { cron: 'TZ=America/Chicago 0 6 * * *' },
   async ({ step }) => {
-    const supabase = getSupabase();
+    const supabase = getServiceSupabase();
 
     const snapshot = await step.run('record-daily-spend', async () => {
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);

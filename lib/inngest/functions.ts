@@ -19,7 +19,7 @@ import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('inngest-functions');
 import Anthropic from "@anthropic-ai/sdk";
-import { canMakeRequest, logRequest } from "@/lib/rate-limit";
+import { canMakeRequest, logRequest } from "@/lib/security/rate-limiter";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
 import { createMessageWithRetry } from "@/lib/ai/claude-client";

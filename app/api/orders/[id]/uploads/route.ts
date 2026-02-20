@@ -9,6 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { scanFile } from '@/lib/security/malware-scanner';
 import { createLogger } from '@/lib/security/logger';
 import { STORAGE_BUCKETS } from '@/lib/config/storage';
 
@@ -76,6 +77,22 @@ export async function POST(
     return NextResponse.json(
       { error: 'File exceeds 50MB limit' },
       { status: 413 }
+    );
+  }
+
+  // Malware scan before upload (SEC-013)
+  const arrayBuffer = await file.arrayBuffer();
+  const scanResult = await scanFile(arrayBuffer, file.name);
+  if (!scanResult.safe) {
+    log.error('Malware detected in client upload', {
+      orderId,
+      fileName: file.name,
+      detections: scanResult.detections,
+      threatName: scanResult.threatName,
+    });
+    return NextResponse.json(
+      { error: 'File rejected by security scan' },
+      { status: 400 }
     );
   }
 

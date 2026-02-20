@@ -1,9 +1,15 @@
-import { createLogger } from '@/lib/security/logger';
-
-const log = createLogger('logger');
-
 /**
  * Structured Logging System
+ *
+ * A8-T12 (LCV-TS-026): Consolidated with lib/security/logger.ts.
+ * The canonical PII-safe logger lives in lib/security/logger.ts (289 consumers).
+ * This file provides the enhanced Logger class with child contexts,
+ * timing, audit, and metric helpers.
+ *
+ * Both loggers are accessible from either import path:
+ *   import { createLogger } from '@/lib/logger';        // re-export from canonical
+ *   import { createLogger } from '@/lib/security/logger'; // canonical
+ *   import { logger, Logger } from '@/lib/logger';       // enhanced Logger class
  *
  * Production-grade logging with:
  * - Structured JSON output for log aggregation
@@ -15,6 +21,13 @@ const log = createLogger('logger');
  *
  * Compatible with Vercel Logs, Datadog, Logtail, etc.
  */
+
+// Re-export the canonical PII-safe createLogger so consumers can use either import path
+export { createLogger } from '@/lib/security/logger';
+
+import { createLogger as _createLogger } from '@/lib/security/logger';
+
+const log = _createLogger('logger');
 
 // ============================================================================
 // TYPES
