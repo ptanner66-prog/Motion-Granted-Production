@@ -15,8 +15,9 @@
  * 4. Deadline summary
  * 5. AI/Disclosure notices
  * 6. AI DISCLOSURE REMINDER (Task 65 - State Bar Compliance)
- * 7. Revision instructions
- * 8. Contact information
+ * 7. PRIVILEGE PRESERVATION NOTICE (T-72 - CONTENT GATE: awaiting PRIV-02)
+ * 8. Revision instructions
+ * 9. Contact information
  *
  * Source: Chunk 8, Task 57 - Code Mode Spec Section 19
  * Updated: Task 65 - Chen Legal & Compliance Megaprompt
@@ -452,10 +453,44 @@ function generateInstructionSheetDocument(data: InstructionSheetData): Document 
     })
   );
 
-  // Revision Instructions Section
+  // ============================================================
+  // Section 7: PRIVILEGE PRESERVATION NOTICE (T-72)
+  // Appears in ALL AIS documents, ALL tiers — no conditional
+  // ============================================================
+
   children.push(
     new Paragraph({
-      children: [new TextRun({ text: '7. REVISION INSTRUCTIONS', bold: true, size: 24 })],
+      children: [
+        new TextRun({
+          text: '7. PRIVILEGE PRESERVATION NOTICE',
+          bold: true,
+          size: 24,
+          color: 'CC0000',
+        }),
+      ],
+      spacing: { before: 400, after: 200 },
+    })
+  );
+
+  // CONTENT GATE: PRIV-02 — Awaiting Porter Task List Final lines 189-209
+  // Body paragraphs cover: agency relationship, commercial API architecture,
+  // attorney-directed work product, confidentiality, attorney responsibilities.
+  children.push(
+    new Paragraph({
+      children: [new TextRun({
+        text: '[PRIV-02: Porter to provide Privilege Preservation Notice body text from Porter Task List Final lines 189-209]',
+        size: 22,
+        italics: true,
+        color: 'FF0000',
+      })],
+      spacing: { after: 120 },
+    })
+  );
+
+  // Revision Instructions Section (renumbered from 7 → 8)
+  children.push(
+    new Paragraph({
+      children: [new TextRun({ text: '8. REVISION INSTRUCTIONS', bold: true, size: 24 })],
       spacing: { before: 400, after: 200 },
     })
   );
@@ -473,7 +508,7 @@ function generateInstructionSheetDocument(data: InstructionSheetData): Document 
   // Contact Information Section
   children.push(
     new Paragraph({
-      children: [new TextRun({ text: '8. CONTACT INFORMATION', bold: true, size: 24 })],
+      children: [new TextRun({ text: '9. CONTACT INFORMATION', bold: true, size: 24 })],
       spacing: { before: 400, after: 200 },
     })
   );

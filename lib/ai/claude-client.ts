@@ -121,6 +121,48 @@ export async function createMessageWithRetry(
         response = (await anthropic.messages.create(params)) as Anthropic.Message;
       }
 
+      // T-77: Global truncation detection + 1.5x retry
+      // Protects all 11 phases that route through createMessageWithRetry.
+      // Phases VIII and IX have their own local handlers — this is the safety net.
+      if (response.stop_reason === 'max_tokens') {
+        const retryMaxTokens = Math.min(Math.round(maxTokens * 1.5), 200_000);
+
+        log.info(`[Claude] Response truncated — retrying with 1.5x token budget`, {
+          originalMaxTokens: maxTokens,
+          newMaxTokens: retryMaxTokens,
+          model: params.model,
+        });
+
+        try {
+          let retryResponse: Anthropic.Message;
+          const retryParams = { ...params, max_tokens: retryMaxTokens };
+
+          if (retryMaxTokens >= 16000) {
+            const retryStream = anthropic.messages.stream(retryParams);
+            retryResponse = (await retryStream.finalMessage()) as Anthropic.Message;
+          } else {
+            retryResponse = (await anthropic.messages.create(retryParams)) as Anthropic.Message;
+          }
+
+          if (retryResponse.stop_reason === 'max_tokens') {
+            log.info(`[Claude] Still truncated after 1.5x retry — returning partial response`, {
+              maxTokensUsed: retryMaxTokens,
+            });
+          }
+
+          if (onSuccess) {
+            onSuccess(retryResponse.usage.input_tokens, retryResponse.usage.output_tokens);
+          }
+
+          return retryResponse;
+        } catch (retryError) {
+          // If retry fails, return the original truncated response rather than throwing
+          log.info(`[Claude] Truncation retry failed — returning original truncated response`, {
+            error: retryError instanceof Error ? retryError.message : 'Unknown',
+          });
+        }
+      }
+
       // Log success
       log.info(`[Claude] Success - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
 

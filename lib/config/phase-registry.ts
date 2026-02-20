@@ -254,16 +254,16 @@ const PHASE_REGISTRY: Record<WorkflowPhase, PhaseConfig> = {
   },
 
   // ── Phase IV: Deep Research ───────────────────────────────────────
-  // MODE: CHAT. Sonnet A, Opus B/C, Opus+ET 16K D.
+  // MODE: CHAT. Sonnet A, Opus+ET 10K B, Opus C, Opus+ET 16K D.
   // CourtListener authority search, case analysis, authority ranking.
-  // Tier D gets 16K extended thinking — unique to D for exhaustive
-  // authority research on dispositive motions.
+  // T-78: BD-2 requires 10K extended thinking for IV.B.
+  // Tier D gets 16K extended thinking for exhaustive authority research.
   'IV': {
     name: 'Deep Research',
     mode: 'CHAT',
     routing: {
       A: SONNET_STANDARD,
-      B: OPUS_STANDARD,
+      B: OPUS_ET_10K,  // T-78: BD-2 requires 10K ET for Tier B
       C: OPUS_STANDARD,
       D: OPUS_ET_16K,
     },
