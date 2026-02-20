@@ -642,7 +642,7 @@ export async function retryFailedWorkflows(
 
     for (const workflow of workflows || []) {
       try {
-        const orderData = workflow.orders as { filing_deadline: string | null } | null;
+        const orderData = workflow.orders as unknown as { filing_deadline: string | null } | null;
         const filingDeadline = orderData?.filing_deadline;
         const priority = filingDeadline
           ? calculatePriority(filingDeadline)
