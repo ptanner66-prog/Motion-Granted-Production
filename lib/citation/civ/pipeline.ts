@@ -45,6 +45,7 @@ import { deduplicateCitations } from '@/lib/civ/deduplication';
 
 import { createLogger } from '@/lib/security/logger';
 import { extractCaseName } from '@/lib/citations/extract-case-name';
+import { sanitizeError } from '@/lib/utils/sanitize-error';
 
 const log = createLogger('citation-civ-pipeline');
 /**
@@ -59,6 +60,73 @@ export async function verifyCitation(
   config: CIVConfig = DEFAULT_CIV_CONFIG
 ): Promise<FinalVerificationOutput> {
   const startTime = Date.now();
+  try {
+    return await _verifyCitationInternal(citation, orderId, phase, config, startTime);
+  } catch (error) {
+    // DEC-CS-004: Never throw — always return structured error result
+    // A-027: Sanitize PII from error messages
+    const message = sanitizeError(error);
+    log.error('[verifyCitation] Uncaught error:', {
+      citation: citation.citationString?.substring(0, 80),
+      orderId,
+      phase,
+      error: message,
+    });
+
+    return {
+      verificationId: `error-${Date.now()}`,
+      citation: {
+        input: citation.citationString || '',
+        normalized: '',
+        caseName: citation.caseName || '',
+      },
+      proposition: {
+        text: citation.proposition || '',
+        type: citation.propositionType || 'SECONDARY',
+        inCitationBank: false,
+      },
+      verificationResults: {
+        step1Existence: { step: 1, name: 'existence_check', exists: false, sourcesChecked: [], proceedToStep2: false } as any,
+        step2Holding: { step: 2, name: 'holding_verification', finalResult: 'REJECTED', finalConfidence: 0, proceedToStep3: false } as any,
+        step3Dicta: { step: 3, name: 'dicta_detection', classification: 'UNCLEAR', confidence: 0 } as any,
+        step4Quote: { step: 4, name: 'quote_verification', status: 'NOT_CHECKED', confidence: 0 } as any,
+        step5BadLaw: { step: 5, name: 'bad_law_check', compositeStatus: 'CAUTION', confidence: 0, proceedToStep6: false } as any,
+        step6Strength: { step: 6, name: 'authority_strength', assessment: 'WEAK', strengthScore: 0 } as any,
+      },
+      compositeResult: {
+        status: 'REJECTED',
+        confidenceScore: 0,
+        flags: [{
+          type: 'EXISTENCE_FAILED' as const,
+          severity: 'CRITICAL' as const,
+          message: `Verification failed with uncaught error: ${message}`,
+          step: 0,
+          autoResolvable: false,
+        }],
+        notes: [`DEC-CS-004: Uncaught error caught by safety boundary: ${message}`],
+        actionRequired: 'REVIEW',
+      },
+      metadata: {
+        verifiedAt: new Date().toISOString(),
+        verificationDurationMs: Date.now() - startTime,
+        modelsUsed: [],
+        apiCallsMade: 0,
+        estimatedCost: 0,
+        orderId,
+        phase,
+      },
+    };
+  }
+}
+
+/** @internal Core verification logic — wrapped by verifyCitation() error boundary */
+async function _verifyCitationInternal(
+  citation: CitationToVerify,
+  orderId: string | undefined,
+  phase: 'V.1' | 'VII.1' | 'IX.1',
+  config: CIVConfig,
+  startTime: number,
+): Promise<FinalVerificationOutput> {
   const modelsUsed: string[] = [];
   let apiCallsMade = 0;
 

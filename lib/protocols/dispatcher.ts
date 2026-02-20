@@ -59,6 +59,29 @@ type ProtocolHandler = (context: ProtocolContext, supabase?: unknown) => Promise
 
 const handlerRegistry = new Map<number, ProtocolHandler>();
 
+// A-032: Per-protocol circuit breaker — prevents tight failure loops
+const protocolFailureCounts = new Map<number, number>();
+const MAX_CONSECUTIVE_FAILURES = 3;
+
+function shouldRunProtocol(protocolNumber: number): boolean {
+  return (protocolFailureCounts.get(protocolNumber) ?? 0) < MAX_CONSECUTIVE_FAILURES;
+}
+
+function recordProtocolFailure(protocolNumber: number): void {
+  const count = (protocolFailureCounts.get(protocolNumber) ?? 0) + 1;
+  protocolFailureCounts.set(protocolNumber, count);
+  if (count >= MAX_CONSECUTIVE_FAILURES) {
+    logger.error('protocol.circuit_breaker.tripped', {
+      protocolNumber,
+      consecutiveFailures: count,
+    });
+  }
+}
+
+function recordProtocolSuccess(protocolNumber: number): void {
+  protocolFailureCounts.set(protocolNumber, 0);
+}
+
 export function registerProtocolHandler(protocolNumber: number, handler: ProtocolHandler): void {
   handlerRegistry.set(protocolNumber, handler);
 }
@@ -149,6 +172,17 @@ export async function dispatchProtocols(
       continue;
     }
 
+    // ── A-032: Circuit breaker check ──
+    if (!shouldRunProtocol(protocolNumber)) {
+      manifest.push({
+        protocolNumber,
+        protocolName: PROTOCOL_NAMES[protocolNumber] || `Protocol ${protocolNumber}`,
+        status: 'NOT_EVALUATED',
+        reason: `Circuit breaker tripped after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`,
+      });
+      continue;
+    }
+
     // ── Execute handler ──
     const handlerStart = Date.now();
     try {
@@ -161,6 +195,7 @@ export async function dispatchProtocols(
 
       const result = await handler(effectiveContext, supabase);
       const handlerDuration = Date.now() - handlerStart;
+      recordProtocolSuccess(protocolNumber); // A-032: Reset circuit breaker on success
 
       results.push(result);
 
@@ -200,6 +235,7 @@ export async function dispatchProtocols(
 
     } catch (error) {
       // ── Per-handler error isolation ──
+      recordProtocolFailure(protocolNumber); // A-032: Track for circuit breaker
       const handlerDuration = Date.now() - handlerStart;
       const errorMessage = error instanceof Error ? error.message : String(error);
 

@@ -210,12 +210,9 @@ export async function POST(req: Request) {
         .replace(/[\s\-\u2013\u2014]/g, '')
         .toUpperCase();
 
-      // Use service_role client for cross-user query (bypasses RLS)
-      const { createClient: createServiceClient } = await import('@supabase/supabase-js');
-      const serviceSupabase = createServiceClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      );
+      // A-020: Use getServiceSupabase() for cross-user query (bypasses RLS)
+      const { getServiceSupabase } = await import('@/lib/supabase/admin');
+      const serviceSupabase = getServiceSupabase();
 
       const { data: conflicts } = await serviceSupabase
         .from('orders')
