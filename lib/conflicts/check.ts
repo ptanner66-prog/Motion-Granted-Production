@@ -1,8 +1,11 @@
 // lib/conflicts/check.ts
 // Core conflict detection logic
-// VERSION: 1.0.0
+// T-90: Fixed ghost columns (party_name→profiles join, attorney_id→client_id, court→court_name)
+// T-90: Expanded terminal status filter to include UPPERCASE variants
+// T-90: Use getServiceSupabase for cross-user conflict matching
+// VERSION: 2.0.0
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('conflicts-check');
@@ -27,11 +30,12 @@ const MEDIUM_SIMILARITY_THRESHOLD = 70;
 /**
  * Main conflict check function
  * Checks a new order against all existing orders
+ * T-90: Uses getServiceSupabase for cross-user visibility
  */
 export async function checkForConflicts(
   input: ConflictCheckInput
 ): Promise<ConflictCheckResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
   const conflicts: ConflictMatch[] = [];
 
   // Normalize input
@@ -39,21 +43,21 @@ export async function checkForConflicts(
   const normalizedParty = normalizePartyName(input.partyName);
   const normalizedOpposing = normalizePartyName(input.opposingParty);
 
-  // Fetch existing orders (exclude current order and terminal statuses — CC-R3-06)
+  // T-90: Fixed ghost columns — use client_id, opposing_party_name, court_name
+  // T-90: Expanded terminal status filter to include UPPERCASE variants
   const { data: existingOrders, error } = await supabase
     .from('orders')
     .select(`
       id,
       case_number,
-      party_name,
+      client_id,
       opposing_party_name,
-      attorney_id,
-      court,
+      court_name,
       jurisdiction,
       created_at
     `)
     .neq('id', input.orderId)
-    .not('status', 'in', '("cancelled","cancelled_timeout","completed")')
+    .not('status', 'in', '("cancelled","cancelled_timeout","completed","CANCELLED","COMPLETED")')
     .order('created_at', { ascending: false })
     .limit(1000);  // Check against last 1000 orders
 
@@ -62,10 +66,31 @@ export async function checkForConflicts(
     throw new Error(`Conflict check failed: ${error.message}`);
   }
 
+  // Batch-fetch client names from profiles (party_name doesn't exist on orders)
+  const clientIds = [...new Set((existingOrders || []).map(o => o.client_id).filter(Boolean))];
+  const clientNameMap = new Map<string, string>();
+
+  if (clientIds.length > 0) {
+    // Fetch in batches of 100 to avoid query limits
+    for (let i = 0; i < clientIds.length; i += 100) {
+      const batch = clientIds.slice(i, i + 100);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', batch);
+
+      for (const p of profiles || []) {
+        clientNameMap.set(p.id, p.full_name || '');
+      }
+    }
+  }
+
   // Check each existing order
   for (const existing of existingOrders || []) {
     const existingNormalizedCase = normalizeCaseNumber(existing.case_number || '');
-    const existingParty = normalizePartyName(existing.party_name || '');
+    // T-90: Get party name from profiles lookup instead of ghost column
+    const existingClientName = clientNameMap.get(existing.client_id) || '';
+    const existingParty = normalizePartyName(existingClientName);
     const existingOpposing = normalizePartyName(existing.opposing_party_name || '');
 
     // CHECK 1: Same case number
@@ -75,7 +100,7 @@ export async function checkForConflicts(
         type: 'SAME_CASE_NUMBER',
         severity: 'WARNING',  // Same case might be legitimate (multiple motions)
         currentInput: input,
-        existing,
+        existing: { ...existing, party_name: existingClientName },
         matchField: 'case_number',
         matchConfidence: 100,
         matchReason: `Exact case number match: ${input.caseNumber}`
@@ -90,7 +115,7 @@ export async function checkForConflicts(
         type: 'OPPOSING_PARTIES',
         severity: partyVsOpposing === EXACT_MATCH_THRESHOLD ? 'BLOCKING' : 'WARNING',
         currentInput: input,
-        existing,
+        existing: { ...existing, party_name: existingClientName },
         matchField: 'party_name',
         matchConfidence: partyVsOpposing,
         matchReason: `Current client "${input.partyName}" was opposing party in order ${existing.id}`
@@ -104,16 +129,17 @@ export async function checkForConflicts(
         type: 'PRIOR_REPRESENTATION',
         severity: opposingVsParty === EXACT_MATCH_THRESHOLD ? 'BLOCKING' : 'WARNING',
         currentInput: input,
-        existing,
+        existing: { ...existing, party_name: existingClientName },
         matchField: 'opposing_party',
         matchConfidence: opposingVsParty,
         matchReason: `Opposing party "${input.opposingParty}" was our client in order ${existing.id}`
       }));
     }
 
-    // CHECK 4: Same attorney on both sides of different matters
-    if (input.attorneyId === existing.attorney_id) {
-      // Same attorney - check if parties are adversarial
+    // CHECK 4: Same attorney/client on both sides of different matters
+    // T-90: attorney_id → client_id (the attorney IS the client in this system)
+    if (input.attorneyId === existing.client_id) {
+      // Same client - check if parties are adversarial
       const partySimilarity = calculatePartySimilarity(normalizedParty, existingParty);
       const opposingSimilarity = calculatePartySimilarity(normalizedOpposing, existingOpposing);
 
@@ -124,7 +150,7 @@ export async function checkForConflicts(
           type: 'RELATED_MATTER',
           severity: 'INFO',
           currentInput: input,
-          existing,
+          existing: { ...existing, party_name: existingClientName },
           matchField: 'attorney',
           matchConfidence: 100,
           matchReason: `Same attorney handling potentially related matters`
@@ -150,7 +176,7 @@ export async function checkForConflicts(
 
   // Store conflicts in database
   if (conflicts.length > 0) {
-    await storeConflicts(conflicts);
+    await storeConflicts(supabase, conflicts);
   }
 
   return result;
@@ -185,7 +211,7 @@ function createConflictMatch(params: {
     conflictingCaseNumber: params.existing.case_number || '',
     conflictingPartyName: params.existing.party_name || '',
     conflictingOpposingParty: params.existing.opposing_party_name || '',
-    conflictingAttorneyId: params.existing.attorney_id || '',
+    conflictingAttorneyId: params.existing.client_id || '',
 
     matchField: params.matchField,
     matchConfidence: params.matchConfidence,
@@ -203,10 +229,9 @@ function createConflictMatch(params: {
 
 /**
  * Store detected conflicts in database
+ * T-90: Uses provided supabase client (service_role) instead of createClient
  */
-async function storeConflicts(conflicts: ConflictMatch[]): Promise<void> {
-  const supabase = await createClient();
-
+async function storeConflicts(supabase: any, conflicts: ConflictMatch[]): Promise<void> {
   const { error } = await supabase
     .from('conflict_matches')
     .insert(conflicts.map(c => ({

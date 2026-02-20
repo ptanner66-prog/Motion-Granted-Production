@@ -2078,9 +2078,11 @@ export const generateOrderWorkflow = inngest.createFunction(
           action: 'CONFLICT_GATE_HALT',
           details: { orderId, error: 'error' in conflictGate ? conflictGate.error : 'unknown' },
         });
+        // T-87: on_hold instead of CANCELLED — transient infrastructure failure
+        // should NOT permanently cancel a paid order. Admin can review and resume.
         await supabase.from('orders').update({
-          status: 'CANCELLED',
-          cancellation_type: 'ADMIN_CANCEL',
+          status: 'ON_HOLD',
+          hold_details: 'CONFLICT_GATE_FAILURE: Conflict check infrastructure failed. Order paused for admin review.',
         }).eq('id', orderId);
       });
       return; // Stop workflow
