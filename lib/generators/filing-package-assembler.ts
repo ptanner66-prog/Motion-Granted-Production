@@ -112,6 +112,8 @@ export interface AssemblerInput {
     pendingCount: number;
     citations?: Array<{ citation: string; status: string; confidence: number }>;
   };
+  // A-013: Protocol findings text from D9 dispatcher
+  protocolFindingsText?: string;
 }
 
 /**
@@ -665,6 +667,7 @@ async function generateSingleDocument(
         citationWarnings: input.citationWarnings || [],
         formatNotes: [],
         citationVerification: input.citationVerification,
+        protocolFindingsText: input.protocolFindingsText,
       });
 
       wordCount = 500;

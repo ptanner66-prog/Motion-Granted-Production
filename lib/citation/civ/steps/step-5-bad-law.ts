@@ -97,14 +97,14 @@ export async function executeBadLawCheck(
     },
     layer2: {
       searchesRun: 0,
-      status: 'GOOD_LAW',
+      status: 'CAUTION',  // T-112: Default to CAUTION until proven GOOD_LAW
       confidence: 1.0,
       concerns: [],
     },
     layer3: {
       inCuratedList: false,
     },
-    compositeStatus: 'GOOD_LAW',
+    compositeStatus: 'CAUTION',  // T-112: Default to CAUTION until proven GOOD_LAW
     confidence: 1.0,
     validUntil: calculateValidUntil(config.goodLawValidityDays),
     actionTaken: 'CONTINUE',
@@ -299,7 +299,7 @@ async function runAIPatternDetection(
   if (!searchResults.length) {
     return {
       searchesRun: searchPatterns.length,
-      status: 'GOOD_LAW',
+      status: 'CAUTION',  // T-112: No search results doesn't guarantee good law
       confidence: 0.95,
       concerns: [],
     };
@@ -727,7 +727,7 @@ function parseLayer2Response(
 
     return {
       searchesRun,
-      status: statusMap[parsed.STATUS] || 'GOOD_LAW',
+      status: statusMap[parsed.STATUS] || 'CAUTION',  // T-112: Parse fallback defaults to CAUTION
       confidence: Math.max(0, Math.min(1, parseFloat(parsed.CONFIDENCE) || 0.5)),
       concerns: parsed.REASONING ? [parsed.REASONING] : [],
     };

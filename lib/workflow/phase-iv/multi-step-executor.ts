@@ -409,6 +409,7 @@ export interface PhaseIVInitResult {
   totalBatches: number;
   jurisdiction: string;
   motionType: string;
+  tier?: string; // A-025: Tier for tiered citation limits
 }
 
 export interface PhaseIVBatchResult {
@@ -797,6 +798,7 @@ export async function executePhaseIVInit(
     totalBatches,
     jurisdiction: jurisdiction || 'Louisiana',
     motionType: motionType || 'MCOMPEL',
+    tier: input.tier || undefined, // A-025: Pass tier for tiered citation limits
   };
 }
 
@@ -1038,18 +1040,34 @@ export async function executePhaseIVAggregate(
   const filteredScored = filterByMinimumScore(scoredResults, 0.3);
   log.info(`[Phase IV-Aggregate] Three-axis scoring: ${filteredScored.length} passed (${scoredResults.length - filteredScored.length} below 0.3 threshold)`);
 
+  // T-25 #085: Score distribution diagnostics
+  if (filteredScored.length > 0) {
+    const scores = filteredScored.map(s => s.relevanceScore);
+    console.log(
+      `[Phase IV-Aggregate] Score distribution: ` +
+      `min=${Math.min(...scores).toFixed(2)} ` +
+      `max=${Math.max(...scores).toFixed(2)} ` +
+      `avg=${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)}`
+    );
+  }
+
   // Map scored results back to CitationCandidate format with updated scores
   const scoredCandidates = filteredScored.map(s => ({
     ...s.candidate,
     relevanceScore: Math.round(s.relevanceScore * 100),
   }));
 
+  // A-025: Tiered citation limits (was flat 10 for all tiers)
+  const tierCitationLimits: Record<string, number> = { 'A': 6, 'B': 10, 'C': 14, 'D': 18 };
+  const targetCitations = tierCitationLimits[initResult.tier || ''] || 10;
+
   // Select top citations
   const selectedCitations = selectTopCitations(
     scoredCandidates,
     initResult.elements,
     candidatesByElement,
-    initResult.jurisdiction
+    initResult.jurisdiction,
+    targetCitations
   );
 
   const citationCount = selectedCitations.length;
@@ -1350,11 +1368,12 @@ function selectTopCitations(
   scoredCandidates: CitationCandidate[],
   elements: ExtractedElement[],
   candidatesByElement: Record<string, CitationCandidate[]>,
-  jurisdiction: string
+  jurisdiction: string,
+  targetCitations: number = 10 // A-025: Tiered target (default 10 for backward compat)
 ): SelectedCitation[] {
   const selected: SelectedCitation[] = [];
   const usedIds = new Set<number>();
-  const TARGET_CITATIONS = 10;
+  const TARGET_CITATIONS = targetCitations;
 
   // First, select at least one citation per critical element
   for (const element of elements.filter(e => e.isCritical)) {
@@ -1396,7 +1415,13 @@ function convertToSelectedCitation(
     dateFiled: candidate.dateFiled,
     forElement: candidate.forElement,
     authorityLevel: determineAuthorityLevel(candidate.court, jurisdiction),
-    relevanceScore: candidate.relevanceScore || 50,
+    relevanceScore: (() => {
+      // T-25 #086: Bypass detection warning
+      if (candidate.relevanceScore === undefined || candidate.relevanceScore === null) {
+        console.warn(`[Phase IV] Citation "${candidate.caseName}" hit fallback relevanceScore=0 (bypassed scorer)`);
+      }
+      return candidate.relevanceScore ?? 0;
+    })(),
     verification_timestamp: new Date().toISOString(),
     verification_method: 'search',
   };

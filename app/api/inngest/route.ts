@@ -54,6 +54,9 @@ import { checkpointRecoveryCron } from "@/lib/inngest/checkpoint-recovery";
 // FIX-D: Email queue consumer (reads email_queue → Resend, every 60s)
 import { processEmailQueue } from "@/lib/inngest/process-email-queue";
 
+// T-32: Abandoned cart + stale order cleanup (daily cron)
+import { abandonedCartCleanup } from "@/lib/inngest/functions/abandoned-cart";
+
 /**
  * Inngest API Route Handler
  *
@@ -102,6 +105,8 @@ const registeredFunctions = [
   checkpointRecoveryCron,
   // FIX-D: Email queue consumer (every 60s: email_queue → Resend)
   processEmailQueue,
+  // T-32: Abandoned cart + stale order cleanup (daily)
+  abandonedCartCleanup,
 ];
 
 // IV-003: Required function registration validator
@@ -128,6 +133,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
   { ref: holdRecoveryCron, name: 'holdRecoveryCron' },
   { ref: checkpointRecoveryCron, name: 'checkpointRecoveryCron' },
   { ref: processEmailQueue, name: 'processEmailQueue' },
+  { ref: abandonedCartCleanup, name: 'abandonedCartCleanup' },
 ] as const;
 
 const missingFns = REQUIRED_FUNCTION_EXPORTS.filter(f => !f.ref);

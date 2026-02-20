@@ -152,6 +152,9 @@ import { updateOrderColumns, appendPhaseCourse } from "@/lib/orders/update-colum
 // SP-GOD-4: Filing package generation via doc-gen bridge
 import { generateAndStoreFilingPackage } from "@/lib/integration/doc-gen-bridge";
 
+// T-52: Static import for conflict-checker (was dynamic import)
+import { runConflictCheck } from "@/lib/automation/conflict-checker";
+
 // SP-20 D5: Checkpoint event types (shared across Fn1, Fn2, dashboard)
 import type { CP3ApprovalEvent } from "@/lib/types/checkpoint-events";
 
@@ -507,13 +510,19 @@ async function uploadToSupabaseStorage(
   path: string,
   content: Uint8Array | Buffer
 ): Promise<string> {
-  // FIX-B FIX-10: Determine contentType from file extension
+  // FIX-B FIX-10: Determine contentType from file extension (A-015: added html, json, csv)
   const contentType = path.endsWith('.docx')
     ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     : path.endsWith('.txt')
     ? 'text/plain'
     : path.endsWith('.pdf')
     ? 'application/pdf'
+    : path.endsWith('.html')
+    ? 'text/html'
+    : path.endsWith('.json')
+    ? 'application/json'
+    : path.endsWith('.csv')
+    ? 'text/csv'
     : 'application/octet-stream';
 
   const { error } = await supabase.storage
@@ -561,7 +570,8 @@ function generateInstructionSheetContent(
   tier: MotionTier,
   citationCount: number,
   judgeResult?: JudgeSimulationResult,
-  verificationSummary?: { verified: number; flagged: number; blocked: number; total: number }
+  verificationSummary?: { verified: number; flagged: number; blocked: number; total: number; holdingUnverified?: number }, // T-33
+  protocol10Triggered?: boolean // A-007
 ): string {
   const content = [];
 
@@ -647,6 +657,36 @@ function generateInstructionSheetContent(
   content.push('');
   content.push('Questions or need revisions? Contact us within 7 days of delivery.');
   content.push('');
+
+  // T-33: Holding verification warning
+  if (verificationSummary?.holdingUnverified && verificationSummary.holdingUnverified > 0) {
+    content.push('───────────────────────────────────────────────────────────────────────');
+    content.push('HOLDING VERIFICATION WARNING');
+    content.push('───────────────────────────────────────────────────────────────────────');
+    content.push(`NOTE: ${verificationSummary.holdingUnverified} citation(s) verified for existence but`);
+    content.push('holding classification incomplete. Attorney should confirm each cited');
+    content.push('case supports the proposition for which it is cited.');
+    content.push('');
+  }
+
+  // A-007: Protocol 10 quality threshold disclosure
+  if (protocol10Triggered) {
+    content.push('');
+    content.push('━━━ QUALITY THRESHOLD NOTICE ━━━');
+    content.push('');
+    content.push('This motion was finalized under Protocol 10 (Quality Threshold Exit).');
+    content.push('The automated quality system determined that additional revision loops');
+    content.push('would not materially improve the document quality score. The motion');
+    content.push('meets minimum professional standards but may benefit from additional');
+    content.push('attorney review in the following areas:');
+    content.push('');
+    content.push('• Legal argument structure and flow');
+    content.push('• Citation support for key propositions');
+    content.push('• Jurisdiction-specific formatting requirements');
+    content.push('');
+    content.push('Attorney review of all cited cases is STRONGLY RECOMMENDED.');
+    content.push('');
+  }
 
   // FIX-B FIX-13: Validate for unresolved template variables.
   // Scan output for common placeholder patterns that indicate missing data.
@@ -1118,18 +1158,19 @@ async function generateAndUploadInstructionSheet(
 
     const judgeResult = state.phaseOutputs["VII"] as JudgeSimulationResult | undefined;
 
-    // T-03: Build verification summary from actual CIV results
+    // T-33: Build verificationSummary from CIV results (variable extraction from T-03)
     const aisV1Out = (state.phaseOutputs?.["V.1"] ?? {}) as Record<string, unknown>;
     const aisVII1Out = (state.phaseOutputs?.["VII.1"] ?? {}) as Record<string, unknown>;
     const aisV1Results = (aisV1Out?.verificationResults ?? []) as Array<Record<string, unknown>>;
     const aisVII1Results = (aisVII1Out?.verificationResults ?? []) as Array<Record<string, unknown>>;
     const allVResults = [...aisV1Results, ...aisVII1Results];
-    const verificationSummary = {
+    const verificationSummary = allVResults.length > 0 ? {
       verified: allVResults.filter(r => r.verified === true && r.action === 'kept').length,
       flagged: allVResults.filter(r => r.action === 'flagged').length,
       blocked: allVResults.filter(r => r.action === 'removed').length,
       total: allVResults.length,
-    };
+      holdingUnverified: allVResults.filter(r => r.verified === true && r.holdingVerified !== true).length,
+    } : undefined;
 
     const content = generateInstructionSheetContent(
       state.orderId,
@@ -1137,7 +1178,8 @@ async function generateAndUploadInstructionSheet(
       state.tier,
       actualCitationCount || state.citationCount,
       judgeResult,
-      verificationSummary
+      verificationSummary,
+      state.protocol10Triggered ?? false // A-007
     );
     const txtBuffer = createTextFileBuffer('ATTORNEY INSTRUCTION SHEET', content);
     console.log(`[generate-instruction-sheet] Text file created in ${Date.now() - start}ms`);
@@ -1359,8 +1401,8 @@ async function persistDeliverableRecords(
 
   for (const entry of deliverableEntries) {
     if (entry.url) {
-      // FIX-B FIX-5: Include uploaded_by (NOT NULL) to satisfy documents table constraint.
-      const { error } = await supabase.from('documents').insert({
+      // A-009: UPSERT for idempotency on step replay — uses (order_id, file_name) as conflict key
+      const { error } = await supabase.from('documents').upsert({
         order_id: orderId,
         file_name: entry.name,
         file_type: entry.mimeType,
@@ -1369,9 +1411,22 @@ async function persistDeliverableRecords(
         document_type: entry.type,
         uploaded_by: uploadedBy,
         is_deliverable: true,
-      });
+      }, { onConflict: 'order_id,file_name' });
       if (error) {
-        console.warn(`[persist-deliverable-records] Failed to insert ${entry.name}:`, error.message);
+        // A-009: Fallback to INSERT if UPSERT fails (unique constraint may not exist yet)
+        const { error: insertError } = await supabase.from('documents').insert({
+          order_id: orderId,
+          file_name: entry.name,
+          file_type: entry.mimeType,
+          file_size: 0,
+          file_url: `${storagePath}/${entry.name}`,
+          document_type: entry.type,
+          uploaded_by: uploadedBy,
+          is_deliverable: true,
+        });
+        if (insertError) {
+          console.warn(`[persist-deliverable-records] Failed to upsert/insert ${entry.name}:`, insertError.message);
+        }
       }
     }
   }
@@ -2002,9 +2057,8 @@ export const generateOrderWorkflow = inngest.createFunction(
         return { passed: true, flagged: orderConflict.conflict_flagged };
       }
 
-      // Synchronous retry — run conflict check inline
+      // Synchronous retry — run conflict check inline (T-52: static import)
       try {
-        const { runConflictCheck } = await import('@/lib/automation/conflict-checker');
         await runConflictCheck(orderId);
         return { passed: true, retried: true };
       } catch (err) {
@@ -2064,6 +2118,33 @@ export const generateOrderWorkflow = inngest.createFunction(
         .eq('order_id', orderId);
       if (error) console.error('[persist-phase-I] FAILED:', error.message);
     });
+
+    // T-30: Tier floor enforcement (M-06 safeguard)
+    // If Phase I AI classification produced a tier, allow UPGRADE but not DOWNGRADE
+    // below the database tier from motion_types table.
+    const phaseIOutput = (workflowState.phaseOutputs["I"] ?? {}) as Record<string, unknown>;
+    const aiClassifiedTier = phaseIOutput?.tier as string | undefined;
+
+    if (aiClassifiedTier && ['A', 'B', 'C', 'D'].includes(aiClassifiedTier)) {
+      const tierRank: Record<string, number> = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
+      const dbTierRank = tierRank[workflowState.tier] ?? 0;
+      const aiTierRank = tierRank[aiClassifiedTier] ?? 0;
+
+      if (aiTierRank > dbTierRank) {
+        // AI classified HIGHER than DB — upgrade
+        console.log(
+          `[tier-floor] Phase I classified ${aiClassifiedTier} > DB ${workflowState.tier} — upgrading`
+        );
+        workflowState.tier = aiClassifiedTier as MotionTier;
+      } else if (aiTierRank < dbTierRank) {
+        // AI classified LOWER than DB — BLOCK downgrade (floor rule)
+        console.warn(
+          `[tier-floor] Phase I classified ${aiClassifiedTier} but DB tier is ${workflowState.tier} — keeping DB tier (floor rule)`
+        );
+        // workflowState.tier stays at DB tier (already set)
+      }
+      // Equal: no change needed
+    }
 
     // Write-back: Populate filing metadata columns from order context after Phase I
     await updateOrderColumns(supabase, orderId, {
@@ -2583,9 +2664,9 @@ export const generateOrderWorkflow = inngest.createFunction(
         });
       });
 
-      // 3. Send upgrade-required notification
+      // 3. Send upgrade-required notification (A-011: added error handling)
       await step.run('upgrade-notify', async () => {
-        await supabase.from('email_queue').insert({
+        const { error: emailError } = await supabase.from('email_queue').insert({
           order_id: orderId,
           template: 'tier_upgrade_required',
           data: {
@@ -2595,6 +2676,9 @@ export const generateOrderWorkflow = inngest.createFunction(
           },
           status: 'pending',
         });
+        if (emailError) {
+          console.error(`[upgrade-notify] email_queue INSERT failed for order ${orderId}:`, emailError.message);
+        }
       });
 
       // 4. Wait for upgrade payment (7-day timeout)
@@ -2796,6 +2880,49 @@ export const generateOrderWorkflow = inngest.createFunction(
         supabase
       );
       console.log('CP2 draft ready', { orderId });
+    });
+
+    // ========================================================================
+    // T-24: Post-V CIV Audit Gate — diagnostic log of citations in draft
+    // ========================================================================
+    await step.run('post-v-civ-audit-gate', async () => {
+      const phaseVOutput = (workflowState.phaseOutputs["V"] ?? {}) as Record<string, unknown>;
+      const draftMotion = phaseVOutput?.draftMotion as Record<string, unknown> | undefined;
+      const draftText = typeof draftMotion === 'string'
+        ? draftMotion
+        : (draftMotion?.content as string) || JSON.stringify(draftMotion || '');
+
+      // Extract citation-like patterns from draft text
+      const citationPattern = /\d+\s+[A-Z][a-z]+\.?\s*(?:\d+[a-z]?\s*)?(?:\d+)/g;
+      const draftCitations = draftText.match(citationPattern) || [];
+
+      // Also count citationsUsed from structured legalArguments
+      const legalArgs = draftMotion?.legalArguments as Array<{ citationsUsed?: string[] }> | undefined;
+      let structuredCitationCount = 0;
+      if (Array.isArray(legalArgs)) {
+        for (const arg of legalArgs) {
+          if (Array.isArray(arg.citationsUsed)) {
+            structuredCitationCount += arg.citationsUsed.length;
+          }
+        }
+      }
+
+      console.log(JSON.stringify({
+        level: 'info',
+        event: 'post_v_civ_audit',
+        orderId,
+        citationsFoundInDraft: draftCitations.length,
+        structuredCitationCount,
+        timestamp: new Date().toISOString(),
+      }));
+
+      // Store citation count for downstream gates
+      if (!workflowState.phaseOutputs["V_audit"]) {
+        workflowState.phaseOutputs["V_audit"] = {};
+      }
+      (workflowState.phaseOutputs["V_audit"] as Record<string, unknown>).citationsInDraft = draftCitations.length;
+      (workflowState.phaseOutputs["V_audit"] as Record<string, unknown>).structuredCitationCount = structuredCitationCount;
+      (workflowState.phaseOutputs["V_audit"] as Record<string, unknown>).auditTimestamp = new Date().toISOString();
     });
 
     // ========================================================================
@@ -3191,6 +3318,21 @@ export const generateOrderWorkflow = inngest.createFunction(
       workflowState.revisionLoopCount < maxLoopsForTier
     ) {
       const loopNum = workflowState.revisionLoopCount + 1;
+
+      // T-27: Structured JSON logging for each revision loop iteration
+      console.log(JSON.stringify({
+        level: 'info',
+        event: 'revision_loop_start',
+        orderId,
+        loopNum,
+        maxLoops: maxLoopsForTier,
+        tier: workflowState.tier,
+        currentScore: currentNumericGrade,
+        previousScore,
+        qualityThreshold,
+        currentGrade: workflowState.currentGrade,
+        timestamp: new Date().toISOString(),
+      }));
       console.log(`[Orchestration] ===== REVISION LOOP ${loopNum}/${maxLoopsForTier} =====`);
       console.log(`[Orchestration] Current numericScore: ${currentNumericGrade}, threshold: ${qualityThreshold} (Tier ${workflowState.tier}: needs ${workflowState.tier === 'A' ? 'B / 83%' : 'B+ / 87%'})`);
 
@@ -5302,8 +5444,10 @@ async function fn2QueueEmail(
     status: 'pending',
   });
 
+  // A-011: Propagate error instead of silently swallowing
   if (error) {
     console.error(`[email-queue] Failed to queue ${templateId} for order ${orderId}:`, error);
+    throw new Error(`Email queue INSERT failed for ${templateId}: ${error.message}`);
   }
 }
 

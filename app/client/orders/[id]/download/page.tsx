@@ -47,7 +47,7 @@ interface DownloadableDocument {
   sizeBytes: number;
   downloadUrl: string;
   expiresAt: Date;
-  documentType: 'motion' | 'exhibits' | 'separate_statement' | 'instructions' | 'other';
+  documentType: 'motion' | 'memorandum' | 'declaration' | 'proposed_order' | 'proof_of_service' | 'affidavit' | 'notice_of_motion' | 'exhibits' | 'separate_statement' | 'instructions' | 'other';
 }
 
 interface OrderDetails {
@@ -221,12 +221,21 @@ export default function DownloadPortal() {
             // file_url stores the storage path within the order-documents bucket
             const { url, expiresAt } = await getSignedDownloadUrl(orderId, file.file_url);
 
-            // Map document_type to frontend enum values
-            let docType: DownloadableDocument['documentType'] = 'other';
-            if (file.document_type === 'motion') docType = 'motion';
-            else if (file.document_type === 'instructions' || file.document_type === 'instruction_sheet') docType = 'instructions';
-            else if (file.document_type === 'separate_statement') docType = 'separate_statement';
-            else if (file.document_type === 'exhibits') docType = 'exhibits';
+            // T-37: Map document_type to frontend enum values with expanded types
+            const documentTypeMap: Record<string, DownloadableDocument['documentType']> = {
+              motion: 'motion',
+              memorandum: 'memorandum',
+              declaration: 'declaration',
+              proposed_order: 'proposed_order',
+              proof_of_service: 'proof_of_service',
+              affidavit: 'affidavit',
+              notice_of_motion: 'notice_of_motion',
+              exhibits: 'exhibits',
+              separate_statement: 'separate_statement',
+              instructions: 'instructions',
+              instruction_sheet: 'instructions',
+            };
+            const docType: DownloadableDocument['documentType'] = documentTypeMap[file.document_type] || 'other';
 
             docs.push({
               id: file.id,
@@ -440,7 +449,19 @@ export default function DownloadPortal() {
                       <p className="font-medium text-gray-900">{doc.filename}</p>
                       <p className="text-sm text-gray-500">
                         {formatFileSize(doc.sizeBytes)} •{' '}
-                        {doc.documentType.replace(/_/g, ' ')}
+                        {({
+                          motion: 'Motion',
+                          memorandum: 'Memorandum of Points and Authorities',
+                          declaration: 'Declaration',
+                          proposed_order: 'Proposed Order',
+                          proof_of_service: 'Proof of Service',
+                          affidavit: 'Affidavit',
+                          notice_of_motion: 'Notice of Motion',
+                          exhibits: 'Exhibits',
+                          separate_statement: 'Separate Statement',
+                          instructions: 'Attorney Instruction Sheet',
+                          other: 'Supporting Document',
+                        } as Record<string, string>)[doc.documentType] || doc.documentType.replace(/_/g, ' ')}
                       </p>
                     </div>
                   </div>
