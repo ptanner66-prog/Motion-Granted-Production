@@ -17,6 +17,13 @@ import { RevisionRequestEmail } from '@/emails/revision-request';
 // v6.3: Checkpoint notification templates
 import { CheckpointNotificationEmail } from '@/emails/checkpoint-notification';
 import { RevisionPaymentRequiredEmail } from '@/emails/revision-payment-required';
+// v7.2: Delivery / CP3 / Hold notification templates
+import { DeliveryCompleteEmail } from '@/emails/delivery-complete';
+import { AttorneyPackageReadyEmail } from '@/emails/attorney-package-ready';
+import { CP3ReminderEmail } from '@/emails/cp3-reminder';
+import { CP3TimeoutEscalationEmail } from '@/emails/cp3-timeout-escalation';
+import { CancellationConfirmationEmail } from '@/emails/cancellation-confirmation';
+import { HoldManualEscalationEmail } from '@/emails/hold-manual-escalation';
 import type {
   NotificationType,
   NotificationStatus,
@@ -407,6 +414,63 @@ function buildEmailComponent(
     case 'revision_payment_required':
       return buildRevisionPaymentEmail(data, baseUrl);
 
+    // v7.2: Delivery / CP3 / Hold notifications
+    case 'delivery_complete':
+      return React.createElement(DeliveryCompleteEmail, {
+        orderNumber: (data.orderNumber as string) || '',
+        motionType: (data.motionType as string) || '',
+        caseCaption: (data.caseCaption as string) || '',
+        dashboardUrl: `${baseUrl}/dashboard`,
+        retentionDays: (data.retentionDays as number) || 90,
+      });
+
+    case 'attorney_package_ready':
+      return React.createElement(AttorneyPackageReadyEmail, {
+        orderNumber: (data.orderNumber as string) || '',
+        motionType: (data.motionType as string) || '',
+        caseCaption: (data.caseCaption as string) || '',
+        dashboardUrl: `${baseUrl}/dashboard`,
+        reviewDeadlineDays: (data.reviewDeadlineDays as number) || 21,
+      });
+
+    case 'cp3_reminder':
+      return React.createElement(CP3ReminderEmail, {
+        orderNumber: (data.orderNumber as string) || '',
+        motionType: (data.motionType as string) || '',
+        caseCaption: (data.caseCaption as string) || '',
+        dashboardUrl: `${baseUrl}/dashboard`,
+        reminderType: (data.reminderType as '48h' | '14d') || '48h',
+        autoCancelDate: data.autoCancelDate as string | undefined,
+      });
+
+    case 'cp3_timeout_escalation':
+      return React.createElement(CP3TimeoutEscalationEmail, {
+        orderNumber: (data.orderNumber as string) || '',
+        orderId: (data.orderId as string) || '',
+        motionType: (data.motionType as string) || '',
+        caseCaption: (data.caseCaption as string) || '',
+        attorneyEmail: (data.attorneyEmail as string) || '',
+        attorneyName: (data.attorneyName as string) || '',
+        adminDashboardUrl: `${baseUrl}/admin/orders/${data.orderId}`,
+        refundAmountFormatted: data.refundAmountFormatted as string | undefined,
+        cp3EnteredAt: data.cp3EnteredAt as string | undefined,
+        cancelledAt: data.cancelledAt as string | undefined,
+      });
+
+    case 'cancellation_confirmation':
+      return React.createElement(CancellationConfirmationEmail, {
+        orderNumber: (data.orderNumber as string) || '',
+        motionType: (data.motionType as string) || '',
+        caseCaption: (data.caseCaption as string) || '',
+        dashboardUrl: `${baseUrl}/dashboard`,
+        refundPercentage: data.refundPercentage as number | undefined,
+        refundAmountFormatted: data.refundAmountFormatted as string | undefined,
+        cancellationReason: data.cancellationReason as 'attorney_cancelled' | 'timeout_21d' | undefined,
+      });
+
+    case 'hold_manual_escalation':
+      return buildHoldManualEscalationEmail(data, baseUrl);
+
     default:
       log.warn(`[Notifications] No email template for type: ${type}`);
       return null;
@@ -552,6 +616,21 @@ function buildRevisionPaymentEmail(
     amount: (data.amount as number) || 125,
     paymentUrl: (data.paymentUrl as string) || `${baseUrl}/checkout/revision/${data.revisionId}`,
     portalUrl: `${baseUrl}/dashboard`,
+  });
+}
+
+// v7.2: Hold escalation email builder
+function buildHoldManualEscalationEmail(
+  data: Record<string, unknown>,
+  baseUrl: string
+): React.ReactElement {
+  return React.createElement(HoldManualEscalationEmail, {
+    orderNumber: (data.orderNumber as string) || '',
+    motionType: (data.motionType as string) || '',
+    caseCaption: (data.caseCaption as string) || '',
+    holdReason: (data.holdReason as string) || 'unknown',
+    notes: (data.notes as string) || '',
+    adminDashboardUrl: (data.adminDashboardUrl as string) || `${baseUrl}/admin/orders/${data.orderId}`,
   });
 }
 
@@ -710,6 +789,13 @@ function getSubjectForType(type: NotificationType, orderNumber: string): string 
     checkpoint_cp2: `Action Required: Draft Review - ${orderNumber}`,
     checkpoint_cp3: `Your Filing Package is Ready - ${orderNumber}`,
     revision_payment_required: `Payment Required for Revision - ${orderNumber}`,
+    // v7.2: Delivery / CP3 / Hold notifications
+    delivery_complete: `Your Documents Are Ready - ${orderNumber}`,
+    attorney_package_ready: `Filing Package Ready for Review - ${orderNumber}`,
+    cp3_reminder: `Action Required: Review Your Filing Package - ${orderNumber}`,
+    cp3_timeout_escalation: `ESCALATION: CP3 Timeout - ${orderNumber}`,
+    cancellation_confirmation: `Order Cancelled - ${orderNumber}`,
+    hold_manual_escalation: `ESCALATION: Hold Requires Attention - ${orderNumber}`,
   };
   return subjects[type] || `Motion Granted Update - ${orderNumber}`;
 }

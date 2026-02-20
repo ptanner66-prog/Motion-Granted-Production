@@ -57,12 +57,13 @@ export async function handleHoldTimeout(
     return { skipped: true, reason: 'order_not_found' };
   }
 
-  if (order.status === 'cancelled' || order.status === 'CANCELLED_SYSTEM') {
+  const statusLower = order.status?.toLowerCase();
+  if (statusLower === 'cancelled' || order.status === 'CANCELLED_SYSTEM') {
     return { skipped: true, reason: 'already_cancelled' };
   }
 
-  // Accept both 'on_hold' and 'hold_pending' (SP12-07 FIX compatibility)
-  if (order.status !== 'on_hold' && order.status !== 'hold_pending') {
+  // Accept both 'on_hold' and 'hold_pending' — check both cases (SP12-07 FIX compatibility)
+  if (statusLower !== 'on_hold' && statusLower !== 'hold_pending') {
     return { skipped: true, reason: `unexpected_status_${order.status}` };
   }
 

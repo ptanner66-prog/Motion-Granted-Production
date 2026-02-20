@@ -79,8 +79,7 @@ export async function deleteOrderData(
 
     // Step 5: Delete related database records
     const deletePromises = [
-      supabase.from('order_documents').delete().eq('order_id', orderId),
-      supabase.from('order_deliverables').delete().eq('order_id', orderId),
+      supabase.from('documents').delete().eq('order_id', orderId),
       supabase.from('phase_executions').delete().eq('order_id', orderId),
       supabase.from('citation_verifications').delete().eq('order_id', orderId),
       supabase.from('checkpoint_events').delete().eq('order_id', orderId),

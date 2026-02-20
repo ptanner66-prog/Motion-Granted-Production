@@ -131,7 +131,7 @@ export function HoldResponseForm({
         const path = `orders/${orderId}/hold-response/${timestamp}-${safeName}`
 
         const { error: uploadError } = await supabase.storage
-          .from('documents')
+          .from('order-documents')
           .upload(path, file)
 
         if (uploadError) {

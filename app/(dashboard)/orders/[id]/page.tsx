@@ -40,6 +40,7 @@ interface Document {
   file_name: string
   file_url: string
   document_type: string
+  is_deliverable: boolean
   created_at: string
 }
 
@@ -109,13 +110,13 @@ export default async function OrderDetailPage({
   // Fetch documents
   const { data: documentsData } = await supabase
     .from('documents')
-    .select('id, file_name, file_url, document_type, created_at')
+    .select('id, file_name, file_url, document_type, is_deliverable, created_at')
     .eq('order_id', id)
     .order('created_at', { ascending: true })
   const documents: Document[] = documentsData || []
 
-  const deliverables = documents.filter(doc => doc.document_type === 'deliverable' || doc.document_type === 'draft')
-  const clientUploads = documents.filter(doc => doc.document_type !== 'deliverable' && doc.document_type !== 'draft')
+  const deliverables = documents.filter(doc => doc.is_deliverable === true)
+  const clientUploads = documents.filter(doc => !doc.is_deliverable)
 
   // Fetch activity log from automation_logs
   const { data: activityLogs } = await supabase

@@ -1,3 +1,7 @@
+// @deprecated — Most functions in this file are dead code.
+// confirm_receipt extracted to lib/workflow/confirm-receipt.ts
+// Remaining ~800 lines pending deletion post-launch.
+
 /**
  * Checkpoint Service
  *
@@ -21,6 +25,7 @@ import { getServiceSupabase } from '@/lib/supabase/admin';
 import { HOLD_TIMEOUTS } from '@/lib/config/workflow-config';
 import type { OperationResult } from '@/types/automation';
 import { createLogger } from '@/lib/security/logger';
+import { processCP3Response } from '@/lib/workflow/confirm-receipt';
 
 const log = createLogger('workflow-checkpoint-service');
 
@@ -568,84 +573,8 @@ async function processCP2Response(
   }
 }
 
-// ============================================================================
-// CP3 HANDLER: Delivery Confirmation
-// ============================================================================
-
-/**
- * Process CP3 response
- * Actions: 'confirm_receipt' → completed
- */
-async function processCP3Response(
-  workflow: Record<string, unknown>,
-  response: CheckpointResponse
-): Promise<OperationResult<{ nextPhase: number }>> {
-  const supabase = await createClient();
-
-  if (response.action !== 'confirm_receipt') {
-    return { success: false, error: 'Invalid CP3 action. Must confirm receipt.' };
-  }
-
-  // SP-15/TASK-23: Idempotency guard — prevent duplicate completion events
-  // If order is already completed, skip to avoid duplicate delivery notifications
-  const { data: currentOrder } = await supabase
-    .from('orders')
-    .select('status')
-    .eq('id', workflow.order_id)
-    .single();
-
-  if (currentOrder?.status === 'completed') {
-    log.warn('CP3 duplicate completion prevented — order already completed', {
-      workflowId: workflow.id,
-      orderId: workflow.order_id,
-    });
-    return { success: true, data: { nextPhase: -1 } };
-  }
-
-  const checkpointData = workflow.checkpoint_data as CheckpointData;
-  checkpointData.status = 'confirmed';
-  checkpointData.respondedAt = new Date().toISOString();
-  checkpointData.customerResponse = {
-    action: response.action,
-    notes: response.notes,
-    respondedAt: new Date().toISOString(),
-  };
-
-  // Append to checkpoint responses
-  const existingResponses = (workflow.checkpoint_responses as unknown[]) || [];
-  existingResponses.push({
-    checkpoint: 'CP3',
-    response: checkpointData.customerResponse,
-    timestamp: new Date().toISOString(),
-  });
-
-  const { error } = await supabase
-    .from('order_workflows')
-    .update({
-      status: 'completed',
-      checkpoint_pending: null,
-      checkpoint_data: checkpointData,
-      checkpoint_responses: existingResponses,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', workflow.id);
-
-  if (error) {
-    return { success: false, error: error.message };
-  }
-
-  // Mark the order as completed
-  await supabase
-    .from('orders')
-    .update({
-      status: 'COMPLETED',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', workflow.order_id);
-
-  log.info('CP3 order completed', { workflowId: workflow.id, orderId: workflow.order_id });
-  return { success: true, data: { nextPhase: -1 } }; // -1 indicates complete
-}
+// CP3 HANDLER: Extracted to lib/workflow/confirm-receipt.ts (DEC-8)
+// processCP3Response is now imported at the top of this file.
 
 // ============================================================================
 // REVISION PAYMENT

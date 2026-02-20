@@ -22,6 +22,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { canMakeRequest, logRequest } from "@/lib/security/rate-limiter";
 import { parseFileOperations, executeFileOperations } from "@/lib/workflow/file-system";
 import { ADMIN_EMAIL, ALERT_EMAIL, EMAIL_FROM } from "@/lib/config/notifications";
+import { queueNotification } from "@/lib/automation/notification-sender";
 import { createMessageWithRetry } from "@/lib/ai/claude-client";
 import { parseOrderDocuments, getOrderParsedDocuments } from "@/lib/workflow/document-parser";
 import { quickValidate } from "@/lib/workflow/quality-validator";
@@ -732,17 +733,18 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
     // Step 6: Send notification to admin
     await step.run("send-notification", async () => {
       // Queue notification for admin - draft ready
-      await supabase.from("notification_queue").insert({
-        notification_type: "draft_ready",
-        recipient_email: ADMIN_EMAIL,
-        order_id: orderId,
-        template_data: {
+      await queueNotification({
+        type: "draft_ready",
+        recipientId: 'admin',
+        recipientEmail: ADMIN_EMAIL,
+        orderId,
+        subject: `Your Draft is Ready - ${orderData.order_number}`,
+        templateData: {
           orderNumber: orderData.order_number,
           motionType: orderData.motion_type,
           caseCaption: orderData.case_caption,
         },
         priority: 8,
-        status: "pending",
       });
 
       // Queue approval_needed notification with citation count and quality score
@@ -750,11 +752,13 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
       const qualityScore = qualityResult.passes ? 'pass' : 'needs_review';
       const criticalIssues = 'criticalIssues' in qualityResult ? qualityResult.criticalIssues : 0;
 
-      await supabase.from("notification_queue").insert({
-        notification_type: "approval_needed",
-        recipient_email: ADMIN_EMAIL,
-        order_id: orderId,
-        template_data: {
+      await queueNotification({
+        type: "approval_needed",
+        recipientId: 'admin',
+        recipientEmail: ADMIN_EMAIL,
+        orderId,
+        subject: `Action Required - ${orderData.order_number}`,
+        templateData: {
           orderNumber: orderData.order_number,
           motionType: orderData.motion_type,
           caseCaption: orderData.case_caption,
@@ -764,8 +768,7 @@ ${defendants.map((p) => p.party_name).join(", ") || "[DEFENDANT]"},
           criticalIssues,
           reviewUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://motion-granted.com'}/admin/orders/${orderId}`,
         },
-        priority: 9, // Higher priority than draft_ready
-        status: "pending",
+        priority: 9,
       });
 
       // Also log as automation event

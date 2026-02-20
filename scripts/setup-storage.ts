@@ -31,29 +31,53 @@ async function main() {
     process.exit(1);
   }
 
-  const exists = buckets?.some((b) => b.name === 'filing-packages');
+  // Define required buckets
+  const requiredBuckets = [
+    {
+      name: 'filing-packages',
+      public: false,
+      fileSizeLimit: 52428800, // 50MB
+      allowedMimeTypes: [
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+        'application/pdf',
+      ],
+    },
+    {
+      name: 'order-documents',
+      public: false,
+      fileSizeLimit: 52428800, // 50MB
+      allowedMimeTypes: [
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+        'application/pdf',
+        'application/msword', // .doc
+        'image/jpeg',
+        'image/png',
+      ],
+    },
+  ];
 
-  if (exists) {
-    console.log('filing-packages bucket already exists');
-    return;
+  for (const bucket of requiredBuckets) {
+    const exists = buckets?.some((b) => b.name === bucket.name);
+
+    if (exists) {
+      console.log(`${bucket.name} bucket already exists`);
+      continue;
+    }
+
+    const { error: createError } = await supabase.storage.createBucket(bucket.name, {
+      public: bucket.public,
+      fileSizeLimit: bucket.fileSizeLimit,
+      allowedMimeTypes: bucket.allowedMimeTypes,
+    });
+
+    if (createError) {
+      console.error(`Failed to create ${bucket.name} bucket:`, createError.message);
+      process.exit(1);
+    }
+
+    console.log(`Created ${bucket.name} bucket`);
   }
 
-  // Create bucket - private (requires signed URLs for download)
-  const { error: createError } = await supabase.storage.createBucket('filing-packages', {
-    public: false,
-    fileSizeLimit: 52428800, // 50MB
-    allowedMimeTypes: [
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-      'application/pdf',
-    ],
-  });
-
-  if (createError) {
-    console.error('Failed to create bucket:', createError.message);
-    process.exit(1);
-  }
-
-  console.log('Created filing-packages bucket');
   console.log('');
   console.log('NOTE: RLS policies for storage should be applied via SQL migration.');
   console.log('See: supabase/migrations/20260212000001_storage_rls.sql');

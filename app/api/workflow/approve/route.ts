@@ -218,10 +218,10 @@ export async function POST(request: Request) {
 
     // Get deliverable count for response
     const { count: deliverableCount } = await supabase
-      .from('order_documents')
+      .from('documents')
       .select('*', { count: 'exact', head: true })
       .eq('order_id', orderId)
-      .eq('document_type', 'deliverable');
+      .eq('is_deliverable', true);
 
     return NextResponse.json({
       success: true,
@@ -306,10 +306,10 @@ export async function GET(request: Request) {
     // Get deliverable counts
     const orderIds = orders?.map((o: PendingOrderRecord) => o.id) || [];
     const { data: deliverableCounts } = await supabase
-      .from('order_documents')
+      .from('documents')
       .select('order_id')
       .in('order_id', orderIds)
-      .eq('document_type', 'deliverable');
+      .eq('is_deliverable', true);
 
     // Count deliverables per order
     const countMap: Record<string, number> = {};

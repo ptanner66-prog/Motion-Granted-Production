@@ -80,8 +80,8 @@ export async function POST(request: NextRequest) {
       .from('order_workflows')
       .update({
         revision_loop: currentLoop + 1,
-        current_phase: 8, // Back to Phase VII for revision
-        status: 'in_progress',
+        current_phase: 'VIII', // Back to Phase VIII for revision
+        status: 'IN_PROGRESS',
         updated_at: new Date().toISOString(),
       })
       .eq('id', workflowId);
