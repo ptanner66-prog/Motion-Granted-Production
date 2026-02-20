@@ -483,12 +483,16 @@ export async function verifyBatch(
     );
 
     const batchResults: FinalVerificationOutput[] = [];
-    for (const settled of batchSettled) {
+    for (let j = 0; j < batchSettled.length; j++) {
+      const settled = batchSettled[j];
       if (settled.status === 'fulfilled') {
         batchResults.push(settled.value);
       } else {
-        log.error(`[CIV_PIPELINE] Citation verification rejected:`, settled.reason);
-        // Rejected citations are excluded — they won't count as VERIFIED
+        const failedCitation = batch[j];
+        log.error(`[CIV_PIPELINE] Citation verification rejected for "${failedCitation}":`, settled.reason);
+        // T-01 FIX: Count rejected promises as failures so hard gate catches them.
+        // Rejected citations must NOT be silently dropped — they represent unverified citations.
+        failureCount++;
       }
     }
     results.push(...batchResults);

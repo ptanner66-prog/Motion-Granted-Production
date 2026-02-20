@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import {
   queueOrderNotification,
   scheduleTask,
@@ -41,7 +41,7 @@ async function logInvalidWebhookAttempt(
   signature: string | null
 ): Promise<void> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
     const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
                      req.headers.get('x-real-ip') ||
                      'unknown';
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   // SECURITY FIX: Use database-level upsert for idempotency to prevent race conditions
   // If two identical webhooks arrive simultaneously, only one will be processed
@@ -292,7 +292,7 @@ export async function POST(req: Request) {
  * Handle successful payment
  */
 async function handlePaymentSucceeded(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   paymentIntent: Stripe.PaymentIntent
 ) {
   let orderId = paymentIntent.metadata?.order_id;
@@ -301,7 +301,7 @@ async function handlePaymentSucceeded(
   // FALLBACK: Use metadata order_id only as secondary confirmation
   const { data: existingOrder, error: fetchError } = await supabase
     .from('orders')
-    .select('id, order_number, client_id, total_price, status, stripe_payment_status')
+    .select('id, order_number, client_id, total_price, status, stripe_payment_status, tier')
     .eq('stripe_payment_intent_id', paymentIntent.id)
     .single();
 
@@ -483,7 +483,7 @@ async function handlePaymentSucceeded(
  * Handle failed payment
  */
 async function handlePaymentFailed(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   paymentIntent: Stripe.PaymentIntent
 ) {
   const orderId = paymentIntent.metadata?.order_id;
@@ -534,7 +534,7 @@ async function handlePaymentFailed(
  * Handle refund
  */
 async function handleChargeRefunded(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   charge: Stripe.Charge
 ) {
   const paymentIntentId = typeof charge.payment_intent === 'string'
@@ -598,7 +598,7 @@ async function handleChargeRefunded(
  * Handle canceled payment
  */
 async function handlePaymentCanceled(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   paymentIntent: Stripe.PaymentIntent
 ) {
   const orderId = paymentIntent.metadata?.order_id;
@@ -638,7 +638,7 @@ async function handlePaymentCanceled(
  * - 'revision' (legacy: metadata.type === 'revision') → processRevisionPayment()
  */
 async function handleCheckoutSessionCompleted(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   session: Stripe.Checkout.Session
 ) {
   // Legacy revision payment path (metadata.type === 'revision')
@@ -707,11 +707,7 @@ async function handleCheckoutSessionCompleted(
     }
 
     // Log to payment_events
-    const { createClient: createServiceClient } = await import('@supabase/supabase-js');
-    const serviceSupabase = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    );
+    const serviceSupabase = getServiceSupabase();
     await serviceSupabase.from('payment_events').insert({
       order_id: session.metadata?.orderId || session.metadata?.order_id || null,
       event_type: 'ORDER_CREATION_FAILED',
