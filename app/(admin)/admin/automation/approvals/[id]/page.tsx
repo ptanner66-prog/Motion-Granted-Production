@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { ApprovalDetailActions } from './approval-detail-actions';
+import { calculateAdminRefundSuggestion, type RefundSuggestion } from '@/lib/payments/refund-calculator';
 
 export const metadata: Metadata = {
   title: 'Approval Details | AI Operations Center',
@@ -61,6 +62,8 @@ export default async function ApprovalDetailPage({ params }: PageProps) {
         status,
         created_at,
         client_id,
+        amount_paid_cents,
+        current_phase,
         profiles:client_id (
           full_name,
           email
@@ -94,6 +97,8 @@ export default async function ApprovalDetailPage({ params }: PageProps) {
     status: string;
     created_at: string;
     client_id: string;
+    amount_paid_cents: number | null;
+    current_phase: string | null;
     profiles: { full_name: string; email: string } | null;
   } | null;
 
@@ -101,6 +106,12 @@ export default async function ApprovalDetailPage({ params }: PageProps) {
 
   // Parse request details for display
   const requestDetails = approval.request_details as Record<string, unknown>;
+
+  // Calculate refund suggestion for refund_request approvals
+  let refundSuggestion: RefundSuggestion | null = null;
+  if (approval.approval_type === 'refund_request' && order?.amount_paid_cents && order?.current_phase) {
+    refundSuggestion = calculateAdminRefundSuggestion(order.amount_paid_cents, order.current_phase);
+  }
 
   return (
     <div className="space-y-6">
@@ -263,9 +274,47 @@ export default async function ApprovalDetailPage({ params }: PageProps) {
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* Refund Suggestion (refund_request only) */}
+          {refundSuggestion && (
+            <Card className="border-0 shadow-sm border-l-4 border-l-amber-400">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-amber-600" />
+                  <CardTitle className="text-lg">Refund Guidance</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="bg-amber-50 rounded-lg p-3">
+                  <p className="text-2xl font-bold text-navy">
+                    ${(refundSuggestion.suggestedRefundCents / 100).toFixed(2)}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {refundSuggestion.suggestedPercentage}% of ${((order?.amount_paid_cents ?? 0) / 100).toFixed(2)} paid
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500">Phase at Refund</span>
+                  <p className="font-mono font-medium">{refundSuggestion.phase}</p>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500">Reasoning</span>
+                  <p className="text-sm text-gray-700">{refundSuggestion.reasoning}</p>
+                </div>
+                <p className="text-xs text-gray-400 italic">
+                  Advisory only — override with mandatory reason (min 10 chars)
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Actions */}
           {isPending && (
-            <ApprovalDetailActions approvalId={approval.id} />
+            <ApprovalDetailActions
+              approvalId={approval.id}
+              approvalType={approval.approval_type}
+              refundSuggestion={refundSuggestion}
+              orderId={order?.id}
+            />
           )}
 
           {/* Order Info */}
