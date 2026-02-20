@@ -2,54 +2,17 @@
  * Waitlist API Endpoint (Task 84)
  *
  * Captures email addresses for "Coming Soon" states.
- * Rate limited to 10 requests per IP per hour.
+ * Rate limited to 10 requests per IP per hour via Redis.
  *
  * Source: Chunk 11, Task 84 - MOTION_TYPES_BY_STATE_SPEC_v2_EXPANDED.md
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { headers } from 'next/headers';
+import { getServiceSupabase } from '@/lib/supabase/admin';
+import { checkRateLimit, getClientIP } from '@/lib/security/rate-limiter';
 import { createLogger } from '@/lib/security/logger';
 
 const log = createLogger('api-waitlist');
-
-// Rate limiting in-memory store (would use Redis in production)
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
-
-const RATE_LIMIT = 10; // requests per hour
-const RATE_WINDOW = 60 * 60 * 1000; // 1 hour in ms
-
-async function getClientIP(request: NextRequest): Promise<string> {
-  const headersList = await headers();
-  const forwardedFor = headersList.get('x-forwarded-for');
-  if (forwardedFor) {
-    return forwardedFor.split(',')[0].trim();
-  }
-  const realIP = headersList.get('x-real-ip');
-  if (realIP) {
-    return realIP;
-  }
-  return 'unknown';
-}
-
-function checkRateLimit(ip: string): { allowed: boolean; remaining: number; resetIn: number } {
-  const now = Date.now();
-  const record = rateLimitStore.get(ip);
-
-  if (!record || record.resetAt < now) {
-    // New window
-    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_WINDOW });
-    return { allowed: true, remaining: RATE_LIMIT - 1, resetIn: RATE_WINDOW };
-  }
-
-  if (record.count >= RATE_LIMIT) {
-    return { allowed: false, remaining: 0, resetIn: record.resetAt - now };
-  }
-
-  record.count++;
-  return { allowed: true, remaining: RATE_LIMIT - record.count, resetIn: record.resetAt - now };
-}
 
 function isValidEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -62,23 +25,24 @@ function isValidStateCode(code: string): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limiting
-    const clientIP = await getClientIP(request);
-    const rateLimit = checkRateLimit(clientIP);
+    // Rate limiting via Redis-backed canonical rate limiter
+    const clientIP = getClientIP(request);
+    const rateLimitResult = await checkRateLimit(clientIP, 'api');
 
-    if (!rateLimit.allowed) {
+    if (!rateLimitResult.allowed) {
+      const resetInSeconds = Math.max(1, Math.ceil((rateLimitResult.reset - Date.now()) / 1000));
       return NextResponse.json(
         {
           error: 'Too many requests',
           message: 'Please wait before signing up again',
-          retryAfter: Math.ceil(rateLimit.resetIn / 1000),
+          retryAfter: resetInSeconds,
         },
         {
           status: 429,
           headers: {
-            'Retry-After': String(Math.ceil(rateLimit.resetIn / 1000)),
+            'Retry-After': String(resetInSeconds),
             'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': String(Math.ceil(rateLimit.resetIn / 1000)),
+            'X-RateLimit-Reset': String(resetInSeconds),
           },
         }
       );
@@ -119,19 +83,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      log.error('Missing Supabase credentials');
-      return NextResponse.json(
-        { error: 'Service configuration error' },
-        { status: 500 }
-      );
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Use centralized service role client
+    const supabase = getServiceSupabase();
 
     // Check if already signed up for this state
     const { data: existing } = await supabase
@@ -151,7 +104,7 @@ export async function POST(request: NextRequest) {
         {
           status: 200,
           headers: {
-            'X-RateLimit-Remaining': String(rateLimit.remaining),
+            'X-RateLimit-Remaining': String(rateLimitResult.remaining),
           },
         }
       );
@@ -183,7 +136,7 @@ export async function POST(request: NextRequest) {
       {
         status: 201,
         headers: {
-          'X-RateLimit-Remaining': String(rateLimit.remaining),
+          'X-RateLimit-Remaining': String(rateLimitResult.remaining),
         },
       }
     );
@@ -202,14 +155,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const stateCode = searchParams.get('state');
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Service unavailable' }, { status: 500 });
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = getServiceSupabase();
 
     if (stateCode) {
       // Count for specific state

@@ -2,7 +2,7 @@
 // Session management per SECURITY_IMPLEMENTATION_CHECKLIST_v1 Section 2.3
 // VERSION: 1.0 — January 28, 2026
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 
 import { createLogger } from '@/lib/security/logger';
 
@@ -60,7 +60,7 @@ export function isSessionValid(session: SessionInfo): { valid: boolean; reason?:
  * Update session activity timestamp
  */
 export async function updateSessionActivity(sessionId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   await supabase
     .from('user_sessions')
@@ -72,7 +72,7 @@ export async function updateSessionActivity(sessionId: string): Promise<void> {
  * Get all active sessions for a user
  */
 export async function getUserSessions(userId: string, currentSessionId?: string): Promise<SessionInfo[]> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const { data: sessions, error } = await supabase
     .from('user_sessions')
@@ -110,7 +110,7 @@ export async function getUserSessions(userId: string, currentSessionId?: string)
  * Invalidate a specific session
  */
 export async function invalidateSession(sessionId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   await supabase
     .from('user_sessions')
@@ -128,7 +128,7 @@ export async function invalidateSession(sessionId: string): Promise<void> {
  * Invalidate all sessions for a user (except current)
  */
 export async function invalidateAllSessions(userId: string, exceptSessionId?: string): Promise<number> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   let query = supabase
     .from('user_sessions')
@@ -169,7 +169,7 @@ export async function invalidateAllSessions(userId: string, exceptSessionId?: st
  * Invalidate all sessions on password change
  */
 export async function onPasswordChange(userId: string, currentSessionId?: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   // Invalidate all sessions except current
   const count = await invalidateAllSessions(userId, currentSessionId);
@@ -193,7 +193,7 @@ export async function createSession(
   ipAddress: string,
   userAgent: string
 ): Promise<string> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + SESSION_CONFIG.ABSOLUTE_TIMEOUT_HOURS);

@@ -5,7 +5,7 @@
  * weekly business intelligence, and on-demand analytics.
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { generateReportSummary, isClaudeConfigured } from './claude';
 import { queueNotification } from './notification-sender';
 import { createLogger } from '@/lib/security/logger';
@@ -39,7 +39,7 @@ interface ReportSettings {
 
 async function getReportSettings(): Promise<ReportSettings> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
 
     const { data: settings } = await supabase
       .from('automation_settings')
@@ -105,7 +105,7 @@ async function getReportSettings(): Promise<ReportSettings> {
 export async function generateDailyReport(
   date?: Date
 ): Promise<OperationResult<DailyReportData>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
   const reportDate = date || new Date();
   const startOfDay = new Date(reportDate);
   startOfDay.setHours(0, 0, 0, 0);
@@ -248,7 +248,7 @@ export async function generateDailyReport(
 export async function generateWeeklyReport(
   weekEndDate?: Date
 ): Promise<OperationResult<WeeklyReportData>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
   const endDate = weekEndDate || new Date();
   const startDate = new Date(endDate);
   startDate.setDate(startDate.getDate() - 7);
@@ -562,7 +562,7 @@ function generateWeeklyTextSummary(report: WeeklyReportData): string {
  * Log automation action
  */
 async function logAutomationAction(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   orderId: string | null,
   actionType: string,
   details: Record<string, unknown>
@@ -591,7 +591,7 @@ export async function getDashboardStats(): Promise<
     notificationsSentToday: number;
   }>
 > {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const today = new Date();

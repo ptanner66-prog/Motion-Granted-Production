@@ -26,6 +26,15 @@ const SERVICE_ROLE_ALLOWLIST = [
   'app/api/webhooks/resend/route.ts',          // #7: Resend webhook handler
   'lib/retention/retention-manager.ts',        // #8: Data retention cascade (DST-04)
   'lib/services/archive-service.ts',           // #9: Order file archival (SP-17 D6 Phase 6)
+  'lib/auth/lockout.ts',                       // #10: Brute force protection — DEC-A8-03
+  'lib/auth/session.ts',                       // #11: Session tracking — DEC-A8-03
+  'lib/documents/storage-service.ts',          // #12: Document storage — LCV-TS-027
+  'lib/automation/task-processor.ts',          // #13: Task processor — A11 Wave 1.1
+  'lib/workflow/automation-service.ts',        // #14: Automation service — A11 Wave 1.2
+  'lib/automation/report-generator.ts',        // #15: Report generator — A11 Wave 1.3
+  'lib/email/action-tokens.ts',               // #16: Email action tokens — A11 Wave 1.4
+  'app/api/admin/orders/[id]/deliver/route.ts', // #17: Admin delivery — A8-T21
+  'app/api/waitlist/route.ts',                 // #18: Waitlist signup — A8-T11 rate limiter consolidation
 ] as const;
 
 /**

@@ -35,23 +35,7 @@ import { validatePriceConsistency } from '@/lib/payments/checkout-validation';
 import { calculatePriceSync } from '@/lib/payments/price-calculator-core';
 import type { RushType } from '@/lib/payments/price-calculator-core';
 import { inngest } from '@/lib/inngest/client';
-
-// ── Rate Limiting (50-State Step 7.2a) ─────────────────────────────────────
-// In-memory rate limiter: 10 requests per minute per IP.
-// In production, middleware.ts also enforces Redis-backed rate limits.
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + 60000 });
-    return true;
-  }
-  if (entry.count >= 10) return false;
-  entry.count++;
-  return true;
-}
+import { checkRateLimit } from '@/lib/security/rate-limiter';
 
 export async function POST(req: Request) {
   const startTime = Date.now();
@@ -175,7 +159,8 @@ export async function POST(req: Request) {
       headersList.get('x-real-ip') ||
       'unknown';
 
-    if (!checkRateLimit(clientIp)) {
+    const rateLimitResult = await checkRateLimit(clientIp, 'api');
+    if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { error: 'Too many requests. Please wait a moment.' },
         { status: 429 },

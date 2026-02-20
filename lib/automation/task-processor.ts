@@ -5,7 +5,7 @@
  * conflict checks, clerk assignments, deadline monitoring, and more.
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 import { runConflictCheck } from './conflict-checker';
 import { runClerkAssignment } from './clerk-assigner';
 import { processNotificationQueue, queueOrderNotification } from './notification-sender';
@@ -47,7 +47,7 @@ interface MaintenanceSettings {
 
 async function getMaintenanceMode(): Promise<boolean> {
   try {
-    const supabase = await createClient();
+    const supabase = getServiceSupabase();
 
     const { data } = await supabase
       .from('automation_settings')
@@ -75,7 +75,7 @@ export async function processTasks(
     dryRun?: boolean;
   } = {}
 ): Promise<OperationResult<ProcessResult>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
   const maxTasks = options.maxTasks || 10;
 
   try {
@@ -286,7 +286,7 @@ async function executeTask(task: TaskRecord): Promise<OperationResult<unknown>> 
  * Check for orders approaching deadline and send alerts
  */
 async function runDeadlineCheck(): Promise<OperationResult<{ alertsSent: number }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Get deadline settings
@@ -397,7 +397,7 @@ async function sendFollowUpReminder(task: TaskRecord): Promise<OperationResult> 
  * Clean up old automation logs
  */
 async function cleanupOldLogs(): Promise<OperationResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     // Keep logs for 90 days
@@ -461,7 +461,7 @@ export async function scheduleTask(
     maxAttempts?: number;
   } = {}
 ): Promise<OperationResult<{ taskId: string }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const { data, error } = await supabase
@@ -498,7 +498,7 @@ export async function scheduleTask(
  * Cancel a pending task
  */
 export async function cancelTask(taskId: string): Promise<OperationResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const { error } = await supabase
@@ -524,7 +524,7 @@ export async function cancelTask(taskId: string): Promise<OperationResult> {
 export async function getTaskStatus(
   taskId: string
 ): Promise<OperationResult<{ status: TaskStatus; attempts: number; lastError: string | null }>> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const { data, error } = await supabase
@@ -555,7 +555,7 @@ export async function getTaskStatus(
  * Log automation action
  */
 async function logAutomationAction(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof getServiceSupabase>,
   orderId: string | null,
   actionType: string,
   details: Record<string, unknown>
@@ -575,7 +575,7 @@ async function logAutomationAction(
  * Schedule recurring tasks (call this from a cron job)
  */
 export async function scheduleRecurringTasks(): Promise<OperationResult> {
-  const supabase = await createClient();
+  const supabase = getServiceSupabase();
 
   try {
     const now = new Date();
