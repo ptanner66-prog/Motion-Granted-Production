@@ -95,6 +95,10 @@ const FAQ_CATEGORIES: { name: string; items: FAQItem[] }[] = [
     name: 'Security & Privacy',
     items: [
       {
+        question: 'Are documents prepared through Motion Granted protected by attorney-client privilege?',
+        answer: '[PRIV-01A: Porter to provide privilege FAQ answer text from Porter Task List Final lines 148-167]',
+      },
+      {
         question: 'How do you handle confidential case materials?',
         answer: 'All case materials are encrypted in transit (TLS 1.3) and at rest (AES-256). Access is restricted to authorized personnel only. We maintain comprehensive audit logs and permanently delete all case data after 365 days. See our Security page for complete technical details.',
       },
@@ -117,6 +121,15 @@ const FAQ_CATEGORIES: { name: string; items: FAQItem[] }[] = [
       {
         question: 'Who is responsible for the final work product?',
         answer: 'The hiring attorney of record is solely responsible for all documents filed with the court. Motion Granted provides drafting support under attorney supervision, but the attorney must review, approve, and take responsibility for all content before filing. This is consistent with ABA Model Rule 5.3 regarding supervisory responsibility over non-lawyer assistance.',
+      },
+    ],
+  },
+  {
+    name: 'Legal & Ethics',
+    items: [
+      {
+        question: "A federal court ruled AI-generated documents aren't privileged. Does that affect Motion Granted?",
+        answer: '[PRIV-01B: Porter to provide Heppner distinction FAQ answer from Porter Task List Final lines 169-178]',
       },
     ],
   },

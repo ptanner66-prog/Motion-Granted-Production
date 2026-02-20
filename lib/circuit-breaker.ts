@@ -1,19 +1,19 @@
 /**
- * Circuit Breaker Pattern Implementation — V-002
+ * Circuit Breaker Pattern Implementation — V-003 (T-75)
  *
- * Redis-backed via Upstash. State persists across Vercel cold starts.
- * In-memory Map removed — dead on serverless.
+ * Supabase-backed. Replaces V-002 Redis/Upstash implementation.
+ * State persists across Vercel cold starts via circuit_breaker_state table.
  *
  * States:
  * - CLOSED: Normal operation, all requests pass through
- * - OPEN: Failures exceeded threshold, requests fail fast (TTL auto-expires to HALF_OPEN)
+ * - OPEN: Failures exceeded threshold, requests fail fast (timeout auto-expires to HALF_OPEN)
  * - HALF_OPEN: Testing recovery, limited requests pass through
  *
- * Fail-open: If Redis is unavailable, all requests are allowed.
- * Inngest retries handle transient failures.
+ * Fail-open: If Supabase is unavailable, all requests are allowed.
+ * Inngest retries handle transient failures. Idempotent for step replay.
  */
 
-import { Redis } from '@upstash/redis';
+import { getServiceSupabase } from '@/lib/supabase/admin';
 
 // ============================================================================
 // TYPES
@@ -73,27 +73,8 @@ export const CIRCUIT_CONFIGS: Record<string, Partial<CircuitBreakerConfig>> = {
 };
 
 // ============================================================================
-// REDIS CLIENT (lazy init)
+// DEFAULT STATS
 // ============================================================================
-
-let redis: Redis | null = null;
-
-function getRedis(): Redis | null {
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-    return null;
-  }
-  if (!redis) {
-    redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL!,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-    });
-  }
-  return redis;
-}
-
-function redisKey(service: string): string {
-  return `circuit:${service}`;
-}
 
 const DEFAULT_STATS: CircuitStats = {
   state: 'CLOSED',
@@ -105,7 +86,7 @@ const DEFAULT_STATS: CircuitStats = {
 };
 
 // ============================================================================
-// CIRCUIT BREAKER CLASS (Redis-backed)
+// CIRCUIT BREAKER CLASS (Supabase-backed)
 // ============================================================================
 
 export class CircuitBreaker {
@@ -122,39 +103,60 @@ export class CircuitBreaker {
   }
 
   async getState(): Promise<CircuitStats> {
-    const r = getRedis();
-    if (!r) return { ...DEFAULT_STATS };
-
     try {
-      const data = await r.get<CircuitStats>(redisKey(this.service));
-      if (!data) return { ...DEFAULT_STATS };
+      const supabase = getServiceSupabase();
+      const { data, error } = await supabase
+        .from('circuit_breaker_state')
+        .select('*')
+        .eq('service_name', this.service)
+        .single();
+
+      if (error || !data) return { ...DEFAULT_STATS };
+
+      const stats: CircuitStats = {
+        state: (data.state as CircuitState) || 'CLOSED',
+        failures: data.failure_count ?? 0,
+        successes: data.success_count ?? 0,
+        lastFailure: data.last_failure_at ? new Date(data.last_failure_at as string).getTime() : null,
+        lastSuccess: data.last_success_at ? new Date(data.last_success_at as string).getTime() : null,
+        openedAt: data.opened_at ? new Date(data.opened_at as string).getTime() : null,
+      };
 
       // Check if OPEN state has expired → implicit HALF_OPEN
-      if (data.state === 'OPEN' && data.openedAt) {
-        if (Date.now() - data.openedAt >= this.config.timeout) {
-          const halfOpen: CircuitStats = { ...data, state: 'HALF_OPEN', successes: 0 };
+      if (stats.state === 'OPEN' && stats.openedAt) {
+        if (Date.now() - stats.openedAt >= this.config.timeout) {
+          const halfOpen: CircuitStats = { ...stats, state: 'HALF_OPEN', successes: 0 };
           await this.setState(halfOpen);
           return halfOpen;
         }
       }
 
-      return data;
+      return stats;
     } catch {
-      // Fail open
+      // Fail open — if Supabase is unreachable, allow requests through
       return { ...DEFAULT_STATS };
     }
   }
 
   private async setState(stats: CircuitStats): Promise<void> {
-    const r = getRedis();
-    if (!r) return;
-
     try {
-      // TTL = 2x timeout for auto-cleanup of stale keys
-      const ttl = Math.ceil((this.config.timeout * 2) / 1000);
-      await r.set(redisKey(this.service), stats, { ex: Math.max(ttl, 3600) });
+      const supabase = getServiceSupabase();
+      await supabase
+        .from('circuit_breaker_state')
+        .upsert({
+          service_name: this.service,
+          state: stats.state,
+          failure_count: stats.failures,
+          success_count: stats.successes,
+          last_failure_at: stats.lastFailure ? new Date(stats.lastFailure).toISOString() : null,
+          last_success_at: stats.lastSuccess ? new Date(stats.lastSuccess).toISOString() : null,
+          opened_at: stats.openedAt ? new Date(stats.openedAt).toISOString() : null,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'service_name',
+        });
     } catch (error) {
-      console.warn(`[CircuitBreaker:${this.service}] Failed to update Redis state`, {
+      console.warn(`[CircuitBreaker:${this.service}] Failed to update Supabase state`, {
         error: error instanceof Error ? error.message : 'Unknown',
       });
     }
@@ -310,7 +312,7 @@ export class CircuitOpenError extends Error {
 
 // ============================================================================
 // SINGLETON INSTANCES (class instances are fine — they hold no mutable state,
-// all state is in Redis)
+// all state is in Supabase)
 // ============================================================================
 
 const circuits: Map<string, CircuitBreaker> = new Map();

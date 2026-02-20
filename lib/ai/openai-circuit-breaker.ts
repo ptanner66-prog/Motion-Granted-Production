@@ -1,7 +1,7 @@
 // lib/ai/openai-circuit-breaker.ts
-// V-003: Redis-backed circuit breaker for OpenAI (GPT-4T)
+// V-003: Supabase-backed circuit breaker for OpenAI (GPT-4T)
 // When OPEN: mark citations VERIFICATION_DEFERRED (NOT cascade to Opus)
-// Uses same Redis infrastructure as the main circuit breaker
+// Uses same Supabase infrastructure as the main circuit breaker (T-75)
 
 import { getCircuitBreaker, type CircuitState } from '@/lib/circuit-breaker';
 

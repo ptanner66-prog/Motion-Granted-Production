@@ -26,6 +26,25 @@ export default function TermsPage() {
       <section className="py-16 sm:py-24">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
           <div className="prose prose-gray max-w-none">
+            {/* ═══════════════════════════════════════════════════ */}
+            {/* T-74: CONTENT GATE — Porter Task List Final Part 4 */}
+            {/* lines 311-768 (494 lines of legal JSX)             */}
+            {/*                                                     */}
+            {/* REPLACE from here through the closing </div> of     */}
+            {/* prose-gray with Porter's updated ToS content.       */}
+            {/*                                                     */}
+            {/* Key changes in new ToS:                             */}
+            {/*   §5.1  — Added Tier D ($1,499+) with all 10       */}
+            {/*           motion types                              */}
+            {/*   §5.4  — NEW: jurisdiction-based pricing           */}
+            {/*   §6.1  — Added Tier D turnaround times; rush fees  */}
+            {/*           renamed                                   */}
+            {/*   §8    — Split into 8.1/8.2/8.3                   */}
+            {/*   §9    — Complete rewrite; $50 fee ELIMINATED;     */}
+            {/*           status-based refund matrix                */}
+            {/*   §10.2 — 365-day retention (was 180) with 2-year  */}
+            {/*           extension option                          */}
+            {/* ═══════════════════════════════════════════════════ */}
             <h2>1. Acceptance of Terms</h2>
             <p>
               By accessing or using the Motion Granted website and services (&quot;Services&quot;), you agree

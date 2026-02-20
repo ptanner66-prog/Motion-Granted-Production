@@ -204,6 +204,37 @@ export default function SecurityPage() {
                 </p>
               </div>
 
+              {/* Consumer AI vs Motion Granted Comparison Table (T-73) */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Consumer AI vs. Motion Granted API</h3>
+                <p className="text-sm text-gray-500 italic mb-4">
+                  [PRIV-03: Porter to provide Privilege Preservation section content
+                  from Porter Task List Final lines 210-258. Includes comparison table
+                  rows, best practices, and data protections.]
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-gray-200 rounded-lg text-sm">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 border-b border-gray-200"></th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 border-b border-gray-200">Consumer AI (e.g., ChatGPT)</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 border-b border-gray-200">Motion Granted API</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* CONTENT GATE: Table rows from PRIV-03 — Porter Task List Final lines 210-258 */}
+                      {/* Rows comparing: data handling, privilege status, attorney direction, */}
+                      {/* work product doctrine, data retention, cross-client isolation, etc. */}
+                      <tr className="border-b border-gray-100">
+                        <td className="px-4 py-3 text-gray-500 italic" colSpan={3}>
+                          Awaiting PRIV-03 content from Porter Task List Final
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">Technical Safeguards</h3>
                 <ul className="space-y-2">

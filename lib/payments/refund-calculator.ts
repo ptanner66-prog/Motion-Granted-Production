@@ -1,31 +1,35 @@
 /**
- * Admin Refund Suggestion Calculator (CAT-B-9-IMPL)
+ * Admin Refund Suggestion Calculator (CAT-B-9-IMPL + T-81)
  *
  * Provides phase-based refund percentage suggestions per the admin guidance matrix.
- * This is an ADVISORY tool — admins can override at their discretion.
+ * These are SUGGESTIONS displayed in the admin UI — not automated refunds.
+ * Admin can override with mandatory reason (min 10 chars).
  */
 
-const PHASE_REFUND_PERCENTAGES: Record<string, number> = {
-  'I': 85,
-  'II': 85,
-  'III': 85,
-  'IV': 65,
-  'V': 40,
-  'V.1': 40,
-  'VI': 40,
-  'VII': 20,
-  'VII.1': 20,
-  'VIII': 20,
-  'VIII.5': 20,
-  'IX': 20,
-  'IX.1': 20,
-  'X': 0,
+const PHASE_REFUND_MATRIX: Record<string, { percentage: number; reasoning: string }> = {
+  'I':     { percentage: 85, reasoning: 'Minimal work — intake/classification only' },
+  'II':    { percentage: 85, reasoning: 'Minimal work — preliminary analysis only' },
+  'III':   { percentage: 85, reasoning: 'Minimal work — strategy outline only' },
+  'IV':    { percentage: 65, reasoning: 'Research initiated — citation search performed' },
+  'IV.A':  { percentage: 65, reasoning: 'Research initiated — element extraction complete' },
+  'IV.B':  { percentage: 65, reasoning: 'Research initiated — holding verification complete' },
+  'V':     { percentage: 40, reasoning: 'Substantial drafting — initial draft complete' },
+  'V.1':   { percentage: 40, reasoning: 'Substantial drafting — CIV verification complete' },
+  'VI':    { percentage: 40, reasoning: 'Substantial drafting — opposition analysis complete' },
+  'VII':   { percentage: 20, reasoning: 'Near-complete — revision in progress' },
+  'VII.1': { percentage: 20, reasoning: 'Near-complete — post-revision CIV complete' },
+  'VIII':  { percentage: 20, reasoning: 'Near-complete — grading/revision loop' },
+  'VIII.5':{ percentage: 20, reasoning: 'Near-complete — caption QC complete' },
+  'IX':    { percentage: 20, reasoning: 'Near-complete — formatting QC complete' },
+  'IX.1':  { percentage: 20, reasoning: 'Near-complete — final citation audit complete' },
+  'X':     { percentage: 0,  reasoning: 'Delivered — refund at admin discretion only' },
 };
 
 export interface RefundSuggestion {
   suggestedRefundCents: number;
   suggestedPercentage: number;
   reasoning: string;
+  phase: string;
 }
 
 /**
@@ -33,19 +37,29 @@ export interface RefundSuggestion {
  *
  * @param amountPaidCents - Total amount paid in cents
  * @param currentPhase - Current workflow phase (e.g., 'I', 'V', 'VIII')
- * @returns Suggested refund amount and reasoning
+ * @returns Suggested refund amount, percentage, reasoning, and phase
  */
 export function calculateAdminRefundSuggestion(
   amountPaidCents: number,
-  currentPhase: string
+  currentPhase: string,
 ): RefundSuggestion {
-  const pct = PHASE_REFUND_PERCENTAGES[currentPhase] ?? 0;
+  const phaseKey = currentPhase.toUpperCase().replace(/\s/g, '');
+  const matrix = PHASE_REFUND_MATRIX[phaseKey];
+
+  if (!matrix) {
+    // Unknown phase — suggest conservative 50%
+    return {
+      suggestedRefundCents: Math.round(amountPaidCents * 0.5),
+      suggestedPercentage: 50,
+      reasoning: `Unknown phase "${currentPhase}" — defaulting to 50%. Verify manually.`,
+      phase: currentPhase,
+    };
+  }
 
   return {
-    suggestedRefundCents: Math.round(amountPaidCents * pct / 100),
-    suggestedPercentage: pct,
-    reasoning: pct > 0
-      ? `Phase ${currentPhase}: ${pct}% refund suggested per admin guidance matrix.`
-      : `Phase ${currentPhase}: No refund suggested — work is substantially complete.`,
+    suggestedRefundCents: Math.round(amountPaidCents * (matrix.percentage / 100)),
+    suggestedPercentage: matrix.percentage,
+    reasoning: matrix.reasoning,
+    phase: currentPhase,
   };
 }
