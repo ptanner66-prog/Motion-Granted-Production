@@ -484,6 +484,10 @@ export async function applyFormatting(
     sections: [{
       properties: {
         page: {
+          size: {
+            width: rules.paperSize?.widthDXA ?? 12240,
+            height: rules.paperSize?.heightDXA ?? 15840,
+          },
           margin: {
             top: convertInchesToTwip(rules.margins.top),
             bottom: convertInchesToTwip(rules.margins.bottom),
