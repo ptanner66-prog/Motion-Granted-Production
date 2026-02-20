@@ -21,7 +21,8 @@ interface LoggedStepOptions {
 }
 
 interface StepLike {
-  run: <T>(id: string, callback: () => Promise<T>) => Promise<T>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  run: (id: string, callback: () => Promise<any>) => Promise<any>;
 }
 
 /**
