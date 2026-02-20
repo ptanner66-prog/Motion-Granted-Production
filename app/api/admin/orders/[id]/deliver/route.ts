@@ -7,17 +7,18 @@
  * 1. Validates admin auth
  * 2. Loads documents for the order
  * 3. Generates signed download URLs (7-day expiry)
- * 4. Updates order status to COMPLETED
- * 5. Queues delivery notification email
- * 6. Writes server-side audit log (fixes A16-P0-005)
+ * 4. Updates order status via status machine (A16-DEC-4)
+ * 5. Queues delivery notification via notification_queue (A16-DEC-1)
+ * 6. Writes audit log to automation_logs
  *
- * Fixes: A16-P0-001, CONFLICT-F09, A16-P0-005
+ * Fixes: A16-P0-001, CONFLICT-F09, A16-P0-005, A16-NEW-001/002/003
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/admin';
 import { createLogger } from '@/lib/security/logger';
+import { updateOrderStatus } from '@/lib/orders/status-machine';
 
 const log = createLogger('api-admin-deliver');
 
@@ -53,13 +54,14 @@ export async function POST(
     // Empty body is fine
   }
 
+  // Service-role client only for storage (signed URLs) and automation_logs
   const serviceSupabase = getServiceSupabase();
 
   try {
-    // 2. Load order
-    const { data: order, error: orderError } = await serviceSupabase
+    // 2. Load order (user-scoped client — RLS enforced)
+    const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, order_number, status, client_id')
+      .select('id, order_number, status, client_id, status_version, profiles:client_id(email)')
       .eq('id', orderId)
       .single();
 
@@ -67,8 +69,8 @@ export async function POST(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    // 3. Load documents for this order
-    const { data: documents, error: docError } = await serviceSupabase
+    // 3. Load documents for this order (user-scoped client — RLS enforced)
+    const { data: documents, error: docError } = await supabase
       .from('documents')
       .select('id, file_path, file_name, document_type, mime_type')
       .eq('order_id', orderId)
@@ -83,7 +85,7 @@ export async function POST(
       return NextResponse.json({ error: 'No documents found for this order' }, { status: 404 });
     }
 
-    // 4. Generate signed download URLs for each document
+    // 4. Generate signed download URLs (service_role needed for storage)
     const downloadUrls: Array<{
       documentId: string;
       fileName: string;
@@ -123,40 +125,52 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to generate download URLs' }, { status: 500 });
     }
 
-    // 5. Update order status to COMPLETED
-    await serviceSupabase
-      .from('orders')
-      .update({
-        status: 'COMPLETED',
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', orderId);
+    // 5. Update order status via status machine (A16-DEC-4)
+    const statusResult = await updateOrderStatus(
+      supabase,
+      orderId,
+      'COMPLETED',
+      order.status_version ?? 1,
+      { completed_at: new Date().toISOString() }
+    );
 
-    // 6. Queue delivery notification email
-    await serviceSupabase.from('email_queue').insert({
+    if (!statusResult.success) {
+      log.error('Status update failed', { orderId, error: statusResult.error });
+      return NextResponse.json(
+        { error: statusResult.error || 'Status update failed' },
+        { status: 409 }
+      );
+    }
+
+    // 6. Queue delivery notification via notification_queue (A16-DEC-1)
+    const clientProfile = order.profiles as { email: string } | null;
+    await supabase.from('notification_queue').insert({
+      notification_type: 'order_completed',
+      recipient_id: order.client_id,
+      recipient_email: clientProfile?.email || '',
       order_id: orderId,
-      template: 'draft-ready',
-      data: {
+      subject: `Filing Package Delivered — ${order.order_number}`,
+      template_data: {
         orderNumber: order.order_number,
         documentCount: successCount,
       },
       status: 'pending',
-      created_at: new Date().toISOString(),
+      priority: 1,
     });
 
-    // 7. Write server-side audit log (fixes A16-P0-005)
-    await serviceSupabase.from('admin_audit_log').insert({
+    // 7. Write audit log to automation_logs (service_role for system writes)
+    await serviceSupabase.from('automation_logs').insert({
       order_id: orderId,
-      action: auditAction,
-      metadata: {
+      action_type: 'status_changed',
+      action_details: {
         ...auditMetadata,
+        audit_action: auditAction,
         documentCount: documents.length,
         signedUrlsGenerated: successCount,
         previousStatus: order.status,
+        newStatus: 'COMPLETED',
       },
-      admin_id: user.id,
-      created_at: new Date().toISOString(),
+      triggered_by: user.id,
     });
 
     log.info('Order delivered', {

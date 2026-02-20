@@ -62,6 +62,7 @@ interface Document {
   file_name: string
   file_url: string
   document_type: string
+  is_deliverable: boolean
   created_at: string
 }
 
@@ -73,60 +74,71 @@ export default async function AdminOrderDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  // Fetch order with client info
-  const { data: order, error } = await supabase
-    .from('orders')
-    .select(`
-      *,
-      profiles:client_id (
-        full_name,
-        email,
-        phone,
-        bar_number,
-        firm_name,
-        firm_address,
-        firm_phone
-      )
-    `)
-    .eq('id', id)
-    .single()
+  // Fetch independent data in parallel (order, parties, documents, workflow)
+  const [orderResult, partiesResult, documentsResult, workflowResult] = await Promise.all([
+    supabase
+      .from('orders')
+      .select(`
+        *,
+        profiles:client_id (
+          full_name,
+          email,
+          phone,
+          bar_number,
+          firm_name,
+          firm_address,
+          firm_phone
+        )
+      `)
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('parties')
+      .select('party_name, party_role')
+      .eq('order_id', id),
+    supabase
+      .from('documents')
+      .select('*')
+      .eq('order_id', id),
+    supabase
+      .from('order_workflows')
+      .select('id, current_phase, status, revision_loop')
+      .eq('order_id', id)
+      .single(),
+  ])
 
+  const { data: order, error } = orderResult
   if (error || !order) {
     notFound()
   }
 
-  // Fetch parties
-  const { data: partiesData } = await supabase
-    .from('parties')
-    .select('party_name, party_role')
-    .eq('order_id', id)
-  const parties: Party[] = partiesData || []
+  const parties: Party[] = partiesResult.data || []
+  const documents: Document[] = documentsResult.data || []
+  const workflow = workflowResult.data
 
-  // Fetch documents
-  const { data: documentsData } = await supabase
-    .from('documents')
-    .select('*')
-    .eq('order_id', id)
-  const documents: Document[] = documentsData || []
-
-  // Split documents into uploads and deliverables
-  const clientUploads = documents.filter(doc => doc.document_type !== 'deliverable')
-  const deliverables = documents.filter(doc => doc.document_type === 'deliverable')
+  // Split documents into uploads and deliverables (use is_deliverable flag, not document_type)
+  const clientUploads = documents.filter(doc => !doc.is_deliverable)
+  const deliverables = documents.filter(doc => doc.is_deliverable === true)
 
   const client = order.profiles
 
-  // Fetch workflow data for PhaseProgressTracker
-  const { data: workflow } = await supabase
-    .from('order_workflows')
-    .select('id, current_phase, status, revision_loop')
-    .eq('order_id', id)
-    .single()
+  // Fetch workflow-dependent data in parallel
+  const [phaseExecutionsResult, judgeResultData] = await Promise.all([
+    supabase
+      .from('workflow_phase_executions')
+      .select('phase_number, status')
+      .eq('order_workflow_id', workflow?.id || ''),
+    supabase
+      .from('judge_simulation_results')
+      .select('*')
+      .eq('workflow_id', workflow?.id || '')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single(),
+  ])
 
-  // Fetch phase executions for status tracking
-  const { data: phaseExecutions } = await supabase
-    .from('workflow_phase_executions')
-    .select('phase_number, status')
-    .eq('order_workflow_id', workflow?.id || '')
+  const phaseExecutions = phaseExecutionsResult.data
+  const judgeResult = judgeResultData.data
 
   // Build phase statuses map
   const phaseStatuses: Partial<Record<WorkflowPhaseCode, PhaseStatus>> = {}
@@ -142,15 +154,6 @@ export default async function AdminOrderDetailPage({
       phaseStatuses[code] = pe.status as PhaseStatus
     }
   })
-
-  // Fetch judge simulation result
-  const { data: judgeResult } = await supabase
-    .from('judge_simulation_results')
-    .select('*')
-    .eq('workflow_id', workflow?.id || '')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
 
   const judgeSimulationResult: JudgeSimulationResult | undefined = judgeResult ? {
     grade: judgeResult.grade,
