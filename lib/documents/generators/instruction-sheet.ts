@@ -15,7 +15,7 @@
  * 4. Deadline summary
  * 5. AI/Disclosure notices
  * 6. AI DISCLOSURE REMINDER (Task 65 - State Bar Compliance)
- * 7. PRIVILEGE PRESERVATION NOTICE (T-72 - CONTENT GATE: awaiting PRIV-02)
+ * 7. PRIVILEGE PRESERVATION NOTICE (T-72 - PRIV-02)
  * 8. Revision instructions
  * 9. Contact information
  *
@@ -481,18 +481,47 @@ function generateInstructionSheetDocument(data: InstructionSheetData): Document 
     })
   );
 
-  // CONTENT GATE: PRIV-02 — Awaiting Porter Task List Final lines 189-209
-  // Body paragraphs cover: agency relationship, commercial API architecture,
-  // attorney-directed work product, confidentiality, attorney responsibilities.
   children.push(
     new Paragraph({
       children: [new TextRun({
-        text: '[PRIV-02: Porter to provide Privilege Preservation Notice body text from Porter Task List Final lines 189-209]',
-        size: 22,
-        italics: true,
-        color: 'FF0000',
+        text: 'Agency Relationship: Motion Granted operates as a commercial software tool under the exclusive direction and control of the supervising attorney. All document preparation occurs through authenticated API connections without human review by any Motion Granted employee or contractor.',
+        size: 20,
       })],
+      indent: { left: convertInchesToTwip(0.5) },
       spacing: { after: 120 },
+    })
+  );
+
+  children.push(
+    new Paragraph({
+      children: [new TextRun({
+        text: 'Confidentiality: All case materials, attorney communications, and work product are processed through encrypted channels and are not accessible to Motion Granted personnel. Data is retained for the period specified in your order terms and is permanently deleted thereafter.',
+        size: 20,
+      })],
+      indent: { left: convertInchesToTwip(0.5) },
+      spacing: { after: 120 },
+    })
+  );
+
+  children.push(
+    new Paragraph({
+      children: [new TextRun({
+        text: 'Attorney Work Product: Documents prepared through Motion Granted constitute attorney work product prepared in anticipation of litigation. The attorney directs all substantive decisions, reviews all outputs, verifies all citations, and assumes full professional responsibility for the final filing.',
+        size: 20,
+      })],
+      indent: { left: convertInchesToTwip(0.5) },
+      spacing: { after: 120 },
+    })
+  );
+
+  children.push(
+    new Paragraph({
+      children: [new TextRun({
+        text: 'Attorney Responsibilities: The supervising attorney must (1) review the entire document before filing, (2) verify all citations are accurate and current, (3) ensure all factual representations are correct, (4) confirm compliance with applicable court rules, and (5) make all strategic and substantive decisions regarding the filing.',
+        size: 20,
+      })],
+      indent: { left: convertInchesToTwip(0.5) },
+      spacing: { after: 200 },
     })
   );
 

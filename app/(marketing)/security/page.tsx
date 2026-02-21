@@ -207,28 +207,50 @@ export default function SecurityPage() {
               {/* Consumer AI vs Motion Granted Comparison Table (T-73) */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">Consumer AI vs. Motion Granted API</h3>
-                <p className="text-sm text-gray-500 italic mb-4">
-                  [PRIV-03: Porter to provide Privilege Preservation section content
-                  from Porter Task List Final lines 210-258. Includes comparison table
-                  rows, best practices, and data protections.]
-                </p>
                 <div className="overflow-x-auto">
                   <table className="min-w-full border border-gray-200 rounded-lg text-sm">
                     <thead>
                       <tr className="bg-gray-50">
-                        <th className="px-4 py-3 text-left font-semibold text-gray-900 border-b border-gray-200"></th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 border-b border-gray-200">Feature</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-900 border-b border-gray-200">Consumer AI (e.g., ChatGPT)</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-900 border-b border-gray-200">Motion Granted API</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {/* CONTENT GATE: Table rows from PRIV-03 — Porter Task List Final lines 210-258 */}
-                      {/* Rows comparing: data handling, privilege status, attorney direction, */}
-                      {/* work product doctrine, data retention, cross-client isolation, etc. */}
                       <tr className="border-b border-gray-100">
-                        <td className="px-4 py-3 text-gray-500 italic" colSpan={3}>
-                          Awaiting PRIV-03 content from Porter Task List Final
-                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-900">Access Model</td>
+                        <td className="px-4 py-3 text-gray-700">Public web interface</td>
+                        <td className="px-4 py-3 text-gray-700">Authenticated commercial API</td>
+                      </tr>
+                      <tr className="border-b border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-900">Data Handling</td>
+                        <td className="px-4 py-3 text-gray-700">Conversations stored; may be used for model training</td>
+                        <td className="px-4 py-3 text-gray-700">Encrypted; never used for training; auto-deleted per retention policy</td>
+                      </tr>
+                      <tr className="border-b border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-900">Attorney Direction</td>
+                        <td className="px-4 py-3 text-gray-700">User types prompts directly</td>
+                        <td className="px-4 py-3 text-gray-700">Attorney directs via structured intake; 14-phase supervised workflow</td>
+                      </tr>
+                      <tr className="border-b border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-900">Review Process</td>
+                        <td className="px-4 py-3 text-gray-700">None required</td>
+                        <td className="px-4 py-3 text-gray-700">Mandatory attorney review + Citation Integrity Verification pipeline</td>
+                      </tr>
+                      <tr className="border-b border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-900">Professional Responsibility</td>
+                        <td className="px-4 py-3 text-gray-700">None</td>
+                        <td className="px-4 py-3 text-gray-700">Attorney assumes full professional responsibility</td>
+                      </tr>
+                      <tr className="border-b border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-900">Cross-Client Isolation</td>
+                        <td className="px-4 py-3 text-gray-700">Shared conversation context</td>
+                        <td className="px-4 py-3 text-gray-700">Complete isolation; no cross-client data sharing</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-gray-900">Data Retention</td>
+                        <td className="px-4 py-3 text-gray-700">Indefinite; user must manually delete</td>
+                        <td className="px-4 py-3 text-gray-700">365 days, then permanent deletion; earlier deletion on request</td>
                       </tr>
                     </tbody>
                   </table>

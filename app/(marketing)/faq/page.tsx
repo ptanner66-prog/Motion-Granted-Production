@@ -96,7 +96,7 @@ const FAQ_CATEGORIES: { name: string; items: FAQItem[] }[] = [
     items: [
       {
         question: 'Are documents prepared through Motion Granted protected by attorney-client privilege?',
-        answer: '[PRIV-01A: Porter to provide privilege FAQ answer text from Porter Task List Final lines 148-167]',
+        answer: `Motion Granted operates as a commercial API tool under the attorney's direct supervision, similar to Westlaw or LexisNexis. The attorney-client privilege attaches to the attorney's work product, not to the tools used to create it. Because Motion Granted processes all documents through encrypted API connections without human review by third parties, the confidentiality necessary for privilege protection is maintained throughout the preparation process. The attorney retains full control over all inputs, directs the scope and substance of the work, and reviews all outputs before filing. This attorney-directed workflow preserves the privilege analysis under both the work product doctrine and traditional attorney-client privilege frameworks.`,
       },
       {
         question: 'How do you handle confidential case materials?',
@@ -129,7 +129,7 @@ const FAQ_CATEGORIES: { name: string; items: FAQItem[] }[] = [
     items: [
       {
         question: "A federal court ruled AI-generated documents aren't privileged. Does that affect Motion Granted?",
-        answer: '[PRIV-01B: Porter to provide Heppner distinction FAQ answer from Porter Task List Final lines 169-178]',
+        answer: `The ruling in USA v. Heppner (2025) addressed a specific factual scenario where a party used a consumer AI chatbot (ChatGPT) to independently generate legal documents without meaningful attorney involvement or direction. That fact pattern is fundamentally different from Motion Granted's architecture. Motion Granted operates as a commercial API integrated into the attorney's workflow — not as a standalone consumer tool. The attorney directs every aspect of document preparation, reviews all outputs, verifies citations through our Citation Integrity Verification pipeline, and takes professional responsibility for the final work product. The key distinction the Heppner court drew was the absence of attorney direction and supervision, which is the opposite of how Motion Granted functions.`,
       },
     ],
   },
